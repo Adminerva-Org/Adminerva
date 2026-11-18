@@ -1004,6 +1004,77 @@ body.lab-page::after{
   color:rgb(var(--mission-accent-rgb));
   background:rgba(var(--mission-accent-rgb),.08);
 }
+.games-sprint-hud{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:.8rem;
+  margin:.65rem 0 .9rem;
+  padding:.7rem .8rem;
+  border:1px solid rgba(89,158,255,.22);
+  border-radius:.9rem;
+  background:
+    linear-gradient(90deg,rgba(35,79,145,.14),rgba(10,34,54,.64)),
+    rgba(8,26,42,.64);
+}
+.games-sprint-hud[hidden]{display:none}
+.games-sprint-hud>div:first-child{
+  display:grid;
+  gap:.1rem;
+}
+.games-sprint-hud strong{
+  color:#dcecff;
+  font-size:.72rem;
+}
+.games-sprint-hud>div:first-child span{
+  color:#83a9d4;
+  font-size:.55rem;
+  font-weight:800;
+}
+.games-sprint-pips{
+  display:flex;
+  justify-content:center;
+  gap:.35rem;
+}
+.games-sprint-pips span{
+  width:29px;
+  height:29px;
+  display:grid;
+  place-items:center;
+  border-radius:9px;
+  border:1px solid rgba(89,158,255,.18);
+  background:rgba(12,35,58,.78);
+  color:#68839d;
+  font-size:.56rem;
+  font-weight:900;
+  transition:transform .16s ease,background .16s ease,border-color .16s ease,color .16s ease;
+}
+.games-sprint-pips span.is-current{
+  border-color:rgba(89,158,255,.72);
+  color:#a9cfff;
+  background:rgba(47,94,167,.2);
+  box-shadow:0 0 18px rgba(89,158,255,.08);
+  transform:translateY(-1px);
+}
+.games-sprint-pips span.is-complete{
+  border-color:rgba(75,223,166,.5);
+  background:rgba(37,139,100,.24);
+  color:#b8f5d8;
+}
+.games-sprint-hud button{
+  min-height:34px;
+  padding:.42rem .7rem;
+  border:1px solid rgba(89,158,255,.28);
+  border-radius:999px;
+  background:rgba(89,158,255,.1);
+  color:#bcd8ff;
+  font-size:.6rem;
+  font-weight:850;
+}
+.games-sprint-hud button:hover{
+  border-color:rgba(89,158,255,.5);
+  background:rgba(89,158,255,.16);
+}
 .lab-text-button{color:#77e6e9}
 .lab-mission-meta{color:#92b6c5}
 #practiceMissionTitle{color:#fff}
@@ -1481,4 +1552,10 @@ body.lab-page::after{
   .games-match-choice{width:100%}
   .games-hint-tray{align-items:flex-start;flex-direction:column}
   .lab-order-list li[draggable=true]{cursor:default}
+}
+
+@media(max-width:560px){
+  .games-sprint-hud{grid-template-columns:1fr auto;gap:.55rem}
+  .games-sprint-pips{grid-column:1/-1;grid-row:2;justify-content:flex-start}
+  .games-sprint-hud button{grid-column:2;grid-row:1}
 }
