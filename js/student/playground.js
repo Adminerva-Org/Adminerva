@@ -3,7 +3,7 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=6fca8fc9e0f0";
+import {createProjectStudio} from "./project-studio.mjs?v=29b7c34a95e8";
 import {currentV4StudioSchool,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.2.1";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
@@ -561,6 +561,9 @@ else void initializePlayground();
 // ==========================================
 // 3. WORKSPACE & FILE MANAGEMENT
 // ==========================================
+function assessmentRuntimeManaged(){
+  return projectStudio?.getActiveProject?.()?.assessment?.provisionedBy==="assessment-launch";
+}
 function applyNamedProjectConfig(config={}){
   if(currentLang==="java"){
     javaRunMode=config.runMode==="desktop"?"desktop":"console";
@@ -2584,6 +2587,14 @@ function bindUIEvents() {
   });
   document.getElementById('stdinLineInput')?.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();sendConsoleInputLine();}});
   document.getElementById('javaRunMode')?.addEventListener('change',event=>{
+    const active=projectStudio?.getActiveProject?.();
+    if(active?.assessment?.provisionedBy==="assessment-launch"){
+      javaRunMode=active.config?.runMode==="desktop"?"desktop":"console";
+      event.target.value=javaRunMode;
+      event.target.disabled=true;
+      event.target.title="Runtime is assigned by this assessment.";
+      return;
+    }
     javaRunMode=event.target.value==='desktop'?'desktop':'console';
     try{localStorage.setItem(JAVA_RUN_MODE_KEY,javaRunMode);}catch{}
     if(javaRunMode!=='desktop')stopJavaDesktop(true);
@@ -2690,7 +2701,12 @@ function bindUIEvents() {
 
   document.getElementById("resetBtn")?.addEventListener("click", () => {
     const named=projectStudio?.getActiveProject();
-    const message=named?"Reset this project to its original template? Export a ZIP first if you need the current files, database, or design artifacts.":"Reset this language's files?";
+    const assessment=named?.assessment?.provisionedBy==="assessment-launch";
+    const message=assessment
+      ?"Reset this assessment starter? This will permanently replace the current project files with the starter assigned by the assessment. Export a ZIP first if you need the current work."
+      :named
+        ?"Reset this project to its original template? Export a ZIP first if you need the current files, database, or design artifacts."
+        :"Reset this language's files?";
     if (confirm(message)) {
       if(!persistWorkspace())return alert("Current draft could not be saved. Export ZIP first.");
       if(named&&projectStudio?.resetToTemplate?.()){workspaceDirty=false;showSaveStatus("Project template restored");return;}
@@ -2714,7 +2730,13 @@ function updateOutputView() {
   const isJava=currentLang==='java',desktop=isJavaDesktopMode();
   modeSelect?.classList.toggle('hidden',!isJava);
   modeLabel?.classList.toggle('hidden',!isJava);
-  if(modeSelect)modeSelect.value=javaRunMode;
+  if(modeSelect){
+    modeSelect.value=javaRunMode;
+    const assessmentManaged=assessmentRuntimeManaged();
+    const runtimeLocked=Boolean(executionController||studioRuntimeIntegration?.locked?.()||cheerpjClient);
+    modeSelect.disabled=assessmentManaged||runtimeLocked;
+    modeSelect.title=assessmentManaged?"Runtime is assigned by this assessment.":"Choose how Java should run";
+  }
   const engineSelect=document.getElementById('javaEngineSelect'),engineLabel=document.getElementById('javaEngineLabel');
   const showEngine=isJava&&!desktop&&currentBrowserJavaAccess().enabled;
   if(!showEngine&&javaEngine==='cheerpj'){
