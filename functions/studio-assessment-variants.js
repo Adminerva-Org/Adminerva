@@ -7,10 +7,10 @@ const deny=(code,message)=>{const error=Error(message);error.code=code;throw err
 const cleanId=(value,label)=>{
   const text=String(value??"").trim();
   // Match Firestore's document-ID size limit instead of imposing a narrower
-  // application-only ceiling. Some migrated assessment IDs are longer than
-  // 512 characters even though they are valid Firestore document IDs.
+  // application-only ceiling. Use actual control-character escapes so ordinary alphanumeric IDs
+  // are not rejected.
   const byteLength=Buffer.byteLength(text,"utf8");
-  if(!text||byteLength>1500||text==="."||text===".."||text.includes("/")||/[\\u0000-\\u001F\\u007F]/.test(text))
+  if(!text||byteLength>1500||text==="."||text===".."||text.includes("/")||/[\u0000-\u001F\u007F]/.test(text))
     deny("invalid-argument",label+" is invalid.");
   return text;
 };
