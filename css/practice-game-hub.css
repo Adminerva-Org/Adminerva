@@ -560,6 +560,26 @@ body.lab-page::after{
   line-height:1.45;
 }
 .lab-game-card small{color:#61d6df}
+.lab-game-device{
+  display:inline-flex;
+  align-items:center;
+  align-self:flex-start;
+  max-width:100%;
+  margin:.15rem 0 .4rem;
+  padding:.22rem .4rem;
+  border:1px solid rgba(98,180,196,.13);
+  border-radius:999px;
+  background:rgba(8,30,44,.55);
+  color:#789ead;
+  font-size:.48rem;
+  font-weight:850;
+  line-height:1.2;
+  white-space:nowrap;
+}
+.lab-device-pill{
+  color:#8cc6d1;
+  white-space:normal;
+}
 .lab-game-card-visual{
   position:absolute;
   right:10px;
@@ -2265,6 +2285,9 @@ body.lab-page::after{
 
 /* Mobile hardening for Student Games. */
 @media(max-width:760px){
+  #gamesHome,#labGameCatalog,#gamesChallenges,#gamesProgress,.lab-mission-panel{
+    scroll-margin-top:calc(var(--games-header-offset,56px) + 64px);
+  }
   body.lab-page #adminerva-nav .av-nav-top{
     gap:.35rem;
     padding-left:max(.5rem,env(safe-area-inset-left,0px));
@@ -2324,6 +2347,10 @@ body.lab-page::after{
   }
 }
 @media(max-width:480px){
+  .lab-mission-actions .lab-primary{flex:1 1 100%;width:100%}
+  .lab-mission-actions .lab-secondary,
+  .lab-mission-actions #labReopenMission{flex:1 1 calc(50% - .4rem)}
+  .lab-game-device{font-size:.46rem;margin-bottom:.3rem}
   body.lab-page #adminerva-nav #av-account-controls>button[title="Report Issue"],
   body.lab-page #adminerva-nav #av-account-controls>a[title="Account settings"]{
     display:none;
