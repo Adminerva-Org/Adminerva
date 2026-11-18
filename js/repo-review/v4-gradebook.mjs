@@ -46,6 +46,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
 
   const functions=getFunctions(app,"asia-southeast1");
   const assessmentApi=httpsCallable(functions,"schoolAssessments");
+  const migrationApi=httpsCallable(functions,"schoolAssessmentMigration");
   const submissionApi=httpsCallable(functions,"schoolStudioSubmissions");
   const generalSubmissionApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
@@ -87,21 +88,41 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   async function loadTasks(){
     const token=++generation;
     status.textContent="Loading your verified school assessments…";
-    const result=await scoped(assessmentApi,"list_teacher");
+    const [result,legacyResult]=await Promise.all([
+      scoped(assessmentApi,"list_teacher"),
+      scoped(migrationApi,"list_legacy_deployments").catch(()=>({items:[]}))
+    ]);
     if(token!==generation)return;
-    const items=(result.assessments||[]).filter(item=>["studio","github","text","link"].includes(item.submissionSource)&&item.status==="deployed");
+    const v4Items=(result.assessments||[]).filter(item=>["studio","github","text","link"].includes(item.submissionSource)&&item.status==="deployed");
+    const legacyItems=(legacyResult.items||[]).map(item=>({
+      taskId:"legacy:"+item.legacyAssessmentId,
+      legacyAssessmentId:item.legacyAssessmentId,
+      legacyCompatibility:true,
+      title:item.title,
+      subject:item.subject||"Computer Programming",
+      assessmentType:item.type||"Assessment",
+      submissionSource:item.submissionSource||"github",
+      published:item.published===true,
+      status:"deployed",
+      deploymentCount:item.deploymentCount||0,
+      legacyDeployments:Array.isArray(item.deployments)?item.deployments:[]
+    }));
+    const items=[...v4Items,...legacyItems];
     tasks=new Map(items.map(item=>[item.taskId,item]));
     taskSelect.replaceChildren();
     const start=new Option(items.length?"Choose an assessment…":"No deployed V4 assessments","");
     start.disabled=true;start.selected=true;taskSelect.add(start);
     for(const task of items){
-      const label=sourceLabel(task.submissionSource)+" · "+task.title+" · "+(task.sectionId||"class")+" · "+(task.subject||task.subjectId||"subject");
+      const label=(task.legacyCompatibility?"Historical · ":"")+sourceLabel(task.submissionSource)+" · "+task.title+" · "+
+        (task.legacyCompatibility?(task.deploymentCount+" deployment"+(task.deploymentCount===1?"":"s")):(task.sectionId||"class"))+
+        " · "+(task.subject||task.subjectId||"subject");
       taskSelect.add(new Option(label,task.taskId));
     }
     panel.classList.remove("hidden");
     inbox.replaceChildren();
+    const legacyCount=legacyItems.length,v4Count=v4Items.length;
     status.textContent=items.length?
-      items.length+" deployed V4 assessment"+(items.length===1?"":"s")+" available.":
+      (v4Count+" V4 deployment"+(v4Count===1?"":"s")+" · "+legacyCount+" historical deployment"+(legacyCount===1?"":"s")+" available."):
       "No deployed school assessments owned by this teacher in the active school." ;
     const requested=new URL(location.href).searchParams.get("task");
     if(requested&&tasks.has(requested)){
@@ -114,6 +135,24 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     currentTask=task||null;inbox.replaceChildren();
     if(!task){status.textContent="Choose an assessment to load submissions.";return;}
     const token=++generation;
+    if(task.legacyCompatibility){
+      status.textContent="Historical deployment found. This assessment predates the V4 course-offering submission store.";
+      const card=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
+      card.append(make("h3","font-extrabold text-amber-950",task.title));
+      card.append(make("p","text-sm text-amber-900 mt-1",
+        sourceLabel(task.submissionSource)+" · "+task.deploymentCount+" historical deployment"+(task.deploymentCount===1?"":"s")+
+        (task.published?" · published":" · private")));
+      const sections=(task.legacyDeployments||[]).map(item=>item.section).filter(Boolean);
+      if(sections.length)card.append(make("p","text-xs text-amber-800 mt-2","Sections: "+[...new Set(sections)].join(" · ")));
+      const actions=make("div","flex flex-wrap gap-2 mt-3");
+      const review=make("a","rounded-lg bg-amber-800 text-white font-bold px-3 py-2 text-sm",
+        task.submissionSource==="studio"?"Open historical Studio review":"Open historical GitHub review");
+      review.href=task.submissionSource==="studio"
+        ?"studio-submissions.html?assessment="+encodeURIComponent(task.legacyAssessmentId)
+        :"repofetch.html?assessment="+encodeURIComponent(task.legacyAssessmentId);
+      actions.append(review);card.append(actions);inbox.append(card);
+      return;
+    }
     status.textContent="Loading frozen "+sourceLabel(task.submissionSource).toLowerCase()+" submissions…";
     try{
       const evidenceApi=sourceApi(task.submissionSource,{
