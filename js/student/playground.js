@@ -270,6 +270,7 @@ function inferAssessmentProjectSetup(task={}){
     "java-console":{templateId:"java-console",config:{javaVersion:"17",runMode:"console",database:false,design:false}},
     "java-desktop":{templateId:"java-desktop",config:{javaVersion:"17",runMode:"desktop",database:false,design:true}},
     "java-database":{templateId:"java-console",config:{javaVersion:"17",runMode:"console",database:true,design:false}},
+    "java-desktop-database":{templateId:"java-information",config:{javaVersion:"17",runMode:"desktop",database:true,design:true}},
     "web":{templateId:"web",config:{runMode:"web",database:false,design:false}},
     "python-console":{templateId:"python-console",config:{runMode:"console",database:false,design:false}}
   };

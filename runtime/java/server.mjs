@@ -3,12 +3,13 @@
  */
 import http from 'node:http';
 import {spawn,execFileSync} from 'node:child_process';
-import {randomBytes,randomUUID} from 'node:crypto';
+import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 import {mkdtemp,mkdir,writeFile,chmod,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {WebSocketServer,WebSocket} from 'ws';
 import {createRemoteJWKSet,jwtVerify} from 'jose';
+import {runAutomaticVerification} from './verification.mjs';
 
 const firebaseProjectId=process.env.FIREBASE_PROJECT_ID?.trim();
 if(!firebaseProjectId||!/^[a-z0-9][a-z0-9-]{3,60}$/.test(firebaseProjectId))
@@ -26,6 +27,7 @@ const IDLE_MS=positive('IDLE_SESSION_SECONDS',300,3600)*1000;
 const HARD_MS=positive('MAX_SESSION_SECONDS',900,7200)*1000;
 const GRACE_MS=positive('DISCONNECT_GRACE_SECONDS',120,600)*1000;
 const IMAGE=process.env.DOCKER_IMAGE||'adminerva/java17-runner:pilot';
+const VERIFICATION_SERVICE_TOKEN=String(process.env.VERIFICATION_SERVICE_TOKEN||'').trim();
 const PORT=positive('PORT',8787,65535);
 const BYTES_LIMIT=250000,FILE_LIMIT=60,OUTPUT_LIMIT=1024*1024,WS_BUFFER_LIMIT=512*1024;
 function verifyRuntimeHost(){
@@ -75,6 +77,14 @@ function cors(req,res){
     res.setHeader('Vary','Origin');
   }
   return true;
+}
+function verifyService(req){
+  if(!VERIFICATION_SERVICE_TOKEN)
+    throw Object.assign(Error('Automatic verification service is not configured.'),{httpCode:503});
+  const token=/^Bearer\s+(.+)$/i.exec(req.headers.authorization||'')?.[1]||'';
+  const a=Buffer.from(token),b=Buffer.from(VERIFICATION_SERVICE_TOKEN);
+  if(a.length!==b.length||!timingSafeEqual(a,b))
+    throw Object.assign(Error('Verification service authentication failed.'),{httpCode:401});
 }
 async function verify(req){
   const token=/^Bearer\s+(.+)$/i.exec(req.headers.authorization||'')?.[1];
@@ -238,6 +248,22 @@ const server=http.createServer(async(req,res)=>{
   if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
   if(req.url==='/health'&&req.method==='GET'){json(res,200,{ok:true,active:active.size,queued:queue.length,activeLimit:MAX_ACTIVE});return;}
   try{
+    if(req.url==='/v1/verifications'&&req.method==='POST'){
+      verifyService(req);
+      const body=await readBody(req),parsed=snapshotValidation(body);
+      const profile=String(body.profile||'java_console');
+      if(!['java_console','java_console_database','java_swing','java_swing_database'].includes(profile))
+        throw Object.assign(Error('Unsupported verification profile.'),{httpCode:400});
+      const sourceDigest=String(body.sourceDigest||'');
+      if(sourceDigest&&!/^[a-f0-9]{64}$/.test(sourceDigest))
+        throw Object.assign(Error('Invalid submitted source digest.'),{httpCode:400});
+      const result=await runAutomaticVerification({
+        files:parsed.files,entry:parsed.entry,mainClass:parsed.mainClass,profile,
+        sourceDigest,database:body.database||null,uiExpectations:body.uiExpectations||null,
+        databaseChecks:body.databaseChecks||null,stdin:String(body.stdin||"").slice(0,6000),image:IMAGE
+      });
+      json(res,200,result);return;
+    }
     const uid=await verify(req);
     if(req.url==='/v1/executions'&&req.method==='POST'){
       const parsed=snapshotValidation(await readBody(req));

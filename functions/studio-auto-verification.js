@@ -4,7 +4,6 @@
  * Source fields remain immutable; the system appends a verification sidecar
  * whose sourceDigest is calculated from the exact submitted files.
  */
-const JSZip=require("jszip");
 const {createHash}=require("node:crypto");
 
 const VERIFY_VERSION="studio-auto-verification-v1";
@@ -12,6 +11,45 @@ const JUDGE0_ORIGIN=String(process.env.ADMINERVA_JUDGE0_ORIGIN||"https://ce.judg
 const RUNTIME_ORIGIN=String(process.env.ADMINERVA_RUNTIME_VERIFY_ORIGIN||"").replace(/\/$/,"");
 const RUNTIME_TOKEN=String(process.env.ADMINERVA_RUNTIME_VERIFY_TOKEN||"");
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const CRC_TABLE=(()=>{
+ const table=new Uint32Array(256);
+ for(let n=0;n<256;n++){
+  let value=n;
+  for(let k=0;k<8;k++)value=(value&1)?(0xEDB88320^(value>>>1)):(value>>>1);
+  table[n]=value>>>0;
+ }
+ return table;
+})();
+function crc32(buffer){
+ let crc=0xFFFFFFFF;
+ for(const byte of buffer)crc=CRC_TABLE[(crc^byte)&0xFF]^(crc>>>8);
+ return (crc^0xFFFFFFFF)>>>0;
+}
+function zipBase64(entries){
+ const locals=[],centrals=[];let offset=0;
+ for(const [name,value] of entries){
+  const filename=Buffer.from(name,"utf8"),data=Buffer.from(String(value),"utf8"),crc=crc32(data);
+  const local=Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50,0);local.writeUInt16LE(20,4);local.writeUInt16LE(0,6);
+  local.writeUInt16LE(0,8);local.writeUInt16LE(0,10);local.writeUInt16LE(0,12);
+  local.writeUInt32LE(crc,14);local.writeUInt32LE(data.length,18);local.writeUInt32LE(data.length,22);
+  local.writeUInt16LE(filename.length,26);local.writeUInt16LE(0,28);
+  locals.push(local,filename,data);
+  const central=Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50,0);central.writeUInt16LE(20,4);central.writeUInt16LE(20,6);
+  central.writeUInt16LE(0,8);central.writeUInt16LE(0,10);central.writeUInt16LE(0,12);central.writeUInt16LE(0,14);
+  central.writeUInt32LE(crc,16);central.writeUInt32LE(data.length,20);central.writeUInt32LE(data.length,24);
+  central.writeUInt16LE(filename.length,28);central.writeUInt16LE(0,30);central.writeUInt16LE(0,32);
+  central.writeUInt16LE(0,34);central.writeUInt16LE(0,36);central.writeUInt32LE(0,38);central.writeUInt32LE(offset,42);
+  centrals.push(central,filename);
+  offset+=local.length+filename.length+data.length;
+ }
+ const centralBuffer=Buffer.concat(centrals),end=Buffer.alloc(22),count=entries.length;
+ end.writeUInt32LE(0x06054b50,0);end.writeUInt16LE(0,4);end.writeUInt16LE(0,6);
+ end.writeUInt16LE(count,8);end.writeUInt16LE(count,10);end.writeUInt32LE(centralBuffer.length,12);
+ end.writeUInt32LE(offset,16);end.writeUInt16LE(0,20);
+ return Buffer.concat([...locals,centralBuffer,end]).toString("base64");
+}
 const clip=(value,max)=>String(value??"").slice(0,max);
 function canonicalJson(value){
  function normalize(node){
@@ -46,13 +84,26 @@ function inferProfile(task,snapshot){
    Object.entries(snapshot.files||{}).map(([path,content])=>({path,content:String(content)}));
  const source=files.map(file=>file.content).join("\n");
  const declared=String(task?.studioProjectProfile||"auto").toLowerCase();
- const swing=declared==="java-desktop"||config.runMode==="desktop"||
-   /\b(?:javax\.swing|java\.awt)\b/.test(source);
- const database=declared==="java-database"||config.database===true||
+ const taskText=String(task?.instructions||task?.taskContext||task?.description||"").toLowerCase();
+ // Assessment intent has authority over the learner's implementation. A student
+ // who submits Swing code to a console task must not change the verifier profile.
+ const taskSaysConsole=/\bconsole\b/.test(taskText)&&!/\b(?:swing|desktop gui|graphical user interface required)\b/.test(taskText);
+ const taskSaysSwing=/\b(?:java swing|swing gui|desktop application|desktop gui)\b/.test(taskText);
+ const swing=["java-desktop","java-desktop-database"].includes(declared)||(declared==="auto"&&(
+   taskSaysSwing||(!taskSaysConsole&&(config.runMode==="desktop"||/\b(?:javax\.swing|java\.awt)\b/.test(source)))
+ ));
+ const databaseMention=/\b(?:database|jdbc|sql|crud)\b/.test(taskText);
+ const databaseNegated=/\b(?:not required|do not require|without|no)\b[^.\n]{0,80}\b(?:database|jdbc|sql)\b/.test(taskText)||
+   /\b(?:database|jdbc|sql)\b[^.\n]{0,80}\b(?:not required|out of scope)\b/.test(taskText);
+ const taskSaysDatabase=databaseMention&&!databaseNegated;
+ const database=["java-database","java-desktop-database"].includes(declared)||(declared==="auto"&&(
+   taskSaysDatabase||config.database===true||
    Object.keys((artifacts.database||snapshot.database||{}).tables||{}).length>0||
-   /\b(?:java\.sql|DriverManager|PreparedStatement|ResultSet)\b/.test(source);
+   /\b(?:java\.sql|DriverManager|PreparedStatement|ResultSet)\b/.test(source)
+ ));
  return {id:swing?(database?"java_swing_database":"java_swing"):
-   (database?"java_console_database":"java_console"),language,swing,database,declared};
+   (database?"java_console_database":"java_console"),language,swing,database,declared,
+   inferredFrom:declared!=="auto"?"assessment_profile":taskSaysConsole||taskSaysSwing||taskSaysDatabase?"assessment_instructions":"project_fallback"};
 }
 function databaseArtifact(snapshot){
  return snapshot.artifacts?.database||snapshot.database||null;
@@ -115,13 +166,13 @@ async function judge0Verify({files,profile,stdin=""}){
    compileSucceeded:null,runAttempted:false,runSucceeded:null,
    message:"No Java static void main(...) entry point was found in the frozen files."};
  try{
-  const zip=new JSZip();
-  for(const file of files)zip.file(file.path,file.content);
   const javaFiles=files.filter(file=>/\.java$/i.test(file.path)).map(file=>shellQuote(file.path));
-  zip.file("compile","#!/bin/bash\nset -e\njavac -encoding UTF-8 -d . "+javaFiles.join(" ")+"\n");
-  const compileOnly=profile.swing===true;
-  zip.file("run","#!/bin/bash\nset -e\n"+(compileOnly?"true":"timeout 12s java "+shellQuote(main.mainClass))+"\n");
-  const additional_files=await zip.generateAsync({type:"base64"});
+  const compileOnly=profile.swing===true||profile.database===true;
+  const additional_files=zipBase64([
+   ...files.map(file=>[file.path,file.content]),
+   ["compile","#!/bin/bash\nset -e\njavac -encoding UTF-8 -d . "+javaFiles.join(" ")+"\n"],
+   ["run","#!/bin/bash\nset -e\n"+(compileOnly?"true":"timeout 12s java "+shellQuote(main.mainClass))+"\n"]
+  ]);
   const start=await fetch(JUDGE0_ORIGIN+"/submissions?base64_encoded=false&wait=false",{
    method:"POST",headers:{"Content-Type":"application/json"},
    body:JSON.stringify({language_id:89,additional_files,stdin:compileOnly?"":clip(stdin,6000),
@@ -140,7 +191,8 @@ async function judge0Verify({files,profile,stdin=""}){
    result=await poll.json();
   }
   if(!result.status||Number(result.status.id)<=2)throw Error("Judge0 verification timed out.");
-  const statusId=Number(result.status.id),compileSucceeded=statusId!==6;
+  const statusId=Number(result.status.id),compileOutput=String(result.compile_output||"");
+  const compileSucceeded=statusId!==6&&!/(?:^|\n).*(?:error:|cannot find symbol|class .* is public, should be declared)/i.test(compileOutput);
   return {
    attempted:true,engine:"judge0",entry:main.entry,mainClass:main.mainClass,
    status:clip(result.status.description||"finished",120),statusId,
@@ -148,7 +200,7 @@ async function judge0Verify({files,profile,stdin=""}){
    runSucceeded:compileSucceeded&&!compileOnly?statusId===3:null,
    exitCode:Number.isFinite(Number(result.exit_code))?Number(result.exit_code):null,
    stdout:clip(result.stdout,16000),stderr:clip(result.stderr,12000),
-   compileOutput:clip(result.compile_output,12000),message:clip(result.message,2000),
+   compileOutput:clip(compileOutput,12000),message:clip(result.message,2000),
    time:Number.isFinite(Number(result.time))?Number(result.time):null,
    memory:Number.isFinite(Number(result.memory))?Number(result.memory):null
   };
@@ -158,7 +210,7 @@ async function judge0Verify({files,profile,stdin=""}){
     message:clip(error.message,1000)};
  }
 }
-async function dedicatedRuntimeVerify({files,profile,database,sourceDigestValue,task}){
+async function dedicatedRuntimeVerify({files,profile,database,sourceDigestValue,task,stdin=""}){
  if(!RUNTIME_ORIGIN||!RUNTIME_TOKEN)return {
    attempted:false,status:"not_configured",
    message:"Dedicated Adminerva desktop/database runtime verification is not configured on the Firebase backend."
@@ -172,7 +224,8 @@ async function dedicatedRuntimeVerify({files,profile,database,sourceDigestValue,
     files:Object.fromEntries(files.map(file=>[file.path,file.content])),entry:main.entry,
     profile:profile.id,sourceDigest:sourceDigestValue,database:database||null,
     uiExpectations:task?.verificationConfig?.ui||null,
-    databaseChecks:task?.verificationConfig?.databaseChecks||null
+    databaseChecks:task?.verificationConfig?.databaseChecks||null,
+    stdin:clip(stdin,6000)
    }),signal:AbortSignal.timeout(35000)
   });
   let data={};try{data=await response.json();}catch{}
@@ -190,6 +243,10 @@ async function verifyFrozenSubmission({snapshot,task}){
  const files=normalizeFiles(snapshot),language=String(snapshot.sourceLanguage||snapshot.language||snapshot.lang||"").toLowerCase();
  const digest=sourceDigest(files,language),profile=inferProfile(task,{...snapshot,files});
  const limitations=[];
+ const historicalRuns=Array.isArray(snapshot.executionEvidence?.runs)?snapshot.executionEvidence.runs:
+   Array.isArray(snapshot.artifacts?.evidence?.runs)?snapshot.artifacts.evidence.runs:[];
+ const matchingInput=historicalRuns.find(run=>run?.sourceDigest===digest&&String(run?.stdin||"").length)?.stdin||"";
+ const verificationInput=String(task?.verificationConfig?.stdin??matchingInput??"").slice(0,6000);
  if(profile.id==="unsupported")return {
    verificationVersion:VERIFY_VERSION,verifiedAt:Date.now(),profile,sourceDigest:digest,
    matchesSubmittedSource:true,status:"not_applicable",
@@ -197,12 +254,12 @@ async function verifyFrozenSubmission({snapshot,task}){
    database:verifyDatabaseArtifact(databaseArtifact(snapshot)),
    limitations:["Automatic runtime verification currently targets Java Studio submissions."]
  };
- const compileRun=await judge0Verify({files,profile});
+ const compileRun=await judge0Verify({files,profile,stdin:verificationInput});
  const database=verifyDatabaseArtifact(databaseArtifact(snapshot));
  let dedicated={attempted:false,status:"not_required"};
  if(profile.swing||profile.database){
   dedicated=await dedicatedRuntimeVerify({
-    files,profile,database:databaseArtifact(snapshot),sourceDigestValue:digest,task
+    files,profile,database:databaseArtifact(snapshot),sourceDigestValue:digest,task,stdin:verificationInput
   });
   if(dedicated.status==="not_configured")
    limitations.push("Dedicated desktop/database runtime verification is not configured; compile and frozen database-artifact checks remain available.");
@@ -216,12 +273,14 @@ async function verifyFrozenSubmission({snapshot,task}){
    status:dedicated.gui?.status||dedicated.desktopLaunch?.status||dedicated.status||"not_configured",
    ...(dedicated.gui||{}),inventory:dedicated.gui?.inventory||null
  }:{attempted:false,status:"not_applicable"};
- const runtime=profile.swing?{
-   attempted:dedicated.attempted===true,
-   status:dedicated.runtime?.status||dedicated.desktopLaunch?.status||dedicated.status||"compile_only",
-   runSucceeded:dedicated.runtime?.runSucceeded??dedicated.desktopLaunch?.succeeded??null,
-   exitCode:dedicated.runtime?.exitCode??null,
-   stdout:clip(dedicated.runtime?.stdout,16000),stderr:clip(dedicated.runtime?.stderr,12000)
+ const dedicatedRuntime=dedicated?.runtime&&typeof dedicated.runtime==="object"?dedicated.runtime:null;
+ const runtime=(profile.swing||profile.database)?{
+   attempted:dedicatedRuntime?dedicatedRuntime.attempted!==false:dedicated.attempted===true,
+   status:dedicatedRuntime?.status||dedicated.desktopLaunch?.status||dedicated.status||
+     (profile.database?"requires_database_runtime":"compile_only"),
+   runSucceeded:dedicatedRuntime?.runSucceeded??dedicated.desktopLaunch?.succeeded??null,
+   exitCode:dedicatedRuntime?.exitCode??null,
+   stdout:clip(dedicatedRuntime?.stdout,16000),stderr:clip(dedicatedRuntime?.stderr,12000)
  }:{
    attempted:compileRun.runAttempted===true,
    status:compileRun.status,runSucceeded:compileRun.runSucceeded,
@@ -254,9 +313,10 @@ function createStudioAutoVerification({db}){
   const data=snap.data()||{},assessmentId=String(data.assessmentId||"");
   if(!assessmentId)return;
   const task=await db.doc("assessments/"+assessmentId).get();
-  const verification=await verifyFrozenSubmission({snapshot:{
-    ...JSON.parse(String(data.snapshotJson||"{}")),sourceLanguage:JSON.parse(String(data.snapshotJson||"{}")).lang
-  },task:task.exists?task.data():{}});
+  const parsed=JSON.parse(String(data.snapshotJson||"{}"));
+  const verification=await verifyFrozenSubmission({
+    snapshot:{...parsed,sourceLanguage:parsed.lang},task:task.exists?task.data():{}
+  });
   await snap.ref.set({verification},{merge:true});
  }
  async function enrichSchool(event){

@@ -59,6 +59,56 @@ function compactExecutionEvidence(snapshot={}){
     interpretation:"Only runs marked matchesSubmittedSource=true may be used as direct compilation/runtime evidence for this frozen submission. Other runs are historical context only."
   };
 }
+function compactAutomaticVerification(value){
+  if(!value||typeof value!=="object")return null;
+  return {
+    verificationVersion:text(value.verificationVersion,120),
+    verifiedAt:Number(value.verifiedAt||0)||null,
+    profile:value.profile&&typeof value.profile==="object"?{
+      id:text(value.profile.id,80),
+      language:text(value.profile.language,40),
+      swing:value.profile.swing===true,
+      database:value.profile.database===true
+    }:null,
+    sourceDigest:text(value.sourceDigest,128),
+    matchesSubmittedSource:value.matchesSubmittedSource===true,
+    status:text(value.status,80),
+    compile:value.compile&&typeof value.compile==="object"?{
+      attempted:value.compile.attempted===true,
+      status:text(value.compile.status,120),
+      succeeded:typeof value.compile.succeeded==="boolean"?value.compile.succeeded:null,
+      engine:text(value.compile.engine,80),
+      entry:text(value.compile.entry,220),
+      mainClass:text(value.compile.mainClass,220),
+      output:text(value.compile.output,12000),
+      stderr:text(value.compile.stderr,12000)
+    }:null,
+    runtime:value.runtime&&typeof value.runtime==="object"?{
+      attempted:value.runtime.attempted===true,
+      status:text(value.runtime.status,120),
+      runSucceeded:typeof value.runtime.runSucceeded==="boolean"?value.runtime.runSucceeded:null,
+      exitCode:Number.isFinite(Number(value.runtime.exitCode))?Number(value.runtime.exitCode):null,
+      stdout:text(value.runtime.stdout,16000),
+      stderr:text(value.runtime.stderr,12000)
+    }:null,
+    gui:value.gui&&typeof value.gui==="object"?{
+      attempted:value.gui.attempted===true,
+      status:text(value.gui.status,120),
+      inventory:value.gui.inventory&&typeof value.gui.inventory==="object"?value.gui.inventory:null
+    }:null,
+    database:value.database&&typeof value.database==="object"?{
+      present:value.database.present===true,
+      schemaValid:typeof value.database.schemaValid==="boolean"?value.database.schemaValid:null,
+      crudSmokePassed:typeof value.database.crudSmokePassed==="boolean"?value.database.crudSmokePassed:null,
+      tables:Array.isArray(value.database.tables)?value.database.tables.slice(0,40):[],
+      runtimeIntegration:value.database.runtimeIntegration&&typeof value.database.runtimeIntegration==="object"?
+        value.database.runtimeIntegration:null,
+      note:text(value.database.note,2000),
+      error:text(value.database.error,2000)
+    }:null,
+    limitations:Array.isArray(value.limitations)?value.limitations.slice(0,20).map(item=>text(item,1200)):[]
+  };
+}
 function compactEvidence(source,snapshot={}){
   if(source==="text")return {
     type:"written_response",
@@ -87,6 +137,7 @@ function compactEvidence(source,snapshot={}){
       config:snapshot.artifacts.config||{}
     }:{},
     executionEvidence:compactExecutionEvidence(snapshot),
+    automaticVerification:compactAutomaticVerification(snapshot.automaticVerification||snapshot.verification),
     personalizedTask:snapshot.personalizedTask?{
       variantId:text(snapshot.personalizedTask.variantId,120),
       prompt:text(snapshot.personalizedTask.prompt,12000),
@@ -149,7 +200,7 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
     evidence,
     gradingRules:{
       rubricAuthority:"Use the published rubric exactly. Do not add requirements or reweight criteria.",
-      evidenceBoundary:"Award points only for evidence present in this frozen submission package. Runtime claims require source-bound execution evidence with matchesSubmittedSource=true. Put uncertainty in pendingPoints or limitations.",
+      evidenceBoundary:"Award points only for evidence present in this frozen submission package. Runtime claims require source-bound evidence with matchesSubmittedSource=true. Prefer platform-generated automaticVerification when present; student run history is secondary. Put uncertainty in pendingPoints or limitations.",
       teacherAuthority:"This response is only a suggestion. Adminerva must keep it private until the teacher reviews and explicitly saves/publishes.",
       checkingInstructions:"Teacher checking instructions refine interpretation but never override the published rubric maximum or student-visible task requirements.",
       linkBoundary:assessment.submissionSource==="link"?
@@ -171,7 +222,7 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
     "2. awardedPoints + pendingPoints must never exceed the criterion maximum.",
     "3. Use pendingPoints only for genuinely unresolved evidence; confirmed deficiencies are unearned points, not pending credit.",
     "4. Inspect every supplied file relevant to each criterion. Base comments and rationales on concrete file/class/method evidence, not keyword presence alone.",
-    "5. For code submissions, distinguish static evidence from runtime evidence. Treat compilation/output as evidence for the submitted version only when executionEvidence contains a run with matchesSubmittedSource=true. A historical or unmatched run does not prove the frozen submission compiles or runs. Obvious compile blockers visible in the frozen files are confirmed deficiencies, not pending uncertainty.",
+    "5. For code submissions, distinguish static evidence from runtime evidence. Treat compilation/output as evidence for the submitted version only when either automaticVerification.matchesSubmittedSource=true or executionEvidence contains a run with matchesSubmittedSource=true. Automatic verification is platform-generated from the frozen submission and takes precedence over older student run history. A historical or unmatched run does not prove the frozen submission compiles or runs. Obvious compile blockers visible in the frozen files are confirmed deficiencies, not pending uncertainty.",
     "6. Requirements that are not separate rubric criteria may inform whether a published criterion is functional or meaningful, but never create extra point categories or change criterion weights.",
     "7. Do not infer authorship, plagiarism, misconduct, or AI use from coding style or identifiers.",
     "8. Return only one valid JSON object matching REQUIRED RESPONSE JSON. No Markdown fences or surrounding commentary.",

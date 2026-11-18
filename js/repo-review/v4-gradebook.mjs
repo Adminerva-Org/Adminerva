@@ -3,7 +3,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
-import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.3.0";
+import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.4.0";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
@@ -55,6 +55,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const generalSubmissionApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const gradeApi=httpsCallable(functions,"schoolGradebook");
+  const verificationApi=httpsCallable(functions,"studioSubmissionVerification");
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null;
   let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher";
 
@@ -469,12 +470,31 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       ]);
       currentSnapshot=result[0];currentGrade=result[1].grade;currentPrivateConfig=result[2]||{};
       currentDraftSource=currentGrade?.draftSource||"teacher";
+      if(currentTask.submissionSource==="studio"&&!currentSnapshot?.automaticVerification){
+        document.getElementById("gbV4ReviewStatus").textContent=
+          "Frozen Studio evidence loaded. Adminerva is compiling/verifying this exact version…";
+        try{
+          const verified=await scoped(verificationApi,"verify_school",{
+            taskId:currentTask.taskId,submissionId:row.recordId,version:Number(currentSnapshot.version)
+          });
+          currentSnapshot={...currentSnapshot,automaticVerification:verified?.verification||null};
+        }catch(error){
+          currentSnapshot={...currentSnapshot,automaticVerification:{
+            verificationVersion:"studio-auto-verification-v1",status:"verification_unavailable",
+            matchesSubmittedSource:true,
+            limitations:[String(error?.message||"Automatic verification unavailable.")]
+          }};
+        }
+      }
       if(currentTask.submissionSource==="studio"){
         const fileSelect=document.getElementById("gbV4File");
         for(const file of currentSnapshot.files||[])fileSelect.add(new Option(file.path,file.path));
         fileSelect.onchange=renderFile;renderFile();
         document.getElementById("gbV4Artifacts").textContent=
-          JSON.stringify(currentSnapshot.artifacts||{},null,2);
+          JSON.stringify({
+            artifacts:currentSnapshot.artifacts||{},
+            automaticVerification:currentSnapshot.automaticVerification||null
+          },null,2);
         if(currentSnapshot.personalizedTask){
           document.getElementById("gbV4PersonalizedTask").classList.remove("hidden");
           document.getElementById("gbV4PersonalizedVariant").textContent=

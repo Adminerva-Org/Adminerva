@@ -108,6 +108,34 @@ exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioP
 exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db})));
 exports.studioAssessmentVariant=onCall(callOptions,safeCallable(createStudioAssessmentVariantService({db,Timestamp})));
 exports.schoolStudioAssessmentVariant=onCall(callOptions,safeCallable(createSchoolStudioAssessmentVariantService({db})));
+const {createStudioAutoVerification}=require("./studio-auto-verification.js");
+const studioAutoVerification=createStudioAutoVerification({db});
+const verificationTriggerOptions={
+  region:"asia-southeast1",timeoutSeconds:120,memory:"512MiB",maxInstances:4,concurrency:1
+};
+async function runStudioVerification(handler,event){
+  try{return await handler(event);}
+  catch(error){
+    console.error("Studio automatic verification failed",{message:error?.message||String(error)});
+    if(event.data?.ref)await event.data.ref.set({verification:{
+      verificationVersion:"studio-auto-verification-v1",verifiedAt:Date.now(),
+      status:"verification_error",matchesSubmittedSource:true,
+      limitations:["Automatic verification could not finish: "+String(error?.message||"unknown error").slice(0,600)]
+    }},{merge:true});
+  }
+}
+exports.verifyLegacyStudioSubmission=onDocumentCreated({
+  ...verificationTriggerOptions,
+  document:"studio_submissions/{submissionId}/versions/{version}"
+},event=>runStudioVerification(studioAutoVerification.enrichLegacy,event));
+exports.verifySchoolStudioSubmission=onDocumentCreated({
+  ...verificationTriggerOptions,
+  document:"schools/{schoolId}/studio_submissions/{submissionId}/versions/{version}"
+},event=>runStudioVerification(studioAutoVerification.enrichSchool,event));
+const {createStudioSubmissionVerificationService}=require("./studio-submission-verification.js");
+exports.studioSubmissionVerification=onCall(callOptions,safeCallable(
+  createStudioSubmissionVerificationService({db})
+));
 const {createSchoolClassRecordService}=require("./school-class-record.js");
 exports.schoolClassRecord=onCall(callOptions,safeCallable(createSchoolClassRecordService({
   db,

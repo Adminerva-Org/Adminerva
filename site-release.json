@@ -1,5 +1,5 @@
 {
-  "version": "3.2.0",
-  "releasedAt": "2026-11-16",
-  "notes": "School-wide administration and workflow update: guided school onboarding, System Admin role preview, consolidated People & Access, smarter academic configuration, Class Record, unified assessments, automatic Studio assessment projects, expanded programming games, improved classroom/support UX, and visible release/build information in the footer."
+  "version": "3.3.0",
+  "releasedAt": "2026-11-19",
+  "notes": "Personalized assessments, unified Review & Grade, assessment-aware Adminerva Studio workflows, teacher-controlled evaluation, stronger frozen-submission evidence and clearer Academic Configuration."
 }

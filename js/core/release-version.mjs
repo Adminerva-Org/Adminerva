@@ -12,6 +12,6 @@ export function releasePresentation(release) {
 }
 export function releaseMatches(release,{text="",type="all"}={}) {
   if(type!=="all"&&releasePresentation(release).type!==type)return false;
-  const searchable=[release.version,release.displayVersion,release.title,release.summary,...release.changes.flatMap(change=>[change.type,change.area,change.text])].join(" ").toLowerCase();
+  const searchable=[release.version,release.displayVersion,release.title,release.summary,...release.changes.flatMap(change=>[change.type,change.area,change.text]),...(release.highlights||[]).flatMap(highlight=>[highlight.title,highlight.summary,highlight.why,highlight.media?.caption])].join(" ").toLowerCase();
   return String(text).toLowerCase().trim().split(/\s+/).every(term=>searchable.includes(term));
 }
