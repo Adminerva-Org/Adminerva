@@ -68,6 +68,9 @@ html{box-sizing:border-box}*,*:before,*:after{box-sizing:inherit}body{margin:0;b
 .av-release-highlight p{margin:.25rem 0;color:#52657b}
 .av-release-highlight-why{font-size:.88rem;border-left:3px solid #67e8f9;padding:.35rem 0 .35rem .7rem;margin-top:.55rem!important}
 .av-release-media{margin:0;min-width:0}
+.av-release-media-stage{position:relative;display:block;width:100%;overflow:hidden;border-radius:inherit;background:#f8fafc}
+.av-release-media-redaction{position:absolute;display:block;background:linear-gradient(135deg,#0f2234,#17354e);border:1px solid #ffffff24;border-radius:.22rem;box-shadow:inset 0 0 0 1px #00000016;pointer-events:none;z-index:2}
+.av-release-media-redaction:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 7px,#ffffff08 7px 8px)}
 .av-release-media-button{display:block;width:100%;padding:0!important;border:1px solid #cbd5e1!important;border-radius:.7rem!important;overflow:hidden;background:white!important;box-shadow:0 7px 22px #102c4610}
 .av-release-media-button:hover{border-color:#5f8fb0!important;background:white!important}
 .av-release-media img{display:block;width:100%;height:auto;max-height:24rem;object-fit:contain;background:#f8fafc}
@@ -103,6 +106,7 @@ html{box-sizing:border-box}*,*:before,*:after{box-sizing:inherit}body{margin:0;b
 .av-release-media-dialog{width:min(1100px,calc(100vw - 2rem));max-width:none;border:0;border-radius:1rem;padding:0;background:#081827;color:white;box-shadow:0 30px 80px #0008}
 .av-release-media-dialog::backdrop{background:#07131fcc}
 .av-release-media-dialog-shell{display:grid;gap:.75rem;padding:1rem}
+.av-release-media-dialog .av-release-media-stage{max-height:80vh;border-radius:.65rem}
 .av-release-media-dialog img{display:block;width:100%;max-height:80vh;object-fit:contain;border-radius:.65rem;background:#fff}
 .av-release-media-close{justify-self:end;background:#fff!important;color:#102c46!important;border-color:#fff!important;min-height:40px!important;padding:.45rem .8rem!important}
 .av-release-media-dialog-caption{margin:0;color:#d9e8f5;font-size:.9rem}
