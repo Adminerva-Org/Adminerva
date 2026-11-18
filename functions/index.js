@@ -132,6 +132,10 @@ exports.verifySchoolStudioSubmission=onDocumentCreated({
   ...verificationTriggerOptions,
   document:"schools/{schoolId}/studio_submissions/{submissionId}/versions/{version}"
 },event=>runStudioVerification(studioAutoVerification.enrichSchool,event));
+const {createStudioSubmissionVerificationService}=require("./studio-submission-verification.js");
+exports.studioSubmissionVerification=onCall(callOptions,safeCallable(
+  createStudioSubmissionVerificationService({db})
+));
 const {createSchoolClassRecordService}=require("./school-class-record.js");
 exports.schoolClassRecord=onCall(callOptions,safeCallable(createSchoolClassRecordService({
   db,
