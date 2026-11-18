@@ -171,6 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     `;document.head.append(style);
   }
+  document.body.classList.add("av-has-mobile-dock");
   root.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
       <div class="max-w-screen-2xl mx-auto">
