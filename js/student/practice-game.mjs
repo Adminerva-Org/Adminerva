@@ -302,10 +302,11 @@ function renderMechanicAid(question){
     const flow=node("div",undefined,"games-oop-flow");flow.append(node("span",parts[0],"games-oop-node"),node("span",parts[1],"games-oop-link"),node("span",parts[2],"games-oop-node"));
     blueprint.append(head,flow);panel.append(blueprint);panel.hidden=false;panel.dataset.kind="oop";
   }
-  if(question.type==="output"&&Array.isArray(question.traceGuide)&&question.traceGuide.length){
+  if(question.type==="output"){
     panel.hidden=false;panel.dataset.kind="trace";
     const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE TRACE","lab-mechanic-kicker"),node("strong","Trace board"));
-    const list=node("ol",undefined,"lab-trace-steps");question.traceGuide.forEach(step=>list.append(node("li",step)));
+    const guide=Array.isArray(question.traceGuide)&&question.traceGuide.length?question.traceGuide:["Read the starting values.","Follow each call or update in order.","Write the exact final output."];
+    const list=node("ol",undefined,"lab-trace-steps");guide.forEach(step=>list.append(node("li",step)));
     panel.append(head,list);
   }
   if(question.type==="debugging"&&Number.isInteger(question.focusLine)&&question.code){
