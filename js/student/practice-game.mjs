@@ -453,7 +453,7 @@ function renderMechanicAid(question){
     (items.length?items:["READ","TRACE","VERIFY"]).forEach(value=>{const chip=node("button",value,"games-data-chip");chip.type="button";chip.setAttribute("aria-pressed","false");chip.addEventListener("click",()=>{const marked=chip.getAttribute("aria-pressed")!=="true";chip.setAttribute("aria-pressed",String(marked));chip.classList.toggle("is-marked",marked);const count=[...evidence.querySelectorAll(".games-data-chip.is-marked")].length;setGameStatus(visual,count?count+" clue"+(count===1?"":"s")+" marked":"Evidence board","info",count?"●":"⌕");playGameFx("link",chip);});evidence.append(chip);});
     const note=node("p","Mark the evidence you think matters, then solve the case from the code.","games-data-note");board.append(evidence,note);setGameStatus(visual,"Evidence board","info","⌕");panel.append(visual,board);panel.hidden=false;panel.classList.add("is-data");
   }
-  if(!guestPage&&mission?.oop===true){
+  if(!guestPage&&mission?.oop===true&&gameId==="oop-builder"){
     const visual=gameVisualHeader("oop","OOP Builder","Model structure and runtime relationships");visual.dataset.module=mission.oopModule||"oop";panel.append(visual);const blueprints={
       "oop-classes":["CLASS","creates","OBJECT"],
       "oop-encapsulation":["PRIVATE STATE","controlled by","METHODS"],
@@ -477,7 +477,7 @@ function renderMechanicAid(question){
   if(question.type==="debugging"&&Number.isInteger(question.focusLine)&&question.code){
     panel.hidden=false;panel.dataset.kind="debug";field("practiceCode").hidden=true;
     if(!guestPage&&(attempt?.completed||answer!==null))bugLineFound=true;
-    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong",guestPage?"Case file":bugLineFound?"Defect located":"Find the defect"));const visual=guestPage?null:gameVisualHeader("bug","Bug Hunt","Scan → isolate → repair");
+    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong",guestPage?"Case file":bugLineFound?"Defect located":"Find the defect"));const visual=!guestPage&&gameId==="bug-detective"?gameVisualHeader("bug","Bug Hunt","Scan → isolate → repair"):null;
     const hint=node("p",question.caseHint||"Inspect the highlighted line and compare it with the stated goal.","lab-case-hint");
     const viewer=node("div",undefined,"lab-code-case"),status=node("p",guestPage?"":bugLineFound?"Defect located. Choose the repair.":"Select the line you think contains the defect. No points are lost while hunting.","games-bug-status");
     question.code.split("\n").forEach((text,index)=>{
@@ -487,22 +487,22 @@ function renderMechanicAid(question){
         const choose=()=>{
           if(busy||bugLineFound)return;
           if(lineNumber===question.focusLine){
-            bugLineFound=true;row.classList.add("is-focus");status.textContent="Defect located. Choose the repair.";head.querySelector("strong").textContent="Defect located";field("practicePrompt").textContent=question.prompt;playGameFx("success",viewer);setGameStatus(visual,"Defect isolated","success","✓");renderAnswer();
+            bugLineFound=true;row.classList.add("is-focus");status.textContent="Defect located. Choose the repair.";head.querySelector("strong").textContent="Defect located";field("practicePrompt").textContent=question.prompt;playGameFx("success",viewer);if(visual)setGameStatus(visual,"Defect isolated","success","✓");renderAnswer();
           }else{
-            row.classList.remove("is-wrong-suspect");void row.offsetWidth;row.classList.add("is-wrong-suspect");status.textContent="Not that line — no points lost. Keep hunting.";playGameFx("error",row);setGameStatus(visual,"Keep scanning","warning","!");
+            row.classList.remove("is-wrong-suspect");void row.offsetWidth;row.classList.add("is-wrong-suspect");status.textContent="Not that line — no points lost. Keep hunting.";playGameFx("error",row);if(visual)setGameStatus(visual,"Keep scanning","warning","!");
           }
         };
         row.addEventListener("click",choose);row.addEventListener("keydown",event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();choose();}});
       }
       viewer.append(row);
     });
-    if(guestPage)panel.append(head,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Find the defective line, then choose the repair.";if(bugLineFound)setGameStatus(visual,"Defect isolated","success","✓");panel.append(visual,head,viewer,status);}
+    if(guestPage)panel.append(head,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Find the defective line, then choose the repair.";if(visual&&bugLineFound)setGameStatus(visual,"Defect isolated","success","✓");panel.append(...(visual?[visual]:[]),head,viewer,status);}
   }
   if(!guestPage&&question.type==="ordering"){
-    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const visual=gameVisualHeader("builder","Code Builder","Assemble the execution path"),track=node("div",undefined,"games-builder-track"),head=node("div",undefined,"lab-mechanic-head");for(let index=0;index<question.items.length;index++)track.append(node("span",String(index+1)));visual.append(track);setGameStatus(visual,question.items.length+" blocks","info","▦");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(visual,head,node("p","Build the program in execution order.","games-mechanic-note"));
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const visual=gameId==="algorithm-maze"?gameVisualHeader("builder","Code Builder","Assemble the execution path"):null,track=node("div",undefined,"games-builder-track"),head=node("div",undefined,"lab-mechanic-head");if(visual){for(let index=0;index<question.items.length;index++)track.append(node("span",String(index+1)));visual.append(track);setGameStatus(visual,question.items.length+" blocks","info","▦");}head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(...(visual?[visual]:[]),head,node("p","Build the program in execution order.","games-mechanic-note"));
   }
   if(!guestPage&&question.type==="matching"){
-    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const visual=gameVisualHeader("match","Logic Match","Connect each rule to its result"),head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(visual,head,node("p","Each match can be used once.","games-mechanic-note"));
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const visual=gameId==="logic-circuit"?gameVisualHeader("match","Logic Match","Connect each rule to its result"):null,head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(...(visual?[visual]:[]),head,node("p","Each match can be used once.","games-mechanic-note"));
   }
 }
 function pointsText(){const meta=attempt.question.difficulty;field("labMissionPoints").textContent=attempt.completed?attempt.earnedPoints+" pts earned":attempt.availablePoints+" pts available";field("labScoringHint").textContent=attempt.completed?"Completed · replays do not change XP.":meta.name+" · "+meta.maximum+" pts max · −"+meta.deduction+" per miss · "+meta.floor+" pt floor · experiments are free.";}
