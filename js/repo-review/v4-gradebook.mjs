@@ -13,6 +13,7 @@ const taskSelect=document.getElementById("gbV4Task");
 const inbox=document.getElementById("gbV4Inbox");
 const status=document.getElementById("gbV4Status");
 const dialog=document.getElementById("gbV4ReviewDialog");
+const bulkPublish=document.getElementById("gbV4BulkPublish");
 
 function make(tag,className,text){
   const element=document.createElement(tag);
@@ -83,6 +84,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar;
     document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar);
     document.getElementById("gbV4Refresh").disabled=busy;
+    if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
   }
   function setBusy(value,message=""){
     busy=value;refreshReviewControls();
@@ -136,10 +138,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   async function loadInbox(){
     const task=tasks.get(taskSelect.value);
     currentTask=task||null;inbox.replaceChildren();
+    if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
     if(!task){status.textContent="Choose an assessment to load submissions.";return;}
     const token=++generation;
     if(task.legacyCompatibility){
       status.textContent="Historical deployment found. This assessment predates the V4 course-offering submission store.";
+      if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;}
       const card=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
       card.append(make("h3","font-extrabold text-amber-950",task.title));
       card.append(make("p","text-sm text-amber-900 mt-1",
@@ -174,7 +178,18 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           String(a.studentName||"").localeCompare(String(b.studentName||""));
       });
       const published=[...gradeMap.values()].filter(item=>item.status==="published").length;
-      const drafts=[...gradeMap.values()].filter(item=>item.status==="draft").length;
+      const draftRows=[...gradeMap.values()].filter(item=>item.status==="draft");
+      const drafts=draftRows.length;
+      const publishableDrafts=draftRows.filter(item=>Number(item.awarded)>0&&Number(item.pending||0)===0).length;
+      const zeroDrafts=draftRows.filter(item=>Number(item.awarded)===0).length;
+      if(bulkPublish){
+        bulkPublish.dataset.ready=publishableDrafts?"true":"false";
+        bulkPublish.disabled=busy||!publishableDrafts;
+        bulkPublish.textContent="Publish all drafts ("+publishableDrafts+")";
+        bulkPublish.title=zeroDrafts
+          ?zeroDrafts+" zero-score draft"+(zeroDrafts===1?" is":"s are")+" excluded from bulk publication."
+          :"Publish every valid non-zero draft for this assessment.";
+      }
       status.textContent=rows.length?
         rows.length+" submitted · "+published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
         "No student evidence yet for this assessment.";
@@ -193,7 +208,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             "Version "+row.version+" · "+row.status+" · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently"))
         );
         const resultLine=grade?
-          (grade.status==="published"?"Published result":"Private grade draft")+" · "+grade.awarded+" / "+grade.total+
+          (grade.status==="published"?"Published result":"Grade draft")+" · "+grade.awarded+" / "+grade.total+
             (grade.pending?" · "+grade.pending+" pending":""):
           "Needs grading";
         details.append(make("p","text-xs font-bold mt-1 "+(grade?.status==="published"?"text-emerald-700":grade?"text-amber-700":"text-slate-600"),resultLine));
@@ -577,6 +592,22 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   });
 
   document.getElementById("gbV4Close").addEventListener("click",()=>dialog.close());
+  bulkPublish?.addEventListener("click",()=>void (async()=>{
+    if(busy||!currentTask||currentTask.legacyCompatibility||bulkPublish.dataset.ready!=="true")return;
+    const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
+    if(!count)return;
+    if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? This confirmation is the teacher approval step. Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
+    try{
+      setBusy(true,"Publishing all valid drafts…");
+      const result=await scoped(gradeApi,"publish_task_drafts",{taskId:currentTask.taskId});
+      status.textContent="Published "+result.published+" draft"+(result.published===1?"":"s")+
+        (result.zeroSkipped?" · "+result.zeroSkipped+" zero-score draft"+(result.zeroSkipped===1?" remains":"s remain")+" for attention":"")+
+        (result.failed?" · "+result.failed+" draft"+(result.failed===1?" was":"s were")+" skipped after validation":"")+".";
+      await loadInbox();
+    }catch(error){
+      status.textContent=error?.message||"Bulk publication did not complete.";
+    }finally{setBusy(false);}
+  })());
   taskSelect.addEventListener("change",()=>void loadInbox());
   document.getElementById("gbV4Refresh").addEventListener("click",()=>void loadInbox());
   document.getElementById("gbV4SaveDraft").addEventListener("click",()=>void (async()=>{
