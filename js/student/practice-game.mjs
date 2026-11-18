@@ -254,9 +254,9 @@ function renderGameCatalog(){
         field("labCourseTitle")?.scrollIntoView({behavior:"smooth",block:"nearest"});
       });
     }
-    const top=node("div",undefined,"lab-game-card-top");
-    top.append(node("span",game.icon,"lab-game-card-icon"),node("span",game.id===recommended?"FOR YOU":game.tag,"lab-game-card-tag"));
-    item.append(top,node("strong",game.name),node("p",game.description));
+    const top=node("div",undefined,"lab-game-card-top"),visual=node("span",undefined,"lab-game-card-visual"),glyphKind={"bug-detective":"bug","trace-quest":"trace","algorithm-maze":"builder","logic-circuit":"match","oop-builder":"oop","interface-repair":"interface","data-detective":"data","code-sprint":"sprint","xml-layout":"interface"}[game.id]||"oop";
+    visual.append(gameGlyph(glyphKind));top.append(node("span",game.icon,"lab-game-card-icon"),node("span",game.id===recommended?"FOR YOU":game.tag,"lab-game-card-tag"));
+    item.append(top,visual,node("strong",game.name),node("p",game.description));
     if(game.external)item.append(node("small","Open XML Lab ↗"));
     else if(guestPage)item.append(node("small",done+" / "+total+" complete"));
     else{
