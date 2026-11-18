@@ -1075,12 +1075,51 @@ export function createProjectStudio({
     const note=el("evidenceProjectNote");
     if(note)note.textContent="This is learning evidence gathered from the project. It does not by itself constitute an official TESDA competency assessment.";
   }
+  async function sourceDigestForRun(state){
+    const files=state?.files&&typeof state.files==="object"?state.files:{};
+    const order=Array.isArray(state?.fileOrder)&&state.fileOrder.length?
+      state.fileOrder.filter(path=>Object.hasOwn(files,path)):Object.keys(files).sort();
+    const payload=JSON.stringify({
+      lang:String(state?.lang||activeProject?.lang||""),
+      files:order.map(path=>[path,String(files[path]??"")])
+    });
+    if(!globalThis.crypto?.subtle)return "";
+    const digest=await globalThis.crypto.subtle.digest("SHA-256",new TextEncoder().encode(payload));
+    return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+  }
+  function evidenceText(value,max){
+    return String(value??"").slice(0,max);
+  }
   function recordRun(run){
     if(!activeProject)return;
-    const entry={at:new Date().toISOString(),mode:run?.mode||activeProject.config?.runMode||"console",status:run?.status||"finished",time:run?.time??null,memory:run?.memory??null};
-    activeProject.evidence=activeProject.evidence||{events:[],runs:[]};
-    activeProject.evidence.runs=[entry,...(activeProject.evidence.runs||[])].slice(0,policy.maxRuns);
-    store(activeProject,true);renderMonitor();
+    const projectId=activeProject.id,state=clone(captureState());
+    void (async()=>{
+      const sourceDigest=await sourceDigestForRun(state);
+      if(!activeProject||activeProject.id!==projectId)return;
+      const entry={
+        at:new Date().toISOString(),
+        mode:run?.mode||activeProject.config?.runMode||"console",
+        engine:evidenceText(run?.engine||"adminerva",80),
+        entry:evidenceText(run?.entry||state?.activeFilename||"",220),
+        status:evidenceText(run?.status||"finished",120),
+        statusId:Number.isFinite(Number(run?.statusId))?Number(run.statusId):null,
+        compileSucceeded:typeof run?.compileSucceeded==="boolean"?run.compileSucceeded:null,
+        runSucceeded:typeof run?.runSucceeded==="boolean"?run.runSucceeded:null,
+        exitCode:Number.isFinite(Number(run?.exitCode))?Number(run.exitCode):null,
+        time:run?.time??null,
+        memory:run?.memory??null,
+        stdout:evidenceText(run?.stdout,16000),
+        stderr:evidenceText(run?.stderr,12000),
+        compileOutput:evidenceText(run?.compileOutput,12000),
+        stdin:evidenceText(run?.stdin,6000),
+        message:evidenceText(run?.message,2000),
+        sourceDigest,
+        sourceFileCount:Object.keys(state?.files||{}).length
+      };
+      activeProject.evidence=activeProject.evidence||{events:[],runs:[]};
+      activeProject.evidence.runs=[entry,...(activeProject.evidence.runs||[])].slice(0,policy.maxRuns);
+      store(activeProject,true);renderMonitor();
+    })().catch(error=>console.warn("Execution evidence was not saved:",error));
   }
   function renderMonitor(){
     if(!activeProject)return;
