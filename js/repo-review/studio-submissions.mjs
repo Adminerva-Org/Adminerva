@@ -75,7 +75,23 @@ async function recoverHistoricalVariant(item,assessment){
  if(!/^[a-f0-9]{16,64}$/.test(expectedVariantId))
    throw Error("The personalized variant ID saved with this submission is invalid.");
 
- let callableError="";
+ const serviceErrors=[];
+ // Preferred path: let the backend derive assessment/student/attempt/variant
+ // directly from the frozen submission record instead of trusting legacy client
+ // identifiers. This keeps the recovered scenario cryptographically tied to the
+ // submission being graded.
+ try{
+   const response=await variantCall({action:"inspect_submission",submissionId:item.id});
+   const value=response?.data||null;
+   if(value?.variantId!==expectedVariantId||typeof value?.prompt!=="string"||value.prompt.trim().length<20)
+     throw Error("The recovered personalized task does not match the frozen submission variant.");
+   return value;
+ }catch(error){
+   serviceErrors.push(String(error?.message||"Submission-bound variant recovery unavailable."));
+ }
+
+ // Compatibility path for deployments where the new callable has not reached
+ // the active region yet.
  try{
    const response=await variantCall({
      action:"inspect",assessmentId:item.assessmentId,studentId:item.studentId,
@@ -86,13 +102,12 @@ async function recoverHistoricalVariant(item,assessment){
      throw Error("The recovered personalized task does not match the submitted variant ID.");
    return value;
  }catch(error){
-   callableError=String(error?.message||"Historical variant service unavailable.");
+   serviceErrors.push(String(error?.message||"Historical variant service unavailable."));
  }
 
- // Compatibility fallback for legacy submissions. Teachers who own the old
- // assessment are already permitted to read its private variant records. Use
- // only the exact variant ID frozen in the submission; never substitute or
- // generate another scenario.
+ // Final compatibility fallback: read only the exact teacher-private variant
+ // whose ID is frozen in the submission. Never substitute or generate another
+ // scenario.
  try{
    const variant=await getDoc(doc(db,"assessment_private",item.assessmentId,"variants",expectedVariantId));
    if(!variant.exists())throw Error("Exact private variant record was not found.");
@@ -114,8 +129,8 @@ async function recoverHistoricalVariant(item,assessment){
      source:"teacher_private_variant_fallback"
    };
  }catch(error){
-   const fallbackError=String(error?.message||"Exact private variant recovery failed.");
-   throw Error(callableError+" Exact-variant fallback also failed: "+fallbackError);
+   serviceErrors.push("Exact-variant fallback: "+String(error?.message||"failed."));
+   throw Error(serviceErrors.join(" | "));
  }
 }
 function render(){
@@ -228,7 +243,10 @@ async function inspect(item){
        add(notes,"pre",assignedVariant.evaluationNotes,"whitespace-pre-wrap text-xs text-slate-700 mt-2 max-h-48 overflow-auto");
      }
    }else if(assessment.personalizedTask?.enabled===true){
-     add(detail,"p","Personalized task record could not be loaded: "+variantError,"text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3");
+     add(detail,"p","Personalized task record could not be loaded: "+variantError,
+       "text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3");
+     add(detail,"p","Frozen variant ID: "+String(item.variantId||"not recorded")+" · Submission: "+item.id,
+       "font-mono text-[11px] text-amber-900 mt-1 break-all");
    }
    const files=add(detail,"section","","mt-4");
    add(files,"h3","Frozen project files ("+Object.keys(snapshot.files).length+")","font-bold");
