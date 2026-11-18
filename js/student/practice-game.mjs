@@ -500,6 +500,14 @@ function renderMechanicAid(question){
     const guide=hasTraceGuide?question.traceGuide:["Read the starting values.","Follow each call or update in order.","Write the exact final output."];
     const list=node("ol",undefined,"lab-trace-steps");guide.forEach(step=>{const item=node("li",step);if(!guestPage){item.tabIndex=0;item.setAttribute("role","checkbox");item.setAttribute("aria-checked","false");const toggle=()=>{const checked=item.getAttribute("aria-checked")==="true";item.setAttribute("aria-checked",String(!checked));item.classList.toggle("is-checked",!checked);const traced=[...list.querySelectorAll(".is-checked")].length;if(visual){setGameStatus(visual,traced+" / "+guide.length+" traced",traced===guide.length?"success":"info",traced===guide.length?"✓":"→");if(traced===guide.length)playGameFx("success",visual);}};item.addEventListener("click",toggle);item.addEventListener("keydown",event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();toggle();}});}list.append(item);});
     panel.append(head,list);
+    if(!guestPage){
+      const variables=traceVariables(question.code),scratch=node("div",undefined,"games-trace-state");
+      if(variables.length){
+        const saved=localGet(traceScratchKey())||{};scratch.append(node("span","TRACE STATE","games-trace-state-label"));
+        variables.forEach(name=>{const item=node("label",undefined,"games-trace-variable"),key=node("span",name),input=document.createElement("input");input.type="text";input.maxLength=24;input.autocomplete="off";input.spellcheck=false;input.placeholder="?";input.value=String(saved[name]??"");input.setAttribute("aria-label","Scratch value for "+name);input.addEventListener("input",()=>{const next=localGet(traceScratchKey())||{};next[name]=input.value;localSet(traceScratchKey(),next);});item.append(key,input);scratch.append(item);});
+        panel.append(scratch);
+      }
+    }
   }
   if(question.type==="debugging"&&Number.isInteger(question.focusLine)&&question.code){
     panel.hidden=false;panel.dataset.kind="debug";field("practiceCode").hidden=true;
