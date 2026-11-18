@@ -3,6 +3,42 @@
  * No mutable working-project reference may substitute for a submitted snapshot.
  */
 export const STUDIO_MAX_SNAPSHOT_BYTES=320000;
+function cleanExecutionText(value,max){return String(value??"").slice(0,max);}
+function compactExecutionRuns(project,maxRuns=8){
+  const runs=Array.isArray(project?.evidence?.runs)?project.evidence.runs:[];
+  return runs.slice(0,maxRuns).map(run=>({
+    at:cleanExecutionText(run?.at,80),
+    mode:cleanExecutionText(run?.mode,40),
+    engine:cleanExecutionText(run?.engine,80),
+    entry:cleanExecutionText(run?.entry,220),
+    status:cleanExecutionText(run?.status,120),
+    statusId:Number.isFinite(Number(run?.statusId))?Number(run.statusId):null,
+    compileSucceeded:typeof run?.compileSucceeded==="boolean"?run.compileSucceeded:null,
+    runSucceeded:typeof run?.runSucceeded==="boolean"?run.runSucceeded:null,
+    exitCode:Number.isFinite(Number(run?.exitCode))?Number(run.exitCode):null,
+    time:Number.isFinite(Number(run?.time))?Number(run.time):null,
+    memory:Number.isFinite(Number(run?.memory))?Number(run.memory):null,
+    stdout:cleanExecutionText(run?.stdout,16000),
+    stderr:cleanExecutionText(run?.stderr,12000),
+    compileOutput:cleanExecutionText(run?.compileOutput,12000),
+    stdin:cleanExecutionText(run?.stdin,6000),
+    message:cleanExecutionText(run?.message,2000),
+    sourceDigest:/^[a-f0-9]{64}$/.test(String(run?.sourceDigest||""))?String(run.sourceDigest):"",
+    sourceFileCount:Number.isInteger(Number(run?.sourceFileCount))?Number(run.sourceFileCount):null
+  }));
+}
+export async function studioSourceDigest(liveState){
+  const files=liveState?.files&&typeof liveState.files==="object"?liveState.files:{};
+  const order=Array.isArray(liveState?.fileOrder)&&liveState.fileOrder.length?
+    liveState.fileOrder.filter(path=>Object.hasOwn(files,path)):Object.keys(files).sort();
+  const payload=JSON.stringify({
+    lang:String(liveState?.lang||""),
+    files:order.map(path=>[path,String(files[path]??"")])
+  });
+  if(!globalThis.crypto?.subtle)throw Error("Secure source verification is unavailable. Use HTTPS and retry.");
+  const digest=await globalThis.crypto.subtle.digest("SHA-256",new TextEncoder().encode(payload));
+  return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+}
 export function studioEvidenceId(studentId,assessmentId){
   for(const id of [studentId,assessmentId]){
     if(typeof id!=="string"||!id||id.length>160||id==="."||id===".."||/[\\/\u0000-\u001f\u007f]/.test(id))
@@ -27,7 +63,7 @@ export function studioSubmissionAllowed(assessment,section,now=Date.now()){
     return {allowed:true,reason:"Late submission allowed. The original deadline remains recorded."};
   return {allowed:true,reason:"Submission window open."};
 }
-export function snapshotStudioProject(project,liveState){
+export function snapshotStudioProject(project,liveState,{sourceDigest=""}={}){
   if(!project?.id||!project?.title||!liveState||!liveState.files||!Array.isArray(liveState.fileOrder))
     throw Error("Open and save a named Studio project before submission.");
   const files=liveState.files;
@@ -37,12 +73,18 @@ export function snapshotStudioProject(project,liveState){
       names.some(name=>typeof files[name]!=="string"||!name||name.length>220||name.startsWith("/")||
         name.split("/").some(part=>part===".."||part==="."||!part)))
     throw Error("The project contains invalid or missing files. Fix the project before submitting.");
+  const executionRuns=compactExecutionRuns(project);
   const snapshot={
     schemaVersion:1,lang:liveState.lang,files,
     fileOrder:[...liveState.fileOrder],
     database:project.database||{tables:{},history:[]},
     design:project.design||{},
-    config:project.config||{}
+    config:project.config||{},
+    sourceDigest:/^[a-f0-9]{64}$/.test(String(sourceDigest||""))?String(sourceDigest):"",
+    executionEvidence:{
+      sourceDigest:/^[a-f0-9]{64}$/.test(String(sourceDigest||""))?String(sourceDigest):"",
+      runs:executionRuns
+    }
   };
   if(!["java","python","web","csharp","cpp","dart"].includes(snapshot.lang))
     throw Error("Unsupported Studio language.");
