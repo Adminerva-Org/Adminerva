@@ -255,11 +255,11 @@ function renderCourses(){
   field("labCourseTitle").textContent=course.name;field("labCourseSubtitle").textContent=game.name+" · "+course.subtitle;const map=field("practiceCourseList");map.replaceChildren();
   course.modules.forEach((module,moduleIndex)=>{
     const visible=module.missions.filter(entry=>programmingGameMatches(activeGame,course,entry,missionMeta(course,entry),module));if(!visible.length)return;
-    const section=node("section",undefined,"lab-map-module"),heading=node("div",undefined,"lab-module-heading"),count=visible.filter(item=>completed(item.id)).length;
+    const section=node("section",undefined,"lab-map-module"),heading=node("div",undefined,"lab-module-heading"),count=visible.filter(item=>completed(item.id)).length,nextId=visible.find(item=>!completed(item.id))?.id;
     heading.append(node("span",String(moduleIndex+1).padStart(2,"0"),"lab-module-number"),node("h3",module.title),node("small",count+" / "+visible.length));section.append(heading);
     const path=node("div",undefined,"lab-mission-path");path.setAttribute("aria-label",module.title+" missions");
     visible.forEach(entry=>{
-      const meta=missionMeta(course,entry),done=completed(entry.id),button=node("button",undefined,"lab-mission-node"+(done?" is-complete":""));button.type="button";button.dataset.difficulty=meta.name.toLowerCase();button.title=entry.title+" · "+typeNames[meta.type]+" · "+meta.name;button.setAttribute("aria-label",entry.title+", "+typeNames[meta.type]+", "+meta.name+", "+(done?earned(entry.id)+" points earned":meta.maximum+" points available"));
+      const meta=missionMeta(course,entry),done=completed(entry.id),button=node("button",undefined,"lab-mission-node"+(done?" is-complete":"")+(entry.id===nextId?" is-next":""));button.type="button";button.dataset.difficulty=meta.name.toLowerCase();button.title=entry.title+" · "+typeNames[meta.type]+" · "+meta.name;button.setAttribute("aria-label",entry.title+", "+typeNames[meta.type]+", "+meta.name+", "+(done?earned(entry.id)+" points earned":meta.maximum+" points available"));
       button.append(node("span",done?"✓":typeIcons[meta.type],"lab-node-icon"),node("small",done?earned(entry.id)+" pts":meta.maximum+" pts"),node("span",String(course.missions.findIndex(item=>item.id===entry.id)+1),"lab-node-number"));button.addEventListener("click",()=>void openMission(course,entry));path.append(button);
     });section.append(path);map.append(section);
   });
