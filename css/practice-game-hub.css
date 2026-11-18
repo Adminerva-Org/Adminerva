@@ -1266,6 +1266,25 @@ body.lab-page::after{
   background:rgba(66,225,237,.12);
   color:#82ecf0;
 }
+.lab-trace-steps li[role=checkbox]{
+  cursor:pointer;
+  transition:background .14s ease,border-color .14s ease,color .14s ease,opacity .14s ease;
+}
+.lab-trace-steps li[role=checkbox]:hover,
+.lab-trace-steps li[role=checkbox]:focus-visible{
+  border-color:rgba(66,225,237,.28);
+  background:rgba(18,64,78,.5);
+}
+.lab-trace-steps li.is-checked{
+  color:#7196a3;
+  opacity:.72;
+  text-decoration:line-through;
+}
+.lab-trace-steps li.is-checked::before{
+  content:"✓";
+  background:rgba(75,223,166,.14);
+  color:#95edc8;
+}
 .lab-case-hint{color:#d2bc83}
 .lab-code-line[role=button]{
   cursor:pointer;
