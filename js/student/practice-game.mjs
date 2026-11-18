@@ -3,7 +3,7 @@ import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.4.1";
+import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.0";
 import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches} from "./practice-games.mjs?v=1.2.0";
 import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.4.1";
 import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest} from "./practice-session.mjs?v=1.3.0";
