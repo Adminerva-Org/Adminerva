@@ -142,6 +142,10 @@ function renderChallenges(){
   }
 }
 window.addEventListener("adminerva:practice-packs",event=>{assignedPacks=Array.isArray(event.detail?.packs)?event.detail.packs:[];renderChallenges();renderHubHero();});
+function returnToGamesHub(){
+  if(busy)return false;
+  saveDraft();loadSequence++;field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;renderCourses();return true;
+}
 function celebrateMission(){
   if(guestPage||matchMedia("(prefers-reduced-motion: reduce)").matches)return;
   const layer=field("gamesCelebrationLayer");if(!layer)return;
@@ -157,7 +161,7 @@ function enhanceGamesHub(){
   const app=field("practiceApp"),existing=[...app.children],shell=node("div",undefined,"games-shell"),rail=node("nav",undefined,"games-rail"),content=node("div",undefined,"games-content");
   rail.setAttribute("aria-label","Games navigation");
   const setCurrentRail=link=>{for(const item of rail.querySelectorAll(".games-rail-link")){const current=item===link;item.classList.toggle("is-current",current);if(current)item.setAttribute("aria-current","location");else item.removeAttribute("aria-current");}};
-  [["#gamesHome","⌂","Hub"],["#labGameCatalog","🎮","Games"],["#gamesChallenges","✦","Challenges"],["#gamesProgress","◫","Progress"]].forEach(([href,icon,label],index)=>{const link=document.createElement("a");link.href=href;link.className="games-rail-link"+(index===0?" is-current":"");if(index===0)link.setAttribute("aria-current","location");if(label==="Challenges")link.id="gamesChallengesNav";link.append(node("span",icon),node("span",label));link.addEventListener("click",()=>setCurrentRail(link));rail.append(link);});
+  [["#gamesHome","⌂","Hub"],["#labGameCatalog","🎮","Games"],["#gamesChallenges","✦","Challenges"],["#gamesProgress","◫","Progress"]].forEach(([href,icon,label],index)=>{const link=document.createElement("a");link.href=href;link.className="games-rail-link"+(index===0?" is-current":"");if(index===0)link.setAttribute("aria-current","location");if(label==="Challenges")link.id="gamesChallengesNav";link.append(node("span",icon),node("span",label));link.addEventListener("click",()=>{const href=link.getAttribute("href");if(href!=="#gamesProgress"&&!field("practiceMissionPanel").hidden)returnToGamesHub();setCurrentRail(link);});rail.append(link);});
   content.append(...existing);const celebrationLayer=node("div",undefined,"games-celebration");celebrationLayer.id="gamesCelebrationLayer";celebrationLayer.setAttribute("aria-hidden","true");shell.append(rail,content,celebrationLayer);app.replaceChildren(shell);
   const statusbar=content.querySelector(".lab-statusbar");if(statusbar){statusbar.classList.add("games-statusbar");field("labIdentity").hidden=true;field("labAccountLink").hidden=true;field("practiceSyncBtn").textContent="↻";field("practiceSyncBtn").setAttribute("aria-label","Refresh game progress");field("practiceSyncBtn").title="Refresh game progress";}
   const hero=content.querySelector(".lab-hero");hero.id="gamesHome";hero.className="games-hero";
@@ -375,7 +379,7 @@ if(!guestPage){
   field("labHeroContinue").addEventListener("click",()=>{if(busy)return;const button=field("labHeroContinue"),targetCourse=COURSES.find(item=>item.id===button.dataset.course),target=targetCourse?.missions.find(item=>item.id===button.dataset.mission);if(target)void openMission(targetCourse,target);});
 }
 field("practiceSyncBtn").addEventListener("click",()=>void window.withLoading("Refreshing practice progress…",async()=>{if(busy)return;connectBoard();await refreshHub();if(mission&&!attempt?.attemptId&&eligible)await openMission(course,mission);else setBusy(false);},{button:field("practiceSyncBtn")}));
-field("practiceBackBtn").addEventListener("click",()=>{if(busy)return;saveDraft();loadSequence++;field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;renderCourses();});
+field("practiceBackBtn").addEventListener("click",()=>{returnToGamesHub();});
 field("practiceCheckBtn").addEventListener("click",()=>{void submit();});
 field("labReopenMission").addEventListener("click",()=>{if(!busy&&mission){field("labReopenMission").hidden=true;void openMission(course,mission);}});
 field("practiceTransferBtn").addEventListener("click",async()=>{if(busy||!user||!confirm("Move practice to this device? Other active practice sessions stop submitting; your saved points stay safe."))return;setBusy(true);try{await connect(true);setBusy(false);if(mission)await openMission(course,mission);}catch(error){errorFeedback(error);}finally{setBusy(false);}});
