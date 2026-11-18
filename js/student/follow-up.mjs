@@ -22,6 +22,8 @@ async function load(){
    getDocs(collection(db,"improvement_plans",profile.id,"items"))
   ]);
   const packs=packSnap.docs.map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
+  window.__adminervaPracticePacks=packs;
+  window.dispatchEvent(new CustomEvent("adminerva:practice-packs",{detail:{packs}}));
   const projectDocs=new Map([...wholeProjectSnap.docs,...personalProjectSnap.docs].map(record=>[record.id,record]));
   const projects=[...projectDocs.values()].map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
   const plans=planSnap.docs.map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
