@@ -746,9 +746,13 @@ window.finalizeBugReport = async function () {
 })();
 
 
-/** The global footer is owned by release-footer.js. The loader only ensures it is present. */
-function ensureAdminervaReleaseFooterScript(){
-  if([...document.scripts].some(script=>/\/js\/core\/release-footer\.js(?:\?|$)/.test(script.src)))return;
+/** The global footer is owned by release-footer.js. The loader ensures it is present and recovers failed/stale loads. */
+function adminervaReleaseFooterReady(){
+  const version=document.querySelector("#adminerva-site-footer [data-adminerva-version]");
+  return Boolean(version&&String(version.textContent||"").trim());
+}
+function ensureAdminervaReleaseFooterScript(force=false){
+  if(!force&&[...document.scripts].some(script=>/\/js\/core\/release-footer\.js(?:\?|$)/.test(script.src)))return;
   const loader=[...document.scripts].find(script=>/\/js\/core\/adminerva-loader\.js(?:\?|$)/.test(script.src));
   let src="js/core/release-footer.js";
   try{
@@ -756,12 +760,20 @@ function ensureAdminervaReleaseFooterScript(){
       const url=new URL("release-footer.js",loader.src);
       const version=new URL(loader.src).searchParams.get("v");
       if(version)url.searchParams.set("v",version);
+      if(force)url.searchParams.set("recover","1");
       src=url.href;
     }
   }catch{}
   const script=document.createElement("script");
   script.src=src;
   script.defer=true;
+  script.dataset.adminervaFooterRecovery=force?"true":"false";
   document.head.append(script);
 }
 ensureAdminervaReleaseFooterScript();
+const verifyAdminervaReleaseFooter=()=>{
+  if(adminervaReleaseFooterReady())return;
+  ensureAdminervaReleaseFooterScript(true);
+};
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>setTimeout(verifyAdminervaReleaseFooter,250),{once:true});
+else setTimeout(verifyAdminervaReleaseFooter,250);
