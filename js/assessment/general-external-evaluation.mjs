@@ -34,7 +34,7 @@ function compactEvidence(source,snapshot={}){
   if(source==="studio")return {
     type:"adminerva_studio_snapshot",
     version:Number(snapshot.version||0),
-    language:text(snapshot.sourceLanguage,80),
+    language:text(snapshot.sourceLanguage||snapshot.language,80),
     files:Array.isArray(snapshot.files)?snapshot.files.slice(0,80).map(file=>({
       path:text(file?.path,300),content:String(file?.content||"").slice(0,60000)
     })):[],
