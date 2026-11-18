@@ -21,7 +21,10 @@ export function studioSubmissionAllowed(assessment,section,now=Date.now()){
   const due=assignment.deadlineEnabled===false||!assignment.deadline?Infinity:Date.parse(assignment.deadline);
   if(!Number.isFinite(open)||Number.isNaN(due))return {allowed:false,reason:"The teacher's submission schedule is invalid."};
   if(now<open)return {allowed:false,reason:"This assessment is not open yet."};
-  if(now>due)return {allowed:false,reason:"The submission deadline has passed. Ask your teacher for an extension."};
+  if(now>due&&assignment.allowLateSubmissions!==true)
+    return {allowed:false,reason:"The submission deadline has passed. Ask your teacher for an extension."};
+  if(now>due&&assignment.allowLateSubmissions===true)
+    return {allowed:true,reason:"Late submission allowed. The original deadline remains recorded."};
   return {allowed:true,reason:"Submission window open."};
 }
 export function snapshotStudioProject(project,liveState){
