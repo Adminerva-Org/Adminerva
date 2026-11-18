@@ -154,6 +154,7 @@ function createSchoolStudioAssessmentVariantService({db}){
         const createdAt=Timestamp.fromMillis(now);
         assigned={schoolId:ctx.schoolId,taskId,offeringId:task.offeringId,
           studentUid:ctx.uid,personId,attempt,variantId,prompt:value.prompt,
+          evaluationNotes:typeof value.evaluationNotes==="string"?value.evaluationNotes:"",
           poolFingerprint:task.personalizedTask.poolFingerprint,createdAt};
         tx.create(assignmentRef,assigned);
         tx.create(reservationRef,{schoolId:ctx.schoolId,taskId,variantId,studentUid:ctx.uid,
