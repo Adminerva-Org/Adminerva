@@ -122,7 +122,8 @@ if(host){
                   <option value="auto">Auto · infer conservatively from the task</option>
                   <option value="java-console">Java Console · fundamentals / OOP / CLI</option>
                   <option value="java-desktop">Java Desktop · Swing / AWT / GUI</option>
-                  <option value="java-database">Java + Database · Adminerva DB / JDBC / SQL</option>
+                  <option value="java-database">Java + Database · console + Adminerva DB / JDBC / SQL</option>
+                  <option value="java-desktop-database">Java Desktop + Database · Swing / AWT + DB</option>
                   <option value="web">Web · HTML / CSS / JavaScript</option>
                   <option value="python-console">Python Console</option>
                 </select>
