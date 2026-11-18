@@ -75,7 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   const platformTestMode = root.dataset.platformTestMode === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=6660fa297412");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=d3c36ea3ed84");
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
     hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent,platformTestMode
@@ -171,7 +171,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     `;document.head.append(style);
   }
-  document.body.classList.add("av-has-mobile-dock");
   root.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
       <div class="max-w-screen-2xl mx-auto">
@@ -227,25 +226,6 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         <div id="av-mobile-nav" class="xl:hidden border-t border-slate-700"></div>
       </div>
-    </nav>
-    <nav class="av-mobile-dock" aria-label="Adminerva mobile navigation">
-      <a class="av-mobile-dock-item" href="${homeRoute}"${activePage === "home" ? ' aria-current="page"' : ""}>
-        <span class="av-mobile-dock-icon" aria-hidden="true">⌂</span><span>Home</span>
-      </a>
-      <button type="button" class="av-mobile-dock-item" data-av-mobile-menu aria-label="Open ${escapeHTML(currentArea)} menu">
-        <span class="av-mobile-dock-icon" aria-hidden="true">☰</span><span>Menu</span>
-      </button>
-      <button type="button" class="av-mobile-dock-center" data-av-mobile-module aria-label="Switch workspace. Current workspace: ${escapeHTML(currentArea)}">
-        <span class="av-mobile-dock-orb" aria-hidden="true"><span>▦</span></span>
-        <span class="av-mobile-dock-center-label">${escapeHTML(currentArea)}</span>
-      </button>
-      <button type="button" class="av-mobile-dock-item" data-av-mobile-alerts aria-label="Notifications">
-        <span class="av-mobile-dock-icon" aria-hidden="true">♢</span><span>Alerts</span>
-        <span class="av-mobile-dock-badge hidden" data-av-mobile-alert-count></span>
-      </button>
-      <button type="button" class="av-mobile-dock-item" data-av-mobile-account aria-label="Account menu">
-        <span class="av-mobile-dock-icon" aria-hidden="true">●</span><span>Account</span>
-      </button>
     </nav>`;
   if (accountControls) {
     root.querySelector("#av-account-controls").replaceWith(accountControls);
@@ -348,37 +328,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }else mobile.hidden=true;
   }
 
-  const mobileMenuButton=root.querySelector("[data-av-mobile-menu]");
-  const mobileModuleButton=root.querySelector("[data-av-mobile-module]");
-  const mobileAlertsButton=root.querySelector("[data-av-mobile-alerts]");
-  const mobileAccountButton=root.querySelector("[data-av-mobile-account]");
-  const openMobileDisclosure=details=>{
-    if(!details)return;
-    for(const other of disclosures)if(other!==details)other.open=false;
-    details.open=!details.open;
-  };
-  mobileMenuButton?.addEventListener("click",()=>openMobileDisclosure(root.querySelector("#av-mobile-staff-menu")));
-  mobileModuleButton?.addEventListener("click",()=>openMobileDisclosure(root.querySelector(".av-module-switcher")));
-  mobileAlertsButton?.addEventListener("click",()=>{
-    const target=root.querySelector("#av-alert-toggle");
-    if(target)target.click();
-  });
-  mobileAccountButton?.addEventListener("click",()=>openMobileDisclosure(root.querySelector(".av-account-menu")));
-  const syncMobileAlerts=()=>{
-    const source=root.querySelector("#av-alert-count"),target=root.querySelector("[data-av-mobile-alert-count]");
-    if(!source||!target)return;
-    const value=source.textContent.trim();
-    target.textContent=value;
-    target.classList.toggle("hidden",!value||value==="0");
-  };
-  const mobileAlertObserver=new MutationObserver(syncMobileAlerts);
-  const watchMobileAlertBadge=()=>{
-    const badge=root.querySelector("#av-alert-count");
-    if(badge){mobileAlertObserver.observe(badge,{childList:true,characterData:true,subtree:true,attributes:true});syncMobileAlerts();}
-  };
-  queueMicrotask(watchMobileAlertBadge);
-  setTimeout(watchMobileAlertBadge,800);
-
   // Native disclosures support touch and keyboard. Peer menus close each other;
   // nested mobile groups keep the parent menu open.
   disclosures = [...root.querySelectorAll("details")];
@@ -408,7 +357,7 @@ document.addEventListener("DOMContentLoaded", () => {
     import("./notifications.mjs?v=1.4.19").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
-  import("./account-context-switcher.mjs?v=6660fa297412")
+  import("./account-context-switcher.mjs?v=d3c36ea3ed84")
     .then(module=>module.mountAccountContextSwitcher(root))
     .catch(error=>console.warn("Account context switcher unavailable:",error));
   };
