@@ -4,12 +4,16 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0
 import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
 import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.0.0";
+import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
+import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
+import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
 const inbox=document.getElementById("gbV4Inbox");
 const status=document.getElementById("gbV4Status");
 const dialog=document.getElementById("gbV4ReviewDialog");
+const bulkPublish=document.getElementById("gbV4BulkPublish");
 
 function make(tag,className,text){
   const element=document.createElement(tag);
@@ -32,9 +36,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const view=new URL(location.href).searchParams.get("view")||"review";
   const viewCopy={
     submissions:["Submissions","Inspect frozen learner responses and open the exact submitted version when review is needed."],
-    review:["Review & Grade","Review immutable assessment evidence, save private rubric drafts, and publish deliberately."],
+    review:["Review & Grade","Review immutable assessment evidence, save grade drafts, and publish deliberately."],
     results:["Assessment Results","Review saved draft/published outcomes and open any learner result against its frozen submission."]
-  }[view]||["Review & Grade","Review immutable assessment evidence, save private rubric drafts, and publish deliberately."];
+  }[view]||["Review & Grade","Review immutable assessment evidence, save grade drafts, and publish deliberately."];
   const pageTitle=document.getElementById("gbV4PageTitle"),pageDescription=document.getElementById("gbV4PageDescription");
   if(pageTitle)pageTitle.textContent=viewCopy[0];
   if(pageDescription)pageDescription.textContent=viewCopy[1];
@@ -52,7 +56,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const gradeApi=httpsCallable(functions,"schoolGradebook");
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null;
-  let generation=0,busy=false,githubVerification=null;
+  let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher";
 
   async function scoped(api,action,details={}){
     if(!picker?.scope.current)throw Error("Choose a verified school first.");
@@ -80,6 +84,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar;
     document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar);
     document.getElementById("gbV4Refresh").disabled=busy;
+    if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
   }
   function setBusy(value,message=""){
     busy=value;refreshReviewControls();
@@ -133,10 +138,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   async function loadInbox(){
     const task=tasks.get(taskSelect.value);
     currentTask=task||null;inbox.replaceChildren();
+    if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
     if(!task){status.textContent="Choose an assessment to load submissions.";return;}
     const token=++generation;
     if(task.legacyCompatibility){
       status.textContent="Historical deployment found. This assessment predates the V4 course-offering submission store.";
+      if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;}
       const card=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
       card.append(make("h3","font-extrabold text-amber-950",task.title));
       card.append(make("p","text-sm text-amber-900 mt-1",
@@ -171,9 +178,20 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           String(a.studentName||"").localeCompare(String(b.studentName||""));
       });
       const published=[...gradeMap.values()].filter(item=>item.status==="published").length;
-      const drafts=[...gradeMap.values()].filter(item=>item.status==="draft").length;
+      const draftRows=[...gradeMap.values()].filter(item=>item.status==="draft");
+      const drafts=draftRows.length;
+      const publishableDrafts=draftRows.filter(item=>Number(item.awarded)>0&&Number(item.pending||0)===0).length;
+      const zeroDrafts=draftRows.filter(item=>Number(item.awarded)===0).length;
+      if(bulkPublish){
+        bulkPublish.dataset.ready=publishableDrafts?"true":"false";
+        bulkPublish.disabled=busy||!publishableDrafts;
+        bulkPublish.textContent="Publish all drafts ("+publishableDrafts+")";
+        bulkPublish.title=zeroDrafts
+          ?zeroDrafts+" zero-score draft"+(zeroDrafts===1?" is":"s are")+" excluded from bulk publication."
+          :"Publish every valid non-zero draft for this assessment.";
+      }
       status.textContent=rows.length?
-        rows.length+" submitted · "+published+" published · "+drafts+" private draft"+(drafts===1?"":"s")+".":
+        rows.length+" submitted · "+published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
         "No student evidence yet for this assessment.";
       if(!rows.length){
         inbox.append(make("div","rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600",
@@ -190,7 +208,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             "Version "+row.version+" · "+row.status+" · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently"))
         );
         const resultLine=grade?
-          (grade.status==="published"?"Published result":"Private grade draft")+" · "+grade.awarded+" / "+grade.total+
+          (grade.status==="published"?"Published result":"Grade draft")+" · "+grade.awarded+" / "+grade.total+
             (grade.pending?" · "+grade.pending+" pending":""):
           "Needs grading";
         details.append(make("p","text-xs font-bold mt-1 "+(grade?.status==="published"?"text-emerald-700":grade?"text-amber-700":"text-slate-600"),resultLine));
@@ -334,6 +352,65 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4Feedback").value=grade?.feedback||"";
     updateScore();
   }
+  async function evaluationSnapshotForCurrent(){
+    if(currentTask?.submissionSource!=="github")return currentSnapshot;
+    if(!["approved","reviewed"].includes(currentSnapshot?.status))
+      throw Error("Approve the exact frozen GitHub evidence before running AI evaluation.");
+    const prefs=auth.currentUser?activateConnectionOwner(auth.currentUser.uid):{};
+    const client=createGithubEvidenceClient({
+      token:prefs.githubToken||null,maxPages:10,maxCommitFilesPages:10,retryCount:1
+    });
+    const repository=currentSnapshot?.repository?.fullName;
+    const selected=(currentSnapshot?.selectedCommitShas||[]).map(String);
+    if(!repository||!selected.length)throw Error("Frozen GitHub evidence is incomplete.");
+    const commits=[],limitations=[];
+    for(const sha of selected.slice(0,20)){
+      const detail=await client.loadCommit(repository,sha);
+      if(detail.filesTruncated)limitations.push("Commit "+sha.slice(0,12)+" has more files than could be fully retrieved.");
+      commits.push({
+        sha,
+        files:(detail.files||[]).slice(0,100).map(file=>({
+          path:file.filename||"",
+          status:file.status||"",
+          additions:Number(file.additions||0),
+          deletions:Number(file.deletions||0),
+          patch:file.patch||""
+        }))
+      });
+      if((detail.files||[]).length>100)
+        limitations.push("Commit "+sha.slice(0,12)+" contains additional files omitted from the AI package.");
+    }
+    if(selected.length>20)
+      limitations.push((selected.length-20)+" selected commit(s) were omitted from the AI package because the evidence set is unusually large.");
+    return {
+      version:Number(currentSnapshot.version||0),
+      checkpointSha:currentSnapshot.checkpointSha||"",
+      selectedCommitShas:selected,
+      commits,
+      limitations
+    };
+  }
+  function applyEvaluationSuggestion(suggestion,label){
+    currentDraftSource=label==="Internal AI"?"internal_ai":label==="External AI"?"external_ai":"teacher";
+    const rows=[...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")];
+    suggestion.criteria.forEach((criterion,index)=>{
+      const row=rows[index];if(!row)return;
+      row.querySelector("[data-awarded]").value=String(criterion.awardedPoints);
+      row.querySelector("[data-pending]").value=String(criterion.pendingPoints);
+      row.querySelector("[data-comment]").value=criterion.comment||"";
+    });
+    if(suggestion.feedback)document.getElementById("gbV4Feedback").value=suggestion.feedback;
+    updateScore();
+    document.getElementById("gbV4ExternalStatus").textContent=
+      label+" applied to the unsaved grade draft. Review every criterion before saving.";
+  }
+  function showEvaluationReview(containerId,label,suggestion){
+    renderEvaluationReview(document.getElementById(containerId),{
+      title:label+" rubric suggestion",sourceLabel:label,suggestion,task:currentTask,
+      onApply:value=>applyEvaluationSuggestion(value,label),
+      applyLabel:"Apply "+label+" to draft"
+    });
+  }
   function collectCriteria(){
     return [...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")].map((row,index)=>{
       const awardedPoints=Number(row.querySelector("[data-awarded]").value||0);
@@ -347,7 +424,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   }
   async function openReview(row){
     if(busy||!currentTask)return;
-    currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;
+    currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentDraftSource="teacher";
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
       currentTask.title+" · version "+row.version+" · "+row.status;
@@ -359,7 +436,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4LegacyReason").value="";
     document.getElementById("gbV4ExternalResponse").value="";
     document.getElementById("gbV4ExternalStatus").textContent="";
-    document.getElementById("gbV4ExternalEvaluationPanel").classList.toggle("hidden",currentTask.submissionSource==="github");
+    clearEvaluationReview(document.getElementById("gbV4SystemReview"),"Internal AI has not been run for this submission.");
+    clearEvaluationReview(document.getElementById("gbV4ExternalReview"),"No External AI review has been imported for this submission.");
+    document.getElementById("gbV4ExternalEvaluationPanel").classList.remove("hidden");
     document.getElementById("gbV4LegacyGradePanel").hidden=true;
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
     document.getElementById("gbV4StudioEvidence").classList.toggle("hidden",currentTask.submissionSource!=="studio");
@@ -384,6 +463,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         scoped(assessmentApi,"get_private",{taskId:currentTask.taskId})
       ]);
       currentSnapshot=result[0];currentGrade=result[1].grade;currentPrivateConfig=result[2]||{};
+      currentDraftSource=currentGrade?.draftSource||"teacher";
       if(currentTask.submissionSource==="studio"){
         const fileSelect=document.getElementById("gbV4File");
         for(const file of currentSnapshot.files||[])fileSelect.add(new Option(file.path,file.path));
@@ -420,7 +500,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         reopened?"A revision is already requested. Wait for the student to resubmit.":
         currentTask.submissionSource==="github"&&!["approved","reviewed"].includes(currentSnapshot.status)?
           "Verify and approve the exact frozen GitHub evidence before starting a grade draft.":
-        currentGrade?.status==="draft"?"Private draft loaded. Review before publishing.":
+        currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Review data unavailable.";
@@ -450,24 +530,52 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         "Evidence approved for grading. The exact commit set and checkpoint are frozen in the audit record.";
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=
-        "GitHub evidence approved. You can now save a private rubric draft.";
+        "GitHub evidence approved. You can now save a grade draft.";
       await loadInbox();
     }catch(error){
       document.getElementById("gbV4GithubVerifyStatus").textContent=
         error?.message||"Evidence approval was not recorded.";
     }finally{setBusy(false);}
   })());
+  document.getElementById("gbV4SystemCheck").addEventListener("click",()=>void (async()=>{
+    const output=document.getElementById("gbV4ExternalStatus");
+    const button=document.getElementById("gbV4SystemCheck");
+    if(busy||!currentTask||!currentSnapshot)return;
+    button.disabled=true;
+    output.textContent="Running Internal AI against the exact frozen submission…";
+    try{
+      const evaluationSnapshot=await evaluationSnapshotForCurrent();
+      const packageText=buildGeneralExternalEvaluationPackage({
+        task:currentTask,snapshot:evaluationSnapshot,
+        checkingInstructions:currentPrivateConfig?.checkingInstructions||""
+      });
+      const result=await generateSchoolContent({
+        contents:[{parts:[{text:packageText}]}],
+        generationConfig:{responseMimeType:"application/json",temperature:0.2,maxOutputTokens:8192}
+      },{purpose:"evaluation",signal:AbortSignal.timeout(100000)});
+      const parsed=await evaluationJSON({ok:true,json:async()=>result});
+      const suggestion=parseGeneralExternalEvaluationResponse(JSON.stringify(parsed),{task:currentTask});
+      showEvaluationReview("gbV4SystemReview","Internal AI",suggestion);
+      output.textContent="Internal AI review is ready below. It has not changed the teacher draft.";
+    }catch(error){
+      clearEvaluationReview(document.getElementById("gbV4SystemReview"),"Internal AI review unavailable.");
+      output.textContent=error?.message||"Internal AI evaluation could not complete.";
+    }finally{button.disabled=false;}
+  })());
+
   document.getElementById("gbV4ExternalCopy").addEventListener("click",()=>void (async()=>{
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
     try{
-      const packageText=buildGeneralExternalEvaluationPackage({task:currentTask,snapshot:currentSnapshot,checkingInstructions:currentPrivateConfig?.checkingInstructions||""});
+      const evaluationSnapshot=await evaluationSnapshotForCurrent();
+      const packageText=buildGeneralExternalEvaluationPackage({task:currentTask,snapshot:evaluationSnapshot,checkingInstructions:currentPrivateConfig?.checkingInstructions||""});
       await navigator.clipboard.writeText(packageText);
-      output.textContent="Anonymous external evaluation package copied. Paste the evaluator JSON below when ready.";
+      output.textContent="Anonymous External AI evaluation package copied. Paste the evaluator JSON below when ready.";
     }catch(error){
       output.textContent=error?.message||"Evaluation package could not be copied.";
     }
   })());
+
   document.getElementById("gbV4ExternalApply").addEventListener("click",()=>{
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
@@ -475,41 +583,49 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const suggestion=parseGeneralExternalEvaluationResponse(
         document.getElementById("gbV4ExternalResponse").value,{task:currentTask}
       );
-      const rows=[...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")];
-      suggestion.criteria.forEach((criterion,index)=>{
-        const row=rows[index];if(!row)return;
-        row.querySelector("[data-awarded]").value=String(criterion.awardedPoints);
-        row.querySelector("[data-pending]").value=String(criterion.pendingPoints);
-        row.querySelector("[data-comment]").value=criterion.comment||"";
-      });
-      if(suggestion.feedback)document.getElementById("gbV4Feedback").value=suggestion.feedback;
-      updateScore();
-      output.textContent="External evaluation applied to the unsaved private draft fields."+
-        (suggestion.limitations?" Limitations: "+suggestion.limitations:"")+
-        " Review every criterion before saving.";
+      showEvaluationReview("gbV4ExternalReview","External AI",suggestion);
+      output.textContent="External AI review imported below. It has not changed the teacher draft.";
     }catch(error){
-      output.textContent=error?.message||"External evaluation could not be applied.";
+      clearEvaluationReview(document.getElementById("gbV4ExternalReview"),"External AI review was not imported.");
+      output.textContent=error?.message||"External evaluation could not be imported.";
     }
   });
 
   document.getElementById("gbV4Close").addEventListener("click",()=>dialog.close());
+  bulkPublish?.addEventListener("click",()=>void (async()=>{
+    if(busy||!currentTask||currentTask.legacyCompatibility||bulkPublish.dataset.ready!=="true")return;
+    const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
+    if(!count)return;
+    if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? This confirmation is the teacher approval step. Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
+    try{
+      setBusy(true,"Publishing all valid drafts…");
+      const result=await scoped(gradeApi,"publish_task_drafts",{taskId:currentTask.taskId});
+      status.textContent="Published "+result.published+" draft"+(result.published===1?"":"s")+
+        (result.zeroSkipped?" · "+result.zeroSkipped+" zero-score draft"+(result.zeroSkipped===1?" remains":"s remain")+" for attention":"")+
+        (result.failed?" · "+result.failed+" draft"+(result.failed===1?" was":"s were")+" skipped after validation":"")+".";
+      await loadInbox();
+    }catch(error){
+      status.textContent=error?.message||"Bulk publication did not complete.";
+    }finally{setBusy(false);}
+  })());
   taskSelect.addEventListener("change",()=>void loadInbox());
   document.getElementById("gbV4Refresh").addEventListener("click",()=>void loadInbox());
   document.getElementById("gbV4SaveDraft").addEventListener("click",()=>void (async()=>{
     if(busy||!currentTask||!currentRow||!currentSnapshot)return;
     try{
       const criteria=collectCriteria();
-      setBusy(true,"Saving private rubric draft…");
+      setBusy(true,"Saving grade draft…");
       await scoped(gradeApi,"save_draft",{
         taskId:currentTask.taskId,studentUid:currentRow.studentUid,
         submissionVersion:currentSnapshot.version,criteria,
-        feedback:document.getElementById("gbV4Feedback").value.trim()
+        feedback:document.getElementById("gbV4Feedback").value.trim(),
+        draftSource:currentDraftSource
       });
       const refreshed=await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       currentGrade=refreshed.grade;renderRubric(currentGrade);
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=
-        "Private draft saved against frozen submission version "+currentSnapshot.version+".";
+        "Draft saved against frozen submission version "+currentSnapshot.version+".";
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade draft was not saved.";
     }finally{setBusy(false);}

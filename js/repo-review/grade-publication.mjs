@@ -2,9 +2,9 @@
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {doc,collection,runTransaction,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {approvableEvaluationDraft,legacyReadyDraft,publicationCandidates,publicationJournal} from "./services/publication-queue.mjs?v=1.3.3";
+import {approvableEvaluationDraft,legacyReadyDraft,publicationCandidates,bulkPublicationCandidates,bulkZeroScoreDrafts,publicationJournal} from "./services/publication-queue.mjs?v=1.3.3";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=3.0.1";
-export {publicationCandidates};
+export {publicationCandidates,bulkPublicationCandidates,bulkZeroScoreDrafts};
 export function writePublicationRevision(transaction,ref,before,published) {
   if(Boolean(before.published)===published)return;
   transaction.set(doc(collection(db,"grade_revisions")),{
@@ -59,7 +59,7 @@ export async function approveEvaluationDraftAndPublish(entry,{reason=""}={}){
 export async function publishGradeEntries(entries,published,{context,onProgress=()=>{}}={}) {
   const uid=auth.currentUser?.uid;
   if(!uid)throw Error("Sign in again before publishing.");
-  const eligible=publicationCandidates(entries,published);
+  const eligible=bulkPublicationCandidates(entries,published);
   if(eligible.length>2000)throw Error("Narrow this batch to at most 2,000 grades.");
   const journal=publicationJournal(localStorage,"Adminerva_publication_"+uid+"_"+context);
   const progress={pending:eligible.map(entry=>entry.ref.id),completed:[],failed:[],published,updatedAt:Date.now()};
@@ -73,19 +73,38 @@ export async function publishGradeEntries(entries,published,{context,onProgress=
         if(!latest.exists())throw Error("Grade missing; reload this row.");
         const before=latest.data();
         assertGradeVersion(before,entry.data);
-        if(!publicationCandidates([{...entry,data:before}],published).length)throw Error("Grade is no longer eligible.");
+        if(!bulkPublicationCandidates([{...entry,data:before}],published).length)
+          throw Error(Number(before.score)===0?"Zero-score drafts require individual teacher attention before publication.":"Grade is no longer eligible.");
         const task=await transaction.get(doc(db,"assessments",before.taskId));
         if(published&&(!task.exists()||typeof task.data().maxScore!=="number"||task.data().maxScore<=0||before.score>task.data().maxScore||(before.maxScore!=null&&before.maxScore!==task.data().maxScore)))throw Error("Assessment bounds changed or are unavailable. Review this grade before publishing.");
         const legacyReady=published&&legacyReadyDraft(before);
-        if(published&&task.data()?.schemaVersion===2)await verifyGradePublication(transaction,entry.ref,before);
+        const aiDraft=published&&approvableEvaluationDraft(before);
+        const needsBulkApproval=published&&before.reviewRequired===true;
+        if(published&&task.data()?.schemaVersion===2)
+          await verifyGradePublication(transaction,entry.ref,before,{allowTeacherApproval:true});
         transaction.set(doc(collection(db,"grade_revisions")),{
           gradeId:entry.ref.id,studentId:before.studentId,taskId:before.taskId,editorUid:uid,
-          reason:published?(legacyReady?"Teacher published legacy clean system draft":"Teacher explicitly published a reviewed batch draft"):"Teacher explicitly unpublished a batch grade",
+          reason:published
+            ?(aiDraft?"Teacher bulk-published AI grade draft unchanged":
+              needsBulkApproval?"Teacher bulk-published reviewed draft unchanged":
+              legacyReady?"Teacher published legacy clean system draft":
+              "Teacher explicitly published a grade draft")
+            :"Teacher explicitly unpublished a batch grade",
           before:{published:Boolean(before.published)},after:{published},createdAt:serverTimestamp()
         });
         transaction.update(entry.ref,{
           published,
-          ...(legacyReady?{reviewRequired:false,reviewPriority:"ready_to_publish"}:{})
+          ...(legacyReady?{reviewRequired:false,reviewPriority:"ready_to_publish"}:{}),
+          ...(needsBulkApproval?{
+            reviewRequired:false,
+            reviewPriority:"teacher_approved",
+            reviewedBy:uid,
+            reviewedAt:serverTimestamp(),
+            teacherReviewNote:"Teacher approved this grade draft unchanged through the confirmed bulk publication action."
+          }:{}),
+          ...(aiDraft?{
+            evaluationDraft:{...(before.evaluationDraft||{}),teacherReviewed:true}
+          }:{})
         });
       });
       progress.completed.push(entry.ref.id);progress.pending=progress.pending.filter(id=>id!==entry.ref.id);

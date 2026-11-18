@@ -1,6 +1,6 @@
 import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.3.0";
-import {approveEvaluationDraftAndPublish,publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=3.0.2";
+import {approveEvaluationDraftAndPublish,bulkPublicationCandidates,bulkZeroScoreDrafts,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=3.0.2";
 import {approvableEvaluationDraft,legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.3";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
 import {writePublicationRevision} from "./grade-publication.mjs?v=3.0.2";
@@ -38,14 +38,15 @@ function escapeHTML(str) {
 
 let allStudents = [],gridEntries=[],gridSerial=0,publishBusy=false,subjectFocus=[];
 function syncPublishButton(loading=false){
-  const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);
-  const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true&&!legacyReadyDraft(entry.data)).length;
+  const button=document.getElementById("gbLegacyPublish"),eligible=bulkPublicationCandidates(gridEntries),
+    zeroDrafts=bulkZeroScoreDrafts(gridEntries);
   button.disabled=loading||publishBusy||!eligible.length;
-  button.textContent="Publish unpublished grades ("+eligible.length+")";
+  button.textContent="Publish all drafts ("+eligible.length+")";
   const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);
   document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?
-    "Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":
-    eligible.length+" ready to publish"+(flagged?" · "+flagged+" flagged for manual review":"")+".";
+    "Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish all drafts to retry.":
+    eligible.length+" valid draft"+(eligible.length===1?"":"s")+" ready for one-step bulk publication"+
+    (zeroDrafts.length?" · "+zeroDrafts.length+" zero-score draft"+(zeroDrafts.length===1?"":"s")+" left for attention.":".");
 }
 window.openGridFeedback=(studentId,taskId)=>void openFeedbackDrawer({studentId,taskId});
 let allAssessments = [];
@@ -517,22 +518,27 @@ function updateAssessmentsForSection() {
 
 window.bulkPublishCurrentGrid=async function(){
   if(publishBusy)return;
-  const eligible=publicationCandidates(gridEntries);
-  const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true&&!legacyReadyDraft(entry.data)).length;
-  if(!eligible.length)return reviewNotice(flagged?
-    "All remaining unpublished grades are flagged for manual review.":
-    "No unpublished grades are ready to publish.");
-  const message="Publish "+eligible.length+" unpublished grade"+(eligible.length===1?"":"s")+" now?"+
-    (flagged?" "+flagged+" flagged draft"+(flagged===1?"":"s")+" will stay private for Review & Grade.":"");
+  const eligible=bulkPublicationCandidates(gridEntries),zeroDrafts=bulkZeroScoreDrafts(gridEntries);
+  if(!eligible.length)return reviewNotice(
+    zeroDrafts.length
+      ?zeroDrafts.length+" zero-score draft"+(zeroDrafts.length===1?" remains":"s remain")+" unpublished for teacher attention."
+      :"No valid unpublished drafts are ready to publish."
+  );
+  const message="Publish all "+eligible.length+" non-zero draft"+(eligible.length===1?"":"s")+" now? "+
+    "This confirmation is the teacher approval step. Adminerva will publish every draft that still matches its current frozen evidence and score bounds. "+
+    "Zero-score drafts and drafts that fail validation will stay unpublished.";
   if(!confirm(message))return;
   const context="single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value;
   publishBusy=true;syncPublishButton();
-  const end=window.beginLoading?.("Publishing selected grades…")||(()=>{});
+  const end=window.beginLoading?.("Publishing all valid non-zero drafts…")||(()=>{});
   try{
-    const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing unpublished grades: "+value.completed.length+" complete, "+value.pending.length+" pending.")});
+    const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing drafts: "+value.completed.length+" complete, "+value.pending.length+" pending.")});
+    const skippedZero=zeroDrafts.length;
     reviewNotice(result.pending.length?
-      "Some drafts changed or failed validation. Reload before retrying.":
-      "Published "+result.completed.length+" grade"+(result.completed.length===1?"":"s")+(flagged?"; "+flagged+" flagged draft"+(flagged===1?" remains":"s remain")+" private.":"."),
+      "Published "+result.completed.length+" draft"+(result.completed.length===1?"":"s")+". "+
+      result.pending.length+" changed or failed validation and "+skippedZero+" zero-score draft"+(skippedZero===1?" was":"s were")+" left unpublished.":
+      "Published "+result.completed.length+" valid non-zero draft"+(result.completed.length===1?"":"s")+
+      (skippedZero?". "+skippedZero+" zero-score draft"+(skippedZero===1?" remains":"s remain")+" unpublished for attention.":"."),
       Boolean(result.pending.length));
   }catch(error){reviewNotice(error.message,true);}
   finally{publishBusy=false;try{await loadGrid();}finally{syncPublishButton();end();}}

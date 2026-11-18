@@ -7,6 +7,7 @@ import {studioDigest,verifyStudioSnapshot} from "../student/studio-assessment-mo
 import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.0.0";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
+import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
 
 const node=id=>document.getElementById(id);
 const variantCall=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
@@ -266,25 +267,30 @@ async function inspect(item){
      feedback.value=String(grade.data().feedback||"");
    }
    const checker=add(form,"details","","rounded-xl border border-sky-200 bg-sky-50 p-3");
-   const checkerSummary=add(checker,"summary","AI checker","font-bold text-sky-950 cursor-pointer");
-   checkerSummary.title="Evaluate only this frozen Studio snapshot. Suggestions remain private until you save.";
-   add(checker,"p","Both checker modes use this exact frozen snapshot and the published rubric. Results only fill the unsaved review fields.","text-xs text-sky-900 mt-2");
+   checker.open=true;
+   const checkerSummary=add(checker,"summary","AI checker · Internal + External","font-bold text-sky-950 cursor-pointer");
+   checkerSummary.title="Evaluate only this frozen Studio snapshot. Both reviews stay separate until you apply one.";
+   add(checker,"p","Internal and External AI evaluate the same frozen Studio snapshot and published rubric. Compare the reviews before applying either suggestion to the grade draft.","text-xs text-sky-900 mt-2");
    const checkerActions=add(checker,"div","","flex flex-wrap gap-2 mt-3");
-   const systemCheck=add(checkerActions,"button","Run system checker","rounded-lg bg-violet-800 text-white font-bold px-3 py-2");
+   const systemCheck=add(checkerActions,"button","Run Internal AI","rounded-lg bg-violet-800 text-white font-bold px-3 py-2");
    systemCheck.type="button";
-   const externalCopy=add(checkerActions,"button","Copy external AI package","rounded-lg border border-sky-300 bg-white text-sky-900 font-bold px-3 py-2");
+   const externalCopy=add(checkerActions,"button","Copy External AI package","rounded-lg border border-sky-300 bg-white text-sky-900 font-bold px-3 py-2");
    externalCopy.type="button";
+   const systemReview=add(checker,"div","","mt-3");
+   clearEvaluationReview(systemReview,"Internal AI has not been run for this submission.");
    const pasteLabel=add(checker,"label","Paste external evaluator JSON","block text-xs font-bold text-sky-950 mt-3");
    const externalResponse=add(pasteLabel,"textarea","","mt-1 w-full border border-sky-300 rounded-lg p-2.5 bg-white font-mono text-xs");
    externalResponse.rows=6;externalResponse.placeholder='{"format":"adminerva-general-external-evaluation-response-v1",...}';
-   const applyExternal=add(checker,"button","Apply external result","mt-3 rounded-lg bg-sky-800 text-white font-bold px-3 py-2");
-   applyExternal.type="button";
-   const checkerStatus=add(checker,"p","Checker output has not been applied.","text-xs text-sky-900 mt-2");
+   const importExternal=add(checker,"button","Import External AI review","mt-3 rounded-lg bg-sky-800 text-white font-bold px-3 py-2");
+   importExternal.type="button";
+   const externalReview=add(checker,"div","","mt-3");
+   clearEvaluationReview(externalReview,"No External AI review has been imported for this submission.");
+   const checkerStatus=add(checker,"p","Both AI reviews remain separate from the grade draft until you apply one.","text-xs text-sky-900 mt-2");
    checkerStatus.setAttribute("role","status");
    const taskForEvaluation=evaluationTask(assessment);
    const snapshotForEvaluation=evaluationSnapshot(snapshot,item,assignedVariant);
    const checking=checkerInstructions(privateTask,assignedVariant);
-   const applySuggestion=suggestion=>{
+   const applySuggestion=(suggestion,label)=>{
      const awarded=suggestion.criteria.reduce((sum,row)=>sum+Number(row.awardedPoints||0),0);
      const pending=suggestion.criteria.reduce((sum,row)=>sum+Number(row.pendingPoints||0),0);
      score.value=String(Math.round(awarded*100)/100);
@@ -293,10 +299,14 @@ async function inspect(item){
        (row.pendingPoints?" ("+row.pendingPoints+" pending)":"")+
        (row.comment?" — "+row.comment:"")).join("\n");
      feedback.value=[suggestion.feedback,criterionText].filter(Boolean).join("\n\n").slice(0,6000);
-     checkerStatus.textContent="AI suggestion applied to the unsaved review fields · "+awarded+" / "+taskForEvaluation.rubricMax+
-       (pending?" · "+pending+" point"+(pending===1?"":"s")+" still require teacher confirmation.":" · no pending points.")+
+     checkerStatus.textContent=label+" applied to the unsaved grade draft · "+awarded+" / "+taskForEvaluation.rubricMax+
+       (pending?" · "+pending+" point"+(pending===1?"":"s")+" still need teacher attention.":" · no pending points.")+
        " Review before saving.";
    };
+   const showReview=(host,label,suggestion)=>renderEvaluationReview(host,{
+     title:label+" rubric suggestion",sourceLabel:label,suggestion,task:taskForEvaluation,
+     onApply:value=>applySuggestion(value,label),applyLabel:"Apply "+label+" to grade draft"
+   });
    externalCopy.addEventListener("click",async()=>{
      if(busy)return;
      try{
@@ -307,17 +317,21 @@ async function inspect(item){
        checkerStatus.textContent="External AI package copied. Paste the evaluator JSON below when ready.";
      }catch(error){checkerStatus.textContent=error?.message||"External AI package could not be copied.";}
    });
-   applyExternal.addEventListener("click",()=>{
+   importExternal.addEventListener("click",()=>{
      if(busy)return;
      try{
        const suggestion=parseGeneralExternalEvaluationResponse(externalResponse.value,{task:taskForEvaluation});
-       applySuggestion(suggestion);
-     }catch(error){checkerStatus.textContent=error?.message||"External evaluation could not be applied.";}
+       showReview(externalReview,"External AI",suggestion);
+       checkerStatus.textContent="External AI review imported. It has not changed the grade draft.";
+     }catch(error){
+       clearEvaluationReview(externalReview,"External AI review was not imported.");
+       checkerStatus.textContent=error?.message||"External evaluation could not be imported.";
+     }
    });
    systemCheck.addEventListener("click",()=>void (async()=>{
      if(busy)return;
-     busy=true;systemCheck.disabled=true;externalCopy.disabled=true;applyExternal.disabled=true;
-     checkerStatus.textContent="Running Adminerva system checker against the frozen Studio snapshot…";
+     busy=true;systemCheck.disabled=true;externalCopy.disabled=true;importExternal.disabled=true;
+     checkerStatus.textContent="Running Internal AI against the frozen Studio snapshot…";
      try{
        const packageText=buildGeneralExternalEvaluationPackage({
          task:taskForEvaluation,snapshot:snapshotForEvaluation,checkingInstructions:checking
@@ -328,9 +342,13 @@ async function inspect(item){
        },{purpose:"evaluation",signal:AbortSignal.timeout(100000)});
        const parsed=await evaluationJSON({ok:true,json:async()=>result});
        const suggestion=parseGeneralExternalEvaluationResponse(JSON.stringify(parsed),{task:taskForEvaluation});
-       applySuggestion(suggestion);
-     }catch(error){checkerStatus.textContent=error?.message||"System checker could not complete. You can still grade manually or use the external package.";}
-     finally{busy=false;systemCheck.disabled=false;externalCopy.disabled=false;applyExternal.disabled=false;}
+       showReview(systemReview,"Internal AI",suggestion);
+       checkerStatus.textContent="Internal AI review is ready. It has not changed the grade draft.";
+     }catch(error){
+       clearEvaluationReview(systemReview,"Internal AI review unavailable.");
+       checkerStatus.textContent=error?.message||"Internal AI checker could not complete. You can still grade manually or use the external package.";
+     }
+     finally{busy=false;systemCheck.disabled=false;externalCopy.disabled=false;importExternal.disabled=false;}
    })());
    const buttons=add(form,"div","","flex gap-3 flex-wrap");
    const revise=add(buttons,"button","Request revision","border rounded-lg px-4 py-2 text-amber-950 bg-amber-100 font-semibold");

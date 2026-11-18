@@ -82,7 +82,7 @@ export function parseBulkExternalEvaluationResponse(raw,{batchId,entryIds=[]}={}
   const expectedBatch=cleanId(batchId);
   if(parsed.batchId!==expectedBatch)throw Error("The response belongs to a different external evaluation batch.");
   if(!Array.isArray(parsed.results))throw Error("The bulk response must contain a results array.");
-  const expected=new Set(entryIds.map(cleanId)),results=new Map(),issues=[];
+  const expected=new Set(entryIds.map(value=>cleanId(value))),results=new Map(),issues=[];
   for(const item of parsed.results){
     if(!item||typeof item!=="object"||Array.isArray(item)){issues.push("Ignored a malformed result entry.");continue;}
     let id;

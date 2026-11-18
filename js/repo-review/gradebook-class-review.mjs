@@ -14,7 +14,7 @@ import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
 import {cleanGradeFeedback} from "../core/feedback-format.mjs?v=1.3.1";
 import {buildExternalEvaluationPayload,externalEvaluationResponseShape} from "./services/external-evaluation.mjs?v=1.2.1";
-import {partitionBulkExternalEntries,buildBulkExternalEvaluationPackage,parseBulkExternalEvaluationResponse} from "./services/bulk-external-evaluation.mjs?v=1.0.0";
+import {partitionBulkExternalEntries,buildBulkExternalEvaluationPackage,parseBulkExternalEvaluationResponse} from "./services/bulk-external-evaluation.mjs?v=1.0.1";
 
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
