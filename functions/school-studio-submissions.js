@@ -122,7 +122,7 @@ function createSchoolStudioSubmissionService({db}){
       deny("failed-precondition","This assessment is already submitted. Your teacher must request a revision first.");
      version=prior.currentVersion+1;
     }
-    let variantId="",variantPrompt="";
+    let variantId="",variantPrompt="",variantEvaluationNotes="";
     if(assessment.personalizedTask?.enabled===true){
       variantId=String(input.variantId||"");
       const variantAttempt=Number(input.variantAttempt);
@@ -139,12 +139,13 @@ function createSchoolStudioSubmissionService({db}){
          typeof data.prompt!=="string"||data.prompt.trim().length<20)
         deny("failed-precondition","The personalized task does not match this submission attempt.");
       variantPrompt=data.prompt;
+      variantEvaluationNotes=typeof data.evaluationNotes==="string"?data.evaluationNotes:"";
     }
     const versionRef=submissionRef.collection("versions").doc(String(version));
     const artifacts=project.data().artifacts||{},frozenDigest=digestProject(files,artifacts),when=FieldValue.serverTimestamp();
     tx.create(versionRef,{schoolId:ctx.schoolId,taskId,offeringId,studentUid:ctx.uid,personId,
       projectId,projectRevision:revision,files,artifacts,contentDigest:frozenDigest,
-      sourceLanguage:project.data().language,variantId,variantPrompt,submittedAt:when,version});
+      sourceLanguage:project.data().language,variantId,variantPrompt,variantEvaluationNotes,submittedAt:when,version});
     if(submission.exists){
      tx.update(submissionRef,{status:"submitted",currentVersion:version,
        projectId,projectRevision:revision,variantId,contentDigest:frozenDigest,
@@ -217,15 +218,22 @@ function createSchoolStudioSubmissionService({db}){
    let personalizedTask=null;
    const variantId=String(snapshot.data().variantId||"");
    if(variantId){
-     const fingerprint=String(task.data().personalizedTask?.poolFingerprint||""),
-       variant=await db.doc(prefix+"assessment_blueprint_private/"+task.data().blueprintId+
-         "/pools/"+fingerprint+"/variants/"+variantId).get();
-     if(!variant.exists||variant.data().schoolId!==ctx.schoolId||
-        variant.data().blueprintId!==task.data().blueprintId||
-        variant.data().fingerprint!==fingerprint||variant.data().variantId!==variantId)
-       deny("failed-precondition","The private personalized task record is unavailable.");
-     personalizedTask={variantId,prompt:snapshot.data().variantPrompt||variant.data().prompt||"",
-       evaluationNotes:variant.data().evaluationNotes||""};
+     const frozenPrompt=String(snapshot.data().variantPrompt||""),
+       frozenNotes=String(snapshot.data().variantEvaluationNotes||"");
+     if(frozenPrompt.trim().length>=20){
+       personalizedTask={variantId,prompt:frozenPrompt,evaluationNotes:frozenNotes,source:"frozen_submission"};
+     }else{
+       const fingerprint=String(task.data().personalizedTask?.poolFingerprint||""),
+         variant=await db.doc(prefix+"assessment_blueprint_private/"+task.data().blueprintId+
+           "/pools/"+fingerprint+"/variants/"+variantId).get();
+       if(!variant.exists||variant.data().schoolId!==ctx.schoolId||
+          variant.data().blueprintId!==task.data().blueprintId||
+          variant.data().fingerprint!==fingerprint||variant.data().variantId!==variantId||
+          typeof variant.data().prompt!=="string"||variant.data().prompt.trim().length<20)
+         deny("failed-precondition","The exact personalized task for this submitted version is unavailable.");
+       personalizedTask={variantId,prompt:variant.data().prompt,
+         evaluationNotes:variant.data().evaluationNotes||"",source:"verified_private_pool_fallback"};
+     }
    }
    return {submissionId,taskId,status:submission.data().status,version,
      files:snapshot.data().files,artifacts:snapshot.data().artifacts||{},contentDigest:snapshot.data().contentDigest,
