@@ -7,7 +7,7 @@
       "releasedAt": "2026-11-19",
       "publishedAt": "2026-11-19T00:00:00+08:00",
       "title": "Personalized assessments, unified review and assessment-aware Studio",
-      "summary": "Adminerva 3.3.0 connects assessment authoring, personalized learner tasks, assessment-owned Studio projects, frozen submission review and teacher-controlled evaluation more closely, while strengthening Academic Configuration and preserving historical Studio evidence.",
+      "summary": "Adminerva 3.3.0 connects assessment authoring, personalized learner tasks, assessment-owned Studio projects, frozen submission review and teacher-controlled evaluation more closely. It also strengthens Academic Configuration while preserving historical Studio evidence.",
       "highlights": [
         {
           "title": "A clearer Assessment Studio",
@@ -19,8 +19,17 @@
           ],
           "media": {
             "src": "assets/releases/3.3.0/assessment-studio-overview.webp",
-            "alt": "Assessment Studio showing teacher-owned assessments and deployment actions",
-            "caption": "Assessment Studio consolidates assessment authoring and deployment actions in one workspace."
+            "alt": "Assessment Studio workspace with signed-in account details obscured",
+            "caption": "Assessment Studio consolidates assessment authoring and deployment actions in one workspace.",
+            "redactions": [
+              {
+                "x": 87.3,
+                "y": 0,
+                "width": 12.7,
+                "height": 11.8,
+                "label": "Signed-in account details"
+              }
+            ]
           }
         },
         {
@@ -34,8 +43,24 @@
           ],
           "media": {
             "src": "assets/releases/3.3.0/personalized-student-task.webp",
-            "alt": "Student assessment view showing a personalized Adminerva Studio task and submitted revision",
-            "caption": "A learner attempt retains its own private task variant and Studio submission."
+            "alt": "Student personalized assessment view with private variant and task content obscured",
+            "caption": "A learner attempt retains its own private task variant and Studio submission.",
+            "redactions": [
+              {
+                "x": 16.2,
+                "y": 34.5,
+                "width": 34,
+                "height": 4.5,
+                "label": "Private variant identifier"
+              },
+              {
+                "x": 15.8,
+                "y": 39.2,
+                "width": 72.5,
+                "height": 31,
+                "label": "Private learner task content"
+              }
+            ]
           }
         },
         {
@@ -58,8 +83,17 @@
           ],
           "media": {
             "src": "assets/releases/3.3.0/unified-review-grade.webp",
-            "alt": "Review and Grade showing a historical Adminerva Studio assessment available from the unified workflow",
-            "caption": "Historical Studio assessments now surface from the unified Review & Grade workflow."
+            "alt": "Unified Review and Grade workflow with school-specific section details obscured",
+            "caption": "Historical Studio assessments now surface from the unified Review & Grade workflow.",
+            "redactions": [
+              {
+                "x": 3.5,
+                "y": 78.5,
+                "width": 70,
+                "height": 4.8,
+                "label": "School section details"
+              }
+            ]
           }
         },
         {
@@ -80,8 +114,24 @@
           ],
           "media": {
             "src": "assets/releases/3.3.0/academic-configuration.webp",
-            "alt": "Academic Configuration showing all six setup steps completed and active course offerings",
-            "caption": "Academic Configuration presents school structure as a guided, reviewable sequence."
+            "alt": "Academic Configuration workflow with account and live school details obscured",
+            "caption": "Academic Configuration presents school structure as a guided, reviewable sequence.",
+            "redactions": [
+              {
+                "x": 87,
+                "y": 0,
+                "width": 13,
+                "height": 11,
+                "label": "Signed-in account details"
+              },
+              {
+                "x": 43.5,
+                "y": 72.5,
+                "width": 38.5,
+                "height": 12.5,
+                "label": "Live school course-offering details"
+              }
+            ]
           }
         }
       ],
@@ -290,32 +340,31 @@
             "all"
           ],
           "text": "Continued consolidating assessment and school-administration navigation so active workflows have clearer canonical entry points and shared release information."
-        },
+        }
+      ],
+      "development": [
         {
-          "type": "Updated",
-          "area": "Developer focus · Enrollment & Registration",
+          "title": "Enrollment & Registration",
+          "summary": "Enrollment and Registration has a substantial implemented foundation, but the complete applicant → review → enrollment → activation → Classroom lifecycle remains under operational validation and is not presented as completed in this release.",
           "audience": [
             "admin"
-          ],
-          "text": "Enrollment and Registration has a substantial implemented foundation, but the complete applicant → review → enrollment → activation → Classroom lifecycle remains under operational validation and is not presented as completed in this release."
+          ]
         },
         {
-          "type": "Updated",
-          "area": "Developer focus · Student Games",
+          "title": "Student Games",
+          "summary": "The redesigned Student Games experience remains a development preview and is not part of the released 3.3.0 feature set.",
           "audience": [
             "student",
             "teacher",
             "admin"
-          ],
-          "text": "The redesigned Student Games experience remains a development preview and is not part of the released 3.3.0 feature set."
+          ]
         },
         {
-          "type": "Updated",
-          "area": "Developer focus · Operations Center",
+          "title": "Operations Center",
+          "summary": "The System Administrator Operations Center and first-party observability work remain under development and are not part of the released 3.3.0 feature set.",
           "audience": [
             "admin"
-          ],
-          "text": "The System Administrator Operations Center and first-party observability work remain under development and are not part of the released 3.3.0 feature set."
+          ]
         }
       ]
     },
