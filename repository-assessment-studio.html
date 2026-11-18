@@ -398,6 +398,11 @@
             <span><strong class="text-sm text-slate-800">Enforce deadline</strong>
               <span class="block text-xs text-slate-500">Uncheck for historical assessments; existing deployments keep their settings until edited.</span></span>
           </label>
+          <label id="deployAllowLateWrap" class="flex gap-3 items-start p-3 rounded-lg bg-amber-50 border border-amber-200 mb-3">
+            <input type="checkbox" id="deployAllowLate" class="mt-1 h-4 w-4" />
+            <span><strong class="text-sm text-amber-950">Allow late submissions</strong>
+              <span class="block text-xs text-amber-800">Keeps the official deadline, but allows students to submit after it while the deployment remains active.</span></span>
+          </label>
           <div id="deployScheduleFields">
             <label class="block text-sm font-bold text-gray-700 mb-2"
               >Duration & Schedule</label
@@ -478,7 +483,7 @@
 <script src="js/core/adminerva-loader.js?v=d3c36ea3ed84"></script>
     <script type="module" src="js/core/auth-guard-v4-pilot.js?v=d3c36ea3ed84"></script>
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.2"></script>
-    <script type="module" src="js/repo-review/assessment-studio.js?v=3.0.15"></script>
+    <script type="module" src="js/repo-review/assessment-studio.js?v=3.0.16"></script>
     <div id="assessmentToastRegion" class="fixed right-4 top-4 z-[220] flex w-[min(92vw,24rem)] flex-col gap-2 pointer-events-none" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
