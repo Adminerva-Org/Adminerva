@@ -13,7 +13,7 @@ function compactTask(task={}){
     rubric:Array.isArray(task.rubric)?task.rubric.map(row=>({
       name:text(row?.name,200),points:Number(row?.points||0)
     })).filter(row=>row.name&&Number.isFinite(row.points)&&row.points>0):[],
-    maxScore:Number(task.rubricMax||0),
+    maxScore:Number(task.rubricMax??task.maxScore??(Array.isArray(task.rubric)?task.rubric.reduce((sum,row)=>sum+Number(row?.points||0),0):0)),
     submissionSource:text(task.submissionSource,40),
     personalized:task.personalizedTask?.enabled===true
   };
