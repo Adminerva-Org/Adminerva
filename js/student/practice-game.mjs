@@ -9,7 +9,7 @@ import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} 
 import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest} from "./practice-session.mjs?v=1.3.0";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
 const functions=getFunctions(app,"asia-southeast1"),field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
-const typeNames={choice:"Quick Pick",output:"Code Trace",ordering:"Code Builder",matching:"Logic Match",debugging:"Bug Hunt"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
+const typeNames=guestPage?{choice:"Choose the answer",output:"Write the output",ordering:"Build the sequence",matching:"Match the pairs",debugging:"Fix the bug"}:{choice:"Quick Pick",output:"Code Trace",ordering:"Code Builder",matching:"Logic Match",debugging:"Bug Hunt"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
 const initialGame=getProgrammingGame(new URLSearchParams(location.search).get("game"));
 const TOTAL_MISSIONS=COURSES.reduce((sum,entry)=>sum+entry.missions.length,0);
 let user=null,eligible=false,hub={},course=COURSES[0],activeGame=initialGame.external?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[];
@@ -207,7 +207,7 @@ function recommendedGameId(){
 }
 function renderGameCatalog(){
   const catalog=field("labGameCatalog");if(!catalog)return;catalog.replaceChildren();
-  const recommended=recommendedGameId(),ordered=[...PROGRAMMING_GAMES].sort((a,b)=>a.id===recommended?-1:b.id===recommended?1:a.id==="all"?-1:b.id==="all"?1:0);
+  const recommended=guestPage?null:recommendedGameId(),ordered=guestPage?[...PROGRAMMING_GAMES]:[...PROGRAMMING_GAMES].sort((a,b)=>a.id===recommended?-1:b.id===recommended?1:a.id==="all"?-1:b.id==="all"?1:0);
   for(const game of ordered){
     const total=game.external?0:COURSES.reduce((sum,entry)=>sum+gameMissions(entry,game.id).length,0);
     const done=game.external?0:COURSES.reduce((sum,entry)=>sum+gameMissions(entry,game.id).filter(item=>completed(item.id)).length,0);
@@ -232,6 +232,7 @@ function renderGameCatalog(){
     top.append(node("span",game.icon,"lab-game-card-icon"),node("span",game.id===recommended?"FOR YOU":game.tag,"lab-game-card-tag"));
     item.append(top,node("strong",game.name),node("p",game.description));
     if(game.external)item.append(node("small","Open XML Lab ↗"));
+    else if(guestPage)item.append(node("small",done+" / "+total+" complete"));
     else{
       const progress=node("div",undefined,"lab-game-progress"),meter=node("div",undefined,"games-meter"),fill=node("span"),count=node("small",done+" / "+total);
       fill.style.width=(total?Math.round(done/total*100):0)+"%";meter.append(fill);progress.append(meter,count);item.append(progress);
@@ -290,7 +291,7 @@ function renderAnswer(){
 function renderMechanicAid(question){
   const panel=field("labMechanicPanel");panel.replaceChildren();panel.hidden=true;panel.dataset.kind="";panel.classList.remove("is-trace","is-debug");
   field("practiceCode").hidden=!question.code;
-  if(mission?.oop===true){
+  if(!guestPage&&mission?.oop===true){
     const blueprints={
       "oop-classes":["CLASS","creates","OBJECT"],
       "oop-encapsulation":["PRIVATE STATE","controlled by","METHODS"],
@@ -302,10 +303,11 @@ function renderMechanicAid(question){
     const flow=node("div",undefined,"games-oop-flow");flow.append(node("span",parts[0],"games-oop-node"),node("span",parts[1],"games-oop-link"),node("span",parts[2],"games-oop-node"));
     blueprint.append(head,flow);panel.append(blueprint);panel.hidden=false;panel.dataset.kind="oop";
   }
-  if(question.type==="output"){
+  const hasTraceGuide=Array.isArray(question.traceGuide)&&question.traceGuide.length;
+  if(question.type==="output"&&(!guestPage||hasTraceGuide)){
     panel.hidden=false;panel.dataset.kind="trace";
-    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE TRACE","lab-mechanic-kicker"),node("strong","Trace board"));
-    const guide=Array.isArray(question.traceGuide)&&question.traceGuide.length?question.traceGuide:["Read the starting values.","Follow each call or update in order.","Write the exact final output."];
+    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span",guestPage?"TRACE QUEST":"CODE TRACE","lab-mechanic-kicker"),node("strong","Trace board"));
+    const guide=hasTraceGuide?question.traceGuide:["Read the starting values.","Follow each call or update in order.","Write the exact final output."];
     const list=node("ol",undefined,"lab-trace-steps");guide.forEach(step=>list.append(node("li",step)));
     panel.append(head,list);
   }
@@ -317,10 +319,10 @@ function renderMechanicAid(question){
     question.code.split("\n").forEach((text,index)=>{const row=node("div",undefined,"lab-code-line"+(index+1===question.focusLine?" is-focus":""));row.append(node("span",String(index+1),"lab-code-line-number"),node("code",text||" "));viewer.append(row);});
     panel.append(head,hint,viewer);
   }
-  if(question.type==="ordering"){
+  if(!guestPage&&question.type==="ordering"){
     panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(head);
   }
-  if(question.type==="matching"){
+  if(!guestPage&&question.type==="matching"){
     panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(head);
   }
 }
