@@ -499,6 +499,20 @@ body.lab-page::after{
   line-height:1.45;
 }
 .lab-game-card small{color:#61d6df}
+.lab-game-progress{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:.45rem;
+  margin-top:auto;
+}
+.lab-game-progress .games-meter{height:6px}
+.lab-game-progress small{
+  margin:0;
+  color:#75dbe2;
+  font-size:.54rem;
+  font-weight:850;
+}
 .lab-course-tabs{
   display:flex;
   gap:.5rem;
@@ -1035,4 +1049,10 @@ body.lab-page::after{
 @media(max-width:700px){
   .games-challenge-list{grid-template-columns:1fr}
   .games-challenges{padding:.75rem}
+}
+
+@media(max-width:520px){
+  .lab-game-card p{display:none}
+  .lab-game-card{min-height:124px}
+  .lab-game-progress{margin-top:auto}
 }
