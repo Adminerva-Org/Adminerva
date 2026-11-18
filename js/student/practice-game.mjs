@@ -112,7 +112,7 @@ function formatChallengeDue(value){
 }
 function renderChallenges(){
   const list=field("gamesChallengeList"),count=field("gamesChallengeCount");if(!list||!count)return;
-  list.replaceChildren();count.textContent=assignedPacks.length?assignedPacks.length+" active":"None assigned";
+  list.replaceChildren();count.textContent=assignedPacks.length?assignedPacks.length+" active":"None assigned";const nav=field("gamesChallengesNav");if(nav){nav.dataset.count=assignedPacks.length?String(Math.min(99,assignedPacks.length)):"";nav.classList.toggle("has-count",assignedPacks.length>0);}
   if(!assignedPacks.length){
     const empty=node("div",undefined,"games-challenge-empty");empty.append(node("span","✓","games-challenge-empty-icon"),node("span","No teacher challenges right now."));list.append(empty);return;
   }
@@ -140,7 +140,8 @@ function celebrateMission(){
 function enhanceGamesHub(){
   const app=field("practiceApp"),existing=[...app.children],shell=node("div",undefined,"games-shell"),rail=node("nav",undefined,"games-rail"),content=node("div",undefined,"games-content");
   rail.setAttribute("aria-label","Games navigation");
-  [["#gamesHome","⌂","Hub"],["#labGameCatalog","🎮","Games"],["#gamesChallenges","✦","Challenges"],["#gamesProgress","◫","Progress"]].forEach(([href,icon,label],index)=>{const link=document.createElement("a");link.href=href;link.className="games-rail-link"+(index===0?" is-current":"");link.append(node("span",icon),node("span",label));link.addEventListener("click",()=>{for(const item of rail.querySelectorAll(".games-rail-link"))item.classList.toggle("is-current",item===link);});rail.append(link);});
+  const setCurrentRail=link=>{for(const item of rail.querySelectorAll(".games-rail-link")){const current=item===link;item.classList.toggle("is-current",current);if(current)item.setAttribute("aria-current","location");else item.removeAttribute("aria-current");}};
+  [["#gamesHome","⌂","Hub"],["#labGameCatalog","🎮","Games"],["#gamesChallenges","✦","Challenges"],["#gamesProgress","◫","Progress"]].forEach(([href,icon,label],index)=>{const link=document.createElement("a");link.href=href;link.className="games-rail-link"+(index===0?" is-current":"");if(index===0)link.setAttribute("aria-current","location");if(label==="Challenges")link.id="gamesChallengesNav";link.append(node("span",icon),node("span",label));link.addEventListener("click",()=>setCurrentRail(link));rail.append(link);});
   content.append(...existing);const celebrationLayer=node("div",undefined,"games-celebration");celebrationLayer.id="gamesCelebrationLayer";celebrationLayer.setAttribute("aria-hidden","true");shell.append(rail,content,celebrationLayer);app.replaceChildren(shell);
   const hero=content.querySelector(".lab-hero");hero.id="gamesHome";hero.className="games-hero";
   const copy=node("div",undefined,"games-hero-copy"),eyebrow=node("p","CONTINUE PLAYING","lab-eyebrow"),mode=node("div",undefined,"games-hero-mode"),modeIcon=node("span","◈"),modeText=node("span","Mission Map");modeText.id="labHeroMode";mode.append(modeIcon,modeText);
@@ -156,6 +157,11 @@ function enhanceGamesHub(){
   const progressCard=node("section",undefined,"games-utility-card games-glass"),progressTitle=node("div",undefined,"games-utility-title");progressTitle.append(node("strong","Your progress"),node("span","▥"));const rings=node("div",undefined,"games-progress-rings");[["labProgressLogic","Logic"],["labProgressDebug","Debug"],["labProgressOop","OOP"]].forEach(([id,label])=>{const wrap=node("div",undefined,"games-progress-item"),ring=node("div",undefined,"games-progress-ring");ring.id=id;ring.style.setProperty("--value","0");ring.append(node("strong","0%"));wrap.append(ring,node("small",label));rings.append(wrap);});progressCard.id="gamesProgress";progressCard.append(progressTitle,rings,field("practiceOverview"),field("labPreviousProgress"));
   sidebar.prepend(progressCard);sidebar.prepend(achievementCard);sidebar.prepend(levelCard);sidebar.prepend(dailyCard);
   assignedPacks=Array.isArray(window.__adminervaPracticePacks)?window.__adminervaPracticePacks:[];renderChallenges();
+  if("IntersectionObserver" in window){
+    const links=[...rail.querySelectorAll(".games-rail-link")],targets=links.map(link=>document.querySelector(link.getAttribute("href"))).filter(Boolean);
+    const observer=new IntersectionObserver(entries=>{const visible=entries.filter(entry=>entry.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];if(!visible)return;const link=links.find(item=>item.getAttribute("href")==="#"+visible.target.id);if(link)setCurrentRail(link);},{rootMargin:"-20% 0px -60% 0px",threshold:[0,.15,.35,.6]});
+    targets.forEach(target=>observer.observe(target));
+  }
 }
 function missionModule(entryCourse,entryMission){return entryCourse.modules?.find(module=>module.missions.some(item=>item.id===entryMission.id))||null;}
 function gameMissions(entryCourse,gameId=activeGame){return entryCourse.missions.filter(entry=>programmingGameMatches(gameId,entryCourse,entry,missionMeta(entryCourse,entry),missionModule(entryCourse,entry)));}
