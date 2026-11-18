@@ -9,6 +9,23 @@ let releases=[],viewerRole=null;
 const roleLabel=role=>role==="admin"?"Administrator":role==="teacher"?"Teacher":role==="student"?"Student":"Public";
 const normalizeVersion=value=>String(value||"").replace(/^v/i,"");
 
+function releaseMediaStage(media,image){
+  const stage=node("span","","av-release-media-stage");
+  stage.append(image);
+  for(const redaction of media?.redactions||[]){
+    const mask=node("span","","av-release-media-redaction");
+    mask.style.left=redaction.x+"%";
+    mask.style.top=redaction.y+"%";
+    mask.style.width=redaction.width+"%";
+    mask.style.height=redaction.height+"%";
+    if(redaction.label){
+      mask.title=redaction.label+" obscured for privacy";
+      mask.setAttribute("aria-label",redaction.label+" obscured for privacy");
+    }else mask.setAttribute("aria-hidden","true");
+    stage.append(mask);
+  }
+  return stage;
+}
 let mediaDialog=null;
 function openReleaseMedia(media){
   if(!media?.src)return;
@@ -18,15 +35,29 @@ function openReleaseMedia(media){
     const shell=node("div","","av-release-media-dialog-shell"),
       close=node("button","Close","av-release-media-close"),
       image=document.createElement("img"),
+      stage=releaseMediaStage({},image),
       caption=node("p","","av-release-media-dialog-caption");
     close.type="button";
     close.addEventListener("click",()=>mediaDialog.close());
     mediaDialog.addEventListener("click",event=>{if(event.target===mediaDialog)mediaDialog.close();});
-    shell.append(close,image,caption);mediaDialog.append(shell);document.body.append(mediaDialog);
-    mediaDialog._image=image;mediaDialog._caption=caption;
+    shell.append(close,stage,caption);mediaDialog.append(shell);document.body.append(mediaDialog);
+    mediaDialog._image=image;mediaDialog._stage=stage;mediaDialog._caption=caption;
   }
   mediaDialog._image.src=media.src;
   mediaDialog._image.alt=media.alt||"";
+  mediaDialog._stage.querySelectorAll(".av-release-media-redaction").forEach(item=>item.remove());
+  for(const redaction of media.redactions||[]){
+    const mask=node("span","","av-release-media-redaction");
+    mask.style.left=redaction.x+"%";
+    mask.style.top=redaction.y+"%";
+    mask.style.width=redaction.width+"%";
+    mask.style.height=redaction.height+"%";
+    if(redaction.label){
+      mask.title=redaction.label+" obscured for privacy";
+      mask.setAttribute("aria-label",redaction.label+" obscured for privacy");
+    }else mask.setAttribute("aria-hidden","true");
+    mediaDialog._stage.append(mask);
+  }
   mediaDialog._caption.textContent=media.caption||"";
   mediaDialog._caption.hidden=!media.caption;
   if(typeof mediaDialog.showModal==="function")mediaDialog.showModal();
@@ -63,7 +94,7 @@ function releaseHighlights(release){
       button.className="av-release-media-button";
       button.setAttribute("aria-label","Enlarge screenshot: "+(highlight.media.alt||highlight.title));
       image.src=highlight.media.src;image.alt=highlight.media.alt||"";image.loading="lazy";image.decoding="async";
-      button.append(image);button.addEventListener("click",()=>openReleaseMedia(highlight.media));figure.append(button);
+      button.append(releaseMediaStage(highlight.media,image));button.addEventListener("click",()=>openReleaseMedia(highlight.media));figure.append(button);
       if(highlight.media.caption)figure.append(node("figcaption",highlight.media.caption));
       item.append(figure);
     }
@@ -113,7 +144,12 @@ function releaseChangelog(release){
   return details;
 }
 function developerFocus(release){
-  const changes=(release.changes||[]).filter(developerChange);
+  const explicit=Array.isArray(release.development)?release.development:[];
+  const legacy=(release.changes||[]).filter(developerChange).map(change=>({
+    title:(change.area||"").replace(/^Developer focus\s*·\s*/i,""),
+    summary:change.text
+  }));
+  const changes=explicit.length?explicit:legacy;
   if(!changes.length)return null;
   const section=node("aside","","av-release-development");
   section.append(node("span","Not included in this release","av-release-development-label"),node("h3","Still in development","av-release-development-title"));
@@ -121,9 +157,8 @@ function developerFocus(release){
   section.append(intro);
   const list=node("ul","","av-release-development-list");
   for(const change of changes){
-    const title=(change.area||"").replace(/^Developer focus\s*·\s*/i,"");
     const item=node("li","");
-    item.append(node("strong",title),node("p",change.text));
+    item.append(node("strong",change.title),node("p",change.summary));
     list.append(item);
   }
   section.append(list);
