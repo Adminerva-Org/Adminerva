@@ -2426,3 +2426,18 @@ body.lab-page::after{
   .game-visual-copy small{display:none}
   .lab-mission-actions :is(button,a){width:100%;flex-basis:100%}
 }
+
+@media(max-width:560px){
+  .games-oop-flow[data-steps="5"] .games-oop-link::before{
+    content:"↓";
+    display:block;
+    width:auto;
+    height:auto;
+    margin:.05rem 0;
+    background:none;
+    color:#9f8bcf;
+    font-size:.8rem;
+    line-height:1;
+  }
+  .games-oop-flow[data-steps="5"] .games-oop-link::after{display:none}
+}
