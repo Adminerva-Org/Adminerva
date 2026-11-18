@@ -13,6 +13,7 @@ function compactTask(task={}){
     rubric:Array.isArray(task.rubric)?task.rubric.map(row=>({
       name:text(row?.name,200),points:Number(row?.points||0)
     })).filter(row=>row.name&&Number.isFinite(row.points)&&row.points>0):[],
+    rubricText:text(task.rubricText,12000),
     maxScore:Number(task.rubricMax??task.maxScore??(Array.isArray(task.rubric)?task.rubric.reduce((sum,row)=>sum+Number(row?.points||0),0):0)),
     submissionSource:text(task.submissionSource,40),
     personalized:task.personalizedTask?.enabled===true
@@ -70,6 +71,7 @@ export function responseShape(task={}){
     format:GENERAL_EXTERNAL_RESPONSE_FORMAT,
     criteria:rubric.map(row=>({
       name:String(row.name||""),
+      maximumPoints:Number(row.points||0),
       awardedPoints:"number",
       pendingPoints:"number",
       comment:"Concise criterion feedback",
@@ -85,12 +87,16 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
   if(!assessment.rubric.length)throw Error("This assessment has no rubric.");
   if(!["text","link","studio","github"].includes(assessment.submissionSource))
     throw Error("This assessment evidence type is not supported by the shared evaluator.");
+  const evidence=compactEvidence(assessment.submissionSource,snapshot);
+  if(assessment.submissionSource==="studio"&&assessment.personalized===true&&
+     (!evidence.personalizedTask||!text(evidence.personalizedTask.prompt,12000)))
+    throw Error("This personalized Studio submission is missing its assigned scenario. Reload the submission until the personalized task is available before running or copying AI evaluation.");
   const payload={
     format:GENERAL_EXTERNAL_EVALUATION_FORMAT,
     privacy:"Learner name, email and account identifiers are intentionally omitted.",
     assessment,
     teacherCheckingInstructions:text(checkingInstructions,8000),
-    evidence:compactEvidence(assessment.submissionSource,snapshot),
+    evidence,
     gradingRules:{
       rubricAuthority:"Use the published rubric exactly. Do not add requirements or reweight criteria.",
       evidenceBoundary:"Award points only for evidence present in this frozen submission package. Put uncertainty in pendingPoints or limitations.",
