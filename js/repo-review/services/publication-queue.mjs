@@ -21,7 +21,8 @@ export function legacyReadyDraft(data={}) {
 }
 export function publicationCandidates(entries,published=true) {
   return entries.filter(entry=>Boolean(entry.data.published)!==published &&
-    (!published || ((entry.data.reviewRequired===false || legacyReadyDraft(entry.data)) &&
+    (!published || ((entry.data.reviewRequired===false ||
+      legacyReadyDraft(entry.data) || approvableEvaluationDraft(entry.data)) &&
       typeof entry.data.score==="number" && Number.isFinite(entry.data.score) &&
       entry.data.score>=0 && typeof (entry.data.maxScore??entry.maxScore)==="number" && Number.isFinite(entry.data.maxScore??entry.maxScore) &&
       (entry.data.maxScore??entry.maxScore)>0 && entry.data.score<=(entry.data.maxScore??entry.maxScore))));
