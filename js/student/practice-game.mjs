@@ -25,9 +25,9 @@ function setBusy(value){busy=value;field("practiceMissionPanel").setAttribute("a
 function completed(id){return (hub.courses||[]).some(row=>row.completed?.includes(id));}
 function earned(id){for(const row of hub.courses||[])if(row.missionScores?.[id]!==undefined)return row.missionScores[id];return 0;}
 function renderSummary(){
-  const points=hub.points||0,count=hub.completedCount||0;
-  field("practiceOverview").replaceChildren(...[[points.toLocaleString(),"Practice Points"],[count+" / "+TOTAL_MISSIONS,"Missions completed"],["Level "+(1+Math.floor(points/250)),"Every 250 points = a level"]].map(([value,label])=>{const item=node("div",undefined,"lab-stat");item.append(node("strong",value),node("span",label));return item;}));
-  field("labPreviousProgress").textContent=hub.legacyCount?hub.legacyCount+" earlier missions are preserved in your account. This season starts a separate score.":"One reward per mission this season. Your school grades stay separate.";
+  const points=hub.points||0,count=hub.completedCount||0,level=1+Math.floor(points/250);
+  field("practiceOverview").replaceChildren(...[[points.toLocaleString(),"Skill XP"],[count+" / "+TOTAL_MISSIONS,"Missions"],["Level "+level,"Season level"]].map(([value,label])=>{const item=node("div",undefined,"lab-stat");item.append(node("strong",value),node("span",label));return item;}));
+  field("labPreviousProgress").textContent=hub.legacyCount?hub.legacyCount+" earlier missions are preserved.":"Practice XP stays separate from school grades.";
   field("labIdentity").textContent=user?user.displayName||hub.alias||"Signed-in learner":"Public visitor";
   field("labAccountLink").textContent=user?"My workspace":"Sign in";field("labAccountLink").href=user?(guestPage?"guest-home.html":"student-home.html"):"login.html";
   field("labPreferences").hidden=!eligible;field("labPreferencesSignin").hidden=eligible;
@@ -35,7 +35,50 @@ function renderSummary(){
   field("labOptIn").checked=hub.optIn===true;
   const select=field("practiceClass"),selected=hub.classId||"";select.replaceChildren();
   for(const profile of hub.classes||[])select.add(new Option(profile.section,profile.id));select.disabled=!(hub.classes||[]).length;select.hidden=!(hub.classes||[]).length;select.value=selected;
-  field("labClassHint").textContent=(hub.classes||[]).length?"Only your class sees this private class board.":"Your class board appears when your school links a student section. Everyone can explore the same missions.";
+  field("labClassHint").textContent=(hub.classes||[]).length?"Only your class sees this private class board.":"Your class board appears when your school links a student section.";
+  renderHubHero();
+}
+function featuredTarget(){
+  const ordered=[course,...COURSES.filter(entry=>entry.id!==course.id)];
+  for(const entry of ordered){
+    const pool=gameMissions(entry);
+    if(!pool.length)continue;
+    return {course:entry,mission:pool.find(item=>!completed(item.id))||pool[0]};
+  }
+  return null;
+}
+function renderHubHero(){
+  const title=field("labHeroTitle");if(!title)return;
+  const count=hub.completedCount||0,points=hub.points||0,total=Math.max(1,TOTAL_MISSIONS);
+  const progress=Math.max(0,Math.min(100,Math.round(count/total*100))),level=1+Math.floor(points/250),levelProgress=Math.max(0,Math.min(100,Math.round((points%250)/250*100)));
+  const target=featuredTarget(),game=getProgrammingGame(activeGame);
+  field("labHeroMode").textContent=game.name;
+  title.textContent=target?target.mission.title.replace(/ · (Guided|Apply|Challenge)$/,""):"Programming missions";
+  field("labHeroSub").textContent=target?(target.course.name+" · "+typeNames[missionMeta(target.course,target.mission).type]):"Choose a game and start a mission.";
+  field("labHeroProgress").style.width=progress+"%";field("labHeroProgressText").textContent=progress+"%";
+  const button=field("labHeroContinue");button.disabled=!target;button.dataset.course=target?.course.id||"";button.dataset.mission=target?.mission.id||"";button.querySelector("span:last-child").textContent=target&&completed(target.mission.id)?"Replay":"Continue";
+  field("labLevelText").textContent="Lv. "+level;field("labLevelPoints").textContent=(points%250)+" / 250 XP";field("labLevelProgress").style.width=levelProgress+"%";
+  field("labBadgeStarter").classList.toggle("is-earned",count>=1);
+  field("labBadgeExplorer").classList.toggle("is-earned",count>=Math.min(10,TOTAL_MISSIONS));
+  field("labBadgeMaster").classList.toggle("is-earned",count>=TOTAL_MISSIONS&&TOTAL_MISSIONS>0);
+}
+function enhanceGamesHub(){
+  const app=field("practiceApp"),existing=[...app.children],shell=node("div",undefined,"games-shell"),rail=node("nav",undefined,"games-rail"),content=node("div",undefined,"games-content");
+  rail.setAttribute("aria-label","Games navigation");
+  [["#gamesHome","⌂","Hub"],["#labGameCatalog","🎮","Games"],["#practiceCourseList","✦","Paths"],["#practiceStandings","🏆","Ranks"]].forEach(([href,icon,label],index)=>{const link=document.createElement("a");link.href=href;link.className="games-rail-link"+(index===0?" is-current":"");link.append(node("span",icon),node("span",label));link.addEventListener("click",()=>{for(const item of rail.querySelectorAll(".games-rail-link"))item.classList.toggle("is-current",item===link);});rail.append(link);});
+  content.append(...existing);shell.append(rail,content);app.replaceChildren(shell);
+  const hero=content.querySelector(".lab-hero");hero.id="gamesHome";hero.className="games-hero";
+  const copy=node("div",undefined,"games-hero-copy"),eyebrow=node("p","CONTINUE PLAYING","lab-eyebrow"),mode=node("div",undefined,"games-hero-mode"),modeIcon=node("span","◈"),modeText=node("span","Mission Map");modeText.id="labHeroMode";mode.append(modeIcon,modeText);
+  const title=node("h1","Programming missions");title.id="labHeroTitle";const sub=node("p","Choose a game and start a mission.","games-hero-sub");sub.id="labHeroSub";
+  const progress=node("div",undefined,"games-hero-progress"),meter=node("div",undefined,"games-meter"),fill=node("span");fill.id="labHeroProgress";meter.append(fill);const progressText=node("strong","0%");progressText.id="labHeroProgressText";progress.append(meter,progressText);
+  const continueButton=node("button",undefined,"games-primary");continueButton.id="labHeroContinue";continueButton.type="button";continueButton.append(node("span","▶"),node("span","Continue"));
+  copy.append(eyebrow,mode,title,sub,progress,continueButton);
+  const art=node("div",undefined,"games-hero-art");["one","two","three"].forEach(kind=>art.append(node("span",undefined,"games-orb "+kind)));const image=document.createElement("img");image.src="assets/adminerva-owl.png";image.alt="";art.append(image);hero.replaceChildren(copy,art);
+  const map=field("labMapPanel");map.classList.add("games-section");const headings=map.querySelectorAll(".lab-section-heading h2");if(headings[0])headings[0].textContent="Recommended games";if(headings[1])headings[1].textContent="Skill paths";
+  const sidebar=content.querySelector(".lab-sidebar"),levelCard=node("section",undefined,"games-utility-card games-glass"),levelTitle=node("div",undefined,"games-utility-title"),levelLabel=node("strong","Skill XP"),levelText=node("span","Lv. 1");levelText.id="labLevelText";levelTitle.append(levelLabel,levelText);const levelRow=node("div",undefined,"games-level-row"),nextLevel=node("strong","Next level"),levelPoints=node("small","0 / 250 XP");levelPoints.id="labLevelPoints";levelRow.append(nextLevel,levelPoints);const levelMeter=node("div",undefined,"games-meter"),levelFill=node("span");levelFill.id="labLevelProgress";levelMeter.append(levelFill);levelCard.append(levelTitle,levelRow,levelMeter);
+  const achievementCard=node("section",undefined,"games-utility-card games-glass"),achievementTitle=node("div",undefined,"games-utility-title");achievementTitle.append(node("strong","Achievements"),node("span","◆"));const achievements=node("div",undefined,"games-achievements");[["labBadgeStarter","⌁","First mission completed"],["labBadgeExplorer","✦","Ten missions completed"],["labBadgeMaster","◇","All missions completed"]].forEach(([id,icon,label])=>{const badge=node("span",icon,"games-badge");badge.id=id;badge.title=label;badge.setAttribute("aria-label",label);achievements.append(badge);});achievementCard.append(achievementTitle,achievements);
+  const progressCard=node("section",undefined,"games-utility-card games-glass"),progressTitle=node("div",undefined,"games-utility-title");progressTitle.append(node("strong","Your progress"),node("span","▥"));progressCard.append(progressTitle,field("practiceOverview"),field("labPreviousProgress"));
+  sidebar.prepend(progressCard);sidebar.prepend(achievementCard);sidebar.prepend(levelCard);
 }
 function missionModule(entryCourse,entryMission){return entryCourse.modules?.find(module=>module.missions.some(item=>item.id===entryMission.id))||null;}
 function gameMissions(entryCourse,gameId=activeGame){return entryCourse.missions.filter(entry=>programmingGameMatches(gameId,entryCourse,entry,missionMeta(entryCourse,entry),missionModule(entryCourse,entry)));}
@@ -67,6 +110,7 @@ function renderGameCatalog(){
     item.append(top,node("strong",game.name),node("p",game.description),node("small",game.external?"Open XML Lab ↗":done+" / "+total+" complete"));
     catalog.append(item);
   }
+  renderHubHero();
 }
 function renderCourses(){
   renderGameCatalog();ensureCourseForGame();
@@ -190,6 +234,8 @@ function markup(){return `
   <details class="lab-rules"><summary>How scoring works</summary><div class="lab-rules-grid">${DIFFICULTIES.map(level=>`<div><strong>${level.name}</strong><span>${level.maximum} points to start</span><small>−${level.deduction} per incorrect scored answer · floor ${level.floor} points</small></div>`).join("")}</div><p>Only selecting Submit scored answer counts as a graded attempt. Opening a mission, changing an answer, running code, compiler errors, and connection failures do not deduct points. Each mission rewards you once per season. Replays cannot add points. Practice scores do not change school grades. Earlier completion history is preserved.</p><p>Guests and students share this mission pool. A verified signed-in account with an active or pending school access request can save points. Visitors can preview missions and use the public Playground.</p></details></div>
   <aside class="lab-sidebar"><section class="lab-board"><div class="lab-section-heading"><h2>Leaderboard</h2><span aria-hidden="true">🏆</span></div><div class="lab-board-tabs"><button id="labGlobalTab" type="button" aria-pressed="true">Global</button><button id="labClassTab" type="button" aria-pressed="false">My class</button></div><div id="labClassControls" hidden><select id="practiceClass" aria-label="Choose your practice class"></select><p id="labClassHint"></p></div><ol id="practiceStandings" aria-label="Practice rankings"></ol><p id="labBoardFootnote" class="lab-board-footnote">Current season · top 30 public aliases. Equal points share a rank.</p></section><details class="lab-public-preferences"><summary>Your public leaderboard alias</summary><p>Choose a nickname, never your real name, school or email. Public rows contain only aliases, season points and mission counts. Joining is optional.</p><form id="labPreferences" hidden><label for="labAlias">Nickname<input id="labAlias" maxlength="24" minlength="3" pattern="[A-Za-z0-9 _-]{3,24}" required autocomplete="off"></label><label class="lab-checkbox"><input id="labOptIn" type="checkbox"> Show my alias and points publicly</label><button id="labPreferencesSave" type="submit">Save leaderboard choice</button><p id="labPreferencesStatus" role="status"></p></form><a id="labPreferencesSignin" href="login.html">Sign in to join the season →</a></details><section class="lab-tip-card"><span aria-hidden="true">✦</span><h3>Try. Learn. Come back stronger.</h3><p>Incorrect answers are part of practice. Every difficulty has a minimum reward, so you can keep learning.</p></section></aside></div>`;}
 field("practiceApp").innerHTML=markup();
+enhanceGamesHub();
+field("labHeroContinue").addEventListener("click",()=>{if(busy)return;const button=field("labHeroContinue"),targetCourse=COURSES.find(item=>item.id===button.dataset.course),target=targetCourse?.missions.find(item=>item.id===button.dataset.mission);if(target)void openMission(targetCourse,target);});
 field("practiceSyncBtn").addEventListener("click",()=>void window.withLoading("Refreshing practice progress…",async()=>{if(busy)return;connectBoard();await refreshHub();if(mission&&!attempt?.attemptId&&eligible)await openMission(course,mission);else setBusy(false);},{button:field("practiceSyncBtn")}));
 field("practiceBackBtn").addEventListener("click",()=>{if(busy)return;saveDraft();loadSequence++;field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;renderCourses();});
 field("practiceCheckBtn").addEventListener("click",()=>{void submit();});
