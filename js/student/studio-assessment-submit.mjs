@@ -1,7 +1,7 @@
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDocs,query,where,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {snapshotStudioProject,studioDigest,studioEvidenceId,studioSubmissionAllowed} from "./studio-assessment-model.mjs?v=1.0.2";
+import {snapshotStudioProject,studioDigest,studioEvidenceId,studioSourceDigest,studioSubmissionAllowed} from "./studio-assessment-model.mjs?v=1.0.3";
 import {
   currentV4StudioSchool,getV4StudioSubmissionStatus,listV4StudioAssignments,submitV4StudioProject
 } from "./v4-studio-service.mjs?v=4.2.1";
@@ -239,7 +239,8 @@ if(button){
       throw Error("Your personalized task is still loading. Wait for the task panel before submitting.");
     const eligibility=studioSubmissionAllowed(assessment,student.section);
     if(!eligibility.allowed)throw Error(eligibility.reason);
-    const snapshot=snapshotStudioProject(captured.project,captured.state);
+    const sourceDigest=await studioSourceDigest(captured.state);
+    const snapshot=snapshotStudioProject(captured.project,captured.state,{sourceDigest});
     const hash=await studioDigest(snapshot.json);
     if(!confirm("Submit \""+captured.project.title+"\" as a frozen "+snapshot.fileCount+"-file project for \""+
       assessment.title+"\"? Future edits will not change this submitted revision."))return null;
