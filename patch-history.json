@@ -23,11 +23,11 @@
             "caption": "Assessment Studio consolidates assessment authoring and deployment actions in one workspace.",
             "redactions": [
               {
-                "x": 87.3,
-                "y": 0,
-                "width": 12.7,
-                "height": 11.8,
-                "label": "Signed-in account details"
+                "x": 88,
+                "y": 4.1,
+                "width": 11.3,
+                "height": 3.3,
+                "label": "Signed-in account identifier"
               }
             ]
           }
@@ -47,18 +47,11 @@
             "caption": "A learner attempt retains its own private task variant and Studio submission.",
             "redactions": [
               {
-                "x": 16.2,
-                "y": 34.5,
-                "width": 34,
-                "height": 4.5,
+                "x": 19.5,
+                "y": 39.9,
+                "width": 11.3,
+                "height": 2.7,
                 "label": "Private variant identifier"
-              },
-              {
-                "x": 15.8,
-                "y": 39.2,
-                "width": 72.5,
-                "height": 31,
-                "label": "Private learner task content"
               }
             ]
           }
@@ -87,11 +80,11 @@
             "caption": "Historical Studio assessments now surface from the unified Review & Grade workflow.",
             "redactions": [
               {
-                "x": 3.5,
-                "y": 78.5,
-                "width": 70,
-                "height": 4.8,
-                "label": "School section details"
+                "x": 6.8,
+                "y": 82.9,
+                "width": 37.8,
+                "height": 3.5,
+                "label": "School-specific section details"
               }
             ]
           }
@@ -118,18 +111,18 @@
             "caption": "Academic Configuration presents school structure as a guided, reviewable sequence.",
             "redactions": [
               {
-                "x": 87,
-                "y": 0,
-                "width": 13,
-                "height": 11,
-                "label": "Signed-in account details"
+                "x": 87.9,
+                "y": 3.6,
+                "width": 11.1,
+                "height": 3.1,
+                "label": "Signed-in account identifier"
               },
               {
-                "x": 43.5,
-                "y": 72.5,
-                "width": 38.5,
-                "height": 12.5,
-                "label": "Live school course-offering details"
+                "x": 43.9,
+                "y": 77.4,
+                "width": 30.2,
+                "height": 6.6,
+                "label": "School-specific course offering"
               }
             ]
           }
