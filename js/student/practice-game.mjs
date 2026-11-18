@@ -301,6 +301,36 @@ function readAnswer(){
   if(["ordering","matching"].includes(attempt.question.type))return answer;
   return answer;
 }
+function reducedGameMotion(){return matchMedia("(prefers-reduced-motion: reduce)").matches;}
+function svgNode(name,attrs={}){const element=document.createElementNS("http://www.w3.org/2000/svg",name);for(const [key,value] of Object.entries(attrs))element.setAttribute(key,String(value));return element;}
+function gameGlyph(kind){
+  const svg=svgNode("svg",{viewBox:"0 0 64 64","aria-hidden":"true",focusable:"false"});svg.classList.add("game-visual-svg");
+  const stroke={fill:"none",stroke:"currentColor","stroke-width":"3","stroke-linecap":"round","stroke-linejoin":"round"};
+  if(kind==="bug"){
+    svg.append(svgNode("circle",{cx:32,cy:32,r:12,...stroke}),svgNode("path",{d:"M25 20 21 14M39 20 43 14M20 27H11M20 36H11M44 27H53M44 36H53M24 44 18 50M40 44 46 50M32 20V44",...stroke}));
+  }else if(kind==="builder"){
+    svg.append(svgNode("rect",{x:10,y:13,width:24,height:12,rx:3,...stroke}),svgNode("rect",{x:30,y:27,width:24,height:12,rx:3,...stroke}),svgNode("rect",{x:15,y:41,width:24,height:12,rx:3,...stroke}),svgNode("path",{d:"M34 19H45V27M30 33H22V41",...stroke}));
+  }else if(kind==="match"){
+    svg.append(svgNode("circle",{cx:16,cy:20,r:7,...stroke}),svgNode("circle",{cx:48,cy:20,r:7,...stroke}),svgNode("circle",{cx:16,cy:45,r:7,...stroke}),svgNode("circle",{cx:48,cy:45,r:7,...stroke}),svgNode("path",{d:"M23 20H41M23 45H41",...stroke}));
+  }else{
+    svg.append(svgNode("rect",{x:20,y:7,width:24,height:13,rx:3,...stroke}),svgNode("rect",{x:5,y:43,width:22,height:13,rx:3,...stroke}),svgNode("rect",{x:37,y:43,width:22,height:13,rx:3,...stroke}),svgNode("path",{d:"M32 20V32M16 43V32H48V43",...stroke}));
+  }
+  return svg;
+}
+function gameVisualHeader(kind,title,subtitle){
+  const wrap=node("div",undefined,"game-visual-header game-visual-"+kind),icon=node("span",undefined,"game-visual-glyph"),copy=node("div",undefined,"game-visual-copy"),lines=node("span",undefined,"game-visual-lines");
+  icon.append(gameGlyph(kind));copy.append(node("strong",title),node("small",subtitle));wrap.append(icon,copy,lines);return wrap;
+}
+function playGameFx(type,target){
+  if(!target||guestPage)return;
+  const className="game-fx-"+type;target.classList.remove(className);void target.offsetWidth;target.classList.add(className);
+  if(!reducedGameMotion())setTimeout(()=>target.classList.remove(className),type==="success"?720:420);else target.classList.remove(className);
+}
+function setGameStatus(target,text,tone="info",icon="◆"){
+  if(!target)return;
+  let badge=target.querySelector(":scope > .game-status-badge");if(!badge){badge=node("span",undefined,"game-status-badge");target.append(badge);}
+  badge.dataset.tone=tone;badge.replaceChildren(node("span",icon),node("span",text));
+}
 function hintMessages(question){
   const hints=[],concept=String(mission?.concept||"").trim();
   if(question.type==="debugging"){
@@ -341,7 +371,7 @@ function moveOrder(from,to,swap=false){
   if(!Array.isArray(answer)||from===to||from<0||to<0||from>=answer.length||to>=answer.length)return;
   if(swap)[answer[from],answer[to]]=[answer[to],answer[from]];
   else{const [item]=answer.splice(from,1);answer.splice(to,0,item);}
-  builderSelection=null;saveDraft();renderAnswer();
+  builderSelection=null;saveDraft();renderAnswer();const list=field("practiceChoices").querySelector(".lab-order-list");playGameFx("snap",list);
 }
 function renderAnswer(){
   const question=attempt.question,container=field("practiceChoices");container.replaceChildren();container.hidden=!guestPage&&question.type==="debugging"&&!bugLineFound;
@@ -372,8 +402,8 @@ function renderAnswer(){
       if(guestPage){
         const label=node("label",undefined,"lab-match-row"),select=document.createElement("select");label.append(node("strong",value));select.setAttribute("aria-label","Match "+value);select.add(new Option("Choose a match…",""));question.right.forEach((right,rightIndex)=>select.add(new Option(right,String(rightIndex))));select.value=answer[index]===null?"":String(answer[index]);select.addEventListener("change",()=>{answer[index]=select.value===""?null:Number(select.value);saveDraft();});label.append(select);container.append(label);return;
       }
-      const row=node("div",undefined,"games-match-row"),label=node("strong",value),choices=node("div",undefined,"games-match-choices");row.append(label,choices);
-      question.right.forEach((right,rightIndex)=>{const button=node("button",right,"games-match-choice"+(answer[index]===rightIndex?" is-selected":""));button.type="button";button.setAttribute("aria-pressed",String(answer[index]===rightIndex));button.addEventListener("click",()=>{if(busy||pending)return;const prior=answer.indexOf(rightIndex);if(prior>=0&&prior!==index)answer[prior]=null;answer[index]=answer[index]===rightIndex?null:rightIndex;saveDraft();renderAnswer();});choices.append(button);});
+      const row=node("div",undefined,"games-match-row"+(answer[index]!==null?" has-match":"")),label=node("strong",value),connector=node("span",undefined,"games-match-connector"),choices=node("div",undefined,"games-match-choices");row.append(label,connector,choices);
+      question.right.forEach((right,rightIndex)=>{const button=node("button",right,"games-match-choice"+(answer[index]===rightIndex?" is-selected":""));button.type="button";button.setAttribute("aria-pressed",String(answer[index]===rightIndex));button.addEventListener("click",()=>{if(busy||pending)return;const prior=answer.indexOf(rightIndex);if(prior>=0&&prior!==index)answer[prior]=null;answer[index]=answer[index]===rightIndex?null:rightIndex;saveDraft();renderAnswer();const updated=[...field("practiceChoices").querySelectorAll(".games-match-row")][index];if(answer[index]!==null){updated?.classList.add("has-match");playGameFx("link",updated);}});choices.append(button);});
       container.append(row);
     });
   }
@@ -408,7 +438,7 @@ function renderMechanicAid(question){
     const note=node("p","Mark the evidence you think matters, then solve the case from the code.","games-data-note");board.append(evidence,note);panel.append(board);panel.hidden=false;panel.classList.add("is-data");
   }
   if(!guestPage&&mission?.oop===true){
-    const blueprints={
+    const visual=gameVisualHeader("oop","OOP Builder","Model structure and runtime relationships");panel.append(visual);const blueprints={
       "oop-classes":["CLASS","creates","OBJECT"],
       "oop-encapsulation":["PRIVATE STATE","controlled by","METHODS"],
       "oop-inheritance":["PARENT","extends to","CHILD"],
@@ -416,7 +446,7 @@ function renderMechanicAid(question){
       "oop-real":["OBJECT","works with","OBJECT"]
     },parts=blueprints[mission.oopModule]||["OOP","connects","BEHAVIOR"],blueprint=node("div",undefined,"games-oop-blueprint"),head=node("div",undefined,"games-oop-blueprint-head");
     head.append(node("span","OOP BLUEPRINT","lab-mechanic-kicker"),node("strong",mission.title.replace(/ · (Guided|Apply|Challenge)$/,"")));
-    const flow=node("div",undefined,"games-oop-flow");flow.append(node("span",parts[0],"games-oop-node"),node("span",parts[1],"games-oop-link"),node("span",parts[2],"games-oop-node"));
+    const flow=node("div",undefined,"games-oop-flow"),left=node("span",parts[0],"games-oop-node"),link=node("span",parts[1],"games-oop-link"),right=node("span",parts[2],"games-oop-node");left.dataset.role="source";right.dataset.role="target";flow.append(left,link,right);
     blueprint.append(head,flow);panel.append(blueprint);panel.hidden=false;panel.dataset.kind="oop";
   }
   const hasTraceGuide=Array.isArray(question.traceGuide)&&question.traceGuide.length;
@@ -430,7 +460,7 @@ function renderMechanicAid(question){
   if(question.type==="debugging"&&Number.isInteger(question.focusLine)&&question.code){
     panel.hidden=false;panel.dataset.kind="debug";field("practiceCode").hidden=true;
     if(!guestPage&&(attempt?.completed||answer!==null))bugLineFound=true;
-    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong",guestPage?"Case file":bugLineFound?"Defect located":"Find the defect"));
+    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong",guestPage?"Case file":bugLineFound?"Defect located":"Find the defect"));const visual=guestPage?null:gameVisualHeader("bug","Bug Hunt","Scan → isolate → repair");
     const hint=node("p",question.caseHint||"Inspect the highlighted line and compare it with the stated goal.","lab-case-hint");
     const viewer=node("div",undefined,"lab-code-case"),status=node("p",guestPage?"":bugLineFound?"Defect located. Choose the repair.":"Select the line you think contains the defect. No points are lost while hunting.","games-bug-status");
     question.code.split("\n").forEach((text,index)=>{
@@ -440,22 +470,22 @@ function renderMechanicAid(question){
         const choose=()=>{
           if(busy||bugLineFound)return;
           if(lineNumber===question.focusLine){
-            bugLineFound=true;row.classList.add("is-focus");status.textContent="Defect located. Choose the repair.";head.querySelector("strong").textContent="Defect located";field("practicePrompt").textContent=question.prompt;renderAnswer();
+            bugLineFound=true;row.classList.add("is-focus");status.textContent="Defect located. Choose the repair.";head.querySelector("strong").textContent="Defect located";field("practicePrompt").textContent=question.prompt;playGameFx("success",viewer);setGameStatus(visual,"Defect isolated","success","✓");renderAnswer();
           }else{
-            row.classList.remove("is-wrong-suspect");void row.offsetWidth;row.classList.add("is-wrong-suspect");status.textContent="Not that line — no points lost. Keep hunting.";
+            row.classList.remove("is-wrong-suspect");void row.offsetWidth;row.classList.add("is-wrong-suspect");status.textContent="Not that line — no points lost. Keep hunting.";playGameFx("error",row);setGameStatus(visual,"Keep scanning","warning","!");
           }
         };
         row.addEventListener("click",choose);row.addEventListener("keydown",event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();choose();}});
       }
       viewer.append(row);
     });
-    if(guestPage)panel.append(head,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Find the defective line, then choose the repair.";panel.append(head,viewer,status);}
+    if(guestPage)panel.append(head,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Find the defective line, then choose the repair.";if(bugLineFound)setGameStatus(visual,"Defect isolated","success","✓");panel.append(visual,head,viewer,status);}
   }
   if(!guestPage&&question.type==="ordering"){
-    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(head,node("p","Build the program in execution order.","games-mechanic-note"));
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const visual=gameVisualHeader("builder","Code Builder","Assemble the execution path"),head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(visual,head,node("p","Build the program in execution order.","games-mechanic-note"));
   }
   if(!guestPage&&question.type==="matching"){
-    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(head,node("p","Each match can be used once.","games-mechanic-note"));
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const visual=gameVisualHeader("match","Logic Match","Connect each rule to its result"),head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(visual,head,node("p","Each match can be used once.","games-mechanic-note"));
   }
 }
 function pointsText(){const meta=attempt.question.difficulty;field("labMissionPoints").textContent=attempt.completed?attempt.earnedPoints+" pts earned":attempt.availablePoints+" pts available";field("labScoringHint").textContent=attempt.completed?"Completed · replays do not change XP.":meta.name+" · "+meta.maximum+" pts max · −"+meta.deduction+" per miss · "+meta.floor+" pt floor · experiments are free.";}
