@@ -35,8 +35,9 @@ async function load(){
     if(!dash.children.length)dash.append(card("No follow-up assigned","Your teacher has not assigned an additional pack, project or improvement plan."));
   }
   if(packsMount){
-    packsMount.hidden=!packs.length;packsMount.replaceChildren();
-    if(packs.length){const panel=document.createElement("div");panel.className="rounded-xl border border-blue-200 bg-blue-50 p-4";const h=document.createElement("h2");h.className="font-extrabold text-blue-950";h.textContent="Assigned Practice Packs";panel.append(h);const list=document.createElement("div");list.className="grid md:grid-cols-2 gap-3 mt-3";for(const pack of packs)list.append(packCard(pack));panel.append(list);packsMount.append(panel);}
+    const integratedGamesHub=document.body.dataset.gamesBuild==="20261118-games-platform-preview";
+    packsMount.hidden=true;packsMount.replaceChildren();
+    if(!integratedGamesHub&&packs.length){packsMount.hidden=false;const panel=document.createElement("div");panel.className="rounded-xl border border-blue-200 bg-blue-50 p-4";const h=document.createElement("h2");h.className="font-extrabold text-blue-950";h.textContent="Assigned Practice Packs";panel.append(h);const list=document.createElement("div");list.className="grid md:grid-cols-2 gap-3 mt-3";for(const pack of packs)list.append(packCard(pack));panel.append(list);packsMount.append(panel);}
   }
  }catch(error){if(dash)dash.textContent="Learning follow-up is temporarily unavailable.";if(packsMount)packsMount.hidden=true;console.warn("Student follow-up unavailable",error);}
 }
