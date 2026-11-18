@@ -40,11 +40,25 @@ function renderSummary(){
   field("labClassHint").textContent=(hub.classes||[]).length?"Only your class sees this private class board.":"Your class board appears when your school links a student section.";
   renderHubHero();
 }
+function weakestSkillTarget(){
+  const groups=[
+    {label:"OOP",entries:COURSES.flatMap(entry=>entry.id==="java"?entry.missions.filter(item=>item.oop===true).map(mission=>({course:entry,mission})):[])},
+    {label:"Debugging",entries:COURSES.flatMap(entry=>entry.missions.filter(item=>missionMeta(entry,item).type==="debugging").map(mission=>({course:entry,mission})))},
+    {label:"Logic",entries:COURSES.flatMap(entry=>entry.id==="logic"?entry.missions.map(mission=>({course:entry,mission})):[])}
+  ].map(group=>({...group,done:group.entries.filter(({mission})=>completed(mission.id)).length}))
+   .filter(group=>group.entries.some(({mission})=>!completed(mission.id)))
+   .sort((a,b)=>(a.done/Math.max(1,a.entries.length))-(b.done/Math.max(1,b.entries.length)));
+  const group=groups[0],target=group?.entries.find(({mission})=>!completed(mission.id));
+  return target?{...target,recommendation:group.label}:null;
+}
 function featuredTarget(){
   const last=persistentGet(resumeKey());
   if(last?.courseId&&last?.missionId){
     const lastCourse=COURSES.find(entry=>entry.id===last.courseId),lastMission=lastCourse?.missions.find(item=>item.id===last.missionId);
     if(lastCourse&&lastMission&&!completed(lastMission.id)&&gameMissions(lastCourse).some(item=>item.id===lastMission.id))return {course:lastCourse,mission:lastMission,resume:true};
+  }
+  if(activeGame==="all"){
+    const recommended=weakestSkillTarget();if(recommended)return recommended;
   }
   const ordered=[course,...COURSES.filter(entry=>entry.id!==course.id)];
   for(const entry of ordered){
@@ -78,7 +92,7 @@ function renderHubHero(){
   const count=hub.completedCount||0,points=hub.points||0,total=Math.max(1,TOTAL_MISSIONS);
   const progress=Math.max(0,Math.min(100,Math.round(count/total*100))),level=1+Math.floor(points/250),levelProgress=Math.max(0,Math.min(100,Math.round((points%250)/250*100)));
   const target=featuredTarget(),game=getProgrammingGame(activeGame);
-  field("labHeroMode").textContent=game.name;
+  field("labHeroMode").textContent=target?.resume?"Resume mission":target?.recommendation?"Recommended · "+target.recommendation:game.name;
   title.textContent=target?target.mission.title.replace(/ · (Guided|Apply|Challenge)$/,""):"Programming missions";
   field("labHeroSub").textContent=target?(target.course.name+" · "+typeNames[missionMeta(target.course,target.mission).type]):"Choose a game and start a mission.";
   field("labHeroProgress").style.width=progress+"%";field("labHeroProgressText").textContent=progress+"%";
