@@ -999,6 +999,16 @@ body.lab-page::after{
   border-color:rgba(241,199,91,.26);
   background:rgba(65,47,20,.32);
 }
+.lab-mechanic-panel[data-kind=build]{
+  border-color:rgba(241,199,91,.2);
+  background:rgba(64,46,15,.22);
+}
+.lab-mechanic-panel[data-kind=build] .lab-mechanic-kicker{color:#f0cf76}
+.lab-mechanic-panel[data-kind=match]{
+  border-color:rgba(85,214,177,.2);
+  background:rgba(17,58,50,.28);
+}
+.lab-mechanic-panel[data-kind=match] .lab-mechanic-kicker{color:#87e6c8}
 .lab-mechanic-head strong{color:#f0fdff}
 .lab-mechanic-kicker{color:#70dce4}
 .lab-mechanic-panel[data-kind=debug] .lab-mechanic-kicker{color:#f2cf72}
