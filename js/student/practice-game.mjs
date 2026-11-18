@@ -201,6 +201,12 @@ function missionGameId(entryCourse,entryMission){
 function gameMissions(entryCourse,gameId=activeGame){return entryCourse.missions.filter(entry=>programmingGameMatches(gameId,entryCourse,entry,missionMeta(entryCourse,entry),missionModule(entryCourse,entry)));}
 function ensureCourseForGame(){if(gameMissions(course).length)return;course=COURSES.find(entry=>gameMissions(entry).length)||COURSES[0];}
 function recommendedGameId(){
+  const last=persistentGet(resumeKey());
+  if(last?.courseId&&last?.missionId){
+    const entry=COURSES.find(item=>item.id===last.courseId),target=entry?.missions.find(item=>item.id===last.missionId);
+    if(entry&&target&&!completed(target.id))return last.gameId&&getProgrammingGame(last.gameId).id!=="all"?getProgrammingGame(last.gameId).id:missionGameId(entry,target);
+  }
+  const challenge=assignedChallengeTarget();if(challenge)return missionGameId(challenge.course,challenge.mission);
   if(!(hub.completedCount||0))return "code-sprint";
   const target=weakestSkillTarget();
   return target?.recommendation==="OOP"?"oop-builder":target?.recommendation==="Debugging"?"bug-detective":target?.recommendation==="Logic"?"logic-circuit":"code-sprint";
