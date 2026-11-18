@@ -191,7 +191,8 @@ async function judge0Verify({files,profile,stdin=""}){
    result=await poll.json();
   }
   if(!result.status||Number(result.status.id)<=2)throw Error("Judge0 verification timed out.");
-  const statusId=Number(result.status.id),compileSucceeded=statusId!==6;
+  const statusId=Number(result.status.id),compileOutput=String(result.compile_output||"");
+  const compileSucceeded=statusId!==6&&!/(?:^|\n).*(?:error:|cannot find symbol|class .* is public, should be declared)/i.test(compileOutput);
   return {
    attempted:true,engine:"judge0",entry:main.entry,mainClass:main.mainClass,
    status:clip(result.status.description||"finished",120),statusId,
@@ -199,7 +200,7 @@ async function judge0Verify({files,profile,stdin=""}){
    runSucceeded:compileSucceeded&&!compileOnly?statusId===3:null,
    exitCode:Number.isFinite(Number(result.exit_code))?Number(result.exit_code):null,
    stdout:clip(result.stdout,16000),stderr:clip(result.stderr,12000),
-   compileOutput:clip(result.compile_output,12000),message:clip(result.message,2000),
+   compileOutput:clip(compileOutput,12000),message:clip(result.message,2000),
    time:Number.isFinite(Number(result.time))?Number(result.time):null,
    memory:Number.isFinite(Number(result.memory))?Number(result.memory):null
   };
