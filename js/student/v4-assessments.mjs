@@ -25,6 +25,29 @@ function date(value){return value?new Date(value).toLocaleString():"—";}
 function sourceLabel(source,task={}){
   return ({text:"Written response",link:"Submission link",studio:task.personalizedTask?.enabled===true?"Personalized Adminerva Studio":"Adminerva Studio",github:"GitHub / repository evidence"})[source]||"Assessment response";
 }
+function submissionReceipt(submission,grade){
+  if(!submission?.submitted||submission.status==="reopened")return null;
+  const revision=String(submission.revisionSha||submission.checkpointSha||"").trim();
+  const version=Number(submission.version||0);
+  const submittedAt=submission.submittedAt||submission.updatedAt||submission.createdAt||0;
+  let title="Submitted successfully",detail="Your work is recorded and awaiting teacher review.";
+  let className="border-blue-200 bg-blue-50 text-blue-950",iconClass="bg-blue-600";
+  if(submission.status==="approved"){
+    title="Submission verified";detail="Your submitted evidence has been verified. Published grading appears separately when available.";
+    className="border-emerald-200 bg-emerald-50 text-emerald-950";iconClass="bg-emerald-600";
+  }else if(submission.status==="reviewed"){
+    title="Submission reviewed";detail="Your teacher has reviewed this submission. Check the published feedback or grade shown with this task.";
+    className="border-emerald-200 bg-emerald-50 text-emerald-950";iconClass="bg-emerald-600";
+  }else if(grade){
+    title="Submitted and graded";detail="This submission is already recorded and has a published grade.";
+    className="border-emerald-200 bg-emerald-50 text-emerald-950";iconClass="bg-emerald-600";
+  }
+  const meta=[];
+  if(submittedAt)meta.push("Recorded "+date(submittedAt));
+  if(version>0)meta.push("Version "+version);
+  if(revision)meta.push("Revision "+revision.slice(0,12));
+  return {title,detail,meta:meta.join(" · "),className,iconClass};
+}
 if(panel&&list&&status&&schoolHost){
   const functions=getFunctions(app,"asia-southeast1");
   const assessmentsApi=httpsCallable(functions,"schoolAssessments");
@@ -120,6 +143,18 @@ if(panel&&list&&status&&schoolHost){
         );
         const badge=node("span","self-start rounded-full px-3 py-1 text-xs font-bold "+state.className,state.label);
         top.append(identity,badge);article.append(top);
+        const receipt=submissionReceipt(submission,grade);
+        if(receipt){
+          const confirmation=node("div","mt-3 rounded-xl border p-3 "+receipt.className);
+          confirmation.setAttribute("role","status");
+          confirmation.setAttribute("aria-label",receipt.title);
+          const row=node("div","flex items-start gap-3");
+          const icon=node("span","mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm font-extrabold text-white "+receipt.iconClass,"✓");
+          const copy=node("div","min-w-0 flex-1");
+          copy.append(node("p","text-sm font-extrabold",receipt.title),node("p","mt-0.5 text-xs leading-5",receipt.detail));
+          if(receipt.meta)copy.append(node("p","mt-1 text-[11px] font-semibold opacity-80 break-words",receipt.meta));
+          row.append(icon,copy);confirmation.append(row);article.append(confirmation);
+        }
         if(task.description)article.append(node("p","text-sm text-slate-700 mt-3",task.description));
         appendDetails(article,"Instructions",task.instructions||"");
         if(Array.isArray(task.rubric)&&task.rubric.length){
@@ -147,8 +182,10 @@ if(panel&&list&&status&&schoolHost){
         }
         const actions=node("div","mt-4 flex flex-wrap gap-2");
         if(task.submissionSource==="studio"){
-          const link=node("a","rounded-lg bg-indigo-700 text-white px-4 py-2.5 text-sm font-bold",
+          const studioSubmitted=submission?.submitted&&submission.status!=="reopened";
+          const link=node("a","rounded-lg px-4 py-2.5 text-sm font-bold "+(studioSubmitted?"border border-emerald-200 bg-emerald-50 text-emerald-800":"bg-indigo-700 text-white"),
             submission?.status==="reopened"?"Open Studio to revise":
+              studioSubmitted?"✓ Submitted · Open Studio":
               task.personalizedTask?.enabled===true?"Open my personalized Studio task":"Open Adminerva Studio");
           link.href="student-playground.html?assessment="+encodeURIComponent(task.taskId);
           actions.append(link);
@@ -158,8 +195,8 @@ if(panel&&list&&status&&schoolHost){
           const evidenceButton=node("button",
             "rounded-lg px-4 py-2.5 text-sm font-bold "+(canOpen?"bg-indigo-700 text-white":"border border-slate-300 text-slate-600"),
             canEdit?(submission?.status==="reopened"?"Revise GitHub evidence":"Select GitHub evidence"):
-              submission?.status==="submitted"?"Review evidence & attribution":
-              submission?.status==="approved"?"Evidence approved":"Evidence reviewed");
+              submission?.status==="submitted"?"✓ Submitted · Review evidence":
+              submission?.status==="approved"?"✓ Evidence approved":"✓ Evidence reviewed");
           evidenceButton.type="button";evidenceButton.disabled=!canOpen;
           if(canOpen)evidenceButton.addEventListener("click",()=>void openGithubEvidence(task,submission));
           actions.append(evidenceButton);
@@ -172,7 +209,7 @@ if(panel&&list&&status&&schoolHost){
           const canEdit=!submission?.submitted||submission.status==="reopened";
           const responseButton=node("button",
             "rounded-lg px-4 py-2.5 text-sm font-bold "+(canEdit?"bg-indigo-700 text-white":"border border-slate-300 text-slate-600"),
-            canEdit?(submission?.status==="reopened"?"Revise response":"Open response editor"):"Response submitted");
+            canEdit?(submission?.status==="reopened"?"Revise response":"Open response editor"):"✓ Response submitted");
           responseButton.type="button";responseButton.disabled=!canEdit;
           if(canEdit)responseButton.addEventListener("click",()=>openGeneralSubmission(task,submission));
           actions.append(responseButton);
