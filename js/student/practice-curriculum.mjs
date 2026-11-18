@@ -1,4 +1,4 @@
-import {buildJavaOopModules} from "./practice-oop.mjs?v=1.1.0";
+import {buildJavaOopModules} from "./practice-oop.mjs?v=1.2.0";
 const levels=["Guided","Apply","Challenge"];
 function answerOptions(answer,seed){
   const value=String(answer),opposite={true:"false",false:"true",True:"False",False:"True",PASS:"RETRY",RETRY:"PASS"};
