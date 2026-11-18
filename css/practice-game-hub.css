@@ -88,6 +88,25 @@ body.lab-page::after{
   font-size:1.25rem;
   line-height:1;
 }
+.games-rail-link{position:relative}
+.games-rail-link.has-count::after{
+  content:attr(data-count);
+  position:absolute;
+  right:7px;
+  top:7px;
+  min-width:17px;
+  height:17px;
+  padding:0 4px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  background:#b395ff;
+  color:#130f24;
+  font-size:.48rem;
+  font-weight:900;
+  box-shadow:0 0 12px rgba(159,120,255,.28);
+}
+#gamesHome,#labGameCatalog,#gamesChallenges,#gamesProgress{scroll-margin-top:5.5rem}
 .games-rail-link:hover,
 .games-rail-link:focus-visible,
 .games-rail-link.is-current{
