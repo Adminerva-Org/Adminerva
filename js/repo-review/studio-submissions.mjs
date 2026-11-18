@@ -4,6 +4,9 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {collection,doc,getDoc,getDocs,query,where,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {studioDigest,verifyStudioSnapshot} from "../student/studio-assessment-model.mjs?v=1.0.0";
+import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.0.0";
+import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
+import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 
 const node=id=>document.getElementById(id);
 const variantCall=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
@@ -15,6 +18,53 @@ const deepLink={assessment:link.get("assessment"),section:link.get("section"),st
 let deepLinkPending=Boolean(deepLink.assessment);
 const setStatus=text=>{status.textContent=text;};
 function formatDate(value){try{return value?.toDate?.().toLocaleString()||"Date pending";}catch{return "Date unavailable";}}
+function legacyRubric(assessment={}){
+ const maximum=Number(assessment.maxScore||20),rows=[];
+ for(const line of String(assessment.evalCriteria||"").split(/\r?\n/)){
+   const cleaned=line.replace(/^[\s>*#-]+/,"").replace(/[*_`]/g,"").trim();
+   const match=cleaned.match(/^(.*?)(?:\s*\|\s*|\s*[:–—-]\s*|\s*\()\s*(\d+(?:\.\d+)?)\s*(?:pts?|points?)?\)?\s*$/i);
+   if(!match)continue;
+   const name=String(match[1]||"").replace(/[.:;-]+$/,"").trim(),points=Number(match[2]);
+   if(name&&name.length<=160&&Number.isFinite(points)&&points>0&&points<=maximum)rows.push({name,points});
+ }
+ const sum=rows.reduce((total,row)=>total+row.points,0);
+ if(rows.length&&Math.abs(sum-maximum)<0.001)return rows;
+ return [{name:"Published task and rubric requirements",points:maximum}];
+}
+function evaluationTask(assessment={}){
+ const rubric=legacyRubric(assessment);
+ return {
+   title:assessment.title||"Assessment",
+   description:assessment.description||"",
+   instructions:assessment.taskContext||assessment.description||"",
+   rubric,rubricMax:rubric.reduce((sum,row)=>sum+Number(row.points||0),0),
+   submissionSource:"studio",
+   personalizedTask:{enabled:assessment.personalizedTask?.enabled===true}
+ };
+}
+function evaluationSnapshot(snapshot,item,assignedVariant){
+ const order=Array.isArray(snapshot.fileOrder)?snapshot.fileOrder:Object.keys(snapshot.files||{});
+ return {
+   version:Number(item.revision||0),sourceLanguage:snapshot.lang||"",
+   files:order.map(path=>({path,content:String(snapshot.files?.[path]||"")})),
+   artifacts:{database:snapshot.database||{},design:snapshot.design||{}},
+   personalizedTask:assignedVariant?{
+     variantId:assignedVariant.variantId||"",
+     prompt:assignedVariant.prompt||"",
+     evaluationNotes:assignedVariant.evaluationNotes||""
+   }:null
+ };
+}
+function checkerInstructions(privateTask,assignedVariant){
+ const data=privateTask?.exists?.()?privateTask.data():{};
+ const rules=Array.isArray(data?.rules)?data.rules.slice(0,40).map(rule=>
+   String((rule?.type?rule.type+": ":"")+String(rule?.value||"")).trim()).filter(Boolean):[];
+ return [
+   data?.systemPersona||"",
+   rules.length?"Legacy checking rules:\n"+rules.map(rule=>"- "+rule).join("\n"):"",
+   assignedVariant?.evaluationNotes||""
+ ].filter(Boolean).join("\n\n").slice(0,8000);
+}
 function render(){
  root.replaceChildren();
  const visible=records.filter(data=>
@@ -87,11 +137,12 @@ async function inspect(item){
  selectedId=item.id;render();detail.replaceChildren();detail.setAttribute("aria-busy","true");add(detail,"p","Loading exact saved revision…");
  const stamp=++inspectionSequence,uid=auth.currentUser?.uid;
  try{
-   const [version,task,student,grade]=await Promise.all([
+   const [version,task,student,grade,privateTask]=await Promise.all([
      getDoc(doc(db,"studio_submissions",item.id,"versions",String(item.revision))),
      getDoc(doc(db,"assessments",item.assessmentId)),
      getDoc(doc(db,"students",item.studentId)).catch(()=>null),
-     getDoc(doc(db,"student_grades",item.id))
+     getDoc(doc(db,"student_grades",item.id)),
+     getDoc(doc(db,"assessment_private",item.assessmentId)).catch(()=>null)
    ]);
    if(stamp!==inspectionSequence||auth.currentUser?.uid!==uid)return;
    if(!version.exists()||!task.exists())throw Error("The submitted revision or assessment is unavailable.");
@@ -214,6 +265,73 @@ async function inspect(item){
      score.value=String(grade.data().score??"");
      feedback.value=String(grade.data().feedback||"");
    }
+   const checker=add(form,"details","","rounded-xl border border-sky-200 bg-sky-50 p-3");
+   const checkerSummary=add(checker,"summary","AI checker","font-bold text-sky-950 cursor-pointer");
+   checkerSummary.title="Evaluate only this frozen Studio snapshot. Suggestions remain private until you save.";
+   add(checker,"p","Both checker modes use this exact frozen snapshot and the published rubric. Results only fill the unsaved review fields.","text-xs text-sky-900 mt-2");
+   const checkerActions=add(checker,"div","","flex flex-wrap gap-2 mt-3");
+   const systemCheck=add(checkerActions,"button","Run system checker","rounded-lg bg-violet-800 text-white font-bold px-3 py-2");
+   systemCheck.type="button";
+   const externalCopy=add(checkerActions,"button","Copy external AI package","rounded-lg border border-sky-300 bg-white text-sky-900 font-bold px-3 py-2");
+   externalCopy.type="button";
+   const pasteLabel=add(checker,"label","Paste external evaluator JSON","block text-xs font-bold text-sky-950 mt-3");
+   const externalResponse=add(pasteLabel,"textarea","","mt-1 w-full border border-sky-300 rounded-lg p-2.5 bg-white font-mono text-xs");
+   externalResponse.rows=6;externalResponse.placeholder='{"format":"adminerva-general-external-evaluation-response-v1",...}';
+   const applyExternal=add(checker,"button","Apply external result","mt-3 rounded-lg bg-sky-800 text-white font-bold px-3 py-2");
+   applyExternal.type="button";
+   const checkerStatus=add(checker,"p","Checker output has not been applied.","text-xs text-sky-900 mt-2");
+   checkerStatus.setAttribute("role","status");
+   const taskForEvaluation=evaluationTask(assessment);
+   const snapshotForEvaluation=evaluationSnapshot(snapshot,item,assignedVariant);
+   const checking=checkerInstructions(privateTask,assignedVariant);
+   const applySuggestion=suggestion=>{
+     const awarded=suggestion.criteria.reduce((sum,row)=>sum+Number(row.awardedPoints||0),0);
+     const pending=suggestion.criteria.reduce((sum,row)=>sum+Number(row.pendingPoints||0),0);
+     score.value=String(Math.round(awarded*100)/100);
+     const criterionText=suggestion.criteria.map((row,index)=>
+       taskForEvaluation.rubric[index].name+": "+row.awardedPoints+" / "+taskForEvaluation.rubric[index].points+
+       (row.pendingPoints?" ("+row.pendingPoints+" pending)":"")+
+       (row.comment?" — "+row.comment:"")).join("\n");
+     feedback.value=[suggestion.feedback,criterionText].filter(Boolean).join("\n\n").slice(0,6000);
+     checkerStatus.textContent="AI suggestion applied to the unsaved review fields · "+awarded+" / "+taskForEvaluation.rubricMax+
+       (pending?" · "+pending+" point"+(pending===1?"":"s")+" still require teacher confirmation.":" · no pending points.")+
+       " Review before saving.";
+   };
+   externalCopy.addEventListener("click",async()=>{
+     if(busy)return;
+     try{
+       const packageText=buildGeneralExternalEvaluationPackage({
+         task:taskForEvaluation,snapshot:snapshotForEvaluation,checkingInstructions:checking
+       });
+       await navigator.clipboard.writeText(packageText);
+       checkerStatus.textContent="External AI package copied. Paste the evaluator JSON below when ready.";
+     }catch(error){checkerStatus.textContent=error?.message||"External AI package could not be copied.";}
+   });
+   applyExternal.addEventListener("click",()=>{
+     if(busy)return;
+     try{
+       const suggestion=parseGeneralExternalEvaluationResponse(externalResponse.value,{task:taskForEvaluation});
+       applySuggestion(suggestion);
+     }catch(error){checkerStatus.textContent=error?.message||"External evaluation could not be applied.";}
+   });
+   systemCheck.addEventListener("click",()=>void (async()=>{
+     if(busy)return;
+     busy=true;systemCheck.disabled=true;externalCopy.disabled=true;applyExternal.disabled=true;
+     checkerStatus.textContent="Running Adminerva system checker against the frozen Studio snapshot…";
+     try{
+       const packageText=buildGeneralExternalEvaluationPackage({
+         task:taskForEvaluation,snapshot:snapshotForEvaluation,checkingInstructions:checking
+       });
+       const result=await generateSchoolContent({
+         contents:[{parts:[{text:packageText}]}],
+         generationConfig:{responseMimeType:"application/json",temperature:0.2,maxOutputTokens:8192}
+       },{purpose:"evaluation",signal:AbortSignal.timeout(100000)});
+       const parsed=await evaluationJSON({ok:true,json:async()=>result});
+       const suggestion=parseGeneralExternalEvaluationResponse(JSON.stringify(parsed),{task:taskForEvaluation});
+       applySuggestion(suggestion);
+     }catch(error){checkerStatus.textContent=error?.message||"System checker could not complete. You can still grade manually or use the external package.";}
+     finally{busy=false;systemCheck.disabled=false;externalCopy.disabled=false;applyExternal.disabled=false;}
+   })());
    const buttons=add(form,"div","","flex gap-3 flex-wrap");
    const revise=add(buttons,"button","Request revision","border rounded-lg px-4 py-2 text-amber-950 bg-amber-100 font-semibold");
    const gradeBtn=add(buttons,"button",reviewedDraft?"Save grade correction":"Save reviewed grade draft","bg-teal-700 text-white rounded-lg px-4 py-2 font-semibold");
