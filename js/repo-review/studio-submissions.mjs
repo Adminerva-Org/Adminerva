@@ -4,7 +4,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {collection,doc,getDoc,getDocs,query,where,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {studioDigest,verifyStudioSnapshot} from "../student/studio-assessment-model.mjs?v=1.0.0";
-import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.0.0";
+import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.1.0";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
@@ -22,8 +22,9 @@ function formatDate(value){try{return value?.toDate?.().toLocaleString()||"Date 
 function legacyRubric(assessment={}){
  const maximum=Number(assessment.maxScore||20),rows=[];
  for(const line of String(assessment.evalCriteria||"").split(/\r?\n/)){
-   const cleaned=line.replace(/^[\s>*#-]+/,"").replace(/[*_`]/g,"").trim();
-   const match=cleaned.match(/^(.*?)(?:\s*\|\s*|\s*[:–—-]\s*|\s*\()\s*(\d+(?:\.\d+)?)\s*(?:pts?|points?)?\)?\s*$/i);
+   const cleaned=line.replace(/^[\s>*#-]+/,"").replace(/[*_`]/g,"").trim()
+     .replace(/^\d+\s*[.)]\s*/,"");
+   const match=cleaned.match(/^(.*?)(?:\s*\|\s*|\s*[:–—-]\s*|\s*\()\s*(\d+(?:\.\d+)?)\s*(?:pts?|points?)?(?:\s*[:–—-]\s*.*)?\)?\s*$/i);
    if(!match)continue;
    const name=String(match[1]||"").replace(/[.:;-]+$/,"").trim(),points=Number(match[2]);
    if(name&&name.length<=160&&Number.isFinite(points)&&points>0&&points<=maximum)rows.push({name,points});
@@ -38,7 +39,7 @@ function evaluationTask(assessment={}){
    title:assessment.title||"Assessment",
    description:assessment.description||"",
    instructions:assessment.taskContext||assessment.description||"",
-   rubric,rubricMax:rubric.reduce((sum,row)=>sum+Number(row.points||0),0),
+   rubric,rubricText:assessment.evalCriteria||"",rubricMax:rubric.reduce((sum,row)=>sum+Number(row.points||0),0),
    submissionSource:"studio",
    personalizedTask:{enabled:assessment.personalizedTask?.enabled===true}
  };
@@ -285,8 +286,13 @@ async function inspect(item){
    importExternal.type="button";
    const externalReview=add(checker,"div","","mt-3");
    clearEvaluationReview(externalReview,"No External AI review has been imported for this submission.");
-   const checkerStatus=add(checker,"p","Both AI reviews remain separate from the grade draft until you apply one.","text-xs text-sky-900 mt-2");
+   const personalizationMissing=assessment.personalizedTask?.enabled===true&&
+     !(assignedVariant?.variantId&&String(assignedVariant?.prompt||"").trim());
+   const checkerStatus=add(checker,"p",personalizationMissing
+     ?"AI evaluation is disabled because this personalized submission's assigned scenario could not be loaded. Reload the submission before using Internal or External AI."
+     :"Both AI reviews remain separate from the grade draft until you apply one.","text-xs text-sky-900 mt-2");
    checkerStatus.setAttribute("role","status");
+   if(personalizationMissing){systemCheck.disabled=true;externalCopy.disabled=true;}
    const taskForEvaluation=evaluationTask(assessment);
    const snapshotForEvaluation=evaluationSnapshot(snapshot,item,assignedVariant);
    const checking=checkerInstructions(privateTask,assignedVariant);
@@ -308,7 +314,7 @@ async function inspect(item){
      onApply:value=>applySuggestion(value,label),applyLabel:"Apply "+label+" to grade draft"
    });
    externalCopy.addEventListener("click",async()=>{
-     if(busy)return;
+     if(busy||personalizationMissing)return;
      try{
        const packageText=buildGeneralExternalEvaluationPackage({
          task:taskForEvaluation,snapshot:snapshotForEvaluation,checkingInstructions:checking
@@ -329,7 +335,7 @@ async function inspect(item){
      }
    });
    systemCheck.addEventListener("click",()=>void (async()=>{
-     if(busy)return;
+     if(busy||personalizationMissing)return;
      busy=true;systemCheck.disabled=true;externalCopy.disabled=true;importExternal.disabled=true;
      checkerStatus.textContent="Running Internal AI against the frozen Studio snapshot…";
      try{
