@@ -436,6 +436,8 @@ body.lab-page::after{
   scrollbar-color:rgba(66,225,237,.28) transparent;
 }
 .lab-game-card{
+  position:relative;
+  overflow:hidden;
   flex:0 0 190px;
   min-height:150px;
   scroll-snap-align:start;
@@ -447,6 +449,25 @@ body.lab-page::after{
   color:var(--games-text);
   box-shadow:none;
 }
+.lab-game-card::after{
+  content:"";
+  position:absolute;
+  right:-18px;
+  top:28px;
+  width:94px;
+  height:94px;
+  border-radius:26px;
+  border:1px solid rgba(255,255,255,.035);
+  transform:rotate(18deg);
+  background:linear-gradient(145deg,rgba(66,225,237,.035),rgba(159,120,255,.035));
+  pointer-events:none;
+}
+.lab-game-card[data-game="bug-detective"]::after{background:radial-gradient(circle at 38% 38%,rgba(241,91,155,.18) 0 8%,transparent 9%),linear-gradient(145deg,rgba(241,91,155,.08),rgba(66,225,237,.025))}
+.lab-game-card[data-game="trace-quest"]::after{background:repeating-linear-gradient(90deg,rgba(66,225,237,.07) 0 2px,transparent 2px 15px),rgba(66,225,237,.025)}
+.lab-game-card[data-game="algorithm-maze"]::after{background:linear-gradient(135deg,transparent 30%,rgba(241,199,91,.12) 31% 38%,transparent 39% 55%,rgba(241,199,91,.08) 56% 62%,transparent 63%)}
+.lab-game-card[data-game="oop-builder"]::after{background:radial-gradient(circle,rgba(159,120,255,.17) 0 16%,transparent 17%),radial-gradient(circle at 78% 30%,rgba(66,225,237,.11) 0 12%,transparent 13%),rgba(159,120,255,.025)}
+.lab-game-card[data-game="logic-circuit"]::after{background:radial-gradient(circle at 25% 50%,rgba(66,225,237,.15) 0 5%,transparent 6%),linear-gradient(90deg,transparent 24%,rgba(66,225,237,.12) 25% 27%,transparent 28% 65%,rgba(66,225,237,.09) 66% 68%,transparent 69%)}
+.lab-game-card[data-game="interface-repair"]::after{background:linear-gradient(rgba(66,225,237,.08) 0 2px,transparent 2px 24px),linear-gradient(90deg,rgba(159,120,255,.08) 0 2px,transparent 2px 24px)}
 .lab-game-card:hover{
   transform:translateY(-4px);
   border-color:var(--games-line-strong);
@@ -867,6 +888,35 @@ body.lab-page::after{
 .lab-footer{
   color:#547d8f;
 }
+.games-celebration{
+  position:fixed;
+  left:50%;
+  top:50%;
+  width:1px;
+  height:1px;
+  z-index:80;
+  pointer-events:none;
+}
+.games-celebration span{
+  position:absolute;
+  left:0;
+  top:0;
+  color:#7ff7f1;
+  font-size:.8rem;
+  font-weight:900;
+  opacity:0;
+  text-shadow:0 0 14px rgba(66,225,237,.6);
+}
+.games-celebration span:nth-child(3n+2){color:#c3acff;text-shadow:0 0 14px rgba(159,120,255,.55)}
+.games-celebration span:nth-child(3n){color:#f6d56f;text-shadow:0 0 14px rgba(241,199,91,.45)}
+.games-celebration.is-active span{
+  animation:gamesBurst .82s cubic-bezier(.16,.7,.2,1) var(--delay) both;
+}
+@keyframes gamesBurst{
+  0%{opacity:0;transform:translate(0,0) scale(.5) rotate(0)}
+  15%{opacity:1}
+  100%{opacity:0;transform:translate(var(--x),var(--y)) scale(1.15) rotate(var(--spin))}
+}
 @keyframes gamesFloat{
   0%,100%{transform:translate3d(0,0,0) rotate(-1deg)}
   50%{transform:translate3d(0,-10px,0) rotate(1deg)}
@@ -966,7 +1016,8 @@ body.lab-page::after{
   .games-hero::before,
   .games-hero-art img,
   .games-orb,
-  .games-meter > span::after{animation:none!important}
+  .games-meter > span::after,
+  .games-celebration span{animation:none!important}
 }
 
 /* Existing practice markup remains the functional layout container. */
