@@ -41,6 +41,22 @@ const prettyDate=value=>{
   }catch{return "Recently";}
 };
 
+function assessmentProfileMeta(project){
+  if(project?.assessment?.provisionedBy!=="assessment-launch")return "";
+  const profile=String(project.assessment.studioProjectProfile||"auto");
+  const labels={
+    "java-console":"Java Console",
+    "java-desktop":"Java Desktop",
+    "java-database":"Java + Database",
+    "web":"Web",
+    "python-console":"Python Console",
+    "auto":"Auto"
+  };
+  const resolved=project.lang==="java"
+    ?(project.config?.database?"Java + Database":project.config?.runMode==="desktop"?"Java Desktop":"Java Console")
+    :project.lang==="web"?"Web":project.lang==="python"?"Python Console":labels[profile]||profile;
+  return "Assessment setup: "+resolved;
+}
 function projectTypeMeta(project){
   const template=CODE_PROJECT_TEMPLATES[project.template]||CODE_PROJECT_TEMPLATES["java-blank"];
   const detail=[template.title];
@@ -702,6 +718,13 @@ export function createProjectStudio({
     databaseButton?.classList.toggle("hidden",!databaseAllowed);
     el("studioPanelDesign")?.setAttribute("data-capability-enabled",String(designAllowed));
     el("studioPanelDatabase")?.setAttribute("data-capability-enabled",String(databaseAllowed));
+    const reset=el("resetBtn");
+    if(reset){
+      reset.textContent=assessmentProject?"Reset assessment starter":"Reset files";
+      reset.title=assessmentProject
+        ?"Replace this assessment project's files with its original assigned starter. Your current files will be discarded after confirmation."
+        :"Reset this project to its original template.";
+    }
   }
 
   function activateProject(project){
@@ -731,8 +754,9 @@ export function createProjectStudio({
     if(title)title.textContent=activeProject.title;
     if(meta){
       const kb=Math.max(1,Math.ceil(projectSize(activeProject)/1024));
+      const assessmentMeta=assessmentProfileMeta(activeProject);
       meta.textContent=projectTypeMeta(activeProject).detail+" · "+Object.keys(activeProject.state?.files||{}).length+" files · "+kb+" KB"+
-        (activeProject.assessment?.assessmentId?" · Assessment project":"")+(guest?" · local guest project":"");
+        (assessmentMeta?" · "+assessmentMeta:"")+(guest?" · local guest project":"");
     }
     document.title=activeProject.title+" · Adminerva";
   }
@@ -819,6 +843,11 @@ export function createProjectStudio({
   }
   function updateConfig(patch){
     if(!activeProject)return;
+    if(activeProject.assessment?.provisionedBy==="assessment-launch"&&
+      ["runMode","database","design"].some(key=>Object.hasOwn(patch||{},key))){
+      onConfigChange?.(activeProject.config||{});
+      return;
+    }
     const next={...activeProject,config:{...(activeProject.config||{}),...patch}};
     try{store(next,true);onConfigChange?.(activeProject.config);renderDatabase();}
     catch(error){alert("Project settings could not be saved: "+error.message);}
