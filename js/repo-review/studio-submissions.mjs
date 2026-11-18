@@ -60,6 +60,7 @@ function evaluationSnapshot(snapshot,item,assignedVariant){
      database:snapshot.database||{},design:snapshot.design||{},
      executionEvidence:snapshot.executionEvidence||{sourceDigest:"",runs:[]}
    },
+   automaticVerification:snapshot.verification||null,
    personalizedTask:assignedVariant?{
      variantId:assignedVariant.variantId||"",
      prompt:assignedVariant.prompt||"",
