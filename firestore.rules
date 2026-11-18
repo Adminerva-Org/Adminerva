@@ -1363,6 +1363,8 @@ service cloud.firestore {
       allow get: if signedIn() &&
         !exists(/databases/$(database)/documents/studio_submissions/$(evidenceId));
       allow read: if mayTeachSection(resource.data.section) ||
+        (isTeacher() && resource.data.get("assessmentId","") is string &&
+          get(/databases/$(database)/documents/assessments/$(resource.data.assessmentId)).data.get("ownerUid","") == request.auth.uid) ||
         mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("assessmentId","")) ||
         (signedIn() && ownsStudentProfile(resource.data.studentId));
       allow create: if studioEvidenceStudent(request.resource.data) &&
