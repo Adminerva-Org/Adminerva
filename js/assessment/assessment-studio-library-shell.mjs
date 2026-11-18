@@ -245,10 +245,41 @@ if(host){
               <label class="text-sm font-bold">Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
               <label class="text-sm font-bold">Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
             </div>
+            <label class="mt-3 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <input name="allowLateSubmissions" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
+              <span><strong>Allow late submissions</strong><span class="mt-1 block text-xs">Students may submit after the deadline while this deployment remains active. Adminerva still records the original deadline and submission time.</span></span>
+            </label>
             <p class="text-xs text-slate-500">The current instructions, rubric and private checking guidance are frozen for this deployment. Deployment remains private until you publish it.</p>
           </section>
         </div>
         <footer class="tl-dialog-footer"><button type="button" id="tl-cancel-deploy" class="tl-action alt">Cancel</button><button type="submit" class="tl-action">Deploy Assessment</button></footer>
+      </form>
+    </dialog>
+
+    <dialog id="tl-deployment-settings-dialog" class="tl-dialog">
+      <form id="tl-deployment-settings-form" class="tl-dialog-inner">
+        <header class="bg-slate-800 px-5 py-5 text-white">
+          <p class="text-[10px] font-extrabold uppercase tracking-[.18em] text-cyan-300">Deployment settings</p>
+          <h2 class="mt-1 text-xl font-extrabold">Edit Assessment Deployment</h2>
+          <p id="tl-deployment-settings-title" class="mt-1 text-xs text-slate-300"></p>
+        </header>
+        <div class="tl-dialog-body">
+          <section class="tl-section">
+            <p class="mb-3 text-xs text-slate-500">These settings affect the deployed class task. The frozen task instructions, rubric and personalized pool remain unchanged.</p>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <label class="text-sm font-bold">Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
+              <label class="text-sm font-bold">Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
+            </div>
+            <label class="mt-3 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <input name="allowLateSubmissions" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
+              <span><strong>Allow late submissions</strong><span class="mt-1 block text-xs">When enabled, new submissions remain accepted after the deadline until the assessment is closed, archived or cancelled.</span></span>
+            </label>
+            <label class="mt-3 block text-sm font-bold">Reason for change
+              <textarea name="reason" class="tl-input" minlength="12" maxlength="1000" rows="3" required placeholder="Explain the schedule or submission-policy change."></textarea>
+            </label>
+          </section>
+        </div>
+        <footer class="tl-dialog-footer"><button type="button" id="tl-deployment-settings-cancel" class="tl-action alt">Cancel</button><button type="submit" class="tl-action">Save deployment settings</button></footer>
       </form>
     </dialog>
 
