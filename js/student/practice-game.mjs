@@ -12,7 +12,7 @@ const functions=getFunctions(app,"asia-southeast1"),field=id=>document.getElemen
 const typeNames=guestPage?{choice:"Choose the answer",output:"Write the output",ordering:"Build the sequence",matching:"Match the pairs",debugging:"Fix the bug"}:{choice:"Quick Pick",output:"Code Trace",ordering:"Code Builder",matching:"Logic Match",debugging:"Bug Hunt"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
 const initialGame=getProgrammingGame(new URLSearchParams(location.search).get("game"));
 const TOTAL_MISSIONS=COURSES.reduce((sum,entry)=>sum+entry.missions.length,0);
-let user=null,eligible=false,hub={},course=COURSES[0],activeGame=initialGame.external?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[];
+let user=null,eligible=false,hub={},course=COURSES[0],activeGame=initialGame.external?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null;
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
 function localSet(key,value){try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
@@ -23,7 +23,7 @@ function saveDraft(){if(mission)localSet(draftKey(),{answer});}
 function sync(message,tone="ready"){field("labSync").textContent=message;field("labSync").dataset.tone=tone;}
 function notice(message,tone="info"){field("labNoticeText").textContent=message;field("labNotice").hidden=!message;field("labNotice").dataset.tone=tone;}
 function feedback(message,tone="info"){field("practiceFeedback").textContent=message;field("practiceFeedback").dataset.tone=tone;field("practiceFeedback").hidden=!message;}
-function setBusy(value){busy=value;field("practiceMissionPanel").setAttribute("aria-busy",String(value));for(const id of ["practiceCheckBtn","practiceBackBtn","practiceTransferBtn","practiceSyncBtn","labPreferencesSave","labNextMission"])field(id).disabled=value;field("practiceClass").disabled=value||!(hub.classes||[]).length;for(const control of field("practiceChoices").querySelectorAll("input,select,button"))control.disabled=value||!!pending||control.dataset.boundary==="true";field("practiceCheckBtn").textContent=value?(pending?"Saving…":"Please wait…"):pending?"Retry save":attempt?.completed?"Check replay":"Submit answer";field("practiceCheckBtn").disabled=value||!eligible||!attempt?.attemptId;}
+function setBusy(value){busy=value;field("practiceMissionPanel").setAttribute("aria-busy",String(value));for(const id of ["practiceCheckBtn","practiceBackBtn","practiceTransferBtn","practiceSyncBtn","labPreferencesSave","labNextMission","labHintBtn"])field(id).disabled=value;field("practiceClass").disabled=value||!(hub.classes||[]).length;for(const control of field("practiceChoices").querySelectorAll("input,select,button"))control.disabled=value||!!pending||control.dataset.boundary==="true";field("practiceCheckBtn").textContent=value?(pending?"Saving…":"Please wait…"):pending?"Retry save":attempt?.completed?"Check replay":"Submit answer";field("practiceCheckBtn").disabled=value||!eligible||!attempt?.attemptId;}
 function completed(id){return (hub.courses||[]).some(row=>row.completed?.includes(id));}
 function earned(id){for(const row of hub.courses||[])if(row.missionScores?.[id]!==undefined)return row.missionScores[id];return 0;}
 function renderSummary(){
@@ -281,16 +281,88 @@ function readAnswer(){
   if(attempt.question.type==="ordering")return answer;
   return [...field("practiceChoices").querySelectorAll("select")].map(select=>select.value===""?null:Number(select.value));
 }
+function hintMessages(question){
+  const hints=[];
+  if(mission?.oop===true){
+    const oopHints={
+      "oop-classes":"Separate the class definition from the object or reference created from it.",
+      "oop-encapsulation":"Look for who is allowed to read or change object state.",
+      "oop-inheritance":"Look for extends, super, inherited members, or an override.",
+      "oop-polymorphism":"Compare the reference type with the runtime object and the method implementation it selects.",
+      "oop-real":"Decide whether the relationship is has-a, class-wide, overloaded, or collection-based."
+    };
+    if(oopHints[mission.oopModule])hints.push(oopHints[mission.oopModule]);
+  }
+  if(question.type==="debugging"){
+    if(question.caseHint)hints.push(question.caseHint);
+    if(Number.isInteger(question.focusLine))hints.push("Focus on line "+question.focusLine+". Compare what it does with the exact goal in the prompt.");
+  }else if(question.type==="output"){
+    hints.push("Track only values or object state that can affect the final output.");
+    hints.push("Start at the print/output statement and trace backward to the values it depends on.");
+  }else if(question.type==="ordering"){
+    hints.push("Find the block that must happen first because later blocks depend on it.");
+    hints.push("For each block, ask what must already exist before that line can run.");
+  }else if(question.type==="matching"){
+    hints.push("Match the most distinctive pair first, then eliminate that option from the remaining pairs.");
+    hints.push("Every right-side option is used once, so a confident match narrows the rest.");
+  }else{
+    hints.push("Read the goal first, then compare each choice against the exact rule shown in the code.");
+    hints.push("Eliminate choices that contradict the code before choosing between the remaining options.");
+  }
+  return [...new Set(hints)].slice(0,2);
+}
+function renderHintControl(){
+  const tray=field("labHintTray"),button=field("labHintBtn"),text=field("labHintText");if(!tray||!button||!text)return;
+  const hints=attempt?.question?hintMessages(attempt.question):[];
+  tray.hidden=guestPage||!hints.length;button.hidden=guestPage||!hints.length;button.disabled=busy||hintLevel>=hints.length;
+  button.textContent=hintLevel>=hints.length?"Hints used":"Hint "+(hintLevel+1)+" / "+hints.length;
+  text.hidden=hintLevel===0;text.textContent=hintLevel?hints.slice(0,hintLevel).join(" · "):"";
+}
+function revealHint(){
+  if(guestPage||!attempt?.question)return;
+  const hints=hintMessages(attempt.question);if(!hints.length)return;
+  hintLevel=Math.min(hints.length,hintLevel+1);renderHintControl();
+}
+function moveOrder(from,to,swap=false){
+  if(!Array.isArray(answer)||from===to||from<0||to<0||from>=answer.length||to>=answer.length)return;
+  if(swap)[answer[from],answer[to]]=[answer[to],answer[from]];
+  else{const [item]=answer.splice(from,1);answer.splice(to,0,item);}
+  builderSelection=null;saveDraft();renderAnswer();
+}
 function renderAnswer(){
   const question=attempt.question,container=field("practiceChoices");container.replaceChildren();
   if(["choice","debugging"].includes(question.type))question.choices.forEach((value,index)=>{const label=node("label",undefined,"lab-answer-choice"),radio=document.createElement("input");radio.type="radio";radio.name="practiceAnswer";radio.value=String(index);radio.checked=answer===index;radio.addEventListener("change",()=>{answer=index;saveDraft();});label.append(radio,node("span",value));container.append(label);});
   else if(question.type==="output"){const label=node("label","Your exact answer","lab-answer-label"),input=document.createElement("input");input.id="labOutputAnswer";input.type="text";input.maxLength=500;input.autocomplete="off";input.spellcheck=false;input.value=typeof answer==="string"?answer:"";input.placeholder="Type the result or requested element…";input.addEventListener("input",()=>{answer=input.value;saveDraft();});label.htmlFor=input.id;container.append(label,input);}
   else if(question.type==="ordering"){
     if(!Array.isArray(answer)||answer.length!==question.items.length)answer=question.items.map((item,index)=>index);
-    const list=node("ol",undefined,"lab-order-list");answer.forEach((itemIndex,position)=>{const row=node("li"),code=node("code",question.items[itemIndex]),actions=node("div",undefined,"lab-order-actions");for(const [delta,symbol,label] of [[-1,"↑","Move statement up"],[1,"↓","Move statement down"]]){const button=node("button",symbol);button.type="button";button.setAttribute("aria-label",label);button.dataset.boundary=String(position+delta<0||position+delta>=answer.length);button.disabled=button.dataset.boundary==="true";button.addEventListener("click",()=>{if(busy||pending||button.dataset.boundary==="true")return;const next=position+delta;[answer[position],answer[next]]=[answer[next],answer[position]];saveDraft();renderAnswer();});actions.append(button);}row.append(node("span",String(position+1),"lab-order-position"),code,actions);list.append(row);});container.append(list);
+    const list=node("ol",undefined,"lab-order-list");answer.forEach((itemIndex,position)=>{
+      const row=node("li",undefined,!guestPage&&builderSelection===position?"is-picked":""),code=node("code",question.items[itemIndex]),actions=node("div",undefined,"lab-order-actions");
+      if(!guestPage){
+        row.draggable=!busy&&!pending;row.tabIndex=0;row.dataset.position=String(position);
+        const choose=()=>{if(busy||pending)return;if(builderSelection===null){builderSelection=position;renderAnswer();}else if(builderSelection===position){builderSelection=null;renderAnswer();}else moveOrder(builderSelection,position,true);};
+        row.addEventListener("click",event=>{if(event.target.closest("button"))return;choose();});
+        row.addEventListener("keydown",event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();choose();}});
+        row.addEventListener("dragstart",event=>{event.dataTransfer?.setData("text/plain",String(position));row.classList.add("is-dragging");});
+        row.addEventListener("dragend",()=>row.classList.remove("is-dragging"));
+        row.addEventListener("dragover",event=>{event.preventDefault();row.classList.add("is-drag-target");});
+        row.addEventListener("dragleave",()=>row.classList.remove("is-drag-target"));
+        row.addEventListener("drop",event=>{event.preventDefault();row.classList.remove("is-drag-target");const from=Number(event.dataTransfer?.getData("text/plain"));if(Number.isInteger(from))moveOrder(from,position,false);});
+      }
+      for(const [delta,symbol,label] of [[-1,"↑","Move statement up"],[1,"↓","Move statement down"]]){const button=node("button",symbol);button.type="button";button.setAttribute("aria-label",label);button.dataset.boundary=String(position+delta<0||position+delta>=answer.length);button.disabled=button.dataset.boundary==="true";button.addEventListener("click",()=>{if(busy||pending||button.dataset.boundary==="true")return;moveOrder(position,position+delta,false);});actions.append(button);}
+      row.append(node("span",String(position+1),"lab-order-position"),code,actions);list.append(row);
+    });container.append(list);
+    if(!guestPage)container.append(node("small",builderSelection===null?"Drag blocks, use arrows, or tap two blocks to swap.":"Choose another block to swap positions.","games-builder-help"));
   }else{
     if(!Array.isArray(answer)||answer.length!==question.left.length)answer=question.left.map(()=>null);
-    question.left.forEach((value,index)=>{const label=node("label",undefined,"lab-match-row"),select=document.createElement("select");label.append(node("strong",value));select.setAttribute("aria-label","Match "+value);select.add(new Option("Choose a match…",""));question.right.forEach((right,rightIndex)=>select.add(new Option(right,String(rightIndex))));select.value=answer[index]===null?"":String(answer[index]);select.addEventListener("change",()=>{answer[index]=select.value===""?null:Number(select.value);saveDraft();});label.append(select);container.append(label);});
+    question.left.forEach((value,index)=>{
+      if(guestPage){
+        const label=node("label",undefined,"lab-match-row"),select=document.createElement("select");label.append(node("strong",value));select.setAttribute("aria-label","Match "+value);select.add(new Option("Choose a match…",""));question.right.forEach((right,rightIndex)=>select.add(new Option(right,String(rightIndex))));select.value=answer[index]===null?"":String(answer[index]);select.addEventListener("change",()=>{answer[index]=select.value===""?null:Number(select.value);saveDraft();});label.append(select);container.append(label);return;
+      }
+      const row=node("div",undefined,"games-match-row"),label=node("strong",value),choices=node("div",undefined,"games-match-choices");row.append(label,choices);
+      question.right.forEach((right,rightIndex)=>{const button=node("button",right,"games-match-choice"+(answer[index]===rightIndex?" is-selected":""));button.type="button";button.setAttribute("aria-pressed",String(answer[index]===rightIndex));button.addEventListener("click",()=>{if(busy||pending)return;const prior=answer.indexOf(rightIndex);if(prior>=0&&prior!==index)answer[prior]=null;answer[index]=answer[index]===rightIndex?null:rightIndex;saveDraft();renderAnswer();});choices.append(button);});
+      container.append(row);
+    });
+  }
   }
   for(const control of container.querySelectorAll("input,select,button"))if(busy||pending)control.disabled=true;
 }
@@ -323,18 +395,18 @@ function renderMechanicAid(question){
     const hint=node("p",question.caseHint||"Inspect the highlighted line and compare it with the stated goal.","lab-case-hint");
     const viewer=node("div",undefined,"lab-code-case");
     question.code.split("\n").forEach((text,index)=>{const row=node("div",undefined,"lab-code-line"+(index+1===question.focusLine?" is-focus":""));row.append(node("span",String(index+1),"lab-code-line-number"),node("code",text||" "));viewer.append(row);});
-    panel.append(head,hint,viewer);
+    if(guestPage)panel.append(head,hint,viewer);else panel.append(head,viewer);
   }
   if(!guestPage&&question.type==="ordering"){
-    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(head);
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(head,node("p","Build the program in execution order.","games-mechanic-note"));
   }
   if(!guestPage&&question.type==="matching"){
-    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(head);
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(head,node("p","Each match can be used once.","games-mechanic-note"));
   }
 }
 function pointsText(){const meta=attempt.question.difficulty;field("labMissionPoints").textContent=attempt.completed?attempt.earnedPoints+" pts earned":attempt.availablePoints+" pts available";field("labScoringHint").textContent=attempt.completed?"Completed · replays do not change XP.":meta.name+" · "+meta.maximum+" pts max · −"+meta.deduction+" per miss · "+meta.floor+" pt floor · experiments are free.";}
 async function openMission(selectedCourse,selectedMission){
-  if(busy)return;const end=window.beginLoading?.("Preparing practice mission…")||(()=>{});saveDraft();course=selectedCourse;mission=selectedMission;persistentSet(resumeKey(),{courseId:course.id,missionId:mission.id,gameId:activeGame,openedAt:Date.now()});attempt=null;answer=localGet(draftKey())?.answer??null;const version=epoch,sequence=++loadSequence;
+  if(busy)return;const end=window.beginLoading?.("Preparing practice mission…")||(()=>{});saveDraft();course=selectedCourse;mission=selectedMission;persistentSet(resumeKey(),{courseId:course.id,missionId:mission.id,gameId:activeGame,openedAt:Date.now()});attempt=null;hintLevel=0;builderSelection=null;answer=localGet(draftKey())?.answer??null;const version=epoch,sequence=++loadSequence;
   field("labReopenMission").hidden=true;
   field("practiceCheckBtn").hidden=true;field("labSubmitSignin").hidden=true;
   const themeGame=activeGame==="all"?missionGameId(course,mission):activeGame;field("labMapPanel").hidden=true;const missionPanel=field("practiceMissionPanel");missionPanel.hidden=false;missionPanel.classList.remove("is-complete");missionPanel.dataset.game=themeGame;field("practiceMissionTitle").textContent=mission.title.replace(/ · (Guided|Apply|Challenge)$/,"");field("practiceCourseName").textContent=course.name;field("labMissionType").textContent=typeNames[missionMeta(course,mission).type];field("practiceChoices").replaceChildren();field("practiceCode").textContent="";field("practicePrompt").textContent="Preparing your mission…";field("labExperimentLink").hidden=true;field("labNextMission").hidden=true;feedback("");setBusy(true);
@@ -344,7 +416,7 @@ async function openMission(selectedCourse,selectedMission){
     else{const preview=seasonActivity(course,mission,Math.abs(hashSeed(PRACTICE_SEASON+mission.id))),meta=missionMeta(course,mission);attempt={question:publicActivity(preview),availablePoints:meta.maximum,completed:false,previewWorkspace:preview.workspace};}
     if(version!==epoch||sequence!==loadSequence)return;
     if(pending?.missionId===mission.id){if(pending.attemptId===attempt.attemptId)answer=pending.answer;else{pending=null;localSet(pendingKey(),null);notice("The previous answer session ended. This mission shows your latest server score; no answer was submitted again.");}}
-    field("practiceCode").textContent=attempt.question.code||"";field("practiceCode").hidden=!attempt.question.code;field("practicePrompt").textContent=attempt.question.prompt;renderMechanicAid(attempt.question);pointsText();renderAnswer();
+    field("practiceCode").textContent=attempt.question.code||"";field("practiceCode").hidden=!attempt.question.code;field("practicePrompt").textContent=attempt.question.prompt;renderMechanicAid(attempt.question);pointsText();renderAnswer();renderHintControl();
     field("labSubmitSignin").hidden=eligible;field("practiceCheckBtn").hidden=!eligible;
     field("labSubmitSignin").textContent=user?"Open my access request":"Sign in to submit";field("labSubmitSignin").href=user?"guest-home.html":"login.html";
     if(!eligible)feedback(user?"Your account cannot submit yet. Finish your access request or verify your email, then refresh.":"Explore the mission freely. Sign in to submit answers and save season points.");
@@ -374,7 +446,7 @@ async function submit(){
     pending=null;localSet(pendingKey(),null);field("labPendingResume").hidden=true;notice("");
     if(result.correct){attempt.completed=true;attempt.earnedPoints=result.earnedPoints;field("practiceMissionPanel").classList.add("is-complete");prepareExperiment(result.workspace);field("labNextMission").hidden=false;feedback((result.awarded?"Mission complete! +"+result.earnedPoints+" points. ":"Correct replay. Your original reward stays saved. ")+(result.explanation||""),"success");if(result.awarded)celebrateMission();await refreshHub();sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
     else if(result.alreadyRecorded){feedback("Not quite. This is a replay, so your saved points are unchanged. "+(result.explanation||""),"warning");sync("Replay checked");}
-    else{attempt.availablePoints=result.availablePoints;attempt.wrongSubmissions=result.wrongSubmissions;feedback(result.deduction?"Not quite. This scored submission used "+result.deduction+" points from this mission’s possible reward. "+result.availablePoints+" points remains available. Adjust your answer and try again.":"Not quite. You have reached this mission’s minimum reward; more attempts cannot reduce it further. Keep trying.","warning");sync("Attempt saved");}
+    else{attempt.availablePoints=result.availablePoints;attempt.wrongSubmissions=result.wrongSubmissions;if(!guestPage)revealHint();feedback(result.deduction?"Not quite. This scored submission used "+result.deduction+" points from this mission’s possible reward. "+result.availablePoints+" points remains available. Adjust your answer and try again.":"Not quite. You have reached this mission’s minimum reward; more attempts cannot reduce it further. Keep trying.","warning");sync("Attempt saved");}
     pointsText();renderAnswer();
   }catch(error){if(version===epoch){const reason=error.details?.reason;if(["answer-incomplete","practice-rate-limit","attempt-expired","enrollment","guest-registration","session-moved"].includes(reason)){pending=null;localSet(pendingKey(),null);if(reason==="attempt-expired")field("labReopenMission").hidden=false;}errorFeedback(error);pendingNotice();}}
   finally{if(version===epoch)setBusy(false);end();}
@@ -385,7 +457,7 @@ function markup(){return `
   <div id="labNotice" class="lab-notice" role="status" hidden><span id="labNoticeText"></span><button id="practiceTransferBtn" type="button" hidden>Continue practice here</button><button id="labPendingResume" type="button" hidden>Resume pending save</button></div>
   <div id="practiceOverview" class="lab-stats" aria-label="Your season progress"></div><p id="labPreviousProgress" class="lab-history"></p>
   <div class="lab-workspace"><div class="lab-main"><section id="labMapPanel"><div class="lab-section-heading"><div><p class="lab-eyebrow">COMPUTER PROGRAMMING</p><h2>Choose a game</h2></div><span class="lab-pill">${PROGRAMMING_GAMES.length} game modes · ${TOTAL_MISSIONS} missions</span></div><nav id="labGameCatalog" class="lab-game-grid" aria-label="Computer Programming games"></nav><div class="lab-section-heading lab-skill-heading"><div><p class="lab-eyebrow">FILTER THE GAME</p><h2>Choose a skill path</h2></div><span class="lab-pill">Java · Python · Web · Logic</span></div><nav id="labCourseTabs" class="lab-course-tabs" aria-label="Programming skill paths"></nav><div class="lab-map-heading"><div><h2 id="labCourseTitle"></h2><p id="labCourseSubtitle"></p></div><span class="lab-map-key">✓ completed · choose any mission</span></div><div id="practiceCourseList"></div></section>
-  <section id="practiceMissionPanel" class="lab-mission-panel" aria-labelledby="practiceMissionTitle" aria-busy="false" hidden><button id="practiceBackBtn" type="button" class="lab-text-button">← Back to games</button><div class="lab-mission-meta"><span id="labGameName" class="lab-pill"></span><span id="practiceCourseName"></span><span id="labMissionType" class="lab-pill"></span></div><h2 id="practiceMissionTitle" tabindex="-1"></h2><p id="labMissionPoints" class="lab-points-available"></p><pre id="practiceCode"></pre><div id="labMechanicPanel" class="lab-mechanic-panel" hidden></div><h3 id="practicePrompt"></h3><div id="practiceChoices" class="lab-answers"></div><p id="labScoringHint" class="lab-scoring-hint"></p><div id="practiceFeedback" class="lab-feedback" role="status" aria-live="polite" hidden></div><div class="lab-mission-actions"><button id="practiceCheckBtn" type="button" class="lab-primary">Submit answer</button><a id="labSubmitSignin" href="login.html" class="lab-primary" hidden>Sign in to submit</a><button id="labReopenMission" type="button" hidden>Reconnect mission</button><button id="labNextMission" type="button" class="lab-secondary" hidden>Next mission →</button></div><a id="labExperimentLink" class="lab-experiment-link" href="${guestPage?"guest-playground.html":"student-playground.html"}?practice=1" hidden>Experiment with this code in Playground ↗</a></section>
+  <section id="practiceMissionPanel" class="lab-mission-panel" aria-labelledby="practiceMissionTitle" aria-busy="false" hidden><button id="practiceBackBtn" type="button" class="lab-text-button">← Back to games</button><div class="lab-mission-meta"><span id="labGameName" class="lab-pill"></span><span id="practiceCourseName"></span><span id="labMissionType" class="lab-pill"></span></div><h2 id="practiceMissionTitle" tabindex="-1"></h2><p id="labMissionPoints" class="lab-points-available"></p><pre id="practiceCode"></pre><div id="labMechanicPanel" class="lab-mechanic-panel" hidden></div><h3 id="practicePrompt"></h3><div id="practiceChoices" class="lab-answers"></div><p id="labScoringHint" class="lab-scoring-hint"></p><div id="labHintTray" class="games-hint-tray" hidden><button id="labHintBtn" type="button">Hint 1 / 2</button><p id="labHintText" hidden></p></div><div id="practiceFeedback" class="lab-feedback" role="status" aria-live="polite" hidden></div><div class="lab-mission-actions"><button id="practiceCheckBtn" type="button" class="lab-primary">Submit answer</button><a id="labSubmitSignin" href="login.html" class="lab-primary" hidden>Sign in to submit</a><button id="labReopenMission" type="button" hidden>Reconnect mission</button><button id="labNextMission" type="button" class="lab-secondary" hidden>Next mission →</button></div><a id="labExperimentLink" class="lab-experiment-link" href="${guestPage?"guest-playground.html":"student-playground.html"}?practice=1" hidden>Experiment with this code in Playground ↗</a></section>
   <details class="lab-rules"><summary>How scoring works</summary><div class="lab-rules-grid">${DIFFICULTIES.map(level=>`<div><strong>${level.name}</strong><span>${level.maximum} points to start</span><small>−${level.deduction} per incorrect scored answer · floor ${level.floor} points</small></div>`).join("")}</div><p>Only selecting Submit scored answer counts as a graded attempt. Opening a mission, changing an answer, running code, compiler errors, and connection failures do not deduct points. Each mission rewards you once per season. Replays cannot add points. Practice scores do not change school grades. Earlier completion history is preserved.</p><p>Guests and students share this mission pool. A verified signed-in account with an active or pending school access request can save points. Visitors can preview missions and use the public Playground.</p></details></div>
   <aside class="lab-sidebar"><section class="lab-board"><div class="lab-section-heading"><h2>Leaderboard</h2><span aria-hidden="true">🏆</span></div><div class="lab-board-tabs"><button id="labGlobalTab" type="button" aria-pressed="true">Global</button><button id="labClassTab" type="button" aria-pressed="false">My class</button></div><div id="labClassControls" hidden><select id="practiceClass" aria-label="Choose your practice class"></select><p id="labClassHint"></p></div><ol id="practiceStandings" aria-label="Practice rankings"></ol><p id="labBoardFootnote" class="lab-board-footnote">Current season · top 30 public aliases. Equal points share a rank.</p></section><details class="lab-public-preferences"><summary>Your public leaderboard alias</summary><p>Choose a nickname, never your real name, school or email. Public rows contain only aliases, season points and mission counts. Joining is optional.</p><form id="labPreferences" hidden><label for="labAlias">Nickname<input id="labAlias" maxlength="24" minlength="3" pattern="[A-Za-z0-9 _-]{3,24}" required autocomplete="off"></label><label class="lab-checkbox"><input id="labOptIn" type="checkbox"> Show my alias and points publicly</label><button id="labPreferencesSave" type="submit">Save leaderboard choice</button><p id="labPreferencesStatus" role="status"></p></form><a id="labPreferencesSignin" href="login.html">Sign in to join the season →</a></details><section class="lab-tip-card"><span aria-hidden="true">✦</span><h3>Try. Learn. Come back stronger.</h3><p>Incorrect answers are part of practice. Every difficulty has a minimum reward, so you can keep learning.</p></section></aside></div>`;}
 field("practiceApp").innerHTML=markup();
@@ -396,6 +468,7 @@ if(!guestPage){
 field("practiceSyncBtn").addEventListener("click",()=>void window.withLoading("Refreshing practice progress…",async()=>{if(busy)return;connectBoard();await refreshHub();if(mission&&!attempt?.attemptId&&eligible)await openMission(course,mission);else setBusy(false);},{button:field("practiceSyncBtn")}));
 field("practiceBackBtn").addEventListener("click",()=>{returnToGamesHub();});
 field("practiceCheckBtn").addEventListener("click",()=>{void submit();});
+field("labHintBtn").addEventListener("click",()=>{if(!busy)revealHint();});
 field("labReopenMission").addEventListener("click",()=>{if(!busy&&mission){field("labReopenMission").hidden=true;void openMission(course,mission);}});
 field("practiceTransferBtn").addEventListener("click",async()=>{if(busy||!user||!confirm("Move practice to this device? Other active practice sessions stop submitting; your saved points stay safe."))return;setBusy(true);try{await connect(true);setBusy(false);if(mission)await openMission(course,mission);}catch(error){errorFeedback(error);}finally{setBusy(false);}});
 field("labPendingResume").addEventListener("click",()=>{if(busy||!pending)return;const entry=COURSES.find(item=>item.id===pending.courseId),target=entry?.missions.find(item=>item.id===pending.missionId);if(target)void openMission(entry,target);});
