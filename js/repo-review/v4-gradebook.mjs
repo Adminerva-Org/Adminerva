@@ -4,6 +4,9 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0
 import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
 import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.0.0";
+import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
+import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
+import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -334,6 +337,26 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4Feedback").value=grade?.feedback||"";
     updateScore();
   }
+  function applyEvaluationSuggestion(suggestion,label){
+    const rows=[...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")];
+    suggestion.criteria.forEach((criterion,index)=>{
+      const row=rows[index];if(!row)return;
+      row.querySelector("[data-awarded]").value=String(criterion.awardedPoints);
+      row.querySelector("[data-pending]").value=String(criterion.pendingPoints);
+      row.querySelector("[data-comment]").value=criterion.comment||"";
+    });
+    if(suggestion.feedback)document.getElementById("gbV4Feedback").value=suggestion.feedback;
+    updateScore();
+    document.getElementById("gbV4ExternalStatus").textContent=
+      label+" applied to the unsaved private rubric draft. Review every criterion before saving.";
+  }
+  function showEvaluationReview(containerId,label,suggestion){
+    renderEvaluationReview(document.getElementById(containerId),{
+      title:label+" rubric suggestion",sourceLabel:label,suggestion,task:currentTask,
+      onApply:value=>applyEvaluationSuggestion(value,label),
+      applyLabel:"Apply "+label+" to private draft"
+    });
+  }
   function collectCriteria(){
     return [...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")].map((row,index)=>{
       const awardedPoints=Number(row.querySelector("[data-awarded]").value||0);
@@ -359,6 +382,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4LegacyReason").value="";
     document.getElementById("gbV4ExternalResponse").value="";
     document.getElementById("gbV4ExternalStatus").textContent="";
+    clearEvaluationReview(document.getElementById("gbV4SystemReview"),"Internal AI has not been run for this submission.");
+    clearEvaluationReview(document.getElementById("gbV4ExternalReview"),"No External AI review has been imported for this submission.");
     document.getElementById("gbV4ExternalEvaluationPanel").classList.toggle("hidden",currentTask.submissionSource==="github");
     document.getElementById("gbV4LegacyGradePanel").hidden=true;
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
@@ -457,17 +482,43 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         error?.message||"Evidence approval was not recorded.";
     }finally{setBusy(false);}
   })());
+  document.getElementById("gbV4SystemCheck").addEventListener("click",()=>void (async()=>{
+    const output=document.getElementById("gbV4ExternalStatus");
+    const button=document.getElementById("gbV4SystemCheck");
+    if(busy||!currentTask||!currentSnapshot||currentTask.submissionSource==="github")return;
+    button.disabled=true;
+    output.textContent="Running Internal AI against the exact frozen submission…";
+    try{
+      const packageText=buildGeneralExternalEvaluationPackage({
+        task:currentTask,snapshot:currentSnapshot,
+        checkingInstructions:currentPrivateConfig?.checkingInstructions||""
+      });
+      const result=await generateSchoolContent({
+        contents:[{parts:[{text:packageText}]}],
+        generationConfig:{responseMimeType:"application/json",temperature:0.2,maxOutputTokens:8192}
+      },{purpose:"evaluation",signal:AbortSignal.timeout(100000)});
+      const parsed=await evaluationJSON({ok:true,json:async()=>result});
+      const suggestion=parseGeneralExternalEvaluationResponse(JSON.stringify(parsed),{task:currentTask});
+      showEvaluationReview("gbV4SystemReview","Internal AI",suggestion);
+      output.textContent="Internal AI review is ready below. It has not changed the teacher draft.";
+    }catch(error){
+      clearEvaluationReview(document.getElementById("gbV4SystemReview"),"Internal AI review unavailable.");
+      output.textContent=error?.message||"Internal AI evaluation could not complete.";
+    }finally{button.disabled=false;}
+  })());
+
   document.getElementById("gbV4ExternalCopy").addEventListener("click",()=>void (async()=>{
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
     try{
       const packageText=buildGeneralExternalEvaluationPackage({task:currentTask,snapshot:currentSnapshot,checkingInstructions:currentPrivateConfig?.checkingInstructions||""});
       await navigator.clipboard.writeText(packageText);
-      output.textContent="Anonymous external evaluation package copied. Paste the evaluator JSON below when ready.";
+      output.textContent="Anonymous External AI evaluation package copied. Paste the evaluator JSON below when ready.";
     }catch(error){
       output.textContent=error?.message||"Evaluation package could not be copied.";
     }
   })());
+
   document.getElementById("gbV4ExternalApply").addEventListener("click",()=>{
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
@@ -475,20 +526,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const suggestion=parseGeneralExternalEvaluationResponse(
         document.getElementById("gbV4ExternalResponse").value,{task:currentTask}
       );
-      const rows=[...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")];
-      suggestion.criteria.forEach((criterion,index)=>{
-        const row=rows[index];if(!row)return;
-        row.querySelector("[data-awarded]").value=String(criterion.awardedPoints);
-        row.querySelector("[data-pending]").value=String(criterion.pendingPoints);
-        row.querySelector("[data-comment]").value=criterion.comment||"";
-      });
-      if(suggestion.feedback)document.getElementById("gbV4Feedback").value=suggestion.feedback;
-      updateScore();
-      output.textContent="External evaluation applied to the unsaved private draft fields."+
-        (suggestion.limitations?" Limitations: "+suggestion.limitations:"")+
-        " Review every criterion before saving.";
+      showEvaluationReview("gbV4ExternalReview","External AI",suggestion);
+      output.textContent="External AI review imported below. It has not changed the teacher draft.";
     }catch(error){
-      output.textContent=error?.message||"External evaluation could not be applied.";
+      clearEvaluationReview(document.getElementById("gbV4ExternalReview"),"External AI review was not imported.");
+      output.textContent=error?.message||"External evaluation could not be imported.";
     }
   });
 
