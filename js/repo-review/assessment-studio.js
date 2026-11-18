@@ -881,6 +881,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   await fetchSectionsFromStudents();
   await loadAssessments();
   void loadBlueprintChoices();
+  const requestedLegacyAssessment=new URL(location.href).searchParams.get("legacyAssessment");
+  if(requestedLegacyAssessment){
+    const requested=assessments.find(item=>item.id===requestedLegacyAssessment);
+    if(requested){
+      window.openViewModal(requested.id);
+      setTimeout(()=>void window.openEditModal(),0);
+    }else{
+      showAssessmentToast("The requested legacy assessment is not available to this teacher account.",{tone:"warning",duration:4200});
+    }
+  }
   window.hideSubtleLoader();
 });
 
