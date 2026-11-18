@@ -322,6 +322,7 @@ function readAnswer(){
   return answer;
 }
 function reducedGameMotion(){return matchMedia("(prefers-reduced-motion: reduce)").matches;}
+function coarsePointer(){return matchMedia("(pointer: coarse)").matches;}
 function svgNode(name,attrs={}){const element=document.createElementNS("http://www.w3.org/2000/svg",name);for(const [key,value] of Object.entries(attrs))element.setAttribute(key,String(value));return element;}
 function traceVariables(code){
   const source=String(code||""),blocked=new Set(["if","else","for","while","return","print","println","System","Math","new","class","public","private","protected","static","final","true","false","null"]),found=[];
@@ -424,7 +425,7 @@ function renderAnswer(){
     const list=node("ol",undefined,"lab-order-list");answer.forEach((itemIndex,position)=>{
       const blockText=question.items[itemIndex],row=node("li",undefined,!guestPage&&builderSelection===position?"is-picked":""),code=node("code",blockText),actions=node("div",undefined,"lab-order-actions");row.dataset.blockKind=codeBlockKind(blockText);
       if(!guestPage){
-        row.draggable=!busy&&!pending;row.tabIndex=0;row.dataset.position=String(position);
+        row.draggable=!coarsePointer()&&!busy&&!pending;row.tabIndex=0;row.dataset.position=String(position);
         const choose=()=>{if(busy||pending)return;if(builderSelection===null){builderSelection=position;renderAnswer();}else if(builderSelection===position){builderSelection=null;renderAnswer();}else moveOrder(builderSelection,position,true);};
         row.addEventListener("click",event=>{if(event.target.closest("button"))return;choose();});
         row.addEventListener("keydown",event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();choose();}});
@@ -437,7 +438,7 @@ function renderAnswer(){
       for(const [delta,symbol,label] of [[-1,"↑","Move statement up"],[1,"↓","Move statement down"]]){const button=node("button",symbol);button.type="button";button.setAttribute("aria-label",label);button.dataset.boundary=String(position+delta<0||position+delta>=answer.length);button.disabled=button.dataset.boundary==="true";button.addEventListener("click",()=>{if(busy||pending||button.dataset.boundary==="true")return;moveOrder(position,position+delta,false);});actions.append(button);}
       row.append(node("span",String(position+1),"lab-order-position"),code,actions);list.append(row);
     });container.append(list);
-    if(!guestPage)container.append(node("small",builderSelection===null?"Drag blocks, use arrows, or tap two blocks to swap.":"Choose another block to swap positions.","games-builder-help"));
+    if(!guestPage)container.append(node("small",builderSelection===null?(coarsePointer()?"Tap two blocks to swap, or use the arrows.":"Drag blocks, use arrows, or tap two blocks to swap."):"Choose another block to swap positions.","games-builder-help"));
   }else{
     if(!Array.isArray(answer)||answer.length!==question.left.length)answer=question.left.map(()=>null);
     question.left.forEach((value,index)=>{
