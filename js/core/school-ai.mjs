@@ -1,5 +1,6 @@
 /** Shared staff AI connection. Browser code never receives the school's key. */
 import {auth} from "./firebase-core.js?v=1.3.0";
+import {trackOperation} from "./telemetry.mjs?v=4.0.0";
 
 let cached=null;
 let tenantCached=null;
@@ -8,21 +9,23 @@ async function callable(name,data,{signal,timeout=15000}={}){
   await auth.authStateReady();
   const user=auth.currentUser;
   if(!user)throw Error("Sign in before using school AI.");
-  const token=await user.getIdToken();
-  const response=await fetch("https://asia-southeast1-reporeview-e7ca4.cloudfunctions.net/"+name,{
-    method:"POST",
-    headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
-    body:JSON.stringify({data}),
-    signal:signal||AbortSignal.timeout(timeout)
-  });
-  const json=await response.json().catch(()=>({}));
-  if(auth.currentUser?.uid!==user.uid)throw Error("Account changed. The returned AI draft was ignored.");
-  if(!response.ok||json.error){
-    const error=Error(json.error?.message||"School AI could not connect. Retry shortly.");
-    error.code=json.error?.status||"UNAVAILABLE";
-    throw error;
-  }
-  return json.result??json.data;
+  return trackOperation("school_ai."+(data.action||name),async traceId=>{
+    const token=await user.getIdToken();
+    const response=await fetch("https://asia-southeast1-reporeview-e7ca4.cloudfunctions.net/"+name,{
+      method:"POST",
+      headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
+      body:JSON.stringify({data:{...data,_telemetryTraceId:traceId}}),
+      signal:signal||AbortSignal.timeout(timeout)
+    });
+    const json=await response.json().catch(()=>({}));
+    if(auth.currentUser?.uid!==user.uid)throw Error("Account changed. The returned AI draft was ignored.");
+    if(!response.ok||json.error){
+      const error=Error(json.error?.message||"School AI could not connect. Retry shortly.");
+      error.code=json.error?.status||"UNAVAILABLE";
+      throw error;
+    }
+    return json.result??json.data;
+  },{sampleRate:.20});
 }
 
 function preferredSchool(uid){

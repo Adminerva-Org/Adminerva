@@ -8,6 +8,7 @@ const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {digestProject}=require("./school-studio-projects.js");
+const {measureSpan}=require("./platform-telemetry.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
@@ -72,7 +73,7 @@ function createSchoolStudioSubmissionService({db}){
    const projectRef=db.doc(prefix+"student_code_projects/"+ctx.uid+"/projects/"+projectId);
    const auditRef=db.collection(prefix+"submission_audit").doc();
    let receipt;
-   await db.runTransaction(async tx=>{
+   await measureSpan(request,"studio.submission_commit",()=>db.runTransaction(async tx=>{
     const [activeMember,person,enrollment,currentTask,project,submission]=await Promise.all([
      verifySchool(tx,"student"),tx.get(personRef),tx.get(enrollmentRef),
      tx.get(taskRef),tx.get(projectRef),tx.get(submissionRef)
@@ -158,7 +159,7 @@ function createSchoolStudioSubmissionService({db}){
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,submissionId,studentUid:ctx.uid,
       action:version===1?"studio_submitted":"studio_resubmitted",version,createdAt:when});
     receipt={submissionId,version,status:"submitted",alreadyExisted:false};
-   });
+   }));
    if(!receipt.alreadyExisted){
     await writeSchoolNotification({
       db,schoolId:ctx.schoolId,uid:task.data().reviewerUid||task.data().ownerUid,

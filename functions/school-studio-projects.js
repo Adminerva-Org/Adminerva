@@ -3,6 +3,7 @@
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+const {measureSpan}=require("./platform-telemetry.js");
 const {checkId}=require("./school-academics.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function safeTitle(value){
@@ -110,12 +111,12 @@ function createSchoolStudioProjectService({db}){
    if(!["java","web","python","csharp","cpp","dart","text"].includes(language))
     deny("invalid-argument","Choose a supported Studio project language.");
    const ref=projectCollection.doc(),now=FieldValue.serverTimestamp();
-   await db.runTransaction(async tx=>{
+   await measureSpan(request,"studio.project_create",()=>db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,
       language,files,artifacts,contentDigest:digestProject(files,artifacts),status:"active",revision:1,
       createdAt:now,updatedAt:now});
-   });
+   }));
    return {projectId:ref.id,revision:1,contentDigest:digestProject(files,artifacts)};
   }
   if(action==="sync"){
@@ -126,7 +127,7 @@ function createSchoolStudioProjectService({db}){
     deny("invalid-argument","Choose a supported Studio project language.");
    const ref=projectCollection.doc(projectId),digest=digestProject(files,artifacts);
    let result;
-   await db.runTransaction(async tx=>{
+   await measureSpan(request,"studio.project_sync",()=>db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
     const current=await tx.get(ref),now=FieldValue.serverTimestamp();
     if(!current.exists){
@@ -150,7 +151,7 @@ function createSchoolStudioProjectService({db}){
     const revision=data.revision+1;
     tx.update(ref,{title,language,files,artifacts,contentDigest:digest,revision,updatedAt:now});
     result={projectId,revision,contentDigest:digest,created:false,unchanged:false};
-   });
+   }));
    return result;
   }
   const projectId=checkId(input.projectId,"Project ID",128);
@@ -171,7 +172,7 @@ function createSchoolStudioProjectService({db}){
     deny("invalid-argument","The current school project revision is required.");
    const restoring=action==="restore";
    let result;
-   await db.runTransaction(async tx=>{
+   await measureSpan(request,restoring?"studio.project_restore":"studio.project_archive",()=>db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
     const doc=await tx.get(ref);
     if(!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().ownerUid!==ctx.uid)
@@ -186,7 +187,7 @@ function createSchoolStudioProjectService({db}){
     tx.update(ref,{status:restoring?"active":"archived",revision,updatedAt:now,
       ...(restoring?{restoredAt:now}:{archivedAt:now})});
     result={projectId,status:restoring?"active":"archived",revision};
-   });
+   }));
    return result;
   }
   if(action==="save"){
@@ -195,7 +196,7 @@ function createSchoolStudioProjectService({db}){
    if(!Number.isInteger(revision)||revision<1)
     deny("invalid-argument","The existing saved project revision is required.");
    const digest=digestProject(files,artifacts);
-   await db.runTransaction(async tx=>{
+   await measureSpan(request,"studio.project_save",()=>db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
     const doc=await tx.get(ref);
     if(!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().ownerUid!==ctx.uid)
@@ -206,7 +207,7 @@ function createSchoolStudioProjectService({db}){
      deny("failed-precondition","Project changed elsewhere. Load the latest version before saving.");
     tx.update(ref,{title,files,artifacts,contentDigest:digest,revision:revision+1,
       updatedAt:FieldValue.serverTimestamp()});
-   });
+   }));
    return {projectId,revision:revision+1,contentDigest:digest};
   }
   deny("invalid-argument","Unknown school Studio project action.");

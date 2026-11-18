@@ -16,6 +16,9 @@ const {createMonitoringService}=require("./monitoring-service.js");
 initializeApp();
 const db=getFirestore();
 const messaging=getMessaging();
+const {createPlatformTelemetry}=require("./platform-telemetry.js");
+const telemetry=createPlatformTelemetry({db,FieldValue});
+const observedEvent=(name,handler)=>event=>telemetry.runEvent(name,()=>handler(event));
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
 const {createSchoolPracticeSeasonService}=require("./school-practice-season-service.js");
 const schoolPractice=createSchoolPracticeSeasonService({
@@ -41,17 +44,27 @@ async function rejectPlatformPreviewMutation(request,{allowPlatformSchoolWrites=
   throw new HttpsError("failed-precondition",
     "System Admin role preview is temporary. This school change was not saved. Choose Assist school for real, audited administrative changes.");
 }
-function safeCallable(handler,options={}){return async request=>{try{
-  const platformContext=await rejectPlatformPreviewMutation(request,options);
-  const result=await handler(request);
-  if(platformContext?.assist){
-    db.collection("platform_admin_assistance_audit").add({
-      actorUid:platformContext.uid,schoolId:platformContext.schoolId,action:platformContext.action,
-      source:"system_admin_assist",createdAt:FieldValue.serverTimestamp()
-    }).catch(error=>console.warn("System Admin assist audit write failed",{code:error.code||"unknown"}));
-  }
-  return result;
-}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+function safeCallable(handler,options={}){
+  const guarded=async request=>{try{
+    const platformContext=await rejectPlatformPreviewMutation(request,options);
+    const result=await handler(request);
+    if(platformContext?.assist){
+      db.collection("platform_admin_assistance_audit").add({
+        actorUid:platformContext.uid,schoolId:platformContext.schoolId,action:platformContext.action,
+        source:"system_admin_assist",createdAt:FieldValue.serverTimestamp()
+      }).catch(error=>console.warn("System Admin assist audit write failed",{code:error.code||"unknown"}));
+    }
+    return result;
+  }catch(error){
+    const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];
+    if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);
+    console.error("Staff request failed",{code:error.code||"internal"});
+    throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");
+  }};
+  return request=>telemetry.runCallable(guarded,request,{
+    enabled:options.telemetry!==false,name:options.telemetryName
+  });
+}
 async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
   return !school.exists||school.data().compatibilityMode!=="v4_only";
@@ -131,6 +144,24 @@ exports.schoolReclaims=onCall(callOptions,safeCallable(createSchoolReclaimServic
 exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationAcceptanceService({db})));
 const {createPlatformSchoolService}=require("./platform-schools.js");
 exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db}),{allowPlatformSchoolWrites:true}));
+const {createPlatformOperationsService}=require("./platform-operations.js");
+exports.platformOperations=onCall(callOptions,safeCallable(createPlatformOperationsService({db,auth:getAuth()})));
+exports.platformTelemetry=onCall(callOptions,async request=>{
+  try{return await telemetry.clientEvent(request);}
+  catch(error){
+    const allowed=["unauthenticated","invalid-argument","resource-exhausted"];
+    if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);
+    console.warn("Browser telemetry report skipped",{code:error.code||"internal"});
+    throw new HttpsError("unavailable","Diagnostic reporting is temporarily unavailable.");
+  }
+});
+// Scheduled monitoring is intentionally absent from normal deployments until
+// the platform owner explicitly authorizes scheduler provisioning and costs.
+if(process.env.ADMINERVA_DEPLOY_PLATFORM_PULSE==="true"){
+  const {createPlatformPulse}=require("./platform-operations-monitor.js");
+  const platformPulse=createPlatformPulse({db,auth:getAuth()});
+  exports.platformOperationsPulse=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:120,maxInstances:1,concurrency:1,retryCount:0},async()=>platformPulse({manual:false}));
+}
 const {createMcsPilotControlService}=require("./mcs-pilot-control.js");
 exports.mcsPilotControl=onCall(callOptions,safeCallable(createMcsPilotControlService({db,auth:getAuth()})));
 const {createSchoolSupportService}=require("./school-support.js");
@@ -155,7 +186,7 @@ const schoolFileRetention=createSchoolFileRetentionJob({db,bucket:storageBucket,
 exports.schoolFileRetentionCleanup=onSchedule({
   schedule:"every 6 hours",timeZone:"Asia/Manila",region:"asia-southeast1",
   maxInstances:1,timeoutSeconds:300
-},schoolFileRetention);
+},event=>telemetry.runJob("school_file_retention",()=>schoolFileRetention(event)));
 const {createSchoolPlanningService}=require("./school-planning.js");
 exports.schoolPlanning=onCall(callOptions,safeCallable(createSchoolPlanningService({db})));
 const {createSchoolPilotSandboxService}=require("./school-pilot-sandbox.js");
@@ -169,7 +200,7 @@ exports.schoolSharedReferences=onCall(callOptions,safeCallable(createSchoolShare
 exports.schoolAI=onCall(callOptions,safeCallable(schoolAI));
 exports.legacyLessonRecovery=onCall(callOptions,safeCallable(async request=>{await requireLegacyMcsCompatibility();return legacyRecovery(request);}));
 exports.legacySchoolSetup=onCall(callOptions,safeCallable(async request=>{await requireLegacyMcsCompatibility();return legacySetup(request);}));
-exports.pushTestPing=onCall(callOptions,async request=>{
+exports.pushTestPing=onCall(callOptions,request=>telemetry.runCallable(async request=>{
   const uid=request.auth?.uid;
   if(!uid)throw new HttpsError("unauthenticated","Sign in before sending a test notification.");
   const devices=await db.collection("push_devices").where("ownerUid","==",uid).limit(12).get();
@@ -198,7 +229,7 @@ exports.pushTestPing=onCall(callOptions,async request=>{
   }));
   if(!sent)throw new HttpsError("unavailable","No registered device accepted the test notification. Re-enable notifications on a device and try again.");
   return {sent};
-});
+},request,{name:"pushTestPing"}));
 async function rebuildStudentAccess(email){
   const normalized=String(email||"").toLowerCase().trim();
   if(!normalized)return;
@@ -214,7 +245,7 @@ async function rebuildStudentAccess(email){
   });
   return {sections,studentIds};
 }
-exports.refreshStudentAccess=onCall(callOptions,async request=>{
+exports.refreshStudentAccess=onCall(callOptions,request=>telemetry.runCallable(async request=>{
   await requireLegacyMcsCompatibility();
   const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase().trim();
   if(!uid||request.auth?.token?.email_verified!==true||!email)
@@ -225,28 +256,28 @@ exports.refreshStudentAccess=onCall(callOptions,async request=>{
     return {sections:[],studentIds:[]};
   }
   return result;
-});
-exports.studentAccessChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},async event=>{
+},request,{name:"refreshStudentAccess"}));
+exports.studentAccessChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},event=>telemetry.runEvent("student_access_changed",async()=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const emails=[event.data?.before.data()?.email,event.data?.after.data()?.email]
     .map(value=>String(value||"").toLowerCase().trim()).filter(Boolean);
   await Promise.all([...new Set(emails)].map(email=>rebuildStudentAccess(email)));
-});
-exports.teachingRosterChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},async event=>{
+}));
+exports.teachingRosterChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},event=>telemetry.runEvent("teaching_roster_changed",async()=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   return teachingAccess.synchronize(event.params.studentId);
-});
+}));
 const practiceOptions={region:"asia-southeast1",maxInstances:3,concurrency:20,timeoutSeconds:30,
   cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
 for(const [name,action] of Object.entries({practiceSession:"acquire",practiceStart:"start",practicePredict:"predict",practiceComplete:"complete",practiceHub:"hub",practiceSeasonSession:"acquireSeason",practiceMissionStart:"startSeason",practiceMissionSubmit:"submitSeason",practicePreferences:"preferences"}))
-  exports[name]=onCall(practiceOptions,async request=>{
+  exports[name]=onCall(practiceOptions,request=>telemetry.runCallable(async request=>{
     try{await requireLegacyMcsCompatibility();return await practice[action](request);}
     catch(error){
       if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
       console.error("Practice request failed",{action,code:error.code||"internal"});
       throw new HttpsError("unavailable","Practice could not complete this request. Your score has not been published; retry the same challenge safely.");
     }
-  });
+  },request,{name}));
 for(const [name,action] of Object.entries({
   schoolPracticeSeasonSession:"acquireSeason",
   schoolPracticeHub:"hub",
@@ -254,7 +285,7 @@ for(const [name,action] of Object.entries({
   schoolPracticeMissionSubmit:"submitSeason",
   schoolPracticePreferences:"preferences"
 }))
-  exports[name]=onCall(practiceOptions,async request=>{
+  exports[name]=onCall(practiceOptions,request=>telemetry.runCallable(async request=>{
     try{return await schoolPractice[action](request);}
     catch(error){
       if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
@@ -263,16 +294,16 @@ for(const [name,action] of Object.entries({
       console.error("School Practice request failed",{action,code:error.code||"internal"});
       throw new HttpsError("unavailable","School Practice could not complete this request. Saved progress is unchanged; retry safely.");
     }
-  });
+  },request,{name}));
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
-exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>{
+exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},()=>telemetry.runJob("legacy_monitoring_maintenance",async()=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   return monitoring.runScheduled();
-});
-exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences/{ownerUid}",region:"asia-southeast1",maxInstances:1,concurrency:1,timeoutSeconds:120},async event=>{
+}));
+exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences/{ownerUid}",region:"asia-southeast1",maxInstances:1,concurrency:1,timeoutSeconds:120},event=>telemetry.runEvent("activity_consent_changed",async()=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   return monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId);
-});
+}));
 const BOOTSTRAP_ADMIN_EMAIL="babaynike2013@gmail.com";
 // Bug reports are always administrator-directed. Legacy reports have admin scope.
 const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";
@@ -414,7 +445,7 @@ async function evidenceLabels(item){
     assessmentTitle:assessment?.exists?String(assessment.data()?.title||"Assessment"):"Assessment"
   };
 }
-exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
+exports.issueOpened=onDocumentCreated("issues/{issueId}",observedEvent("issue_opened",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const data=event.data?.data();if(!data)return;
   await notifyMany(await audienceIds(data),"report_new_"+event.params.issueId,{
@@ -422,8 +453,8 @@ exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
     sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId,
     reportCategory:data.category,reportAudience:reportAudience(data)
   });
-});
-exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
+}));
+exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",observedEvent("issue_status_updated",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now||old.status===now.status&&old.priority===now.priority)return;
@@ -434,8 +465,8 @@ exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
     sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId,
     reportCategory:now.category,reportAudience:reportAudience(now)
   });
-});
-exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentId}",async event=>{
+}));
+exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentId}",observedEvent("issue_comment_added",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const comment=event.data?.data();if(!comment)return;
   const issue=await db.doc("issues/"+event.params.issueId).get();if(!issue.exists)return;
@@ -448,10 +479,10 @@ exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentI
     target:"issues.html?issue="+event.params.issueId,
     reportCategory:item.category,reportAudience:reportAudience(item)
   });
-});
+}));
 // A reclaim never changes Git's recorded author. Administrators receive a
 // private review alert; overlapping claims on the same SHA are flagged once.
-exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",async event=>{
+exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",observedEvent("commit_reclaim_requested",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const claim=event.data?.data();if(!claim||claim.status!=="pending")return;
   const adminId=await byEmail(staffEmails[0]);
@@ -498,10 +529,10 @@ exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",asy
     sourceId:claim.sha,target:"assessment-evidence-review.html?student="+
       encodeURIComponent(claim.studentId)+"&assessment="+encodeURIComponent(claim.assessmentId)
   });
-});
+}));
 
 // V2 evidence receipts are distinct from legacy submission receipts.
-exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evidenceId}",async event=>{
+exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evidenceId}",observedEvent("assessment_evidence_submitted",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const item=event.data?.data();
   if(!item||item.status!=="submitted"||item.source==="teacher_discovered")return;
@@ -511,8 +542,8 @@ exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evid
     body:labels.assessmentTitle+" · Selected commits are ready for checkpoint verification.",
     sourceId:event.params.evidenceId,target:"submissions.html"
   });
-});
-exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{evidenceId}",async event=>{
+}));
+exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{evidenceId}",observedEvent("assessment_evidence_updated",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const before=event.data?.before.data(),after=event.data?.after.data();
   if(!before||!after)return;
@@ -568,9 +599,9 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
       sourceId:event.params.evidenceId,target:"submissions.html"
     });
   }
-});
+}));
 
-exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
+exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",observedEvent("submission_received",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(item.section),"submission_"+event.params.submissionId,{
@@ -578,8 +609,8 @@ exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}
     body:(item.assessmentTitle||"Assessment")+(item.section?" · "+item.section:""),
     sourceId:event.params.submissionId,target:"submissions.html"
   });
-});
-exports.gradePublished=onDocumentUpdated("student_grades/{gradeId}",async event=>{
+}));
+exports.gradePublished=onDocumentUpdated("student_grades/{gradeId}",observedEvent("grade_published",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now||old.published===now.published||!now.studentId)return;
@@ -594,14 +625,14 @@ exports.gradePublished=onDocumentUpdated("student_grades/{gradeId}",async event=
       :"Your teacher unpublished this grade while it is being revised. It will appear again after publication.",
     sourceId:event.params.gradeId,target:"student-assessments.html"
   });
-});
+}));
 function assessmentSections(data){
   return [...new Set([
     ...(Array.isArray(data?.deployments)?data.deployments.map(item=>item?.section):[]),
     ...(Array.isArray(data?.targetSections)?data.targetSections:[])
   ].filter(Boolean))];
 }
-exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async event=>{
+exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",observedEvent("assessment_assigned",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now)return;
@@ -616,9 +647,9 @@ exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async 
       target:"student-assessments.html"
     });
   }
-});
+}));
 
-exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async event=>{
+exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",observedEvent("grading_needs_review",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(item.section),"grading_"+event.params.alertId,{
@@ -626,10 +657,10 @@ exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async ev
     body:(item.repository||"Repository")+" · "+(item.message||"Check failed"),
     sourceId:event.params.alertId,target:"repofetch.html"
   });
-});
+}));
 
 // Cover blueprints deployed at creation time, including older targetSections.
-exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async event=>{
+exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",observedEvent("assessment_created",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const data=event.data?.data();if(!data)return;
   const sections=assessmentSections(data);
@@ -642,9 +673,9 @@ exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async e
       target:"student-assessments.html"
     });
   }
-});
+}));
 // A small number of older workflows can create a grade already published.
-exports.gradeCreatedPublished=onDocumentCreated("student_grades/{gradeId}",async event=>{
+exports.gradeCreatedPublished=onDocumentCreated("student_grades/{gradeId}",observedEvent("grade_created_published",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const grade=event.data?.data();
   if(!grade||grade.published!==true||!grade.studentId)return;
@@ -656,9 +687,9 @@ exports.gradeCreatedPublished=onDocumentCreated("student_grades/{gradeId}",async
     body:"Open your assessments to read published feedback.",
     sourceId:event.params.gradeId,target:"student-assessments.html"
   });
-});
+}));
 // Notify only when an already-published grade is actually corrected.
-exports.gradeCorrection=onDocumentUpdated("student_grades/{gradeId}",async event=>{
+exports.gradeCorrection=onDocumentUpdated("student_grades/{gradeId}",observedEvent("grade_correction",async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
   const before=event.data?.before.data(),after=event.data?.after.data();
   if(!before||!after||before.published!==true||after.published!==true)return;
@@ -671,4 +702,4 @@ exports.gradeCorrection=onDocumentUpdated("student_grades/{gradeId}",async event
     body:"Open Assessments to see the latest score and feedback.",
     sourceId:event.params.gradeId,target:"student-assessments.html"
   });
-});
+}));

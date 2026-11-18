@@ -4,6 +4,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient,parseGithubRepository} from "../repo-review/services/github-evidence-client.mjs?v=1.3.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
+import {trackOperation} from "../core/telemetry.mjs?v=4.0.0";
 
 const panel=document.getElementById("v4AssignmentsPanel");
 const list=document.getElementById("v4AssignmentsList");
@@ -62,7 +63,9 @@ if(panel&&list&&status&&schoolHost){
   let githubClaims=new Map();
   async function scoped(scope,api,action,details={}){
     const lease=scope.lease();
-    const result=(await api({schoolId:lease.schoolId,action,...details})).data;
+    const result=await trackOperation("student_assessment."+action,async traceId=>
+      (await api({schoolId:lease.schoolId,action,...details,_telemetryTraceId:traceId})).data
+    ,{sampleRate:.20});
     scope.assertLease(lease);
     return result;
   }

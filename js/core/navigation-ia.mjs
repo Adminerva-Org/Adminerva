@@ -322,8 +322,9 @@ export function buildNavigationIA(ctx){
         future("school-configuration","Configuration")
       ])
     ]),
-    ws("system","System","patch-notes.html","Platform operations, configuration and releases",[
+    ws("system","System","platform-operations.html","Platform operations, configuration and releases",[
       group("Operations",[
+        live("operations-center","Operations Center","platform-operations.html","School lifecycle, service health, incidents, jobs and controlled operational rollouts"),
         future("alerts","Alerts & Warnings"),live("updates","Updates & Releases","patch-notes.html"),
         future("service-health","Service Health"),future("background-jobs","Background Jobs"),
         future("migrations","Data Migrations"),future("backups","Backups / Recovery")

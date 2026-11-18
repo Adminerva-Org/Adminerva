@@ -2,6 +2,7 @@ import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 import {buildExternalPersonalizationPackage,parseExternalPersonalizationResponse} from "./services/external-personalization.mjs";
+import {trackOperation} from "../core/telemetry.mjs?v=4.0.0";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"teacherBlueprints");
 const scopedAssessmentApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessments");
 const schoolAcademicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
@@ -39,13 +40,17 @@ const picker=createTenantSchoolPicker({
 });
 async function perform(action,details={}) {
   const lease=picker.scope.lease();
-  const result=(await api({action,schoolId:lease.schoolId,...details})).data;
+  const result=await trackOperation("assessment.blueprint."+action,async traceId=>
+    (await api({action,schoolId:lease.schoolId,...details,_telemetryTraceId:traceId})).data
+  ,{sampleRate:.20});
   picker.scope.assertLease(lease);
   return result;
 }
 async function performScoped(api,action,details={}){
   const lease=picker.scope.lease();
-  const result=(await api({schoolId:lease.schoolId,action,...details})).data;
+  const result=await trackOperation("assessment."+action,async traceId=>
+    (await api({schoolId:lease.schoolId,action,...details,_telemetryTraceId:traceId})).data
+  ,{sampleRate:.20});
   picker.scope.assertLease(lease);
   return result;
 }
