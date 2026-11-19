@@ -51,7 +51,7 @@ function renderSummary(){
   field("labPreviousProgress").textContent=hub.legacyCount?hub.legacyCount+" earlier missions are preserved.":"Practice XP stays separate from school grades.";
   field("labIdentity").textContent=user?user.displayName||hub.alias||"Signed-in learner":"Public visitor";
   field("labAccountLink").textContent=user?"My workspace":"Sign in";field("labAccountLink").href=user?(guestPage?"guest-home.html":"student-home.html"):"login.html";
-  field("labPreferences").hidden=!eligible;field("labPreferencesSignin").hidden=eligible||accountPreview;
+  field("labPreferences").hidden=!eligible;field("labPreferencesSignin").hidden=eligible||accountPreview||hub.migrationPending===true;
   if(document.activeElement!==field("labAlias"))field("labAlias").value=hub.alias||"";
   field("labOptIn").checked=hub.optIn===true;
   const select=field("practiceClass"),selected=hub.classId||"";select.replaceChildren();
@@ -345,7 +345,14 @@ function renderBoard(){
   field("labGlobalTab").setAttribute("aria-pressed",String(boardMode==="global"));field("labClassTab").setAttribute("aria-pressed",String(boardMode==="class"));field("labClassControls").hidden=boardMode!=="class";
   field("labBoardFootnote").textContent=boardMode==="global"?"Current season · top 30 public aliases. Equal points share a rank.":"Current season · private class aliases. Equal points share a rank.";
   const rows=boardMode==="global"?globalRows:hub.classRows||[],list=field("practiceStandings");list.replaceChildren();
-  if(!rows.length){const message=boardMode==="global"?(publicBoardError?"Rankings could not connect. Refresh to try again.":publicBoardReady?"A new season is starting. Opt in and set the pace.":"Connecting to public rankings…"):(eligible?"No class scores yet. Finish a mission to begin.":"Sign in with a linked student account to see your class.");list.append(node("li",message,"lab-board-empty"));return;}
+  if(!rows.length){
+    const message=hub.migrationPending===true
+      ?(boardMode==="global"?"Public rankings resume after Practice migration completes.":"Class rankings resume after Practice migration completes.")
+      :boardMode==="global"
+        ?(publicBoardError?"Rankings could not connect. Refresh to try again.":publicBoardReady?"A new season is starting. Opt in and set the pace.":"Connecting to public rankings…")
+        :(eligible?"No class scores yet. Finish a mission to begin.":"Sign in with a linked student account to see your class.");
+    list.append(node("li",message,"lab-board-empty"));return;
+  }
   let rank=0,prior=null;rows.forEach((row,index)=>{if(row.points!==prior)rank=index+1;prior=row.points;const item=node("li",undefined,"lab-rank-row"+(row.isCurrent?" is-you":""));item.append(node("span",rank<=3?["🥇","🥈","🥉"][rank-1]:String(rank),"lab-rank-number"),node("span",row.alias+(row.isCurrent?" · You":"")),node("strong",row.points.toLocaleString()+" points"));list.append(item);});
 }
 async function call(name,payload={}){return practiceSchoolRequest(name,payload);}
@@ -373,7 +380,13 @@ async function refreshHub(classId=field("practiceClass").value){
     if(version!==epoch||uid!==user?.uid)return;
     hub=result;eligible=result.eligible===true;
     if(Array.isArray(result.publicRows)){globalRows=result.publicRows;publicBoardReady=true;publicBoardError=false;}
-    renderSummary();renderCourses();renderBoard();renderChallenges();sync("Saved to your school");
+    renderSummary();renderCourses();renderBoard();renderChallenges();
+    if(result.migrationPending===true){
+      sync("Progress protected","saving");
+      notice("Migration preview · Your preserved Practice XP and completed missions are shown below. You can browse and play missions, but scored submissions stay disabled until school reconciliation finishes.","warning");
+      return;
+    }
+    sync("Saved to your school");
     if(!pending)notice("");
   }catch(error){
     if(version!==epoch)return;
@@ -657,7 +670,15 @@ async function openMission(selectedCourse,selectedMission){
     field("practiceCode").textContent=attempt.question.code||"";field("practiceCode").hidden=!attempt.question.code;field("practicePrompt").textContent=attempt.question.prompt;renderMechanicAid(attempt.question);pointsText();renderAnswer();renderHintControl();
     field("labSubmitSignin").hidden=eligible||accountPreview;field("practiceCheckBtn").hidden=!eligible;
     field("labSubmitSignin").textContent=user?"Open my access request":"Sign in to submit";field("labSubmitSignin").href=user?"guest-home.html":"login.html";
-    if(!eligible)feedback(accountPreview?"Staff preview · solve and explore freely. XP and scored submissions are intentionally disabled.":user?"Your account cannot submit yet. Check your active school enrollment, then refresh.":"Explore the mission freely. Sign in to submit answers and save season points.");
+    if(!eligible)feedback(
+      accountPreview
+        ?"Staff preview · solve and explore freely. XP and scored submissions are intentionally disabled."
+        :hub.migrationPending===true
+          ?"Migration preview · your preserved XP and completions are visible, but scored submissions stay disabled until reconciliation completes."
+          :user
+            ?"Your account cannot submit yet. Check your active school enrollment, then refresh."
+            :"Explore the mission freely. Sign in to submit answers and save season points."
+    );
     if(attempt.completed){field("practiceMissionPanel").classList.add("is-complete");feedback("Mission complete · "+attempt.earnedPoints+" pts saved. "+(attempt.explanation||""),"success");field("labNextMission").hidden=false;prepareExperiment(attempt.workspace);}
     else if(attempt.previewWorkspace)prepareExperiment(attempt.previewWorkspace);
     if(pending&&pending.missionId!==mission.id){field("practiceCheckBtn").disabled=true;feedback("Confirm the earlier pending answer before submitting another mission. Use “Resume pending save” above.","warning");}

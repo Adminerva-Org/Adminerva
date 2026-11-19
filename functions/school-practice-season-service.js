@@ -40,7 +40,7 @@ function createSchoolPracticeSeasonService({
   return legacyScore.exists||!legacyVerified.empty;
  }
 
- async function actor(request){
+ async function actor(request,{allowMigrationPending=false}={}){
   const ctx=await getSchoolContext({db,request,schoolId:request.data?.schoolId,roles:["student"]});
   const token=request.auth?.token||{},user=await resolveUser(ctx.uid);
   if(user.disabled||!user.emailVerified||
@@ -52,10 +52,10 @@ function createSchoolPracticeSeasonService({
    reject("permission-denied","Your school account is not linked to a student person record.","enrollment");
   const personRef=db.doc(prefix(ctx.schoolId)+"people/"+personId),
    migrationRef=db.doc(prefix(ctx.schoolId)+"practice_migration_state/"+ctx.uid);
-  const [person,migrationState]=await Promise.all([personRef.get(),migrationRef.get()]);
-  if(migrationState.exists&&migrationState.data().status!=="complete")
-   reject("unavailable","Your Practice progress is being finalized for this school. Saved legacy progress remains protected until reconciliation completes.","practice-migration");
-  if(await legacyPracticeRequiresMigration(ctx,migrationState))
+  const [person,migrationState]=await Promise.all([personRef.get(),migrationRef.get()]),
+   migrationPending=(migrationState.exists&&migrationState.data().status!=="complete")||
+    await legacyPracticeRequiresMigration(ctx,migrationState);
+  if(migrationPending&&!allowMigrationPending)
    reject("unavailable","Your previous Practice progress is waiting for school migration reconciliation. Saved XP and completed missions remain protected; scoring will resume after migration is complete.","practice-migration");
   if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
      person.data().status!=="active"||person.data().authUid!==ctx.uid)
@@ -83,7 +83,7 @@ function createSchoolPracticeSeasonService({
     String(sectionDocs[index].data().name||sectionId):sectionId
   }));
   return {
-   ...ctx,uid:ctx.uid,schoolId:ctx.schoolId,personId,token,
+   ...ctx,uid:ctx.uid,schoolId:ctx.schoolId,personId,token,migrationPending,
    memberRef,personRef,migrationRef,
    enrollments:active.map(row=>({
     ref:row.ref,id:row.id,offeringId:row.data().offeringId,
@@ -179,8 +179,33 @@ function createSchoolPracticeSeasonService({
   });
  }
 
+ async function legacyMigrationHub(a,request,rules,time){
+  const season=rules.PRACTICE_SEASON,base=prefix(a.schoolId)+"legacy_roots/",
+   [scoreRecord,progress,verified]=await Promise.all([
+    db.doc(base+"practice_season_scores/documents/"+a.uid).get(),
+    db.collection(base+"practice_season_progress/documents/"+a.uid+"/courses").get(),
+    db.collection(base+"practice_verified_progress/documents/"+a.uid+"/courses").get()
+   ]),
+   legacyScore=scoreRecord.exists?scoreRecord.data():{},
+   currentSeason=legacyScore?.season===season,
+   current=a.classes.find(item=>item.id===request.data?.classId)||a.classes[0],
+   courses=currentSeason?progress.docs.map(row=>row.data()).filter(row=>row.season===season):[],
+   points=currentSeason&&Number.isFinite(legacyScore.points)?legacyScore.points:0,
+   completedCount=currentSeason&&Number.isInteger(legacyScore.completedCount)?legacyScore.completedCount:0,
+   legacyCount=verified.docs.reduce((count,row)=>count+(Array.isArray(row.data().completed)?row.data().completed.length:0),0);
+  return {
+   schoolId:a.schoolId,season,eligible:false,migrationPending:true,
+   alias:typeof legacyScore.alias==="string"?legacyScore.alias:"",
+   optIn:false,points,completedCount,
+   classes:a.classes,classId:current?.id||"",classRows:[],publicRows:[],
+   resume:null,dailyQuest:{date:manilaDayKey(time),done:0,target:3},
+   courses,legacyCount
+  };
+ }
+
  async function hub(request){
-  const a=await actor(request),rules=await seasonRules(),season=rules.PRACTICE_SEASON,time=now();
+  const a=await actor(request,{allowMigrationPending:true}),rules=await seasonRules(),season=rules.PRACTICE_SEASON,time=now();
+  if(a.migrationPending)return legacyMigrationHub(a,request,rules,time);
   const [saved,progress,legacy,publicBoard,resumeRecord,missionStates]=await Promise.all([
    ref(a,"practice_season_scores/"+a.uid).get(),
    col(a,"practice_season_progress/"+a.uid+"/courses").get(),
