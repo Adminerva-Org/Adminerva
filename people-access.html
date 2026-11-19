@@ -53,7 +53,7 @@
       <button id="pa-tab-people" type="button" data-tab="people" aria-controls="pa-people" aria-selected="false" role="tab" tabindex="-1">Students &amp; staff</button>
       <button id="pa-tab-import" type="button" data-tab="import" aria-controls="pa-import" aria-selected="false" role="tab" tabindex="-1">Roster import</button>
       <button id="pa-tab-invites" type="button" data-tab="invites" aria-controls="pa-invites" aria-selected="false" role="tab" tabindex="-1">Invitations</button>
-      <button id="pa-tab-classes" type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Classes</button>
+      <button id="pa-tab-classes" type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Teaching &amp; classes</button>
       <button id="pa-tab-access" type="button" data-tab="access" aria-controls="pa-access" aria-selected="false" role="tab" tabindex="-1">Roles &amp; access</button>
     </div>
     <section id="pa-overview" class="pa-card" role="tabpanel" aria-labelledby="pa-tab-overview" tabindex="0">
@@ -67,7 +67,7 @@
       </section>
       <div class="pa-cards">
         <div class="pa-card"><span class="pa-muted">People</span><span class="pa-count" id="pa-people-count">—</span></div>
-        <div class="pa-card"><span class="pa-muted">Enrollments</span><span class="pa-count" id="pa-enroll-count">—</span></div>
+        <a id="pa-enrollment-summary-link" class="pa-card" href="people-access.html#classes" style="display:block;text-decoration:none;color:inherit"><span class="pa-muted">Student enrollment relationships</span><span class="pa-count" id="pa-enroll-count">—</span><span id="pa-enrollment-summary-action" class="pa-muted" style="color:#1d4ed8;font-weight:750">Manage enrollment relationships →</span></a>
         <div class="pa-card"><span class="pa-muted">Staff assignments</span><span class="pa-count" id="pa-staff-count">—</span></div>
         <div class="pa-card"><span class="pa-muted">Invitations (all states)</span><span class="pa-count" id="pa-invite-count">—</span></div>
       </div>
@@ -235,7 +235,7 @@
         <div style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
           <div>
             <h2 style="font-weight:750;font-size:1.1rem">Previous access requests</h2>
-            <p class="pa-muted">Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; class enrollment or teaching assignment is handled in Classes.</p>
+            <p id="pa-legacy-requests-help" class="pa-muted">Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; academic relationships are managed separately after approval.</p>
           </div>
           <button id="pa-legacy-requests-refresh" type="button" class="pa-action" style="background:#475569">Refresh</button>
         </div>
@@ -276,7 +276,7 @@
       </dialog>
     </section>
     <section id="pa-classes" role="tabpanel" aria-labelledby="pa-tab-classes" tabindex="0" hidden>
-      <p id="pa-classes-help" class="pa-muted">School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.</p>
+      <p id="pa-classes-help" class="pa-muted">School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.</p>
       <section class="pa-card" id="pa-workload" style="margin:1rem 0">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div><h2 style="font-weight:800;font-size:1.15rem">Faculty workload &amp; staffing</h2><p class="pa-muted">Review active teaching assignments and classes without a verified active teacher. Counts are course offerings, not teaching hours.</p></div>
