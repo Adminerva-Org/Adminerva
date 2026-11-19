@@ -1,17 +1,17 @@
 /** Project-first Code Studio orchestration, Adminerva DB lab, design and evidence surfaces. */
-import {db} from "../core/firebase-core.js?v=1.3.0";
+import {db,auth} from "../core/firebase-core.js?v=1.3.0";
 import {
-  collection,deleteDoc,doc,getDoc,getDocs,setDoc
+  collection,deleteDoc,doc,getDocFromServer,getDocsFromServer,runTransaction
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {
   CODE_PROJECT_TEMPLATES,createCodeProject,deleteCodeProject,findCodeProject,
-  projectTemplateLabel,readCodeProjects,saveCodeProject,writeCodeProjects
+  projectTemplateLabel,readCodeProjects,saveCodeProject,writeCodeProjects,normalizeProject
 } from "./code-projects.mjs?v=2.1.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
 import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,loadV4StudioProject,
-  queueV4StudioProjectSync,restoreV4StudioProject
+  syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
 } from "./v4-studio-service.mjs?v=4.2.1";
 
 const el=id=>document.getElementById(id);
@@ -117,16 +117,18 @@ function v4ProjectToLocal(uid,remote){
   }
   if(!order.length)throw Error("School project has no readable source files.");
   const artifacts=remote.artifacts&&typeof remote.artifacts==="object"?remote.artifacts:{};
+  const layout=artifacts.workspace||{},known=new Set(order),ordered=[...new Set([...(Array.isArray(layout.fileOrder)?layout.fileOrder.filter(path=>known.has(path)):[]),...order])];
+  for(const folder of Array.isArray(layout.folders)?layout.folders:[])if(typeof folder==="string"&&folder)folders.add(folder);
   const time=value=>{
     const date=new Date(Number(value)||Date.now());
     return Number.isFinite(date.getTime())?date.toISOString():new Date().toISOString();
   };
   return {
     id:remote.projectId,ownerUid:uid,title:remote.title||"School project",
-    template:v4ProjectTemplate(remote.language,artifacts),lang:remote.language||"text",status:"active",
+    template:CODE_PROJECT_TEMPLATES[layout.template]?layout.template:v4ProjectTemplate(remote.language,artifacts),lang:remote.language||"text",status:"active",
     config:artifacts.config||{},
-    state:{lang:remote.language||"text",files,fileOrder:order,activeFilename:order[0],
-      folders:[...folders].sort(),projectOrder:[...folders,...order]},
+    state:{lang:remote.language||"text",files,fileOrder:ordered,activeFilename:known.has(layout.activeFilename)?layout.activeFilename:ordered[0],
+      folders:[...folders].sort(),projectOrder:[...new Set([...(Array.isArray(layout.projectOrder)?layout.projectOrder.filter(path=>known.has(path)||folders.has(path)):[]),...folders,...ordered])]},
     database:artifacts.database||{tables:{},history:[]},
     design:artifacts.design||{},evidence:artifacts.evidence||{events:[],runs:[]},
     assessment:artifacts.assessment&&typeof artifacts.assessment==="object"?artifacts.assessment:null,
@@ -167,7 +169,8 @@ export function createProjectStudio({
   const projectStorage=scopedProjectStorage(localStorage,scopeToken);
   const undoKey=projectId=>"Adminerva_Code_Project_Undo_v1_"+uid+"_"+(scopeToken?scopeToken+"_":"")+projectId;
   let activeProject=null,selectedTemplate="java-information",initialized=false;
-  const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set();
+  const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set(),cloudPending=new Map();
+  let merging=null,cloudStatus="Checking cloud storage…";
   let dbSelectedTable="",dbView="browse";
 
   function projectSize(project){return enc(project);}
@@ -192,6 +195,8 @@ export function createProjectStudio({
     getActiveProject:()=>activeProject,
     showHome,
     saveState,
+    flushCloudSaves,
+    hasPendingCloudSaves:()=>cloudEnabled&&cloudPending.size>0,
     recordRun,
     updateConfig,
     refreshEvidence:()=>renderEvidence(),
@@ -209,17 +214,44 @@ export function createProjectStudio({
     isGuest:()=>guest
   };
 
+  function markerKey(id){return "Adminerva_Studio_Cloud_State_"+uid+"_"+id;}
+  function readMarker(id){try{return JSON.parse(projectStorage.getItem(markerKey(id))||"null")||{};}catch{return {};}}
+  function writeMarker(id,value){try{projectStorage.setItem(markerKey(id),JSON.stringify(value));}catch(error){console.warn("Studio sync recovery marker unavailable",error);}}
+  function stable(value){
+    if(Array.isArray(value))return value.map(stable);
+    if(value&&typeof value==="object")return Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])]));
+    return value;
+  }
+  function contentKey(project){
+    const state=project?.state||{};
+    return JSON.stringify(stable({title:project?.title,lang:project?.lang,template:project?.template,
+      files:state.files||{},fileOrder:state.fileOrder||[],folders:[...(state.folders||[])].sort(),
+      projectOrder:state.projectOrder||[],activeFilename:state.activeFilename||"",
+      config:project?.config||{},database:project?.database||{},design:project?.design||{},
+      evidence:project?.evidence||{},assessment:project?.assessment||null}));
+  }
+  function setCloudStatus(message,tone="info",id=null){
+    if(id&&activeProject?.id!==id)return;
+    cloudStatus=message;
+    const badge=el("activeProjectStorageBadge"),indicator=el("autoSaveIndicator");
+    if(badge){badge.textContent=message;badge.dataset.tone=tone;}
+    if(indicator&&activeProject){indicator.textContent=message;indicator.title=message;
+      indicator.classList.remove("opacity-0","text-rose-400","text-emerald-400");
+      indicator.classList.add(tone==="error"?"text-rose-400":tone==="success"?"text-emerald-400":"text-slate-400");}
+    const storage=el("projectStorageMode");if(storage&&!activeProject)storage.textContent=message;
+  }
+  function cacheProject(project){
+    const items=readCodeProjects(projectStorage,uid).filter(item=>item.id!==project.id);
+    const normalized=normalizeProject(project);if(!normalized)throw Error("Invalid cloud project.");
+    writeCodeProjects(projectStorage,uid,[normalized,...items]);return normalized;
+  }
   function store(project,cloud=cloudEnabled){
     validateProject(project);
-    activeProject=saveCodeProject(projectStorage,uid,project);
-    updateProjectHeading();
-    updateQuotaUI();
-    if(cloudEnabled&&cloud){
-      scheduleCloudSave(activeProject);
-      // Progressive V4 sync reuses the exact project saved by this editor.
-      // It is debounced and failure does not erase the existing local/legacy copy.
-      queueV4StudioProjectSync(activeProject,activeProject.state);
-    }
+    const previous=findCodeProject(projectStorage,uid,project.id);
+    const changed=!previous||contentKey(previous)!==contentKey(project);
+    activeProject=changed?saveCodeProject(projectStorage,uid,project):{...previous,lastOpenedAt:project.lastOpenedAt||previous.lastOpenedAt};
+    updateProjectHeading();updateQuotaUI();
+    if(cloudEnabled&&cloud&&(changed||readMarker(project.id).pending||!readMarker(project.id).kind))scheduleCloudSave(activeProject);
     window.dispatchEvent(new CustomEvent("adminerva:studio-project-saved",{detail:{
       projectId:activeProject.id,updatedAt:activeProject.updatedAt
     }}));
@@ -227,73 +259,158 @@ export function createProjectStudio({
   }
   function saveState(state){
     if(!activeProject)return null;
-    const next={...activeProject,state,lastOpenedAt:new Date().toISOString()};
-    return store(next,true);
+    return store({...activeProject,state,lastOpenedAt:new Date().toISOString()},true);
   }
   function scheduleCloudSave(project){
     if(!cloudEnabled||deletedProjects.has(project.id))return;
-    // One timer per project: switching projects must not cancel the previous
-    // project's unsent edits. Writes for a project are serialized to prevent
-    // an earlier, slower write from overwriting a later saved revision.
     const snapshot=clone(project),id=snapshot.id;
+    cloudPending.set(id,snapshot);
+    writeMarker(id,{...readMarker(id),pending:true});
+    setCloudStatus(navigator.onLine===false?"Offline · saved on device":"Syncing to cloud…","info",id);
     clearTimeout(cloudTimers.get(id));
-    cloudTimers.set(id,setTimeout(()=>{
-      cloudTimers.delete(id);
-      const prior=cloudWrites.get(id)||Promise.resolve();
-      const next=prior.catch(()=>{}).then(()=>saveCloud(snapshot));
-      cloudWrites.set(id,next);
-      void next.finally(()=>{if(cloudWrites.get(id)===next)cloudWrites.delete(id);});
-    },3500));
+    cloudTimers.set(id,setTimeout(()=>{void flushOne(id);},900));
   }
-  async function saveCloud(project){
-    if(!cloudEnabled||deletedProjects.has(project.id))return;
-    try{
-      const school=await currentV4StudioSchool();
-      if(school?.compatibilityMode==="v4_only")return;
-      if(!project||enc(project)>policy.maxProjectBytes)return;
-      await setDoc(doc(db,"student_code_projects",uid,"projects",project.id),{...project,ownerUid:uid});
-      const indicator=el("autoSaveIndicator");
-      if(indicator&&!indicator.textContent.includes("Practice"))indicator.title="Local project saved; cloud project synchronized.";
-    }catch(error){console.warn("Code project cloud sync unavailable:",error);}
+  async function flushOne(id){
+    clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
+    if(!cloudEnabled||deletedProjects.has(id))return false;
+    if(cloudWrites.has(id)){
+      await cloudWrites.get(id);
+      return cloudPending.has(id)?flushOneAfterWrite(id):true;
+    }
+    return flushOneAfterWrite(id);
+  }
+  async function flushOneAfterWrite(id){
+    if(cloudWrites.has(id))return cloudWrites.get(id);
+    const snapshot=cloudPending.get(id);if(!snapshot||deletedProjects.has(id))return true;
+    const work=(async()=>{
+      try{
+        if(auth.currentUser?.uid!==uid)throw Error("Sign in with the original project account.");
+        const school=await currentV4StudioSchool();
+        if(auth.currentUser?.uid!==uid)throw Error("Account changed before saving.");
+        let marker;
+        if(school){
+          const result=await syncV4StudioProject(snapshot,snapshot.state,{quiet:true});
+          if(!result)throw Error("School cloud storage is unavailable.");
+          marker={kind:"school",schoolId:school.schoolId,revision:result.revision};
+        }else{
+          if(scopeToken)throw Error("Reconnect your verified school to save this project.");
+          const ref=doc(db,"student_code_projects",uid,"projects",id);
+          const base=readMarker(id);
+          await runTransaction(db,async tx=>{
+            const remote=await tx.get(ref);
+            if(remote.exists()){
+              const prior=remote.data();
+              if(prior.ownerUid!==uid||prior.status==="archived")throw Error("This cloud project cannot be overwritten.");
+              if(contentKey(prior)===contentKey(snapshot))return;
+              if(base.kind!=="legacy"||base.updatedAt!==prior.updatedAt)
+                throw Error("Project changed on another device. Open the project again to recover both copies.");
+            }
+            tx.set(ref,{...snapshot,ownerUid:uid});
+          });
+          marker={kind:"legacy",updatedAt:snapshot.updatedAt};
+        }
+        const same=cloudPending.get(id)===snapshot;
+        if(same)cloudPending.delete(id);
+        writeMarker(id,{...marker,pending:!same});
+        if(same)setCloudStatus("Saved to cloud","success",id);
+        return true;
+      }catch(error){
+        console.warn("Studio cloud save failed:",error);
+        setCloudStatus("Device copy saved · cloud not synced","error",id);
+        const indicator=el("autoSaveIndicator");if(indicator&&activeProject?.id===id)indicator.title=String(error?.message||error)+" · Save again to retry.";
+        return false;
+      }
+    })();
+    cloudWrites.set(id,work);
+    try{return await work;}finally{if(cloudWrites.get(id)===work)cloudWrites.delete(id);}
+  }
+  async function flushCloudSaves(){
+    if(!cloudEnabled)return true;
+    const ids=[...cloudPending.keys()];
+    if(!ids.length)return true;
+    const result=await Promise.all(ids.map(flushOne));
+    return result.every(Boolean)&&!cloudPending.size;
+  }
+  function recoverCopy(project){
+    const copy=createCodeProject(projectStorage,uid,{title:(project.title.slice(0,94)+" · Device recovery"),templateId:project.template,config:project.config});
+    cacheProject({...project,id:copy.id,title:copy.title,assessment:null,createdAt:copy.createdAt,updatedAt:copy.updatedAt,lastOpenedAt:copy.lastOpenedAt});
+    return copy.id;
+  }
+  async function resolveCloudProject(id,{local=null}={}){
+    local=local||findCodeProject(projectStorage,uid,id);
+    if(!cloudEnabled)return local;
+    if(auth.currentUser?.uid!==uid)throw Error("Sign in with your project account.");
+    const school=await currentV4StudioSchool();
+    let remote=null,base=null;
+    if(school){
+      try{
+        const detail=await loadV4StudioProject(id,{rememberRevision:false});
+        if(detail){remote=v4ProjectToLocal(uid,detail);base={kind:"school",schoolId:school.schoolId,revision:detail.revision};}
+      }catch(error){
+        if(!String(error?.code||"").includes("not-found"))throw error;
+      }
+    }
+    if(!remote&&school?.compatibilityMode!=="v4_only"&&!scopeToken){
+      const legacy=await getDocFromServer(doc(db,"student_code_projects",uid,"projects",id));
+      if(legacy.exists()){
+        const data=legacy.data();
+        if(data.ownerUid!==uid||data.status==="archived")throw Error("The cloud project is not active.");
+        remote=normalizeProject(data);if(!remote)throw Error("The cloud project cannot be read.");
+        base={kind:"legacy",updatedAt:data.updatedAt};
+      }
+    }
+    if(!remote)return local;
+    validateProject(remote);
+    const prior=readMarker(id);
+    const sameBase=base.kind==="school"&&prior.kind==="school"&&prior.schoolId===base.schoolId&&prior.revision===base.revision||
+      base.kind==="legacy"&&prior.kind==="legacy"&&prior.updatedAt===base.updatedAt;
+    const differs=local&&contentKey(local)!==contentKey(remote);
+    let chosen=remote;
+    if(differs&&prior.pending&&sameBase)chosen=local;
+    else if(differs&&(prior.pending||(!prior.kind&&String(local.updatedAt||"")>=String(remote.updatedAt||"")))){
+      recoverCopy(local);
+      alert("The cloud has a different version of this project. Your device changes were preserved as a separate Device recovery project; the main project will open the cloud version.");
+    }
+    if(base.kind==="school")rememberV4StudioRevision(id,base.revision);
+    const needsSync=chosen===local&&differs||Boolean(school&&base.kind==="legacy");
+    writeMarker(id,{...base,pending:Boolean(needsSync)});
+    cloudPending.delete(id);clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
+    const cached=cacheProject(chosen);
+    if(needsSync)scheduleCloudSave(cached);
+    return cached;
   }
   async function mergeCloudProjects(){
     if(!cloudEnabled)return;
-    const local=readCodeProjects(projectStorage,uid),map=new Map(local.map(project=>[project.id,project]));
-    let changed=false,school=null;
-    try{school=await currentV4StudioSchool();}catch{}
-    if(school?.compatibilityMode!=="v4_only"){
+    if(merging)return merging;
+    merging=(async()=>{
       try{
-        const snap=await getDocs(collection(db,"student_code_projects",uid,"projects"));
-        for(const record of snap.docs){
-          const cloud=record.data(),current=map.get(cloud.id);
-          if(!current||String(cloud.updatedAt||"")>String(current.updatedAt||"")){
-            map.set(cloud.id,cloud);changed=true;
+        const school=await currentV4StudioSchool(),ids=new Set(),archivedIds=new Set();
+        if(school){
+          const [remote,archived]=await Promise.all([listV4StudioProjects(),listArchivedV4StudioProjects()]);
+          for(const row of remote||[])ids.add(row.projectId);
+          for(const row of archived||[])archivedIds.add(row.projectId);
+          const archiveButton=el("archivedCodeProjectsBtn");if(archiveButton)archiveButton.classList.toggle("hidden",!archived?.length);
+        }
+        if(school?.compatibilityMode!=="v4_only"&&!scopeToken){
+          const snap=await getDocsFromServer(collection(db,"student_code_projects",uid,"projects"));
+          for(const row of snap.docs)if(row.data().ownerUid===uid&&row.data().status!=="archived"&&!archivedIds.has(row.id))ids.add(row.id);
+        }
+        for(const id of ids){
+          if(activeProject?.id===id||cloudWrites.has(id)||cloudPending.has(id))continue;
+          try{await resolveCloudProject(id);}catch(error){console.warn("Cloud project could not be loaded",id,error);}
+        }
+        for(const project of readCodeProjects(projectStorage,uid)){
+          if(activeProject?.id===project.id||archivedIds.has(project.id)||cloudPending.has(project.id)||cloudWrites.has(project.id))continue;
+          if(readMarker(project.id).pending){scheduleCloudSave(project);}
+          else if(!ids.has(project.id)&&!readMarker(project.id).kind){
+            // Verify absence before uploading device-only work; never overwrite an existing copy.
+            try{const candidate=await resolveCloudProject(project.id,{local:project});if(candidate&&!readMarker(project.id).kind)scheduleCloudSave(candidate);}catch(error){console.warn("Device draft retained",error);}
           }
         }
-      }catch(error){console.warn("Legacy cloud code projects unavailable; continuing with school storage.",error);}
-    }
-    try{
-      const remote=await listV4StudioProjects();
-      const archived=await listArchivedV4StudioProjects();
-      const archiveButton=el("archivedCodeProjectsBtn");
-      if(archiveButton)archiveButton.classList.toggle("hidden",!archived?.length);
-      for(const summary of remote||[]){
-        if(map.has(summary.projectId))continue;
-        try{
-          const detail=await loadV4StudioProject(summary.projectId);
-          if(!detail)continue;
-          const schoolProject=v4ProjectToLocal(uid,detail);
-          validateProject(schoolProject);
-          map.set(schoolProject.id,schoolProject);changed=true;
-        }catch(error){
-          console.warn("School Studio project could not be materialized on this device:",summary.projectId,error?.message||error);
-        }
-      }
-    }catch(error){console.warn("Verified school projects unavailable; using existing device projects.",error);}
-    if(changed){
-      writeCodeProjects(projectStorage,uid,[...map.values()]);
-      if(!activeProject)renderProjectHome();
-    }
+        if(!activeProject){renderProjectHome();setCloudStatus(cloudPending.size?"Cloud sync pending":"Cloud projects up to date");}
+      }catch(error){console.warn("Studio cloud list unavailable:",error);if(!activeProject)setCloudStatus("Cloud unavailable · device drafts retained","error");}
+    })();
+    try{await merging;}finally{merging=null;}
   }
 
   async function showArchivedSchoolProjects(){
@@ -365,7 +482,7 @@ export function createProjectStudio({
     el("importCodeProjectBtn")?.addEventListener("click",()=>el("projectZipInput")?.click());
     el("backToProjectsBtn")?.addEventListener("click",()=>{
       if(activeProject)saveState(captureState());
-      activeProject=null;showHome();
+      void flushCloudSaves();activeProject=null;showHome();
     });
     el("projectSettingsBtn")?.addEventListener("click",()=>openSettings());
     el("projectWizardClose")?.addEventListener("click",closeWizard);
@@ -405,7 +522,8 @@ export function createProjectStudio({
     });
     el("enableProjectDbBtn")?.addEventListener("click",()=>updateConfig({database:true}));
     document.querySelectorAll("[data-studio-view]").forEach(button=>button.addEventListener("click",()=>switchStudioView(button.dataset.studioView)));
-    window.addEventListener("beforeunload",()=>{if(activeProject)try{saveState(captureState());}catch{}});
+    window.addEventListener("online",()=>{void flushCloudSaves();});
+    document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&activeProject){try{saveState(captureState());}catch{}void flushCloudSaves();}});
     document.addEventListener("keydown",event=>{
       if(event.key!=="Escape")return;
       if(!el("projectSettingsModal")?.classList.contains("hidden"))el("projectSettingsModal")?.classList.add("hidden");
@@ -415,8 +533,8 @@ export function createProjectStudio({
 
   function updateQuotaUI(){
     const quota=el("projectQuotaStatus");if(quota)quota.textContent=quotaText();
-    const storage=el("projectStorageMode");if(storage)storage.textContent=guest?"Local-only guest storage":"Private account storage · cloud sync";
-    const badge=el("activeProjectStorageBadge");if(badge)badge.textContent=guest?"Local only":"Cloud sync";
+    const storage=el("projectStorageMode");if(storage)storage.textContent=guest?"Local-only guest storage":cloudStatus;
+    const badge=el("activeProjectStorageBadge");if(badge)badge.textContent=guest?"Local only":cloudStatus;
     const create=el("newCodeProjectBtn"),count=readCodeProjects(projectStorage,uid).filter(item=>item.status!=="archived").length;
     if(create&&Number.isFinite(policy.maxProjects)){create.disabled=count>=policy.maxProjects;create.title=create.disabled?"Guest project limit reached. Export or delete a project to create another.":"";}
   }
@@ -438,7 +556,7 @@ export function createProjectStudio({
             validateProject(project,{creating:true});
             const copy=createCodeProject(projectStorage,uid,{title:project.title+" Copy",templateId:project.template,config:project.config});
             copy.state=clone(project.state);copy.database=clone(project.database);copy.design=clone(project.design);copy.evidence={events:[],runs:[]};
-            saveCodeProject(projectStorage,uid,copy);renderProjectHome();
+            const saved=saveCodeProject(projectStorage,uid,copy);if(cloudEnabled)scheduleCloudSave(saved);renderProjectHome();
           }catch(error){alert(error.message);}
         });
         card.querySelector("[data-open]").addEventListener("click",()=>openProjectById(project.id));
@@ -446,7 +564,8 @@ export function createProjectStudio({
           const warning=guest?'Delete "'+project.title+'"? Guest projects exist only on this browser. Export a ZIP first if you need a copy.':'Delete "'+project.title+'"? This removes the project from this device and its project cloud record. Export a ZIP first if you need a copy.';
           if(!confirm(warning))return;
           deletedProjects.add(project.id);
-          clearTimeout(cloudTimers.get(project.id));cloudTimers.delete(project.id);
+          clearTimeout(cloudTimers.get(project.id));cloudTimers.delete(project.id);cloudPending.delete(project.id);
+          await (cloudWrites.get(project.id)||Promise.resolve()).catch(()=>{});
           if(cloudEnabled){
             try{await archiveV4StudioProject(project.id);}
             catch(error){
@@ -501,47 +620,20 @@ export function createProjectStudio({
     let project=findCodeProject(projectStorage,uid,projectId)||
       readCodeProjects(projectStorage,uid).find(item=>item.assessment?.assessmentId===assessmentId);
 
-    if(!project&&cloudEnabled){
+    if(cloudEnabled){
+      const lookupId=project?.id||projectId;
       try{
-        const remote=await loadV4StudioProject(projectId);
-        if(remote){
-          project=v4ProjectToLocal(uid,remote);
-          validateProject(project);
-          project=saveCodeProject(projectStorage,uid,project);
-        }
+        project=await resolveCloudProject(lookupId,{local:project});
       }catch(error){
         const message=String(error?.message||error||"");
         if(/archiv/i.test(message)){
-          try{
-            const archived=await listArchivedV4StudioProjects();
-            const match=archived?.find(item=>item.projectId===projectId);
-            if(match){
-              await restoreV4StudioProject(projectId,match.revision);
-              const remote=await loadV4StudioProject(projectId);
-              if(remote){
-                project=v4ProjectToLocal(uid,remote);
-                validateProject(project);
-                project=saveCodeProject(projectStorage,uid,project);
-              }
-            }
-          }catch(restoreError){
-            console.warn("Archived assessment project could not be restored:",restoreError?.message||restoreError);
-          }
-        }else if(!/not.?found|unavailable/i.test(message)){
-          console.warn("Verified-school assessment project lookup skipped:",message);
+          const archived=await listArchivedV4StudioProjects(),match=archived?.find(item=>item.projectId===lookupId);
+          if(match){await restoreV4StudioProject(lookupId,match.revision);project=await resolveCloudProject(lookupId,{local:project});}
+          else throw error;
+        }else{
+          if(!project)throw Error("Could not check for an existing cloud assessment project. Reconnect before creating a new one.");
+          setCloudStatus("Cloud unavailable · device draft retained","error");
         }
-      }
-    }
-    if(!project&&cloudEnabled){
-      try{
-        const legacyCloud=await getDoc(doc(db,"student_code_projects",uid,"projects",projectId));
-        if(legacyCloud.exists()){
-          project={id:projectId,...legacyCloud.data()};
-          validateProject(project);
-          project=saveCodeProject(projectStorage,uid,project);
-        }
-      }catch(error){
-        console.warn("Existing assessment project cloud lookup skipped:",error?.message||error);
       }
     }
 
@@ -598,7 +690,7 @@ export function createProjectStudio({
         JSON.stringify(project.assessment||{})!==JSON.stringify(ownership)||
         project.template!==next.template||project.lang!==next.lang||
         JSON.stringify(project.config||{})!==JSON.stringify(next.config||{});
-      if(changed)project=saveCodeProject(projectStorage,uid,next);
+      if(changed){project=saveCodeProject(projectStorage,uid,next);if(cloudEnabled)writeMarker(project.id,{...readMarker(project.id),pending:true});}
       activateProject(project);
       return {project:activeProject,created:false,projectId:activeProject.id};
     }
@@ -622,19 +714,17 @@ export function createProjectStudio({
 
   async function openProjectById(id){
     let project=findCodeProject(projectStorage,uid,id);
-    if(!project&&cloudEnabled){
+    if(cloudEnabled){
       try{
-        const remote=await loadV4StudioProject(id);
-        if(remote){
-          project=v4ProjectToLocal(uid,remote);
-          validateProject(project);
-          project=saveCodeProject(projectStorage,uid,project);
-        }
+        if(cloudWrites.has(id))await cloudWrites.get(id);
+        if(cloudPending.has(id))await flushOne(id);
+        project=await resolveCloudProject(id,{local:findCodeProject(projectStorage,uid,id)||project});
       }catch(error){
-        console.warn("Verified-school Studio project could not be opened:",error?.message||error);
+        if(!project||/archiv/i.test(String(error?.message||"")))return alert("Cloud project could not be opened: "+String(error?.message||error));
+        setCloudStatus("Cloud unavailable · device draft retained","error");
       }
     }
-    if(!project)return alert("This project is not available in this device or your active verified school.");
+    if(!project)return alert("This project is not available in your device or cloud account.");
     activateProject(project);
   }
 
@@ -747,7 +837,7 @@ export function createProjectStudio({
   function activateProject(project){
     initialize();
     activeProject={...project,lastOpenedAt:new Date().toISOString()};
-    activeProject=saveCodeProject(projectStorage,uid,activeProject);
+    activeProject=cacheProject(activeProject);
     el("projectHome")?.classList.add("hidden");
     el("studioShell")?.classList.remove("hidden");
     updateProjectHeading();
@@ -762,7 +852,11 @@ export function createProjectStudio({
     if(undo)undo.classList.toggle("hidden",
       !localStorage.getItem(undoKey(activeProject.id)));
     updateQuotaUI();
-    if(cloudEnabled)scheduleCloudSave(activeProject);
+    if(cloudEnabled){
+      const marker=readMarker(activeProject.id);
+      if(marker.pending||!marker.kind)scheduleCloudSave(activeProject);
+      else setCloudStatus("Saved to cloud","success",activeProject.id);
+    }
   }
 
   function updateProjectHeading(){
