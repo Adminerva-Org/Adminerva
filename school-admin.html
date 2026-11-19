@@ -148,6 +148,19 @@
     </article>
   </section>
 
+  <section class="av-panel overflow-hidden" aria-labelledby="adminActivityHeading">
+    <div class="px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div>
+        <h2 id="adminActivityHeading" class="font-extrabold">Recent administrative activity</h2>
+        <p class="text-xs text-slate-500">Recent identity, access, staffing and enrollment audit events for this school.</p>
+      </div>
+      <a href="people-access.html#overview" class="text-sm font-bold text-blue-700">Open People &amp; Access</a>
+    </div>
+    <div id="adminActivityList" class="divide-y divide-slate-100">
+      <div class="p-5 text-sm text-slate-500">Loading recent school administration activity…</div>
+    </div>
+  </section>
+
   <section class="av-panel overflow-hidden">
     <div class="px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <div>
@@ -173,7 +186,7 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=21a534696b3d"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
-<script type="module" src="js/school-admin/dashboard.mjs?v=20261120-next-action"></script>
+<script type="module" src="js/school-admin/dashboard.mjs?v=20261120-admin-activity"></script>
 <script type="module" src="js/core/home-motion.mjs?v=1.0.0"></script>
 <script type="module" src="js/core/home-experience.mjs?v=1.0.0"></script>
 </body>
