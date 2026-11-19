@@ -47,7 +47,9 @@
           <div><h2 class="font-extrabold text-lg">Adminerva Studio projects</h2><p class="text-xs text-slate-500 mt-1">School-scoped code projects saved to Adminerva Studio.</p></div>
           <a href="student-playground.html" class="rounded-lg bg-indigo-700 text-white px-4 py-2 text-sm font-bold">Open Studio</a>
         </div>
-        <div id="projectHubStudio" class="grid sm:grid-cols-2 gap-3 mt-4"></div>
+        <div class="flex flex-col sm:flex-row sm:items-end gap-2 mt-4"><label class="block text-sm font-bold flex-1">Find a cloud project<input id="projectHubStudioSearch" type="search" placeholder="Project name or language" class="block w-full rounded-lg border p-2.5 mt-1"></label><p id="projectHubStudioCount" class="text-xs text-slate-600 pb-2" aria-live="polite"></p></div>
+        <div id="projectHubStudio" class="grid sm:grid-cols-2 gap-3 mt-3"></div>
+        <button id="projectHubStudioMore" type="button" hidden class="rounded-lg border px-4 py-2 text-sm font-bold mt-3">Show more projects</button>
       </section>
     </div>
     <aside class="space-y-5">
@@ -65,5 +67,5 @@
 <script src="js/core/adminerva-loader.js?v=41f59a42cc91"></script>
 <script src="js/core/adminerva-nav.js?v=41f59a42cc91"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=41f59a42cc91"></script>
-<script type="module" src="js/student/school-student-projects.mjs?v=4.0.1"></script>
+<script type="module" src="js/student/school-student-projects.mjs?v=4.0.2"></script>
 </body></html>
