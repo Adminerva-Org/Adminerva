@@ -534,18 +534,27 @@ function populateMultiOptions(selector,items,idField,nameField="name"){
   }
 }
 function renderSectionAssignmentOfferings(){
-  const form=get("pa-section-assignment-form");
-  if(!form)return;
+  const form=get("pa-section-assignment-form"),host=get("pa-section-offering-list");
+  if(!form||!host)return;
   const sectionId=String(form.elements.sectionId.value||"");
   const offerings=schoolOfferings.filter(item=>item.sectionId===sectionId)
     .map(item=>({...item,label:offeringLabel(item)}))
     .sort((a,b)=>a.label.localeCompare(b.label));
-  populateMultiOptions("[data-section-offering-bulk]",offerings,"offeringId","label");
+  host.replaceChildren();
+  for(const offering of offerings){
+    const label=document.createElement("label");
+    label.style.cssText="display:flex;align-items:flex-start;gap:.55rem;padding:.55rem .65rem;border:1px solid #cbd5e1;border-radius:10px;background:#fff;cursor:pointer";
+    const checkbox=document.createElement("input");
+    checkbox.type="checkbox";checkbox.name="offeringIds";checkbox.value=offering.offeringId;
+    checkbox.style.cssText="width:18px;height:18px;margin-top:.1rem;flex:0 0 auto";
+    const text=document.createElement("span");text.textContent=offering.label;
+    label.append(checkbox,text);host.append(label);
+  }
   const help=get("pa-section-assignment-help");
   if(help)help.textContent=!sectionId
     ?"Choose a section to see its active subject offerings. Select only the classes this teacher actually handles."
     :offerings.length
-      ?offerings.length+" active class"+(offerings.length===1?"":"es")+" available in this section. Select one or more subject/period classes."
+      ?offerings.length+" active class"+(offerings.length===1?"":"es")+" available in this section. Tap each subject/period class this teacher handles."
       :"This section has no active course offerings yet. Configure its subjects and periods first.";
 }
 async function loadAcademics(){
@@ -594,7 +603,7 @@ get("pa-section-assignment-form")?.addEventListener("submit",event=>{
   event.preventDefault();const form=event.currentTarget;
   const teacherUid=String(form.elements.teacherUid.value||""),
     sectionId=String(form.elements.sectionId.value||""),
-    offeringIds=[...form.elements.offeringIds.selectedOptions].map(option=>option.value),
+    offeringIds=[...form.querySelectorAll('input[name="offeringIds"]:checked')].map(input=>input.value),
     reason=String(form.elements.reason.value||"").trim();
   if(!teacherUid||!sectionId){say("Choose a verified teacher and section.");return;}
   if(!offeringIds.length){say("Select at least one class or subject offering in this section.");return;}
