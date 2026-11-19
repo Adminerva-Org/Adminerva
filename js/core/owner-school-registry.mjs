@@ -321,7 +321,8 @@ async function refresh(prefer=selected?.schoolId){
     blank.textContent="No schools have been provisioned.";
     schoolList.append(blank);
   }
-  choose(prefer||schools[0]?.schoolId,true);
+  const preferred=schools.some(school=>school.schoolId===prefer)?prefer:schools[0]?.schoolId;
+  choose(preferred,true);
   workspace.hidden=false;
 }
 async function submit(form,action,fields){
@@ -586,7 +587,8 @@ try {
     const link=document.createElement("a");link.href="login.html";link.textContent="Sign in";
     status.append(" ",link);
   }else{
-    await refresh();
+    const requestedSchoolId=new URL(location.href).searchParams.get("schoolId")||"";
+    await refresh(requestedSchoolId);
     say("Owner school registry loaded. School-specific private academic records are never displayed here.");
   }
 }catch(error){
