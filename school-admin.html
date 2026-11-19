@@ -18,11 +18,11 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
         <p class="text-xs font-extrabold uppercase tracking-wider text-blue-700">School Administration</p>
-        <h1 class="text-2xl font-extrabold mt-1">Operations</h1>
+        <h1 class="text-2xl font-extrabold mt-1">Operations</h1><p id="adminSchoolName" class="text-sm text-slate-600 mt-1">Checking school…</p>
       </div>
-      <div id="sa-school-picker" hidden class="w-full sm:w-auto sm:min-w-[230px]"></div>
+      <div class="flex flex-wrap items-center gap-2"><div id="sa-school-picker" hidden class="w-full sm:w-auto sm:min-w-[230px]"></div><button id="adminRefresh" type="button" class="av-btn">Refresh dashboard</button></div>
     </div>
-    <p id="adminOverviewStatus" role="status" aria-live="polite" class="text-sm text-slate-600 mt-2">Loading school operations…</p>
+    <p id="adminOverviewStatus" role="status" aria-live="polite" class="text-sm text-slate-600 mt-2">Loading school operations…</p><p id="adminLastChecked" class="text-xs text-slate-500 mt-1"></p>
   </header>
 
   <section class="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label="School operations summary">
@@ -32,7 +32,7 @@
       <span class="text-xs text-slate-500">school records</span>
     </article>
     <article class="av-panel p-4">
-      <p class="text-xs font-bold uppercase text-slate-500">Needs attention</p>
+      <p class="text-xs font-bold uppercase text-slate-500">Directory issues</p>
       <strong id="adminAttentionCount" class="block text-3xl font-extrabold mt-1">—</strong>
       <span id="adminIntegrityMeta" class="text-xs text-slate-500">relationship checks</span>
     </article>
@@ -48,6 +48,17 @@
     </article>
   </section>
 
+  <section class="av-panel p-4 sm:p-5" aria-label="School directory and workflow shortcuts">
+    <div class="flex flex-wrap items-baseline justify-between gap-2"><h2 class="font-extrabold">Directory &amp; academic setup</h2><p class="text-xs text-slate-500">Record totals include historical records; they are not active headcounts.</p></div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+      <a href="people-access.html#classes" class="rounded-xl border p-3 hover:bg-slate-50"><strong id="adminEnrollmentCount" class="block text-2xl">—</strong><span class="text-sm font-bold">Course enrollment records</span><span class="block text-xs text-blue-700 mt-1">Manage classes →</span></a>
+      <a href="people-access.html#classes" class="rounded-xl border p-3 hover:bg-slate-50"><strong id="adminAssignmentCount" class="block text-2xl">—</strong><span class="text-sm font-bold">Teaching assignment records</span><span class="block text-xs text-blue-700 mt-1">Manage teaching load →</span></a>
+      <a href="people-access.html#invites" class="rounded-xl border p-3 hover:bg-slate-50"><strong id="adminInvitationCount" class="block text-2xl">—</strong><span class="text-sm font-bold">Invitation records</span><span class="block text-xs text-blue-700 mt-1">Review invitations →</span></a>
+    </div>
+    <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 text-sm font-bold text-blue-700">
+      <a href="people-access.html#access">Account access</a><a href="school-enrollment.html">Enrollment &amp; Registration</a><a href="school-academic-structure.html">Academic structure</a><a href="people-access.html#people">People directory</a>
+    </div>
+  </section>
   <section class="grid lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)] gap-4">
     <article class="av-panel overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
@@ -57,9 +68,10 @@
         </div>
         <a href="people-access.html#overview" class="text-sm font-bold text-blue-700">Open People &amp; Access</a>
       </div>
+      <div class="px-4 py-3 border-b flex flex-wrap gap-2 items-center"><label class="text-sm font-bold">Severity <select id="adminAttentionFilter" class="border rounded-lg p-2 ml-1"><option value="">All issues</option><option value="integrity">Integrity</option><option value="attention">Attention</option><option value="review">Review</option></select></label><p id="adminAttentionCoverage" class="text-xs text-slate-600" aria-live="polite"></p></div>
       <div id="adminAttentionList" class="divide-y divide-slate-100">
         <div class="p-5 text-sm text-slate-500">Checking school relationships…</div>
-      </div>
+      </div><button id="adminAttentionMore" type="button" hidden class="av-btn m-4">Show more issues</button>
     </article>
 
     <article class="av-panel overflow-hidden">
@@ -71,6 +83,7 @@
           <div class="rounded-xl bg-slate-50 p-3"><span class="text-xs text-slate-500">Open</span><strong id="adminSupportOpen" class="block text-2xl">—</strong></div>
           <div class="rounded-xl bg-slate-50 p-3"><span class="text-xs text-slate-500">Critical</span><strong id="adminSupportCritical" class="block text-2xl">—</strong></div>
         </div>
+        <div class="rounded-xl bg-slate-50 p-3 mt-3"><span class="text-xs text-slate-500">Waiting for reporter</span><strong id="adminSupportWaiting" class="block text-2xl">—</strong></div>
         <a href="issues.html" class="av-btn inline-flex mt-4">Open Reports &amp; Support</a>
       </div>
     </article>
@@ -82,22 +95,26 @@
         <h2 class="font-extrabold">Class Record health</h2>
         <p class="text-xs text-slate-500">Finalization, release and stale-record state across active records.</p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <a href="school-academic-configuration.html" class="text-sm font-bold text-blue-700">Academic configuration</a>
         <a href="school-grading-schemes.html" class="text-sm font-bold text-blue-700">Grading policies</a>
         <a href="school-class-records.html" class="text-sm font-bold text-blue-700">Oversight</a>
       </div>
     </div>
+    <div class="px-4 py-3 grid sm:grid-cols-2 gap-3 border-b">
+      <label class="text-sm font-bold">Find record<input id="adminRecordSearch" type="search" placeholder="Subject, section or teacher" class="block w-full border rounded-lg p-2 mt-1"></label>
+      <label class="text-sm font-bold">Record status<select id="adminRecordFilter" class="block w-full border rounded-lg p-2 mt-1"><option value="">All records</option><option value="not-finalized">Not finalized</option><option value="review">Needs review</option><option value="finalized">Finalized</option><option value="released">Released</option></select></label>
+    </div><p id="adminRecordCoverage" class="px-4 py-2 text-xs text-slate-600" aria-live="polite"></p>
     <div id="adminClassRecordList" class="overflow-x-auto">
       <div class="p-5 text-sm text-slate-500">Loading Class Record state…</div>
-    </div>
+    </div><button id="adminRecordMore" type="button" hidden class="av-btn m-4">Show more Class Records</button>
   </section>
 </main>
 <script defer src="js/core/release-footer.js?v=41f59a42cc91"></script>
 <script src="js/core/adminerva-loader.js?v=41f59a42cc91"></script>
 <script defer src="js/core/adminerva-nav.js?v=41f59a42cc91"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=41f59a42cc91"></script>
-<script type="module" src="js/school-admin/dashboard.mjs?v=1.0.0"></script>
+<script type="module" src="js/school-admin/dashboard.mjs?v=1.1.0"></script>
 <script type="module" src="js/core/home-motion.mjs?v=1.0.0"></script>
 <script type="module" src="js/core/home-experience.mjs?v=1.0.0"></script>
 </body>
