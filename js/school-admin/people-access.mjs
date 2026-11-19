@@ -13,6 +13,8 @@ let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferi
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
+const requestedPersonId=String(new URL(location.href).searchParams.get("personId")||"");
+let requestedPersonSchoolId=null;
 let schoolReady=false,standardEnrollmentMode=false;
 function rememberedTab(){
   const hash=location.hash.slice(1);
@@ -125,6 +127,12 @@ const picker=createTenantSchoolPicker({
       ?'For Manila Cathedral School, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
       :"Section values from the roster are hints only. After the people import is committed, review each matched section, choose the exact active course offering, and explicitly enroll the listed students.";
     workspace.hidden=false;schoolReady=true;
+    if(requestedPersonId&&requestedPersonSchoolId!==scope.current.schoolId){
+      requestedPersonSchoolId=scope.current.schoolId;
+      setTab("people",{remember:false});
+      void openPersonDetail({personId:requestedPersonId,displayName:"Student record"});
+      return;
+    }
     // Load only the active section. Large school directories should not fetch
     // six unrelated panels when the administrator only needs the overview.
     void loadSelectedTab(activeTab());
