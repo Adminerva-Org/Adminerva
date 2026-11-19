@@ -35,7 +35,7 @@ async function setStatus(kind,item,status){
 }
 function render(){
  const sec=section(),legacySec=legacySectionName(),person=student();
- const packCards=packs.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.missionRefs?.length||0)+" missions"+(x.dueDate?" · due "+x.dueDate:""),x.notes);box.append(actionButton("Archive",()=>setStatus("pack",x,"archived")));return box;});
+ const packCards=packs.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.missionRefs?.length||0)+" missions"+(x.dueDate?" · due "+x.dueDate:"")+(x.legacy?" · legacy read-only":""),x.notes);if(!x.legacy)box.append(actionButton("Archive",()=>setStatus("pack",x,"archived")));return box;});
  const projectCards=projects.filter(x=>x.sectionIds?.includes(legacySec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.studentIds?.length?x.studentIds.length+" selected learners":"Whole section")+(x.dueDate?" · due "+x.dueDate:""),x.description);box.append(actionButton("Archive",()=>setStatus("project",x,"archived")));return box;});
  const planCards=plans.filter(x=>x.studentId===person?.id&&x.status!=="closed").map(x=>{const box=card(x.title||"Improvement plan",(x.status==="completed"?"Completed · ":"")+(x.skills||[]).join(" · "),x.goal+"\nNext: "+x.nextAction);if(x.status!=="completed")box.append(actionButton("Mark completed",()=>setStatus("plan",x,"completed")));box.append(actionButton("Close plan",()=>setStatus("plan",x,"closed")));return box;});
  el("practicePackList").replaceChildren(...packCards);el("studentProjectList").replaceChildren(...projectCards);el("improvementPlanList").replaceChildren(...planCards);
