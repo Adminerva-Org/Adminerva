@@ -214,6 +214,17 @@
       <button type="submit" class="own-button">Save cutover decisions</button>
     </form>
    </section>
+   <section id="owner-admin-list-section" style="margin-top:1.25rem;border:1px solid #cbd5e1;border-radius:12px;padding:1rem;background:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;flex-wrap:wrap">
+      <div>
+        <h3 style="font-weight:800">Current School Administrators</h3>
+        <p class="own-muted">Use the current membership records below instead of copying account IDs manually. Access changes remain reasoned and audited.</p>
+      </div>
+      <button id="owner-admin-list-refresh" type="button" class="own-button" style="min-height:38px;padding:.45rem .75rem">Refresh administrators</button>
+    </div>
+    <div id="owner-admin-list" style="display:grid;gap:.55rem;margin-top:.75rem"></div>
+    <p id="owner-admin-list-status" class="own-muted" role="status" aria-live="polite">Select a school to load its administrators.</p>
+   </section>
    <form id="owner-grant" style="scroll-margin-top:1.5rem;border:2px solid #93c5fd;border-radius:12px;padding:1rem;margin-top:1.25rem">
     <h3 style="font-weight:750;margin:0 0 .5rem">Designate or repair school administrator access</h3>
     <p class="own-muted">For an existing verified Firebase user, including an administrator who also teaches. Grants school_admin without removing existing teacher roles. Choose the correct school above. Suspended administrators must use the recovery control below.</p>
@@ -283,6 +294,6 @@
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
 <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
-<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-account-lookup"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-admin-list"></script>
 </body>
 </html>
