@@ -401,6 +401,17 @@ function showOnboardingStep(step){
   host.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 function closeOnboarding(){const host=byId("owner-onboarding");if(host)host.hidden=true;}
+function enterSchoolAssist(target="school-admin.html"){
+  const schoolId=selected?.schoolId;if(!schoolId)return;
+  try{
+    sessionStorage.setItem("Adminerva_platform_view_school",schoolId);
+    sessionStorage.setItem("Adminerva_platform_view_role","schooladmin");
+    sessionStorage.setItem("Adminerva_platform_test_mode","1");
+    sessionStorage.setItem("Adminerva_platform_school_mode","assist");
+  }catch{}
+  const url=new URL(target,location.href);url.searchParams.set("schoolId",schoolId);
+  location.href=url.href;
+}
 function enterSchoolPreview(role="schooladmin"){
   const schoolId=onboardingSchoolId||selected?.schoolId;if(!schoolId)return;
   try{
@@ -411,6 +422,9 @@ function enterSchoolPreview(role="schooladmin"){
   }catch{}
   location.href=role==="student"?"student-home.html":role==="teacher"?"teacher-home.html":"school-admin.html";
 }
+document.querySelectorAll("[data-owner-assist-target]").forEach(button=>{
+  button.addEventListener("click",()=>{if(!busy&&selected)enterSchoolAssist(button.dataset.ownerAssistTarget||"school-admin.html");});
+});
 byId("owner-pilot-jump")?.addEventListener("click",()=>{
   if(!selected)return;
   const legacy=isLegacyProvisioning(selected);
