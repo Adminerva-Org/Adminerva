@@ -20,7 +20,7 @@ function mount(){
     search.addEventListener("input",()=>{
       const terms=search.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
       let shown=0;
-      for(const card of cards){card.hidden=!terms.every(term=>card.textContent.toLowerCase().includes(term));if(!card.hidden)shown++;}
+      for(const card of cards){const matches=terms.every(term=>card.textContent.toLowerCase().includes(term));card.style.display=matches?"":"none";if(matches&&!card.hidden&&!card.classList.contains("hidden"))shown++;}
       status.textContent=terms.length?shown+" matching tools. Clear search to see all tools.":"Search your learning workspace cards or use Ctrl + K to jump to any linked tool.";
     });
   }

@@ -58,9 +58,9 @@ if(home&&nav){
       let preferred=null;try{preferred=sessionStorage.getItem('Adminerva_last_verified_school_'+user.uid)||null;}catch{}
       const schoolPayload=(await schoolsApi({preferredSchoolId:preferred})).data;
       if(!current())return;
-      const choices=(schoolPayload.schools||[]).filter(s=>Array.isArray(s.roles)&&s.roles.includes(role));
-      const school=choices.find(s=>s.schoolId===preferred)|| (choices.length===1?choices[0]:null);
-      if(choices.length&&!school){
+      const schools=schoolPayload.schools||[],choices=schools.filter(s=>Array.isArray(s.roles)&&s.roles.includes(role));
+      const school=preferred?choices.find(s=>s.schoolId===preferred):(schools.length===1?choices[0]:null);
+      if(schools.length&&!school){
         head.querySelector('h2').textContent='Your school workspace';
         head.querySelector('p').textContent='Select an active school using your account menu.';
         update(0,'Assignments','—','School selection required.');update(1,'Learning and teaching','—','Choose your verified school first.');
