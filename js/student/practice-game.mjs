@@ -56,10 +56,10 @@ function renderSprintHud(){
   if(next){next.textContent=state.done>=5?"Sprint complete":"Next round →";if(state.done>=5)next.hidden=true;}
 }
 function sprintCorrect(){
-  const state=sprintState();if(state.done>=5)return;
+  const state=sprintState();if(state.done>=5)return false;
   const key=course&&mission?sprintMissionKey(course,mission):"";
-  if(key&&!state.played.includes(key))state.played.push(key);
-  state.done++;state.streak++;saveSprint(state);renderSprintHud();
+  if(!key||state.played.includes(key))return false;
+  state.played.push(key);state.done++;state.streak++;saveSprint(state);renderSprintHud();return true;
 }
 function sprintMiss(){
   const state=sprintState();if(!state.streak)return;state.streak=0;saveSprint(state);renderSprintHud();
@@ -739,11 +739,17 @@ async function submit(){
     const result=await practiceRequest("practiceMissionSubmit",pending);
     if(version!==epoch||user?.uid!==uid)return;
     pending=null;localSet(pendingKey(),null);field("labPendingResume").hidden=true;notice("");
-    if(result.correct){attempt.completed=true;attempt.earnedPoints=result.earnedPoints;field("practiceMissionPanel").classList.add("is-complete");if(!guestPage){const visual=field("labMechanicPanel")?.querySelector(".game-visual-header");setGameStatus(visual,"Mission solved","success","✓");playGameFx("success",field("labMechanicPanel"));}if(result.awarded&&field("practiceMissionPanel").dataset.game==="code-sprint")sprintCorrect();
+    if(result.correct){attempt.completed=true;attempt.earnedPoints=result.earnedPoints;field("practiceMissionPanel").classList.add("is-complete");if(!guestPage){const visual=field("labMechanicPanel")?.querySelector(".game-visual-header");setGameStatus(visual,"Mission solved","success","✓");playGameFx("success",field("labMechanicPanel"));}const sprintRoundCleared=field("practiceMissionPanel").dataset.game==="code-sprint"?sprintCorrect():false;
       prepareExperiment(result.workspace);
       const sprintComplete=field("practiceMissionPanel").dataset.game==="code-sprint"&&sprintState().done>=5;
       field("labNextMission").hidden=sprintComplete;
-      feedback((result.awarded?(sprintComplete?"Sprint complete! ":"Mission complete! " )+"+"+result.earnedPoints+" points. ":"Correct replay. Your original reward stays saved. ")+(result.explanation||""),"success");if(result.awarded)celebrateMission();await refreshHub();sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
+      feedback((
+        result.awarded
+          ?(sprintComplete?"Sprint complete! ":"Mission complete! ")+"+"+result.earnedPoints+" points. "
+          :sprintRoundCleared
+            ?(sprintComplete?"Sprint complete! ":"Round clear! ")+"Replay earns no additional XP. "
+            :"Correct replay. Your original reward stays saved. "
+      )+(result.explanation||""),"success");if(result.awarded)celebrateMission();await refreshHub();sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
     else if(result.alreadyRecorded){feedback("Not quite. This is a replay, so your saved points are unchanged. "+(result.explanation||""),"warning");sync("Replay checked");}
     else{attempt.availablePoints=result.availablePoints;attempt.wrongSubmissions=result.wrongSubmissions;if(!guestPage){const visual=field("labMechanicPanel")?.querySelector(".game-visual-header");setGameStatus(visual,"Recheck your solution","warning","!");playGameFx("error",field("practiceChoices"));if(attempt.question.type==="debugging")bugLineFound=true;revealHint();if(field("practiceMissionPanel").dataset.game==="code-sprint")sprintMiss();}feedback(result.deduction?"Not quite. This scored submission used "+result.deduction+" points from this mission’s possible reward. "+result.availablePoints+" points remains available. Adjust your answer and try again.":"Not quite. You have reached this mission’s minimum reward; more attempts cannot reduce it further. Keep trying.","warning");sync("Attempt saved");}
     pointsText();renderAnswer();
