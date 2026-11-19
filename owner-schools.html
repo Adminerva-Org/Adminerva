@@ -67,7 +67,7 @@
     </form>
     <form id="owner-onboarding-admin" data-onboard-step="2" hidden>
       <p class="own-muted">Assign the first verified School Administrator now, or continue and assign one later from this school's controls.</p>
-      <label>Existing verified account UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" autocomplete="off" required></label>
+      <label>Existing verified account email or UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" autocomplete="off" required></label>
       <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required value="Initial school administrator designation"></label>
       <div class="own-onboard-actions">
         <button type="submit" class="own-button">Assign administrator &amp; continue</button>
@@ -217,7 +217,7 @@
    <form id="owner-grant" style="scroll-margin-top:1.5rem;border:2px solid #93c5fd;border-radius:12px;padding:1rem;margin-top:1.25rem">
     <h3 style="font-weight:750;margin:0 0 .5rem">Designate or repair school administrator access</h3>
     <p class="own-muted">For an existing verified Firebase user, including an administrator who also teaches. Grants school_admin without removing existing teacher roles. Choose the correct school above. Suspended administrators must use the recovery control below.</p>
-    <label>Existing verified Firebase account UID<input class="own-field" name="targetUid" maxlength="128" minlength="8" required autocomplete="off"></label>
+    <label>Existing verified Firebase account email or UID<input class="own-field" name="targetUid" maxlength="128" minlength="8" required autocomplete="off"></label>
     <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
     <button type="submit" class="own-button">Grant school administrator</button>
     <p class="own-muted">Only this school is granted. This does not grant Platform Administrator access.</p>
@@ -226,12 +226,12 @@
     <summary style="font-weight:750;cursor:pointer">School administrator access recovery</summary>
     <p class="own-muted">Platform-owner review only. Suspending a school administrator pauses all V4 access for that school membership. The last active school administrator cannot be suspended.</p>
     <form id="owner-admin-suspend" style="margin-top:.75rem">
-      <label>Administrator UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
+      <label>Administrator email or UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
       <label>Suspension reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
       <button type="submit" class="own-button warn">Suspend school administrator</button>
     </form>
     <form id="owner-admin-restore" style="margin-top:1rem">
-      <label>Suspended administrator UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
+      <label>Suspended administrator email or UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
       <label>Recovery reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
       <button type="submit" class="own-button">Restore school administrator</button>
     </form>
@@ -283,6 +283,6 @@
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
 <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
-<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-assist-context"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-account-lookup"></script>
 </body>
 </html>
