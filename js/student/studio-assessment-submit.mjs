@@ -16,8 +16,8 @@ if(button){
   const classField=document.getElementById("studioSubmitClass");
   const dueField=document.getElementById("studioSubmitDeadline");
   const confirmButton=document.getElementById("studioConfirmSubmit");
-  const close=()=>dialog.close();
-  let choices=new Map(),busy=false,openedUser=null,usingV4=false;
+  const close=()=>{if(!busy&&!loadingChoices)dialog.close();};
+  let choices=new Map(),busy=false,loadingChoices=false,openedUser=null,usingV4=false,schoolMode=null;
   const notice=text=>{state.textContent=text;};
   const assessmentParam=new URL(location.href).searchParams.get("assessment");
   const linkedAssessmentId=()=>{
@@ -26,24 +26,27 @@ if(button){
   };
 
   function v4Allowed(choice){
-    if(!choice?.task)return false;
-    if(choice.task.windowStatus==="open")return true;
-    const due=Number(choice.status?.revisionDueAt||0);
-    return choice.status?.status==="reopened"&&due>Date.now();
+    if(!choice?.task||!choice.status||choice.status.error)return false;
+    if(choice.status.status==="reopened")return Number(choice.status.revisionDueAt||0)>Date.now();
+    if(choice.status.submitted)return false;
+    return choice.task.windowStatus==="open";
   }
   async function loadV4(){
     const school=await currentV4StudioSchool();
+    schoolMode=school?.compatibilityMode||null;
     if(!school)return false;
     const tasks=await listV4StudioAssignments();
     if(!Array.isArray(tasks))return false;
     usingV4=true;
-    for(const task of tasks.filter(item=>item.submissionSource==="studio")){
+    const linked=linkedAssessmentId(),studioTasks=tasks.filter(item=>item.submissionSource==="studio"&&(!linked||item.taskId===linked));
+    const rows=await Promise.all(studioTasks.map(async task=>{
       let submissionStatus=null;
       try{submissionStatus=await getV4StudioSubmissionStatus(task.taskId);}
-      catch(error){console.warn("V4 Studio submission status unavailable:",error?.message||error);}
-      const key="v4:"+task.taskId;
-      choices.set(key,{mode:"v4",task,status:submissionStatus,school});
-    }
+      catch(error){submissionStatus={error:error?.message||"Status unavailable"};}
+      return {mode:"v4",task,status:submissionStatus,school};
+    }));
+    if(auth.currentUser?.uid!==openedUser)throw Error("Account changed while loading.");
+    for(const row of rows)choices.set("v4:"+row.task.taskId,row);
     return true;
   }
   async function loadLegacy(user){
@@ -68,7 +71,7 @@ if(button){
   const load=async()=>{
     const user=auth.currentUser;
     if(!user?.emailVerified||!user.email)throw Error("Sign in with a verified school email.");
-    openedUser=user.uid;usingV4=false;
+    openedUser=user.uid;usingV4=false;schoolMode=null;
     choices=new Map();choose.replaceChildren();
     if(details)details.textContent="Checking assigned assessments and submission windows…";
     notice("Loading available Studio assessments…");
@@ -78,7 +81,7 @@ if(button){
     // Keep legacy assignments visible until MCS data cutover is completed. This
     // avoids hiding active 3.0 tasks while V4 memberships are being provisioned.
     let legacyCount=0;
-    try{legacyCount=await loadLegacy(user);}
+    try{if(schoolMode!=="v4_only"&&(!linkedAssessmentId()||!choices.size))legacyCount=await loadLegacy(user);}
     catch(error){
       if(!v4Known)throw error;
       console.warn("Legacy Studio assignment discovery unavailable:",error?.message||error);
@@ -92,7 +95,7 @@ if(button){
     const start=new Option("Choose an assessment…","");start.disabled=true;start.selected=true;choose.add(start);
     for(const [key,choice] of choices){
       if(choice.mode==="v4"){
-        const task=choice.task,extra=v4Allowed(choice)?"":task.windowStatus==="upcoming"?" · Not open yet":
+        const task=choice.task,extra=v4Allowed(choice)?"":!choice.status||choice.status.error?" · Status unavailable":choice.status.submitted&&choice.status.status!=="reopened"?" · Submitted":task.windowStatus==="upcoming"?" · Not open yet":
           choice.status?.status==="reopened"?" · Revision extension expired":" · Deadline passed";
         choose.add(new Option("[School] "+task.title+extra,key));
       }else{
@@ -108,18 +111,20 @@ if(button){
         if(id===linkedId){choose.value=key;break;}
       }
       const matched=Boolean(choose.value);
-      choose.disabled=matched;
+      choose.disabled=true;
+      if(!matched){notice("This project is linked to an assessment that is not available. Reopen it from Assignments.");return;}
       choose.title=matched?"This project was created for this assessment.":"";
     }else{
       choose.disabled=false;choose.title="";
     }
     notice(v4Known?
-      "School-scoped submissions are available. Legacy pilot tasks remain listed only during migration.":
+      "School-scoped submissions are available."+(schoolMode==="v4_only"?"":" Legacy tasks remain available during migration."):
       "Choose an assessment. This submission freezes your saved files, diagrams and project database.");
     syncExamChoice();
   };
   function syncExamChoice(){
     const chosen=choices.get(choose.value);
+    if(busy||loadingChoices||auth.currentUser?.uid!==openedUser){confirmButton.disabled=true;return;}
     if(!chosen){
       confirmButton.disabled=true;
       if(details)details.textContent="Choose an assessment to view its type and submission window.";
@@ -153,6 +158,8 @@ if(button){
       }
       const allowed=v4Allowed(chosen);
       confirmButton.disabled=!allowed;
+      if(!chosen.status||chosen.status.error){notice("Submission status could not be verified. Close and reopen this form to retry.");return;}
+      if(chosen.status.submitted&&chosen.status.status!=="reopened"){notice("Submission version "+(chosen.status.version||"recorded")+" is already frozen. Your teacher must reopen it before a new submission.");return;}
       if(chosen.status?.status==="reopened"&&Number(chosen.status.revisionDueAt)>Date.now())
         notice("Revision requested by your teacher. This submission creates a new immutable project version with its issued personalized task.");
       else notice(allowed
@@ -195,16 +202,16 @@ if(button){
   }
   choose.addEventListener("change",syncExamChoice);
   button.addEventListener("click",async()=>{
-    if(busy)return;
+    if(busy||loadingChoices||dialog.open)return;
     if(!window.adminervaStudioSubmissionState)return alert("The project editor is still initializing.");
-    button.disabled=true;dialog.showModal();
+    loadingChoices=true;button.disabled=true;dialog.showModal();
     confirmButton.disabled=true;
     try{window.adminervaStudioSubmissionState();await load();}
     catch(error){notice(error.message);}
-    finally{button.disabled=false;syncExamChoice();}
+    finally{loadingChoices=false;button.disabled=false;syncExamChoice();}
   });
   dialog.querySelector("[data-close-studio]")?.addEventListener("click",close);
-  dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
+  dialog.addEventListener("cancel",event=>{if(busy||loadingChoices)event.preventDefault();});
   // Opening a linked assessment displays its instructions in the task sheet.
   // Never interrupt the editor with a submission confirmation before work starts.
 
@@ -285,30 +292,31 @@ if(button){
     return {version:revision,status:"submitted",legacy:true};
   }
   confirmButton.addEventListener("click",async()=>{
-    if(busy)return;
+    if(busy||loadingChoices||auth.currentUser?.uid!==openedUser)return;
     const chosen=choices.get(choose.value),uid=auth.currentUser?.uid;
     if(!chosen||!uid)return notice("Choose an available assessment first.");
     let captured;
     try{captured=window.adminervaStudioSubmissionState();}
     catch(error){return notice(error.message);}
+    if(chosen.mode==="v4"&&!v4Allowed(chosen))return notice("This assessment is not available for submission.");
     busy=true;confirmButton.disabled=true;choose.disabled=true;
     const loading=window.beginLoading?.("Submitting assessment project…")||(()=>{});
     try{
       const receipt=chosen.mode==="v4"?await submitV4(chosen,captured):await submitLegacy(chosen,captured,uid);
-      if(!receipt)return;
+      if(!receipt||auth.currentUser?.uid!==uid)return;
+      if(chosen.mode==="v4")chosen.status={...chosen.status,submitted:true,status:"submitted",version:receipt.version};
       notice(chosen.mode==="v4"?
         (receipt.alreadyExisted?"This school project revision was already submitted. No duplicate was created.":
           "School submission version "+receipt.version+" confirmed. Your working project remains editable."):
         "Revision "+receipt.version+" was submitted successfully. Your current project remains editable.");
-      setTimeout(()=>{if(dialog.open&&!busy)dialog.close();},1200);
+      dialog.close();
     }catch(error){
       notice("Submission not confirmed: "+String(error?.message||"Submission failed")+
         ". Your project remains saved. Reload the assessment status before retrying.");
     }finally{
       busy=false;confirmButton.disabled=false;
       const linkedId=linkedAssessmentId();
-      choose.disabled=Boolean(linkedId&&[...choices.values()].some(choice=>
-        (choice.mode==="v4"?choice.task.taskId:choice.assessment.id)===linkedId));
+      choose.disabled=Boolean(linkedId);
       loading();syncExamChoice();
     }
   });
