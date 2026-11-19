@@ -752,8 +752,9 @@ function adminervaReleaseFooterReady(){
   return Boolean(version&&String(version.textContent||"").trim());
 }
 function ensureAdminervaReleaseFooterScript(force=false){
-  if(!force&&[...document.scripts].some(script=>/\/js\/core\/release-footer\.js(?:\?|$)/.test(script.src)))return;
-  const loader=[...document.scripts].find(script=>/\/js\/core\/adminerva-loader\.js(?:\?|$)/.test(script.src));
+  const scripts=Array.from(document.scripts||[]);
+  if(!force&&scripts.some(script=>/\/js\/core\/release-footer\.js(?:\?|$)/.test(script.src)))return;
+  const loader=scripts.find(script=>/\/js\/core\/adminerva-loader\.js(?:\?|$)/.test(script.src));
   let src="js/core/release-footer.js";
   try{
     if(loader?.src){

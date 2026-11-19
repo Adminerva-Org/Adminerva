@@ -6,7 +6,7 @@ const readinessApi=httpsCallable(functions,"schoolCutoverReadiness");
 const byId=id=>document.getElementById(id);
 const status=byId("owner-status"),workspace=byId("owner-content"),
   schoolList=byId("owner-schools"),actions=byId("owner-actions");
-let selected=null,schools=[],governanceRoles=[],busy=false,latestReadiness=null,latestCutoverPackage=null,onboardingSchoolId="";
+let selected=null,schools=[],governanceRoles=[],busy=false,latestReadiness=null,latestCutoverPackage=null,onboardingSchoolId="",selectionEpoch=0;
 const say=text=>status.textContent=text;
 async function execute(action,details={}){
   return (await api({action,...details})).data;
@@ -24,6 +24,7 @@ function updateCutoverAvailability(){
   button.disabled=!(latestReadiness?.ready===true&&packageReady);
 }
 function choose(id){
+  ++selectionEpoch;
   selected=schools.find(s=>s.schoolId===id)||null;
   for(const button of schoolList.querySelectorAll("button"))
     button.setAttribute("aria-pressed",String(button.dataset.schoolId===id));
@@ -80,7 +81,8 @@ function choose(id){
   byId("owner-cutover-mode").textContent=legacy?
     "Legacy compatibility: "+(selected.compatibilityMode||"legacy_allowed").replace("_"," "):"";
 
-  latestReadiness=null;latestCutoverPackage=null;
+  latestReadiness=null;latestCutoverPackage=null;updateCutoverAvailability();
+  if(byId("owner-activate-standard"))byId("owner-activate-standard").hidden=true;
   const packageSection=byId("owner-cutover-package-section");
   if(packageSection)packageSection.hidden=selected.schoolId!=="mcs-manila";
 
@@ -94,12 +96,13 @@ function choose(id){
   void loadGovernanceRoles(selected.schoolId);
 }
 async function loadStandardSetup(schoolId=selected?.schoolId){
+  const turn=selectionEpoch;
   const host=byId("owner-setup-readiness"),form=byId("owner-activate-standard");
   if(!host||!schoolId)return null;
   host.textContent="Checking school setup…";
   try{
     const result=await execute("get_setup_status",{schoolId});
-    if(selected?.schoolId!==schoolId)return null;
+    if(turn!==selectionEpoch||selected?.schoolId!==schoolId)return null;
     host.replaceChildren();
     const summary=document.createElement("p");summary.style.fontWeight="800";
     summary.textContent=result.ready?
@@ -118,18 +121,20 @@ async function loadStandardSetup(schoolId=selected?.schoolId){
     if(form)form.hidden=!(result.ready&&result.state==="draft");
     return result;
   }catch(error){
-    if(selected?.schoolId===schoolId)host.textContent=error?.message||"School setup status could not be loaded.";
-    if(form)form.hidden=true;
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId)host.textContent=error?.message||"School setup status could not be loaded.";
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId&&form)form.hidden=true;
     return null;
   }
 }
 async function loadReadiness(schoolId=selected?.schoolId){
+  const turn=selectionEpoch;
   const host=byId("owner-readiness");
   if(!schoolId){host.textContent="Select a school.";return null;}
+  latestReadiness=null;updateCutoverAvailability();
   host.textContent="Checking canonical school integrity…";
   try{
     const result=(await readinessApi({action:"overview",schoolId})).data;
-    if(selected?.schoolId!==schoolId)return null;
+    if(turn!==selectionEpoch||selected?.schoolId!==schoolId)return null;
     host.replaceChildren();
     const summary=document.createElement("p");summary.style.fontWeight="700";
     summary.textContent=result.ready?"Technical readiness checks passed.":"Cutover blocked by "+result.blockers.length+" technical check(s).";
@@ -145,21 +150,23 @@ async function loadReadiness(schoolId=selected?.schoolId){
     latestReadiness=result;updateCutoverAvailability();
     return result;
   }catch(error){
-    if(selected?.schoolId===schoolId)host.textContent=error?.message||"Cutover readiness could not be checked.";
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId)host.textContent=error?.message||"Cutover readiness could not be checked.";
     return null;
   }
 }
 async function loadCutoverPackage(schoolId=selected?.schoolId){
+  const turn=selectionEpoch;
   const host=byId("owner-cutover-package-status");
   if(!host||!schoolId)return null;
   if(schoolId!=="mcs-manila"){
     latestCutoverPackage={required:false,recorded:false,ready:true,fresh:true};
     updateCutoverAvailability();return latestCutoverPackage;
   }
+  latestCutoverPackage=null;updateCutoverAvailability();
   host.textContent="Checking the recorded MCS cutover package…";
   try{
     const result=await execute("get_mcs_cutover_package",{schoolId});
-    if(selected?.schoolId!==schoolId)return null;
+    if(turn!==selectionEpoch||selected?.schoolId!==schoolId)return null;
     latestCutoverPackage=result;
     if(!result.recorded)host.textContent="No successful cutover package is recorded yet.";
     else if(!result.ready)host.textContent="The recorded cutover package is not marked ready.";
@@ -168,12 +175,13 @@ async function loadCutoverPackage(schoolId=selected?.schoolId){
     updateCutoverAvailability();
     return result;
   }catch(error){
-    latestCutoverPackage=null;updateCutoverAvailability();
-    if(selected?.schoolId===schoolId)host.textContent=error?.message||"Cutover package status could not be loaded.";
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId){latestCutoverPackage=null;updateCutoverAvailability();}
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId)host.textContent=error?.message||"Cutover package status could not be loaded.";
     return null;
   }
 }
 async function loadGovernanceRoles(schoolId=selected?.schoolId){
+  const turn=selectionEpoch;
   const message=byId("owner-governance-status"),select=byId("owner-governance-role-select");
   if(!message||!select||!schoolId)return null;
   message.textContent="Loading governance roles…";
@@ -181,7 +189,7 @@ async function loadGovernanceRoles(schoolId=selected?.schoolId){
     const [catalog,assigned]=await Promise.all([
       execute("list_governance_roles"),execute("list_school_governance_roles",{schoolId})
     ]);
-    if(selected?.schoolId!==schoolId)return null;
+    if(turn!==selectionEpoch||selected?.schoolId!==schoolId)return null;
     governanceRoles=(catalog.roles||[]).filter(role=>role.status==="active");
     const assignedIds=new Set((assigned.roles||[]).filter(role=>role.status==="active").map(role=>role.roleId)),
       previous=select.value;
@@ -198,17 +206,18 @@ async function loadGovernanceRoles(schoolId=selected?.schoolId){
       "No custom governance role is assigned to this school. School Admin remains the default data steward.";
     return {catalog:governanceRoles,assigned:[...assignedIds]};
   }catch(error){
-    if(selected?.schoolId===schoolId)message.textContent=error?.message||"Governance roles could not be loaded.";
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId)message.textContent=error?.message||"Governance roles could not be loaded.";
     return null;
   }
 }
 async function loadCutoverDecisions(schoolId=selected?.schoolId){
+  const turn=selectionEpoch;
   const form=byId("owner-cutover-decisions"),message=byId("owner-cutover-decisions-status");
   if(!form||!message||!schoolId)return null;
   message.textContent="Loading owner decision record…";
   try{
     const result=await execute("get_cutover_decisions",{schoolId});
-    if(selected?.schoolId!==schoolId)return null;
+    if(turn!==selectionEpoch||selected?.schoolId!==schoolId)return null;
     const data=result.decisions||{};
     for(const name of ["institutionalAuthorityReference","calendarReference","privacyPolicyReference",
       "retentionPolicyReference","retentionMode","backupPolicyReference","dataStewardRole",
@@ -224,7 +233,7 @@ async function loadCutoverDecisions(schoolId=selected?.schoolId){
       "No decision record yet. First school administrator: "+first+(result.firstAdminActive?" (active).":" (not active).");
     return result;
   }catch(error){
-    if(selected?.schoolId===schoolId)message.textContent=error?.message||"Owner decisions could not be loaded.";
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId)message.textContent=error?.message||"Owner decisions could not be loaded.";
     return null;
   }
 }
@@ -241,7 +250,7 @@ async function refresh(prefer=selected?.schoolId){
     const legacy=isLegacyProvisioning(school);
     meta.textContent=" · "+school.state+" · "+school.schoolId+" · "+(legacy?"legacy pilot / migration":"standard school");
     button.append(name,meta);
-    button.addEventListener("click",()=>choose(school.schoolId));
+    button.addEventListener("click",()=>{if(!busy)choose(school.schoolId);});
     item.append(button);schoolList.append(item);
   }
   if(!schools.length){
@@ -255,17 +264,17 @@ async function refresh(prefer=selected?.schoolId){
 async function submit(form,action,fields){
   if(busy)return null;
   if(!form.reportValidity())return null;
-  const buttons=[...document.querySelectorAll(".own-button")];
+  const buttons=[...document.querySelectorAll(".own-button")].filter(button=>!button.disabled);
   busy=true;buttons.forEach(button=>button.disabled=true);
   say("Checking owner privileges and recording the action…");
   try {
     const response=await execute(action,fields);
-    say("School operation recorded: "+action.replaceAll("_"," ")+".");
+    const message="School operation recorded: "+action.replaceAll("_"," ")+".";
     form.reset();
-    await refresh(response.schoolId||fields.schoolId);
+    try{await refresh(response.schoolId||fields.schoolId);say(message);}catch{say(message+" School list could not refresh. Reload before the next change.");}
     return response;
   }catch(error){say(error?.message||"The change was not recorded. No local permission was granted.");return null;}
-  finally{busy=false;buttons.forEach(button=>button.disabled=false);}
+  finally{busy=false;buttons.forEach(button=>button.disabled=false);updateCutoverAvailability();}
 }
 function schoolSlug(value){
   return String(value||"").trim().toLowerCase().normalize("NFKD")
@@ -289,6 +298,7 @@ function enterSchoolPreview(role="schooladmin"){
     sessionStorage.setItem("Adminerva_platform_view_school",schoolId);
     sessionStorage.setItem("Adminerva_platform_view_role",role);
     sessionStorage.setItem("Adminerva_platform_test_mode","1");
+    sessionStorage.setItem("Adminerva_platform_school_mode","preview");
   }catch{}
   location.href=role==="student"?"student-home.html":role==="teacher"?"teacher-home.html":"school-admin.html";
 }
@@ -419,9 +429,11 @@ byId("owner-cutover-package").addEventListener("submit",async event=>{
   const d=new FormData(f),file=d.get("packageFile");
   if(!(file instanceof File)||!file.size){say("Choose the generated MCS cutover package JSON.");return;}
   if(file.size>512000){say("Cutover package file is unexpectedly large. Regenerate the summary package.");return;}
+  const schoolId=selected.schoolId,turn=selectionEpoch;
   let packageData;
   try{packageData=JSON.parse(await file.text());}
   catch{say("The selected cutover package is not valid JSON.");return;}
+  if(busy||turn!==selectionEpoch||selected?.schoolId!==schoolId){say("School selection changed. Choose the package again.");return;}
   if(!confirm("Record this successful MCS cutover package for "+selected.displayName+"? This does not switch compatibility mode."))return;
   void submit(f,"record_mcs_cutover_package",{schoolId:selected.schoolId,package:packageData,
     reason:String(d.get("reason")||"").trim()});

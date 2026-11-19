@@ -40,7 +40,7 @@ if(root){
   const testPush=root.querySelector("[data-test-push]");
   const disablePush=root.querySelector("[data-disable-push]");
   const pushStatus=root.querySelector("[data-push-status]");
-  let owner="",muted=new Set(),authVersion=0;
+  let owner="",muted=new Set(),authVersion=0,savingPreferences=false,pushTurn=0;
 
   function setPushBusy(value){
     if(enablePush)enablePush.disabled=value;
@@ -51,19 +51,19 @@ if(root){
   }
   async function refreshPush(version=authVersion){
     if(!owner||version!==authVersion)return;
-    const uid=owner;
+    const uid=owner,turn=++pushTurn;
     const prefs=await getPushPreferences(uid);
-    if(version!==authVersion||owner!==uid)return;
+    if(version!==authVersion||owner!==uid||turn!==pushTurn)return;
     pushMaster.checked=prefs.enabled!==false;
     for(const input of pushOptions)input.checked=prefs[input.value]!==false;
     let state=await getDevicePushState();
-    if(version!==authVersion||owner!==uid)return;
+    if(version!==authVersion||owner!==uid||turn!==pushTurn)return;
     if(state.permission==="granted"&&!state.registered&&!state.deviceOptedOut&&prefs.enabled!==false&&state.supported&&state.configured){
       pushStatus.textContent="Reconnecting…";
       const result=await syncDevicePush();
-      if(version!==authVersion||owner!==uid)return;
+      if(version!==authVersion||owner!==uid||turn!==pushTurn)return;
       state=await getDevicePushState();
-      if(version!==authVersion||owner!==uid)return;
+      if(version!==authVersion||owner!==uid||turn!==pushTurn)return;
       if(!state.registered&&result?.reason==="registration-error")
         pushStatus.textContent="Reconnect failed. Select Enable notifications to retry.";
     }
@@ -109,7 +109,7 @@ if(root){
       root.querySelector("[data-density]").value=localStorage.getItem("Adminerva_interface_density")||"comfortable";
       root.querySelector("[data-usage-analytics]").checked=localStorage.getItem("Adminerva_analytics_consent")==="granted";
     }catch{}
-    if(user&&staff)void resolveStaffRole(user).then(role=>root.querySelector("[data-release-admin]").hidden=role!=="admin");
+    if(staff){const admin=root.querySelector("[data-release-admin]");if(admin){admin.hidden=true;if(user)void resolveStaffRole(user).then(role=>{if(version===authVersion)admin.hidden=role!=="admin";}).catch(()=>{});}}
     const preferenceStatus=root.querySelector("[data-preference-status]");
     preferenceStatus.hidden=true;preferenceStatus.textContent="";
     if(!owner){
@@ -148,8 +148,9 @@ if(root){
   });
 
   root.querySelector("form").addEventListener("submit",async event=>{
-    event.preventDefault();if(!owner||auth.currentUser?.uid!==owner)return;
-    const uid=owner;
+    event.preventDefault();if(savingPreferences||!owner||auth.currentUser?.uid!==owner)return;
+    const uid=owner,version=authVersion,submit=root.querySelector("button[type=submit]");
+    let localSaved=false;savingPreferences=true;submit.disabled=true;
     try{
       for(const input of options.querySelectorAll("input")){if(input.checked)muted.delete(input.value);else muted.add(input.value);}
       const reduced=root.querySelector("[data-reduce-motion]").checked,density=root.querySelector("[data-density]").value;
@@ -159,21 +160,26 @@ if(root){
       document.documentElement.dataset.adminervaReduceMotion=String(reduced);document.documentElement.dataset.adminervaDensity=density;
       const values={enabled:pushMaster.checked};
       for(const input of pushOptions)values[input.value]=input.checked;
+      localSaved=true;
+      document.dispatchEvent(new CustomEvent("adminerva-notification-preferences",{detail:{uid}}));
       await savePushPreferences(values,uid);
+      if(version!==authVersion||owner!==uid)return;
       if(values.enabled&&typeof Notification!=="undefined"&&Notification.permission==="granted")void syncDevicePush();
-      document.dispatchEvent(new CustomEvent("adminerva-notification-preferences",{detail:{uid:owner}}));
       const preferenceStatus=root.querySelector("[data-preference-status]");
       preferenceStatus.hidden=false;preferenceStatus.textContent="Saved.";
     }catch(error){
       const preferenceStatus=root.querySelector("[data-preference-status]");
-      preferenceStatus.hidden=false;preferenceStatus.textContent="Couldn’t save: "+error.message;
-    }
+      if(version===authVersion&&owner===uid){preferenceStatus.hidden=false;preferenceStatus.textContent=(localSaved?"Local preferences saved; cloud push settings not saved: ":"Couldn’t save: ")+error.message;}
+    }finally{savingPreferences=false;submit.disabled=!owner;}
   });
   root.querySelector("[data-clear-interface]")?.addEventListener("click",()=>{
+    if(savingPreferences||!owner)return;
     if(!confirm("Reset local display and notification-inbox preferences on this browser? Cloud academic records are not affected."))return;
     for(const key of ["Adminerva_interface_density","Adminerva_reduce_motion","Adminerva_notif_preferences_"+owner])localStorage.removeItem(key);
     document.documentElement.dataset.adminervaDensity="comfortable";document.documentElement.dataset.adminervaReduceMotion="false";
     root.querySelector("[data-density]").value="comfortable";root.querySelector("[data-reduce-motion]").checked=false;
+    muted.clear();for(const input of options.querySelectorAll("input"))input.checked=true;
+    document.dispatchEvent(new CustomEvent("adminerva-notification-preferences",{detail:{uid:owner}}));
     const preferenceStatus=root.querySelector("[data-preference-status]");preferenceStatus.hidden=false;preferenceStatus.textContent="Local interface preferences reset.";
   });
   root.querySelector("[data-send-release]")?.addEventListener("click",async event=>{

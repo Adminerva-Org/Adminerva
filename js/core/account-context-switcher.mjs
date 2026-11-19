@@ -7,6 +7,7 @@ const VIEW_SCHOOL="Adminerva_platform_view_school";
 const VIEW_ROLE="Adminerva_platform_view_role";
 const VIEW_TEST="Adminerva_platform_test_mode";
 const VIEW_MODE="Adminerva_platform_school_mode";
+let mountSequence=0;
 
 function getSession(key){try{return sessionStorage.getItem(key)||"";}catch{return "";}}
 function setSession(key,value){try{value?sessionStorage.setItem(key,value):sessionStorage.removeItem(key);}catch{}}
@@ -30,7 +31,9 @@ function option(select,value,text,{selected=false}={}){
 function currentSchoolName(schools,id){return schools.find(s=>s.schoolId===id)?.name||id||"";}
 
 export async function mountAccountContextSwitcher(root=document){
+  const turn=++mountSequence;
   await auth.authStateReady();
+  if(turn!==mountSequence)return;
   const user=auth.currentUser,menu=root.querySelector(".av-account-menu .av-nav-menu-panel");
   if(!user||!menu)return;
 
@@ -40,17 +43,23 @@ export async function mountAccountContextSwitcher(root=document){
     host.className="border-b border-slate-700 pb-2 mb-2";
     menu.prepend(host);
   }
-  host.replaceChildren();
+  host.hidden=false;host.replaceChildren();
+  const active=()=>turn===mountSequence&&auth.currentUser?.uid===user.uid&&host.isConnected;
   const loading=document.createElement("p");
   loading.className="px-3 py-2 text-xs text-slate-400";loading.textContent="Loading school context…";host.append(loading);
 
   let payload;
   try{payload=(await api({preferredSchoolId:getSession(VIEW_SCHOOL)||getSession(SCHOOL_KEY(user.uid))||null})).data||{};}
-  catch(error){loading.textContent=error?.message||"School context unavailable.";return;}
+  catch(error){if(active()){
+    loading.textContent=error?.message||"School context unavailable.";
+    const retry=document.createElement("button");retry.type="button";retry.className="px-3 py-2 text-xs text-slate-200 underline";retry.textContent="Retry school context";retry.addEventListener("click",()=>void mountAccountContextSwitcher(root));host.append(retry);
+  }return;}
+  if(!active())return;
   const schools=Array.isArray(payload.schools)?payload.schools:[],platformAdmin=payload.platformAdmin===true;
   host.replaceChildren();
 
   if(platformAdmin){
+    if(getSession(VIEW_SCHOOL)&&!schools.some(s=>s.schoolId===getSession(VIEW_SCHOOL))){for(const key of [VIEW_SCHOOL,VIEW_MODE,VIEW_ROLE,VIEW_TEST])setSession(key,"");rememberSchool(user.uid,"");}
     const schoolField=field("View context");
     option(schoolField.select,"","System administration",{selected:!getSession(VIEW_SCHOOL)});
     const selectedSchool=getSession(VIEW_SCHOOL);
@@ -86,6 +95,7 @@ export async function mountAccountContextSwitcher(root=document){
     host.append(note);
 
     schoolField.select.addEventListener("change",()=>{
+      if(!active())return;
       const schoolId=schoolField.select.value;
       if(!schoolId){
         setSession(VIEW_SCHOOL,"");setSession(VIEW_ROLE,"");setSession(VIEW_TEST,"");setSession(VIEW_MODE,"");rememberSchool(user.uid,"");
@@ -99,6 +109,7 @@ export async function mountAccountContextSwitcher(root=document){
       location.href=mode==="assist"?"school-admin.html":routeForRole(role);
     });
     modeField.select.addEventListener("change",()=>{
+      if(!active())return;
       const schoolId=getSession(VIEW_SCHOOL);if(!schoolId)return;
       const mode=modeField.select.value==="assist"?"assist":"preview";
       setSession(VIEW_MODE,mode);setSession(VIEW_TEST,mode==="preview"?"1":"");
@@ -107,6 +118,7 @@ export async function mountAccountContextSwitcher(root=document){
       location.href=mode==="assist"?"school-admin.html":routeForRole(getSession(VIEW_ROLE)||"schooladmin");
     });
     roleField.select.addEventListener("change",()=>{
+      if(!active())return;
       const schoolId=getSession(VIEW_SCHOOL);
       if(!schoolId)return;
       setSession(VIEW_ROLE,roleField.select.value);setSession(VIEW_MODE,"preview");setSession(VIEW_TEST,"1");rememberSchool(user.uid,schoolId);
@@ -117,11 +129,14 @@ export async function mountAccountContextSwitcher(root=document){
 
   const actualSchools=schools.filter(s=>s.platformOverride!==true);
   if(actualSchools.length>1){
-    const selected=getSession(SCHOOL_KEY(user.uid))||payload.selection?.schoolId||actualSchools[0].schoolId;
+    const preferred=getSession(SCHOOL_KEY(user.uid))||payload.selection?.schoolId;
+    const selected=actualSchools.some(s=>s.schoolId===preferred)?preferred:actualSchools[0].schoolId;
+    rememberSchool(user.uid,selected);
     const schoolField=field("School");
     for(const school of actualSchools)option(schoolField.select,school.schoolId,school.name||school.schoolId,{selected:school.schoolId===selected});
     host.append(schoolField.label);
     schoolField.select.addEventListener("change",()=>{
+      if(!active())return;
       rememberSchool(user.uid,schoolField.select.value);
       document.dispatchEvent(new CustomEvent("adminerva:context-changed",{detail:{schoolId:schoolField.select.value}}));
       location.reload();
