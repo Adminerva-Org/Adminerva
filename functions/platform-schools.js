@@ -342,6 +342,43 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       });
       return {schoolId,state:"draft"};
     }
+    if(action==="list_school_admins"){
+      const snap=await db.collection("schools/"+schoolId+"/memberships")
+        .where("roles","array-contains","school_admin").limit(101).get();
+      if(snap.size===101)fail("resource-exhausted","School Administrator list requires pagination.");
+      const rows=snap.docs.filter(doc=>{
+        const row=doc.data();
+        return row.schoolId===schoolId&&Array.isArray(row.roles)&&row.roles.includes("school_admin");
+      });
+      let resolved={users:[],notFound:[]};
+      if(rows.length){
+        try{resolved=await auth.getUsers(rows.map(doc=>({uid:doc.id})));}
+        catch(error){
+          console.warn("School Administrator identity resolution failed",{schoolId,code:error?.code||"unknown"});
+        }
+      }
+      const users=new Map((resolved.users||[]).map(user=>[user.uid,user]));
+      const activeCount=rows.filter(doc=>doc.data().status==="active").length;
+      const school=await schoolRef.get(),firstAdminUid=school.exists?String(school.data().firstAdminUid||""):"";
+      return {
+        schoolId,activeCount,
+        admins:rows.map(doc=>{
+          const row=doc.data(),user=users.get(doc.id);
+          return {
+            uid:doc.id,
+            displayName:String(row.displayName||user?.displayName||"School Administrator").slice(0,140),
+            email:user?.email||"",
+            emailVerified:user?.emailVerified===true,
+            accountDisabled:user?.disabled===true,
+            status:String(row.status||"unknown").slice(0,40),
+            roles:Array.isArray(row.roles)?row.roles.slice(0,20):[],
+            revision:Number(row.revision)||1,
+            isFirstAdmin:doc.id===firstAdminUid
+          };
+        }).sort((a,b)=>(a.status==="active"?0:1)-(b.status==="active"?0:1)||
+          a.displayName.localeCompare(b.displayName)||a.uid.localeCompare(b.uid))
+      };
+    }
     if(action==="grant_school_admin") {
       const targetUid=phrase(input.targetUid,8,128,"Verified administrator UID");
       const reason=phrase(input.reason,12,500,"Reason");
@@ -372,6 +409,9 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     }
     if(action==="suspend_school_admin"||action==="restore_school_admin") {
       const targetUid=phrase(input.targetUid,8,128,"School administrator UID");
+      const expectedMembershipRevision=Number(input.expectedMembershipRevision);
+      if(!Number.isSafeInteger(expectedMembershipRevision)||expectedMembershipRevision<1)
+        fail("invalid-argument","Refresh the School Administrator list before changing access.");
       const reason=phrase(input.reason,12,500,action==="restore_school_admin"?"Recovery reason":"Suspension reason");
       const target=await auth.getUser(targetUid);
       if(!target.emailVerified||target.disabled)
@@ -386,6 +426,8 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         if(!member.exists||member.data().schoolId!==schoolId||
            !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
           fail("failed-precondition","The target is not a school administrator for this institution.");
+        if((Number(member.data().revision)||1)!==expectedMembershipRevision)
+          fail("failed-precondition","This School Administrator access record changed after you reviewed it. Refresh the administrator list before retrying.");
         if(restoring){
           if(member.data().status!=="suspended")
             fail("failed-precondition","Only a suspended school administrator can be recovered.");
