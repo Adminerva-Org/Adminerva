@@ -33,8 +33,8 @@ function website(value){
 }
 function timezone(value){
   const out=requiredText(value,"Timezone",64);
-  if(!/^[A-Za-z_+-]+(?:\/[A-Za-z0-9_+.-]+)+$/.test(out))
-    deny("invalid-argument","Use an IANA timezone such as Asia/Manila.");
+  if(!/^(?:UTC|[A-Za-z_+-]+(?:\/[A-Za-z0-9_+.-]+)+)$/.test(out))
+    deny("invalid-argument","Use an IANA timezone such as Asia/Manila or UTC.");
   try{new Intl.DateTimeFormat("en",{timeZone:out}).format(new Date());}
   catch{deny("invalid-argument","Use a valid IANA timezone such as Asia/Manila.");}
   return out;
@@ -219,6 +219,7 @@ function createSchoolProfileService({db}){
         reason=requiredText(input.reason,input.action==="archive_campus"?"Archive reason":"Restore reason",500),
         ref=db.doc(root+"campuses/"+id),auditRef=db.collection(root+"directory_audit").doc(),
         restoring=input.action==="restore_campus";
+      if(reason.length<12)deny("invalid-argument","Explain the campus status change in at least 12 characters.");
       let nextRevision;
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
