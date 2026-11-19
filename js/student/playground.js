@@ -3,7 +3,7 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=20261119-assessment-runtime1";
+import {createProjectStudio} from "./project-studio.mjs?v=20261119-cloud-sync1";
 import {currentV4StudioSchool,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.2.1";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
@@ -1121,7 +1121,7 @@ function persistWorkspace(){
     }
     workspaceDirty=false;
     localSaveFailed=false;
-    showSaveStatus("Saved on this device");
+    if(!projectStudio?.getActiveProject()||guestMode)showSaveStatus("Saved on this device");
     return true;
   }catch(error){
     console.error("Workspace save failed:",error);
@@ -1135,7 +1135,7 @@ function triggerAutoSave(){
   workspaceDirty=true;
   const indicator=document.getElementById("autoSaveIndicator");
   if(indicator){
-    indicator.textContent="Saving locally…";
+    indicator.textContent=projectStudio?.getActiveProject()&&!guestMode?"Saving changes…":"Saving locally…";
     indicator.classList.remove("opacity-0","text-emerald-400");
     indicator.classList.add("text-rose-400");
   }
@@ -1143,9 +1143,10 @@ function triggerAutoSave(){
 }
 window.addEventListener("pagehide",()=>{
   if (workspaceDirty || autoSaveTimeout) persistWorkspace();
+  void projectStudio?.flushCloudSaves?.();
 });
 window.addEventListener("beforeunload",event=>{
-  if (!localSaveFailed) return;
+  if (!localSaveFailed && !(projectStudio?.hasPendingCloudSaves?.()) && !(workspaceDirty&&projectStudio?.getActiveProject()&&!guestMode)) return;
   event.preventDefault();
   event.returnValue="";
 });
@@ -2690,7 +2691,7 @@ function bindUIEvents() {
         throw Error("The current draft could not be backed up. Export it first.");
     }catch(error){alert('Import failed: '+error.message);}
   });
-  document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();persistWorkspace();}if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();void executeCode();}});
+  document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();void saveProjectToCloud();}if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();void executeCode();}});
   // Optional controls can be omitted in the guest interface.
   document
     .getElementById("languageSelect")
@@ -2710,10 +2711,18 @@ function bindUIEvents() {
     if(typeof window.withLoading==="function")void window.withLoading("Preparing project ZIP…",task,{button:document.getElementById("exportZipBtn")});
     else void task();
   });
-  document.getElementById("saveProjectBtn")?.addEventListener("click", () => {
-    if(persistWorkspace())showSaveStatus("Saved on this device");
-    else alert("Save failed. Please export a ZIP before leaving this page.");
-  });
+  async function saveProjectToCloud(){
+    if(!persistWorkspace()){alert("Save failed. Please export a ZIP before leaving this page.");return;}
+    if(!guestMode&&!practiceMode&&projectStudio?.getActiveProject()){
+      const button=document.getElementById("saveProjectBtn");
+      if(button)button.disabled=true;
+      try{
+        const saved=await projectStudio.flushCloudSaves();
+        if(!saved)showSaveStatus("Device copy saved · cloud pending",true);
+      }finally{if(button)button.disabled=false;}
+    }
+  }
+  document.getElementById("saveProjectBtn")?.addEventListener("click",()=>void saveProjectToCloud());
   document
     .getElementById("loadProjectBtn")
     ?.addEventListener("click", () => {
