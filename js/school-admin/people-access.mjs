@@ -8,7 +8,7 @@ const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcad
 let schoolPrograms=[],schoolTerms=[],schoolSections=[],schoolOfferings=[];
 let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0;
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
-let after=null,loadingPeople=false,pendingWrite=false;
+let after=null,loadingPeople=false,pendingWrite=false,peopleReloadQueued=false,peopleRun=0;
 let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
@@ -86,7 +86,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    schoolReady=false;++workloadRun;++rosterRun;workload=null;resetWorkload();
+    schoolReady=false;++peopleRun;peopleReloadQueued=false;clearTimeout(peopleSearchTimer);++workloadRun;++rosterRun;workload=null;resetWorkload();
     workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
@@ -686,10 +686,7 @@ get("pa-bulk-enrollment-form").addEventListener("submit",event=>{
   if(!personIds.length){say("Select at least one student for bulk enrollment.");return;}
   if(!confirm("Enroll "+personIds.length+" selected student(s) into this course offering? Existing active enrollments will be skipped."))return;
   void submitAcademic(form,"bulk_enroll_students",{personIds,offeringId,reason},
-    "Bulk enrollment completed. Existing history was preserved.").then(async saved=>{
-      if(!saved)return;
-      await loadAcademics();
-    });
+    "Bulk enrollment completed. Existing history was preserved.");
 });
 get("pa-section-assignment-form")?.elements.sectionId.addEventListener("change",renderSectionAssignmentOfferings);
 get("pa-section-assignment-form")?.addEventListener("submit",event=>{
@@ -716,10 +713,7 @@ get("pa-bulk-assignment-form").addEventListener("submit",event=>{
   if(!teacherUids.length){say("Select at least one teacher for bulk assignment.");return;}
   if(!confirm("Assign "+teacherUids.length+" selected teacher(s) to this course offering? Existing active assignments will be skipped."))return;
   void submitAcademic(form,"bulk_assign_teachers",{teacherUids,offeringId,reason},
-    "Bulk teacher assignment completed. Existing history was preserved.").then(async saved=>{
-      if(!saved)return;
-      await loadAcademics();
-    });
+    "Bulk teacher assignment completed. Existing history was preserved.");
 });
 async function submitAcademic(form,action,fields,message){
   if(pendingWrite)return;
@@ -1099,14 +1093,16 @@ function directoryFilterActive(filters){
   return Boolean(filters.query)||filters.kind!=="all"||filters.status!=="all";
 }
 async function loadPeople(append) {
-  if(loadingPeople)return;
-  loadingPeople=true;const button=get("pa-more"),note=get("pa-person-filter-note");
+  if(!schoolReady)return;
+  if(loadingPeople){if(!append){peopleReloadQueued=true;++peopleRun;}return;}
+  loadingPeople=true;const run=++peopleRun,button=get("pa-more"),note=get("pa-person-filter-note");
   button.disabled=true;
   try {
     const filters=directoryFilters(),filtered=directoryFilterActive(filters);
     const response=filtered?
       await perform("search_people",filters):
       await perform("list_people",append&&after?{after}:undefined);
+    if(run!==peopleRun||!schoolReady)return;
     if(!append||filtered)list.replaceChildren();
     for(const person of response.items||[]){
       const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
@@ -1144,8 +1140,8 @@ async function loadPeople(append) {
     }else{
       after=response.nextCursor;button.hidden=!after;note.hidden=true;note.textContent="";
     }
-  }catch(error){say(error.message||"Could not load this school directory.");}
-  finally{loadingPeople=false;button.disabled=false;}
+  }catch(error){if(run===peopleRun&&schoolReady)say(error.message||"Could not load this school directory.");}
+  finally{loadingPeople=false;button.disabled=false;if(peopleReloadQueued){peopleReloadQueued=false;void loadPeople(false);}}
 }
 get("pa-more").addEventListener("click",()=>void loadPeople(true));
 get("pa-export-people").addEventListener("click",()=>{
@@ -1206,9 +1202,10 @@ async function submitForm(form,action,details) {
       hint.textContent="The invited person's verified email must match. This link is not a public school signup.";
       host.append(title,link,hint);
     }
-    if(["create_person","update_person","archive_person","restore_person"].includes(action))
-      await Promise.all([loadPeople(false),loadOverview(),loadAcademics(),loadInvitePeople(),loadMemberships()]);
-    else await loadOverview();
+    const refreshes=await Promise.allSettled(["create_person","update_person","archive_person","restore_person"].includes(action)
+      ?[loadPeople(false),loadOverview(),loadAcademics(),loadInvitePeople(),loadMemberships()]
+      :[loadOverview()]);
+    if(refreshes.some(item=>item.status==="rejected"))say("Change saved successfully. Some school data could not refresh; reopen the affected tab or refresh the page.");
     return result;
   }catch(error){say(error.message||"This change was not saved.");return null;}
   finally{pendingWrite=false;button.disabled=false;}
