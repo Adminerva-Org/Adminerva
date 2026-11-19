@@ -84,7 +84,7 @@ function weakestSkillTarget(){
   return target?{...target,recommendation:group.label}:null;
 }
 function featuredTarget(){
-  const last=persistentGet(resumeKey());
+  const last=hub.resume?.courseId&&hub.resume?.missionId?hub.resume:persistentGet(resumeKey());
   if(last?.courseId&&last?.missionId){
     const lastCourse=COURSES.find(entry=>entry.id===last.courseId),lastMission=lastCourse?.missions.find(item=>item.id===last.missionId);
     if(lastCourse&&lastMission&&!completed(lastMission.id)&&gameMissions(lastCourse).some(item=>item.id===lastMission.id))return {course:lastCourse,mission:lastMission,resume:true};
@@ -249,7 +249,7 @@ function missionGameId(entryCourse,entryMission){
 function gameMissions(entryCourse,gameId=activeGame){return entryCourse.missions.filter(entry=>programmingGameMatches(gameId,entryCourse,entry,missionMeta(entryCourse,entry),missionModule(entryCourse,entry)));}
 function ensureCourseForGame(){if(gameMissions(course).length)return;course=COURSES.find(entry=>gameMissions(entry).length)||COURSES[0];}
 function recommendedGameId(){
-  const last=persistentGet(resumeKey());
+  const last=hub.resume?.courseId&&hub.resume?.missionId?hub.resume:persistentGet(resumeKey());
   if(last?.courseId&&last?.missionId){
     const entry=COURSES.find(item=>item.id===last.courseId),target=entry?.missions.find(item=>item.id===last.missionId);
     if(entry&&target&&!completed(target.id))return last.gameId&&getProgrammingGame(last.gameId).id!=="all"?getProgrammingGame(last.gameId).id:missionGameId(entry,target);

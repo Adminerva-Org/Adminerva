@@ -178,11 +178,12 @@ function createSchoolPracticeSeasonService({
 
  async function hub(request){
   const a=await actor(request),rules=await seasonRules(),season=rules.PRACTICE_SEASON;
-  const [saved,progress,legacy,publicBoard]=await Promise.all([
+  const [saved,progress,legacy,publicBoard,resumeRecord]=await Promise.all([
    ref(a,"practice_season_scores/"+a.uid).get(),
    col(a,"practice_season_progress/"+a.uid+"/courses").get(),
    col(a,"practice_verified_progress/"+a.uid+"/courses").get(),
-   col(a,"practice_public_rankings").orderBy("points","desc").limit(30).get()
+   col(a,"practice_public_rankings").orderBy("points","desc").limit(30).get(),
+   ref(a,"practice_resume/"+a.uid).get()
   ]);
   const score=scoreSeed(a,season,saved.data()),
    current=a.classes.find(item=>item.id===request.data?.classId)||a.classes[0];
@@ -198,9 +199,12 @@ function createSchoolPracticeSeasonService({
   const publicRows=publicBoard.docs.map(row=>row.data()).filter(row=>row.season===season)
    .map(row=>({alias:row.alias,points:row.points,completedCount:row.completedCount,
      isCurrent:row.ownerUid===a.uid}));
+  const resume=resumeRecord.exists&&resumeRecord.data().season===season?
+   {courseId:resumeRecord.data().courseId,missionId:resumeRecord.data().missionId,
+    openedAt:millis(resumeRecord.data().openedAt)}:null;
   return {schoolId:a.schoolId,season,eligible:true,alias:score.alias,optIn:score.optIn,
    points:score.points,completedCount:score.completedCount,
-   classes:a.classes,classId:current?.id||"",classRows,publicRows,
+   classes:a.classes,classId:current?.id||"",classRows,publicRows,resume,
    courses:progress.docs.map(row=>row.data()).filter(row=>row.season===season),
    legacyCount:legacy.docs.reduce((count,row)=>count+(row.data().completed?.length||0),0)};
  }
@@ -215,7 +219,8 @@ function createSchoolPracticeSeasonService({
    question=rules.seasonActivity(course,mission,Math.abs(library.hashSeed(season+mission.id))),
    sessionRef=ref(a,"practice_sessions/"+a.uid),
    attemptRef=ref(a,"practice_season_attempts/"+attemptId),
-   stateRef=ref(a,"practice_season_scores/"+a.uid+"/mission_state/"+season+"_"+mission.id);
+   stateRef=ref(a,"practice_season_scores/"+a.uid+"/mission_state/"+season+"_"+mission.id),
+   resumeRef=ref(a,"practice_resume/"+a.uid);
   return db.runTransaction(async tx=>{
    const [sessionRecord,existing,state]=await Promise.all([
     tx.get(sessionRef),tx.get(attemptRef),tx.get(stateRef)
@@ -234,6 +239,8 @@ function createSchoolPracticeSeasonService({
     tx.update(sessionRef,{seasonStarts:starts+1,
      seasonWindowAt:currentWindow?session.seasonWindowAt:stamp(time)});
    }
+   tx.set(resumeRef,{schoolId:a.schoolId,ownerUid:a.uid,personId:a.personId,season,
+    courseId:course.id,missionId:mission.id,openedAt:stamp(time)},{merge:true});
    const wrong=state.data()?.wrongSubmissions||0,completed=state.data()?.completed===true;
    return {attemptId,courseId:course.id,missionId:mission.id,season,
     question:rules.publicActivity(question),wrongSubmissions:wrong,
