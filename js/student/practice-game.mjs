@@ -3,7 +3,7 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.0";
-import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches,gameDeviceLabel} from "./practice-games.mjs?v=1.3.0";
+import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches,gameDeviceLabel} from "./practice-games.mjs?v=1.4.0";
 import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.5.0";
 import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest,resolvePracticeContext} from "./practice-session.mjs?v=1.5.0";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
@@ -11,7 +11,7 @@ const field=id=>document.getElementById(id),guestPage=document.body.dataset.prac
 const typeNames=guestPage?{choice:"Choose the answer",output:"Write the output",ordering:"Build the sequence",matching:"Match the pairs",debugging:"Fix the bug"}:{choice:"Quick Pick",output:"Code Trace",ordering:"Code Builder",matching:"Logic Match",debugging:"Bug Hunt"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
 const initialGame=getProgrammingGame(new URLSearchParams(location.search).get("game"));
 const TOTAL_MISSIONS=COURSES.reduce((sum,entry)=>sum+entry.missions.length,0);
-let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
+let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external||guestPage&&initialGame.id==="challenge-arena"?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
 function localSet(key,value){try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
@@ -59,6 +59,9 @@ function renderSummary(){
   field("labClassHint").textContent=(hub.classes||[]).length?"Only your class sees this private class board.":"Your class board appears when your school links a student section.";
   renderHubHero();
 }
+function assignedMissionRefs(){
+  return new Set(assignedPacks.flatMap(pack=>Array.isArray(pack.missionRefs)?pack.missionRefs:[]).map(String));
+}
 function assignedChallengeTarget(){
   const packs=[...assignedPacks].sort((a,b)=>{
     const toTime=value=>{const source=typeof value?.toDate==="function"?value.toDate():value,time=new Date(source||0).getTime();return Number.isFinite(time)&&time>0?time:Number.MAX_SAFE_INTEGER;};
@@ -88,6 +91,9 @@ function featuredTarget(){
   if(last?.courseId&&last?.missionId){
     const lastCourse=COURSES.find(entry=>entry.id===last.courseId),lastMission=lastCourse?.missions.find(item=>item.id===last.missionId);
     if(lastCourse&&lastMission&&!completed(lastMission.id)&&gameMissions(lastCourse).some(item=>item.id===lastMission.id))return {course:lastCourse,mission:lastMission,resume:true};
+  }
+  if(activeGame==="challenge-arena"){
+    const challenge=assignedChallengeTarget();if(challenge)return challenge;
   }
   if(activeGame==="all"){
     const challenge=assignedChallengeTarget();if(challenge)return challenge;
@@ -158,11 +164,16 @@ function renderChallenges(){
     const done=refs.filter(ref=>completed(ref.mission.id)).length,total=refs.length,percent=total?Math.round(done/total*100):0,next=refs.find(ref=>!completed(ref.mission.id))||refs[0];
     const card=node("article",undefined,"games-challenge-card"),head=node("div",undefined,"games-challenge-head"),text=node("div"),title=node("strong",pack.title||"Teacher Challenge"),meta=node("small",[done+" / "+total+" missions",formatChallengeDue(pack.dueDate)].filter(Boolean).join(" · "));text.append(title,meta);head.append(text,node("span",done===total&&total?"✓":"✦","games-challenge-icon"));
     const meter=node("div",undefined,"games-meter"),fill=node("span");fill.style.width=percent+"%";meter.append(fill);card.append(head,meter);
-    if(next){const button=node("button",done===total&&total?"Review":"Continue","games-challenge-button");button.type="button";button.addEventListener("click",()=>{if(busy)return;activeGame="all";course=next.course;renderCourses();void openMission(next.course,next.mission);});card.append(button);}
+    if(next){const button=node("button",done===total&&total?"Review":"Continue","games-challenge-button");button.type="button";button.addEventListener("click",()=>{if(busy)return;activeGame="challenge-arena";course=next.course;const url=new URL(location.href);url.searchParams.set("game","challenge-arena");url.searchParams.set("course",course.id);url.searchParams.set("mission",next.mission.id);history.replaceState(null,"",url);renderCourses();void openMission(next.course,next.mission);});card.append(button);}
     list.append(card);
   }
 }
-window.addEventListener("adminerva:practice-packs",event=>{assignedPacks=Array.isArray(event.detail?.packs)?event.detail.packs:[];renderChallenges();renderHubHero();});
+window.addEventListener("adminerva:practice-packs",event=>{
+  assignedPacks=Array.isArray(event.detail?.packs)?event.detail.packs:[];
+  renderChallenges();
+  renderCourses();
+  renderHubHero();
+});
 function returnToGamesHub(){
   if(busy)return false;
   saveDraft();loadSequence++;field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;renderCourses();return true;
@@ -248,7 +259,13 @@ function missionGameId(entryCourse,entryMission){
   if(entryCourse.id==="logic")return "data-detective";
   return "code-sprint";
 }
-function gameMissions(entryCourse,gameId=activeGame){return entryCourse.missions.filter(entry=>programmingGameMatches(gameId,entryCourse,entry,missionMeta(entryCourse,entry),missionModule(entryCourse,entry)));}
+function gameMissions(entryCourse,gameId=activeGame){
+  if(gameId==="challenge-arena"){
+    const refs=assignedMissionRefs();
+    return entryCourse.missions.filter(entry=>refs.has(entryCourse.id+":"+entry.id));
+  }
+  return entryCourse.missions.filter(entry=>programmingGameMatches(gameId,entryCourse,entry,missionMeta(entryCourse,entry),missionModule(entryCourse,entry)));
+}
 function ensureCourseForGame(){if(gameMissions(course).length)return;course=COURSES.find(entry=>gameMissions(entry).length)||COURSES[0];}
 function recommendedGameId(){
   const last=hub.resume?.courseId&&hub.resume?.missionId?hub.resume:persistentGet(resumeKey());
@@ -256,14 +273,16 @@ function recommendedGameId(){
     const entry=COURSES.find(item=>item.id===last.courseId),target=entry?.missions.find(item=>item.id===last.missionId);
     if(entry&&target&&!completed(target.id))return last.gameId&&getProgrammingGame(last.gameId).id!=="all"?getProgrammingGame(last.gameId).id:missionGameId(entry,target);
   }
-  const challenge=assignedChallengeTarget();if(challenge)return missionGameId(challenge.course,challenge.mission);
+  const challenge=assignedChallengeTarget();if(challenge)return "challenge-arena";
   if(!(hub.completedCount||0))return "code-sprint";
   const target=weakestSkillTarget();
   return target?.recommendation==="OOP"?"oop-builder":target?.recommendation==="Debugging"?"bug-detective":target?.recommendation==="Logic"?"logic-circuit":"code-sprint";
 }
 function renderGameCatalog(){
   const catalog=field("labGameCatalog");if(!catalog)return;catalog.replaceChildren();
-  const recommended=guestPage?null:recommendedGameId(),ordered=guestPage?[...PROGRAMMING_GAMES]:[...PROGRAMMING_GAMES].sort((a,b)=>a.id===recommended?-1:b.id===recommended?1:a.id==="all"?-1:b.id==="all"?1:0);
+  const recommended=guestPage?null:recommendedGameId(),
+    sourceGames=guestPage?PROGRAMMING_GAMES.filter(game=>game.id!=="challenge-arena"):PROGRAMMING_GAMES,
+    ordered=guestPage?[...sourceGames]:[...sourceGames].sort((a,b)=>a.id===recommended?-1:b.id===recommended?1:a.id==="all"?-1:b.id==="all"?1:0);
   for(const game of ordered){
     const total=game.external?0:COURSES.reduce((sum,entry)=>sum+gameMissions(entry,game.id).length,0);
     const done=game.external?0:COURSES.reduce((sum,entry)=>sum+gameMissions(entry,game.id).filter(item=>completed(item.id)).length,0);
@@ -284,7 +303,7 @@ function renderGameCatalog(){
         field("labCourseTitle")?.scrollIntoView({behavior:"smooth",block:"nearest"});
       });
     }
-    const top=node("div",undefined,"lab-game-card-top"),visual=node("span",undefined,"lab-game-card-visual"),glyphKind={"bug-detective":"bug","trace-quest":"trace","algorithm-maze":"builder","logic-circuit":"match","oop-builder":"oop","interface-repair":"interface","data-detective":"data","code-sprint":"sprint","xml-layout":"interface"}[game.id]||"oop";
+    const top=node("div",undefined,"lab-game-card-top"),visual=node("span",undefined,"lab-game-card-visual"),glyphKind={"challenge-arena":"challenge","bug-detective":"bug","trace-quest":"trace","algorithm-maze":"builder","logic-circuit":"match","oop-builder":"oop","interface-repair":"interface","data-detective":"data","code-sprint":"sprint","xml-layout":"interface"}[game.id]||"oop";
     visual.append(gameGlyph(glyphKind));top.append(node("span",game.icon,"lab-game-card-icon"),node("span",game.id===recommended?"FOR YOU":game.tag,"lab-game-card-tag"));
     item.append(top,visual,node("strong",game.name),node("p",game.description),node("span",gameDeviceLabel(game),"lab-game-device"));
     if(game.external)item.append(node("small","Open XML Lab ↗"));
@@ -304,7 +323,8 @@ function renderCourses(){
   for(const entry of availableCourses){const pool=gameMissions(entry),button=node("button",undefined,"lab-course-tab");button.type="button";button.setAttribute("aria-pressed",String(entry.id===course.id));button.append(node("span",entry.icon,"lab-course-icon"),node("span",entry.name),node("small",pool.filter(item=>completed(item.id)).length+"/"+pool.length));button.addEventListener("click",()=>{if(busy)return;course=entry;renderCourses();});tabs.append(button);}
   field("labCourseTitle").textContent=course.name;field("labCourseSubtitle").textContent=game.name+" · "+course.subtitle;const map=field("practiceCourseList");map.replaceChildren();
   course.modules.forEach((module,moduleIndex)=>{
-    const visible=module.missions.filter(entry=>programmingGameMatches(activeGame,course,entry,missionMeta(course,entry),module));if(!visible.length)return;
+    const pool=new Set(gameMissions(course).map(item=>item.id)),
+      visible=module.missions.filter(entry=>pool.has(entry.id));if(!visible.length)return;
     const section=node("section",undefined,"lab-map-module"),heading=node("div",undefined,"lab-module-heading"),count=visible.filter(item=>completed(item.id)).length,nextId=visible.find(item=>!completed(item.id))?.id;
     heading.append(node("span",String(moduleIndex+1).padStart(2,"0"),"lab-module-number"),node("h3",module.title),node("small",count+" / "+visible.length));section.append(heading);
     const path=node("div",undefined,"lab-mission-path");path.setAttribute("aria-label",module.title+" missions");
@@ -313,6 +333,13 @@ function renderCourses(){
       button.append(node("span",done?"✓":typeIcons[meta.type],"lab-node-icon"),node("small",done?earned(entry.id)+" pts":meta.maximum+" pts"),node("span",String(course.missions.findIndex(item=>item.id===entry.id)+1),"lab-node-number"));button.addEventListener("click",()=>void openMission(course,entry));path.append(button);
     });section.append(path);map.append(section);
   });
+  if(activeGame==="challenge-arena"&&!map.children.length){
+    const empty=node("div",undefined,"games-arena-empty");
+    empty.append(node("span","✦","games-arena-empty-icon"),
+      node("strong","No teacher challenges assigned"),
+      node("p","Your teacher-assigned Practice Packs will appear here automatically."));
+    map.append(empty);
+  }
 }
 function renderBoard(){
   field("labGlobalTab").setAttribute("aria-pressed",String(boardMode==="global"));field("labClassTab").setAttribute("aria-pressed",String(boardMode==="class"));field("labClassControls").hidden=boardMode!=="class";
@@ -396,6 +423,11 @@ function gameGlyph(kind){
     svg.append(svgNode("rect",{x:8,y:10,width:34,height:38,rx:4,...stroke}),svgNode("path",{d:"M8 22H42M19 10V48M30 10V48",...stroke}),svgNode("circle",{cx:43,cy:43,r:10,...stroke}),svgNode("path",{d:"M50 50 57 57",...stroke}));
   }else if(kind==="sprint"){
     svg.append(svgNode("path",{d:"M35 6 16 34H30L26 58 49 26H35Z",...stroke}),svgNode("path",{d:"M11 17H23M8 26H20M7 44H19",...stroke}));
+  }else if(kind==="challenge"){
+    svg.append(
+      svgNode("path",{d:"M32 7 39 21 55 23 43 34 46 50 32 42 18 50 21 34 9 23 25 21Z",...stroke}),
+      svgNode("path",{d:"M24 31 29 36 40 25",...stroke})
+    );
   }else{
     svg.append(svgNode("rect",{x:20,y:7,width:24,height:13,rx:3,...stroke}),svgNode("rect",{x:5,y:43,width:22,height:13,rx:3,...stroke}),svgNode("rect",{x:37,y:43,width:22,height:13,rx:3,...stroke}),svgNode("path",{d:"M32 20V32M16 43V32H48V43",...stroke}));
   }
@@ -615,8 +647,8 @@ async function openMission(selectedCourse,selectedMission){
   if(busy)return;const end=window.beginLoading?.("Preparing practice mission…")||(()=>{});saveDraft();course=selectedCourse;mission=selectedMission;persistentSet(resumeKey(),{courseId:course.id,missionId:mission.id,gameId:activeGame,openedAt:Date.now()});attempt=null;hintLevel=0;builderSelection=null;bugLineFound=false;answer=localGet(draftKey())?.answer??null;const version=epoch,sequence=++loadSequence;
   field("labReopenMission").hidden=true;
   field("practiceCheckBtn").hidden=true;field("labSubmitSignin").hidden=true;
-  const themeGame=activeGame==="all"?missionGameId(course,mission):activeGame;field("labMapPanel").hidden=true;const missionPanel=field("practiceMissionPanel");missionPanel.hidden=false;missionPanel.classList.remove("is-complete");missionPanel.dataset.game=themeGame;renderSprintHud();field("practiceMissionTitle").textContent=mission.title.replace(/ · (Guided|Apply|Challenge)$/,"");field("practiceCourseName").textContent=course.name;field("labMissionType").textContent=typeNames[missionMeta(course,mission).type];field("practiceChoices").replaceChildren();field("practiceCode").textContent="";field("practicePrompt").textContent="Preparing your mission…";field("labExperimentLink").hidden=true;field("labNextMission").hidden=true;feedback("");setBusy(true);
-  field("labGameName").textContent=getProgrammingGame(themeGame).name;field("labDeviceHint").textContent=gameDeviceLabel(getProgrammingGame(themeGame));field("practiceMissionTitle").focus({preventScroll:true});field("practiceMissionPanel").scrollIntoView({behavior:"smooth",block:"start"});
+  const themeGame=["all","challenge-arena"].includes(activeGame)?missionGameId(course,mission):activeGame;field("labMapPanel").hidden=true;const missionPanel=field("practiceMissionPanel");missionPanel.hidden=false;missionPanel.classList.remove("is-complete");missionPanel.dataset.game=themeGame;renderSprintHud();field("practiceMissionTitle").textContent=mission.title.replace(/ · (Guided|Apply|Challenge)$/,"");field("practiceCourseName").textContent=course.name;field("labMissionType").textContent=typeNames[missionMeta(course,mission).type];field("practiceChoices").replaceChildren();field("practiceCode").textContent="";field("practicePrompt").textContent="Preparing your mission…";field("labExperimentLink").hidden=true;field("labNextMission").hidden=true;feedback("");setBusy(true);
+  field("labGameName").textContent=activeGame==="challenge-arena"?"Challenge Arena · "+getProgrammingGame(themeGame).name:getProgrammingGame(themeGame).name;field("labDeviceHint").textContent=gameDeviceLabel(getProgrammingGame(themeGame));field("practiceMissionTitle").focus({preventScroll:true});field("practiceMissionPanel").scrollIntoView({behavior:"smooth",block:"start"});
   try{
     if(eligible&&user){if(!activePracticeSession()||activePracticeSession().expiresAt<Date.now())await connect();attempt=await practiceRequest("practiceMissionStart",{courseId:course.id,missionId:mission.id});}
     else{const preview=seasonActivity(course,mission,Math.abs(hashSeed(PRACTICE_SEASON+mission.id))),meta=missionMeta(course,mission);attempt={question:publicActivity(preview),availablePoints:meta.maximum,completed:false,previewWorkspace:preview.workspace};}
