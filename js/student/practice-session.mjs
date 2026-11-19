@@ -39,14 +39,15 @@ export async function resolvePracticeContext({refresh=false}={}){
   const user=auth.currentUser;if(!user?.uid)throw practiceError("Sign in to continue Practice.","verified-sign-in");
   if(!refresh&&schoolCache?.uid===user.uid&&schoolCache.schoolId)return {...schoolCache};
   const preferred=storedSchool(user.uid)||null;
-  const payload=(await tenantSchools({preferredSchoolId:preferred})).data||{};
+  const payload=(await tenantSchools({preferredSchoolId:preferred,includePracticePilot:true})).data||{};
   if(auth.currentUser?.uid!==user.uid)throw practiceError("Account changed while Practice was checking your school.","account-changed");
   const schools=(Array.isArray(payload.schools)?payload.schools:[]).filter(school=>
     typeof school?.schoolId==="string"&&(school.platformOverride===true||Array.isArray(school.roles)&&school.roles.length));
   const selectedId=payload.selection?.schoolId;
   const selected=schools.find(school=>school.schoolId===preferred)||
     schools.find(school=>school.schoolId===selectedId)||
-    (schools.length===1?schools[0]:null);
+    (schools.length===1?schools[0]:null)||
+    (!schools.length&&payload.practicePilot?.schoolId==="mcs-manila"?payload.practicePilot:null);
   if(!selected){
     if(!schools.length)throw practiceError("No active school is linked to this account. Ask your school administrator to check your membership.","enrollment");
     throw practiceError("Choose your active school from the account menu, then reconnect Games.","school-selection");
@@ -55,7 +56,7 @@ export async function resolvePracticeContext({refresh=false}={}){
   const roles=Array.isArray(selected.roles)?selected.roles:[],
    mode=selected.platformOverride===true||!roles.includes("student")?"preview":"student";
   schoolCache={uid:user.uid,schoolId:selected.schoolId,roles:[...roles],mode,
-   platformOverride:selected.platformOverride===true};
+   platformOverride:selected.platformOverride===true,practicePilot:selected.practicePilot===true};
   return {...schoolCache,roles:[...schoolCache.roles]};
 }
 
@@ -67,9 +68,10 @@ export async function resolvePracticeSchool({refresh=false}={}){
 }
 
 export async function practiceSchoolRequest(name,payload={},options={}){
-  const endpoint=SCHOOL_ENDPOINTS[name]||name,schoolId=await resolvePracticeSchool({refresh:options.refreshSchool===true});
+  const endpoint=SCHOOL_ENDPOINTS[name]||name,context=await resolvePracticeContext({refresh:options.refreshSchool===true});
+  if(context.mode!=="student")throw practiceError("Scored Practice is reserved for enrolled student identities.","staff-preview");
   const uid=auth.currentUser?.uid;
-  const result=await httpsCallable(functions,endpoint)({...payload,schoolId});
+  const result=await httpsCallable(functions,endpoint)({...payload,schoolId:context.schoolId,practicePilot:context.practicePilot===true});
   if(auth.currentUser?.uid!==uid)throw practiceError("Account changed while Practice was reconnecting.","account-changed");
   return result.data;
 }
