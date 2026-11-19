@@ -10,10 +10,13 @@ const list=el("gs-list"),status=el("gs-status"),dialog=el("gs-dialog"),form=el("
   weights=el("gs-weights"),total=el("gs-total"),showArchived=el("gs-show-archived");
 let picker=null,schemes=[],programs=[],subjects=[],sections=[],editing=null,busy=false,draftDirty=false,loadRun=0;
 
+function platformModePayload(){
+  try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?{platformMode:"assist"}:{};}catch{return {};}
+}
 function scoped(action,details={}){
   if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
   const lease=picker.scope.lease();
-  return api({schoolId:lease.schoolId,action,...details}).then(response=>{
+  return api({schoolId:lease.schoolId,action,...platformModePayload(),...details}).then(response=>{
     picker.scope.assertLease(lease);
     return response.data;
   });
@@ -21,7 +24,7 @@ function scoped(action,details={}){
 function academicScoped(action,details={}){
   if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
   const lease=picker.scope.lease();
-  return academicsApi({schoolId:lease.schoolId,action,...details}).then(response=>{
+  return academicsApi({schoolId:lease.schoolId,action,...platformModePayload(),...details}).then(response=>{
     picker.scope.assertLease(lease);
     return response.data;
   });
