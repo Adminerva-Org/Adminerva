@@ -7,11 +7,11 @@ import {practiceAlias,completionTotal,automaticStandings,PRACTICE_MAXIMUM} from 
 test("course hierarchy preserves legacy IDs and matches exact permission-rule mission catalogs",()=>{
  const rules=readFileSync("firestore.rules","utf8");
  for(const course of COURSES){const match=rules.match(new RegExp('courseId == "'+course.id+'" \\? (\\[[^\\n]+\\]) :'));assert.ok(match,course.id);assert.deepEqual(JSON.parse(match[1]),course.missions.map(mission=>mission.id));}
- assert.equal(PRACTICE_MAXIMUM,300);
+ assert.equal(PRACTICE_MAXIMUM,390);
 });
 test("recorded-completion XP is deduplicated, course scoped and is never a school grade",()=>{
  assert.equal(completionTotal([{courseId:"java",completed:["j1","j1","p2","forged"]},{courseId:"python",completed:["p2"]}]),2);
- assert.equal(completionTotal(COURSES.map(course=>({courseId:course.id,completed:course.missions.map(mission=>mission.id)}))),300);
+ assert.equal(completionTotal(COURSES.map(course=>({courseId:course.id,completed:course.missions.map(mission=>mission.id)}))),390);
  const rows=automaticStandings([{studentId:"alice",alias:practiceAlias("alice"),points:20,completedCount:2,email:"private@example.edu"},{studentId:"bob",alias:practiceAlias("bob"),points:20,completedCount:2},{alias:"Name",points:9000,completedCount:900}],"alice");
  assert.deepEqual(rows.map(row=>row.rank),[1,1]);assert.equal(rows.filter(row=>row.isCurrent).length,1);assert.ok(rows.every(row=>row.email===undefined&&row.studentId===undefined));
  assert.equal(practiceAlias("alice"),practiceAlias("alice"));assert.notEqual(practiceAlias("alice"),practiceAlias("bob"));
@@ -53,8 +53,8 @@ test("an account change during a pending completion cannot remove another accoun
  await assert.rejects(saving,/Account changed/);assert.equal(fixture.removed.length,0);assert.equal(fixture.loaded.length,0);
 });
 test("deployable server curriculum matches the client curriculum exactly",()=>{
- for(const name of ["practice-courses.mjs","practice-curriculum.mjs"]){
-  const normalize=source=>source.replace(/\r/g,"").replace(/\.\/practice-curriculum\.mjs(?:\?v=[^"']+)?/g,"./practice-curriculum.mjs");
+ for(const name of ["practice-courses.mjs","practice-curriculum.mjs","practice-oop.mjs"]){
+  const normalize=source=>source.replace(/\r/g,"").replace(/(\.\/practice-(?:curriculum|oop)\.mjs)(?:\?v=[^"']+)?/g,"$1");
   assert.equal(normalize(readFileSync("functions/"+name,"utf8")),normalize(readFileSync("js/student/"+name,"utf8")),name);
  }
 });
