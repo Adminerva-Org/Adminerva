@@ -7,6 +7,10 @@ const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolClassRecordAd
 const list=el("cro-list"),status=el("cro-status"),search=el("cro-search"),filter=el("cro-filter");
 const auditDialog=el("cro-audit-dialog"),auditList=el("cro-audit-list");
 let picker=null,records=[],busy=false;
+const deepLinkParams=new URLSearchParams(location.search);
+const deepLinkOfferingId=String(deepLinkParams.get("offeringId")||"");
+const deepLinkAudit=deepLinkParams.get("audit")==="1";
+let deepLinkHandled=false;
 
 function node(tag,className,text){
   const item=document.createElement(tag);
@@ -202,14 +206,25 @@ async function openAudit(record){
 }
 async function load(){
   setBusy(true,"Loading school Class Record oversight…");
+  let deepLinkRecord=null;
   try{
     const result=await scoped("overview");
     records=result.records||[];
     renderRecords();
     status.textContent=records.length+" Class Record"+(records.length===1?"":"s")+" loaded. Oversight is read-only.";
+    if(!deepLinkHandled&&deepLinkOfferingId){
+      deepLinkRecord=records.find(record=>record.offeringId===deepLinkOfferingId)||null;
+      deepLinkHandled=true;
+      if(!deepLinkRecord)status.textContent="The requested Class Record is not available in this verified school.";
+    }
   }catch(error){
     records=[];renderRecords();status.textContent=error?.message||"Class Record oversight could not be loaded.";
   }finally{setBusy(false);}
+  if(deepLinkRecord){
+    search.value=[deepLinkRecord.subjectName,deepLinkRecord.sectionName].filter(Boolean).join(" ");
+    renderRecords();
+    if(deepLinkAudit)void openAudit(deepLinkRecord);
+  }
 }
 
 search.addEventListener("input",renderRecords);
@@ -221,7 +236,7 @@ picker=createTenantSchoolPicker({
   host:el("cro-school-switcher"),
   status,
   onBeforeChange:async()=>{
-    records=[];renderRecords();auditList.replaceChildren();
+    records=[];deepLinkHandled=false;renderRecords();auditList.replaceChildren();
     if(auditDialog.open)auditDialog.close();
   },
   onReady:scope=>{
