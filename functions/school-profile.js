@@ -83,7 +83,7 @@ function profilePayload(input){
 function campusPayload(input){
   return {
     name:requiredText(input.name,"Campus name",140),
-    code:optionalText(input.code,"Campus code",40),
+    code:(optionalText(input.code,"Campus code",40)||"").toUpperCase()||null,
     addressLine1:optionalText(input.addressLine1,"Campus address",180),
     addressLine2:optionalText(input.addressLine2,"Campus address line 2",180),
     city:optionalText(input.city,"Campus city / municipality",100),
@@ -185,6 +185,11 @@ function createSchoolProfileService({db}){
         auditRef=db.collection(root+"directory_audit").doc();
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
+        if(payload.code){
+          const sameCode=await tx.get(db.collection(root+"campuses").where("code","==",payload.code).limit(2));
+          if(sameCode.docs.some(doc=>doc.data().schoolId===ctx.schoolId))
+            deny("already-exists","Another campus already uses code "+payload.code+".");
+        }
         const now=FieldValue.serverTimestamp();
         tx.create(ref,{schoolId:ctx.schoolId,...payload,status:"active",revision:1,
           createdByUid:ctx.uid,createdAt:now,updatedByUid:ctx.uid,updatedAt:now});
@@ -203,6 +208,11 @@ function createSchoolProfileService({db}){
         await requireCurrentAdmin(tx);
         const current=await tx.get(ref);
         if(!current.exists||current.data().schoolId!==ctx.schoolId)deny("not-found","Campus was not found.");
+        if(payload.code){
+          const sameCode=await tx.get(db.collection(root+"campuses").where("code","==",payload.code).limit(2));
+          if(sameCode.docs.some(doc=>doc.id!==id&&doc.data().schoolId===ctx.schoolId))
+            deny("already-exists","Another campus already uses code "+payload.code+".");
+        }
         const currentRevision=Number(current.data().revision)||1;
         if(currentRevision!==expectedRevision)
           deny("failed-precondition","This campus changed after you opened it. Refresh and review the latest values before saving.");
