@@ -2,13 +2,50 @@
 const {createHash}=require("node:crypto");
 const hash=value=>createHash("sha256").update(value).digest("hex");
 const millis=value=>value?.toMillis?.()||0;
-function createPracticeSeasonService({db,Timestamp,resolveUser,now,randomId,catalog,reject}){
+function createPracticeSeasonService({db,Timestamp,resolveUser,now,randomId,catalog,reject,pilotOnly=false}){
   const stamp=value=>Timestamp.fromMillis(value),rules=()=>import("./practice-season.mjs");
+  const pilotId="mcs-manila";
+  const inactive=new Set(["archived","suspended","inactive","disabled","deleted","ended","withdrawn","rejected","pending"]);
+  const activeStudent=row=>row&&row.active!==false&&!inactive.has(String(row.status||"active").trim().toLowerCase())&&typeof row.section==="string"&&Boolean(row.section.trim());
+  const pilotRefs=(uid,email)=>[
+    db.doc("platform_schools/"+pilotId),
+    db.doc("schools/"+pilotId+"/memberships/"+uid),
+    db.doc("schools/"+pilotId+"/practice_migration_state/"+uid),
+    db.doc("schools/"+pilotId+"/practice_season_scores/"+uid),
+    db.doc("account_requests/"+uid),db.doc("staff_access/"+email),
+    db.doc("platform_admins/"+uid)
+  ];
+  function checkPilot(records,email){
+    const [school,member,migration,score,admission,staff,platform]=records;
+    if(!school.exists||!["active","pilot"].includes(school.data().state)||school.data().compatibilityMode==="v4_only")
+      reject("permission-denied","MCS pilot roster compatibility is no longer active.","enrollment");
+    if(member.exists||migration.exists||score.exists)
+      reject("permission-denied","Use your school-wide student membership and preserved Practice progress.","enrollment");
+    const request=admission.data(),grant=staff.data(),owner=platform.data();
+    if(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"].includes(email)||
+       (owner?.status==="active"&&owner.role==="platform_admin")||
+       (grant?.status==="active"&&["teacher","admin","school_admin"].includes(grant.role))||
+       request?.status==="rejected"||(request?.status==="approved"&&request.approvedRole==="teacher"))
+      reject("permission-denied","This account is not eligible for MCS pilot student scoring.","enrollment");
+    return school.data();
+  }
   async function member(request){
     const actor=request.auth;
     if(!actor?.uid||actor.token?.email_verified!==true||typeof actor.token.email!=="string")reject("unauthenticated","Sign in with a verified account to submit practice answers.","verified-sign-in");
     const user=await resolveUser(actor.uid),email=actor.token.email.toLowerCase();
     if(user.disabled||!user.emailVerified||user.email?.toLowerCase()!==email||(user.tokensValidAfterTime&&Date.parse(user.tokensValidAfterTime)>Number(actor.token.auth_time)*1000))reject("unauthenticated","Sign in again before continuing practice.","revoked-sign-in");
+    if(pilotOnly){
+      if(request.data?.schoolId!==pilotId)reject("permission-denied","MCS pilot Practice is only available in the MCS pilot school.","enrollment");
+      const [students,...checks]=await Promise.all([
+        db.collection("students").where("email","==",email).limit(11).get(),
+        ...pilotRefs(actor.uid,email).map(ref=>ref.get())
+      ]);
+      const school=checkPilot(checks,email);
+      if(students.size>10)reject("permission-denied","Ask your school to review the student records linked to your email.","enrollment");
+      const profiles=students.docs.filter(doc=>activeStudent(doc.data()));
+      if(!profiles.length)reject("permission-denied","An active MCS pilot student roster record is required.","enrollment");
+      return {...actor,email,profiles,isStaff:false,pilotSchool:school};
+    }
     const [students,admission,staff]=await Promise.all([db.collection("students").where("email","==",email).limit(11).get(),db.doc("account_requests/"+actor.uid).get(),db.doc("staff_access/"+email).get()]);
     if(students.size>10)reject("permission-denied","Ask your school to review the records linked to your email.","enrollment");
     const isStaff=["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"].includes(email)||staff.data()?.status==="active"&&staff.data()?.role==="teacher";
@@ -16,6 +53,16 @@ function createPracticeSeasonService({db,Timestamp,resolveUser,now,randomId,cata
     return {...actor,email,profiles:students.docs,isStaff};
   }
   async function eligibility(transaction,actor){
+    if(pilotOnly){
+      const [checks,records]=await Promise.all([
+        Promise.all(pilotRefs(actor.uid,actor.email).map(ref=>transaction.get(ref))),
+        Promise.all(actor.profiles.map(profile=>transaction.get(profile.ref)))
+      ]);
+      checkPilot(checks,actor.email);
+      if(!records.length||records.some(record=>!record.exists||record.data().email?.toLowerCase()!==actor.email||!activeStudent(record.data())))
+        reject("permission-denied","Your MCS pilot roster changed. Reconnect Games.","enrollment");
+      return records.map(record=>({id:record.id,...record.data()}));
+    }
     if(actor.profiles.length){
       const records=await Promise.all(actor.profiles.map(profile=>transaction.get(profile.ref)));
       if(records.some(record=>!record.exists||record.data().email?.toLowerCase()!==actor.email||record.data().active===false||record.data().status==="disabled"))reject("permission-denied","Your student record changed. Ask your teacher to check your account.","enrollment");
@@ -50,7 +97,10 @@ function createPracticeSeasonService({db,Timestamp,resolveUser,now,randomId,cata
     const score=newScore(actor,PRACTICE_SEASON,saved.data()),classes=actor.profiles.filter(profile=>profile.data().active!==false&&profile.data().status!=="disabled"&&typeof profile.data().section==="string"&&profile.data().section.trim()).map(profile=>({id:profile.id,section:profile.data().section}));
     const current=classes.find(profile=>profile.id===request.data?.classId)||classes[0];let classRows=[];
     if(current?.section){const rows=await db.collection("practice_class_season_rankings").where("section","==",current.section).limit(500).get();classRows=rows.docs.map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON).map(row=>({alias:row.alias,points:row.points,completedCount:row.completedCount,isCurrent:row.ownerUid===actor.uid})).sort((a,b)=>b.points-a.points);}
-    return {season:PRACTICE_SEASON,eligible:true,alias:score.alias,optIn:score.optIn,points:score.points,completedCount:score.completedCount,classes,classId:current?.id||"",classRows,courses:progress.docs.map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON),legacyCount:legacy.docs.reduce((count,row)=>count+(row.data().completed?.length||0),0)};
+    const publicRows=pilotOnly?(await db.collection("practice_public_rankings").orderBy("points","desc").limit(30).get()).docs
+      .map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON)
+      .map(row=>({alias:row.alias,points:row.points,completedCount:row.completedCount})):undefined;
+    return {...(pilotOnly?{schoolId:pilotId,practicePilot:true,publicRows}:{}),season:PRACTICE_SEASON,eligible:true,alias:score.alias,optIn:score.optIn,points:score.points,completedCount:score.completedCount,classes,classId:current?.id||"",classRows,courses:progress.docs.map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON),legacyCount:legacy.docs.reduce((count,row)=>count+(row.data().completed?.length||0),0)};
   }
   async function startSeason(request){
     const actor=await member(request),time=now(),library=await catalog(),seasonRules=await rules();
@@ -102,6 +152,12 @@ function createPracticeSeasonService({db,Timestamp,resolveUser,now,randomId,cata
     const alias=String(request.data?.alias||"").trim();if(!/^[A-Za-z0-9 _-]{3,24}$/.test(alias))reject("invalid-argument","Use a nickname of 3–24 letters, numbers, spaces, dashes or underscores. Do not use your real name.","alias");
     return db.runTransaction(async transaction=>{const ref=db.doc("practice_season_scores/"+actor.uid),record=await transaction.get(ref),profiles=await eligibility(transaction,actor);const before=newScore(actor,PRACTICE_SEASON,record.data()),score={...before,alias,optIn:request.data.optIn,updatedAt:stamp(time)};transaction.set(ref,score);const publicRef=db.doc("practice_public_rankings/"+score.publicId);if(score.optIn)transaction.set(publicRef,boardData(score,time));else transaction.delete(publicRef);for(const profile of profiles)transaction.set(db.doc("practice_class_season_rankings/"+profile.id),{ownerUid:actor.uid,section:profile.section,alias:score.alias,points:score.points,completedCount:score.completedCount,season:PRACTICE_SEASON,updatedAt:stamp(time)});return {alias:score.alias,optIn:score.optIn};});
   }
-  return {hub,acquireSeason,startSeason,submitSeason,preferences};
+  async function pilotContext(request){
+    if(!pilotOnly)reject("permission-denied","Pilot context is not enabled.","enrollment");
+    const actor=await member(request),school=actor.pilotSchool;
+    return {schoolId:pilotId,name:school.displayName||"MCS pilot school",roles:["student"],
+      schoolState:school.state,compatibilityMode:"legacy_allowed",platformOverride:false,practicePilot:true};
+  }
+  return {hub,acquireSeason,startSeason,submitSeason,preferences,pilotContext};
 }
 module.exports={createPracticeSeasonService};
