@@ -59,7 +59,7 @@ if(panel&&list&&status&&schoolHost){
   const reclaimsApi=httpsCallable(functions,"schoolReclaims");
   let renderGeneration=0,picker=null,githubTask=null,githubTaskStatus=null;
   let githubCommits=[],githubSelected=new Set(),githubCheckpoint="",githubBusy=false,reclaimTarget=null,githubSessionToken="";
-  let githubClaims=new Map();
+  let githubClaims=new Map(),historyRepository="",githubTokenOwner="";
   async function scoped(scope,api,action,details={}){
     const lease=scope.lease();
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
@@ -68,6 +68,7 @@ if(panel&&list&&status&&schoolHost){
   }
   function assignmentState(task,submission,grade){
     if(grade)return {label:"Graded",className:"bg-emerald-100 text-emerald-800"};
+    if(submission?.error)return {label:"Status unavailable",className:"bg-slate-100 text-slate-700"};
     if(submission?.status==="reopened"){
       const due=Number(submission.revisionDueAt||0);
       return {label:due>Date.now()?"Revision requested":"Revision extension expired",
@@ -98,29 +99,31 @@ if(panel&&list&&status&&schoolHost){
     try{
       const results=await Promise.all([
         scoped(scope,assessmentsApi,"list_student"),
-        scoped(scope,gradebookApi,"my_published"),
+        scoped(scope,gradebookApi,"my_published").catch(error=>({grades:[],error:error?.message||"Grades unavailable"})),
         scoped(scope,profileApi,"my_profile")
       ]);
       if(generation!==renderGeneration)return;
       const profile=results[2]||{},classes=profile.classes||[];
       let subjectId=requestedSubjectId,subjectName=requestedSubjectName,offeringId=requestedOfferingId;
       const allowedOfferings=new Set(classes.filter(item=>
-        offeringId?item.offeringId===offeringId:subjectId?item.subjectId===subjectId:true
+        (!offeringId||item.offeringId===offeringId)&&(!subjectId||item.subjectId===subjectId)&&(!subjectName||Boolean(subjectId)||String(item.subject||"").toLowerCase()===subjectName.toLowerCase())
       ).map(item=>item.offeringId));
       if(!subjectName&&subjectId)subjectName=classes.find(item=>item.subjectId===subjectId)?.subject||subjectName;
       if(assignmentSubjectLabel)assignmentSubjectLabel.textContent=subjectName||"All subjects";
       const allTasks=results[0].assignments||[];
-      const tasks=(subjectId||offeringId)?allTasks.filter(task=>allowedOfferings.has(task.offeringId)):allTasks;
+      const tasks=(subjectId||offeringId||subjectName)?allTasks.filter(task=>allowedOfferings.has(task.offeringId)):allTasks;
       const grades=new Map((results[1].grades||[]).map(item=>[item.taskId,item]));
       const statuses=new Map();
-      await Promise.all(tasks.map(async task=>{
+      let next=0;
+      const worker=async()=>{while(next<tasks.length&&generation===renderGeneration){const task=tasks[next++];
         try{
           const api=task.submissionSource==="github"?githubEvidenceApi:task.submissionSource==="studio"?submissionsApi:generalSubmissionsApi;
           statuses.set(task.taskId,await scoped(scope,api,"my_status",{taskId:task.taskId}));
         }catch(error){
           statuses.set(task.taskId,{error:error?.message||"Status unavailable"});
         }
-      }));
+      }};
+      await Promise.all(Array.from({length:Math.min(5,tasks.length)},worker));
       if(generation!==renderGeneration)return;
       if(!tasks.length){
         status.textContent="No verified school assignments are currently deployed"+(subjectName?" for "+subjectName:"")+".";
@@ -128,7 +131,8 @@ if(panel&&list&&status&&schoolHost){
           "No other active verified-school tasks are available in this school."));
         return;
       }
-      status.textContent=tasks.length+" verified school assignment"+(tasks.length===1?"":"s")+" loaded"+(subjectName?" for "+subjectName:"")+".";
+      const unavailable=[...statuses.values()].filter(row=>row?.error).length;
+      status.textContent=tasks.length+" verified school assignment"+(tasks.length===1?"":"s")+" loaded"+(subjectName?" for "+subjectName:"")+"."+(unavailable?" "+unavailable+" submission status(es) unavailable. Refresh before submitting.":"")+(results[1].error?" Published grades temporarily unavailable.":"");
       for(const task of tasks){
         const submission=statuses.get(task.taskId),grade=grades.get(task.taskId);
         const state=assignmentState(task,submission,grade);
@@ -181,6 +185,8 @@ if(panel&&list&&status&&schoolHost){
           article.append(result);
         }
         const actions=node("div","mt-4 flex flex-wrap gap-2");
+        if(submission?.error)article.append(node("p","mt-3 text-sm text-amber-900","Submission status could not be confirmed. Refresh this page before starting a new submission."));
+        const canSubmit=!submission?.error&&(submission?.status==="reopened"?Number(submission.revisionDueAt||0)>Date.now():!submission?.submitted&&!grade&&!["upcoming","closed"].includes(task.windowStatus));
         if(task.submissionSource==="studio"){
           const studioSubmitted=submission?.submitted&&submission.status!=="reopened";
           const link=node("a","rounded-lg px-4 py-2.5 text-sm font-bold "+(studioSubmitted?"border border-emerald-200 bg-emerald-50 text-emerald-800":"bg-indigo-700 text-white"),
@@ -190,13 +196,13 @@ if(panel&&list&&status&&schoolHost){
           link.href="student-playground.html?assessment="+encodeURIComponent(task.taskId);
           actions.append(link);
         }else if(task.submissionSource==="github"){
-          const canEdit=!submission?.submitted||submission.status==="reopened";
-          const canOpen=canEdit||submission?.status==="submitted";
+          const canEdit=canSubmit;
+          const canOpen=canEdit||submission?.status==="submitted"||submission?.status==="approved"||submission?.status==="reviewed";
           const evidenceButton=node("button",
             "rounded-lg px-4 py-2.5 text-sm font-bold "+(canOpen?"bg-indigo-700 text-white":"border border-slate-300 text-slate-600"),
             canEdit?(submission?.status==="reopened"?"Revise GitHub evidence":"Select GitHub evidence"):
               submission?.status==="submitted"?"✓ Submitted · Review evidence":
-              submission?.status==="approved"?"✓ Evidence approved":"✓ Evidence reviewed");
+              submission?.status==="approved"?"✓ Evidence approved":submission?.status==="reviewed"?"✓ Evidence reviewed":"Evidence unavailable for submission");
           evidenceButton.type="button";evidenceButton.disabled=!canOpen;
           if(canOpen)evidenceButton.addEventListener("click",()=>void openGithubEvidence(task,submission));
           actions.append(evidenceButton);
@@ -206,10 +212,10 @@ if(panel&&list&&status&&schoolHost){
             actions.append(repoLink);
           }
         }else if(["text","link"].includes(task.submissionSource)){
-          const canEdit=!submission?.submitted||submission.status==="reopened";
+          const canEdit=canSubmit;
           const responseButton=node("button",
             "rounded-lg px-4 py-2.5 text-sm font-bold "+(canEdit?"bg-indigo-700 text-white":"border border-slate-300 text-slate-600"),
-            canEdit?(submission?.status==="reopened"?"Revise response":"Open response editor"):"✓ Response submitted");
+            canEdit?(submission?.status==="reopened"?"Revise response":"Open response editor"):submission?.submitted?"✓ Response submitted":"Response unavailable for submission");
           responseButton.type="button";responseButton.disabled=!canEdit;
           if(canEdit)responseButton.addEventListener("click",()=>openGeneralSubmission(task,submission));
           actions.append(responseButton);
@@ -217,7 +223,7 @@ if(panel&&list&&status&&schoolHost){
         if(actions.children.length)article.append(actions);
         list.append(article);
       }
-      const targetId=decodeURIComponent((location.hash||"").replace(/^#/,""));
+      let targetId=(location.hash||"").replace(/^#/,"");try{targetId=decodeURIComponent(targetId);}catch{}
       if(targetId){
         const target=[...list.querySelectorAll("[data-task-id]")].find(item=>item.dataset.taskId===targetId);
         if(target){
@@ -265,6 +271,7 @@ if(panel&&list&&status&&schoolHost){
   }
   document.getElementById("v4GeneralSubmissionClose").addEventListener("click",closeGeneralSubmission);
   document.getElementById("v4GeneralSubmissionCancel").addEventListener("click",closeGeneralSubmission);
+  generalDialog.addEventListener("cancel",event=>{if(generalBusy)event.preventDefault();});
   generalForm.addEventListener("submit",event=>void (async()=>{
     event.preventDefault();
     if(generalBusy||!generalTask||!picker?.scope.current)return;
@@ -275,6 +282,7 @@ if(panel&&list&&status&&schoolHost){
     if(!confirm("Submit this frozen "+sourceLabel(source,generalTask).toLowerCase()+" for \""+generalTask.title+"\"? Changes require a teacher revision request after submission."))return;
     generalBusy=true;
     const submit=document.getElementById("v4GeneralSubmissionSubmit");
+    const editable=[...generalForm.querySelectorAll("input,textarea,button")].filter(control=>!control.disabled);editable.forEach(control=>control.disabled=true);
     submit.disabled=true;generalStatus.textContent="Freezing your assessment response…";
     try{
       const receipt=await scoped(picker.scope,generalSubmissionsApi,"submit",{taskId:generalTask.taskId,...details});
@@ -285,7 +293,7 @@ if(panel&&list&&status&&schoolHost){
       await render(picker.scope);
     }catch(error){
       generalStatus.textContent=error?.message||"Assessment response was not submitted.";
-    }finally{generalBusy=false;submit.disabled=false;}
+    }finally{generalBusy=false;editable.forEach(control=>control.disabled=false);submit.disabled=false;}
   })());
 
   const ghDialog=document.getElementById("v4GithubEvidenceDialog");
@@ -387,18 +395,19 @@ if(panel&&list&&status&&schoolHost){
   async function openGithubEvidence(task,current){
     githubTask=task;githubTaskStatus=current||null;
     githubCommits=[];githubSelected=new Set(current?.selectedCommitShas||[]);
-    githubCheckpoint=current?.checkpointSha||"";githubClaims=new Map();closeReclaim();
+    githubCheckpoint=current?.checkpointSha||"";githubClaims=new Map();historyRepository="";closeReclaim();
     const savedKey="adminerva:v4:github-repository:"+(auth.currentUser?.uid||"")+":"+
       (picker?.scope.current?.schoolId||"");
     let remembered="";try{remembered=sessionStorage.getItem(savedKey)||"";}catch{}
     ghRepository.value=current?.repository||remembered;
+    ghRepository.readOnly=Boolean(current?.submitted&&current.status!=="reopened");
     document.getElementById("v4GithubEvidenceMeta").textContent=
       task.title+" · due "+date(task.dueAt);
     ghStatus.textContent=current?.status==="reopened"?
       "Your teacher requested a revision. Load the repository, adjust the frozen commit selection, and resubmit before the extension deadline.":
       "Choose commits representing your work and a project checkpoint containing that work.";
     const editable=!current?.submitted||current?.status==="reopened";
-    ghSubmit.classList.toggle("hidden",!editable);ghSubmit.disabled=!editable;
+    ghSubmit.classList.toggle("hidden",!editable);ghSubmit.disabled=true;
     renderGithubCommits();ghDialog.showModal();
     if(current?.status==="submitted")await loadGithubClaims();
     if(ghRepository.value)await loadGithubHistory().catch(error=>{ghStatus.textContent=error.message;});
@@ -407,18 +416,23 @@ if(panel&&list&&status&&schoolHost){
   async function loadGithubHistory(){
     if(githubBusy)return;
     const repositoryValue=ghRepository.value.trim();
-    const parsed=parseGithubRepository(repositoryValue);
-    githubBusy=true;document.getElementById("v4GithubLoad").disabled=true;ghSubmit.disabled=true;
+    let parsed;try{parsed=parseGithubRepository(repositoryValue);}catch(error){ghStatus.textContent=error.message;return;}
+    const uid=auth.currentUser?.uid,taskId=githubTask?.taskId;
+    const priorRepository=historyRepository||githubTaskStatus?.repository||"";
+    githubBusy=true;ghRepository.disabled=true;document.getElementById("v4GithubLoad").disabled=true;ghSubmit.disabled=true;
     ghStatus.textContent="Loading pinned GitHub commit history…";
     try{
       const preferences=auth.currentUser?activateConnectionOwner(auth.currentUser.uid):{};
       const client=createGithubEvidenceClient({
-        token:githubSessionToken||preferences.githubToken||null,maxPages:5,retryCount:1
+        token:(githubTokenOwner===uid?githubSessionToken:"")||preferences.githubToken||null,maxPages:5,retryCount:1
       });
       const head=await client.getBranchHead(parsed.fullName);
-      const ref=githubTaskStatus?.checkpointSha||head.sha;
+      const sameRepository=!priorRepository||priorRepository.toLowerCase()===parsed.fullName.toLowerCase();
+      const ref=sameRepository&&githubTaskStatus?.checkpointSha||head.sha;
       const history=await client.listCommits({repository:parsed.fullName,ref});
-      githubCommits=history.commits.slice(0,500);
+      if(auth.currentUser?.uid!==uid||!ghDialog.open||githubTask?.taskId!==taskId)return;
+      if(!sameRepository){githubSelected.clear();githubCheckpoint="";}
+      githubCommits=history.commits.slice(0,500);historyRepository=parsed.fullName;
       const returned=new Set(githubCommits.map(item=>String(item.sha||"").toLowerCase()));
       for(const oldSha of githubSelected){
         if(!returned.has(oldSha))githubCommits.push({sha:oldSha,unavailable:true,commit:{message:"Previously frozen evidence commit"}});
@@ -439,7 +453,8 @@ if(panel&&list&&status&&schoolHost){
         ". For a private repository, reconnect the account-owned GitHub integration before retrying.";
       throw error;
     }finally{
-      githubBusy=false;document.getElementById("v4GithubLoad").disabled=false;ghSubmit.disabled=false;
+      githubBusy=false;ghRepository.disabled=false;document.getElementById("v4GithubLoad").disabled=false;
+      ghSubmit.disabled=!historyRepository||historyRepository.toLowerCase()!==ghRepository.value.trim().toLowerCase()||Boolean(githubTaskStatus?.submitted&&githubTaskStatus.status!=="reopened");
       renderGithubCommits();
     }
   }
@@ -482,22 +497,25 @@ if(panel&&list&&status&&schoolHost){
       if(auth.currentUser?.uid!==user.uid)throw new Error("Adminerva account changed during GitHub authorization.");
       const credential=GithubAuthProvider.credentialFromResult(result);
       if(!credential?.accessToken)throw new Error("GitHub did not return a usable session credential.");
-      githubSessionToken=credential.accessToken;
+      githubSessionToken=credential.accessToken;githubTokenOwner=user.uid;
       ghStatus.textContent="GitHub authorized for this page session only. The OAuth token was not written to school Firestore.";
-      if(ghRepository.value.trim())await loadGithubHistory();
+      if(ghRepository.value.trim()){githubBusy=false;await loadGithubHistory();}
     }catch(error){
       ghStatus.textContent=error?.code==="auth/credential-already-in-use"?
         "This GitHub identity is linked to another Adminerva sign-in. No school data changed.":
         error?.message||"GitHub authorization did not finish.";
     }finally{githubBusy=false;authorizeButton.disabled=false;renderGithubCommits();}
   })());
-  document.getElementById("v4GithubEvidenceClose").addEventListener("click",()=>ghDialog.close());
+  document.getElementById("v4GithubEvidenceClose").addEventListener("click",()=>{if(!githubBusy)ghDialog.close();});
+  ghRepository.addEventListener("input",()=>{ghSubmit.disabled=true;ghStatus.textContent="Load this repository before selecting or submitting evidence.";});
   ghDialog.addEventListener("cancel",event=>{if(githubBusy)event.preventDefault();});
   ghSubmit.addEventListener("click",()=>void (async()=>{
     if(githubBusy||!githubTask)return;
     let parsed;
     try{parsed=parseGithubRepository(ghRepository.value);}
     catch(error){ghStatus.textContent=error.message;return;}
+    if(!historyRepository||historyRepository.toLowerCase()!==parsed.fullName.toLowerCase()){ghStatus.textContent="Load this repository before submitting evidence.";return;}
+    if(githubTaskStatus?.submitted&&githubTaskStatus.status!=="reopened")return;
     if(!githubSelected.size){ghStatus.textContent="Select at least one evidence commit.";return;}
     if(!/^[a-f0-9]{40}$/.test(githubCheckpoint)){
       ghStatus.textContent="Choose a full Git commit as the project checkpoint.";return;
@@ -514,10 +532,10 @@ if(panel&&list&&status&&schoolHost){
       ghStatus.textContent=receipt.alreadyExisted?
         "This exact evidence version was already submitted; no duplicate was created.":
         "GitHub evidence version "+receipt.version+" submitted for teacher verification.";
-      setTimeout(()=>{if(ghDialog.open)ghDialog.close();},900);
+      ghDialog.close();githubTask=null;githubTaskStatus=null;historyRepository="";
       await render(picker.scope);
     }catch(error){ghStatus.textContent=error?.message||"GitHub evidence was not submitted.";}
-    finally{githubBusy=false;ghSubmit.disabled=false;document.getElementById("v4GithubLoad").disabled=false;}
+    finally{githubBusy=false;ghSubmit.disabled=!historyRepository;document.getElementById("v4GithubLoad").disabled=false;}
   })());
 
   await auth.authStateReady();
