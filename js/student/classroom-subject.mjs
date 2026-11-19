@@ -17,7 +17,7 @@ const requestedOfferingId=params.get("offeringId")||"";
 const requestedSubjectId=params.get("subjectId")||"";
 const requestedSubjectName=params.get("subject")||"";
 const forceLegacy=params.get("legacy")==="1";
-let picker=null,profile=null,current=null,busy=false,epoch=0,legacyMode=false;
+let picker=null,profile=null,current=null,busy=false,epoch=0,legacyMode=false,streamData=null,streamLimit=20;
 
 function make(tag,cls,text){
   const node=document.createElement(tag);if(cls)node.className=cls;
@@ -178,24 +178,35 @@ function renderUpcoming(tasks,statuses,grades,availability={}){
   }
 }
 function renderStream(posts,tasks,statuses,grades){
-  const pinnedHost=el("subjectPinnedPosts"),host=el("subjectStream");pinnedHost.replaceChildren();host.replaceChildren();
-  for(const post of posts.filter(item=>item.pinned))pinnedHost.append(postCard(post,true));
+  streamData={posts,tasks,statuses,grades};streamLimit=20;paintStream();
+}
+function paintStream(){
+  const pinnedHost=el("subjectPinnedPosts"),host=el("subjectStream"),more=el("subjectStreamMore");pinnedHost.replaceChildren();host.replaceChildren();more.hidden=true;
+  if(!streamData)return;
+  const {posts,tasks,statuses,grades}=streamData,filter=el("subjectStreamFilter").value,term=el("subjectStreamSearch").value.trim().toLowerCase();
+  const matches=values=>!term||values.some(value=>String(value||"").toLowerCase().includes(term));
+  const visiblePosts=posts.filter(post=>(filter==="all"||filter===post.kind)&&matches([post.title,post.body,post.authorName]));
+  for(const post of visiblePosts.filter(item=>item.pinned))pinnedHost.append(postCard(post,true));
   const items=[];
-  for(const post of posts.filter(item=>!item.pinned))items.push({time:post.createdAt||0,type:"post",post});
-  for(const task of tasks)items.push({time:task.postedAt||task.opensAt||0,type:"task",task});
-  for(const grade of grades.values())items.push({time:grade.publishedAt||0,type:"grade",grade,task:tasks.find(task=>task.taskId===grade.taskId)});
+  for(const post of visiblePosts.filter(item=>!item.pinned))items.push({time:post.createdAt||0,type:"post",post});
+  if(filter==="all"||filter==="task")for(const task of tasks)if(matches([task.title,task.description,task.instructions]))items.push({time:task.postedAt||task.opensAt||0,type:"task",task});
+  if(filter==="all"||filter==="grade")for(const grade of grades.values()){const task=tasks.find(task=>task.taskId===grade.taskId);if(matches([task?.title,grade.feedback]))items.push({time:grade.publishedAt||0,type:"grade",grade,task});}
   items.sort((a,b)=>b.time-a.time);
+  el("subjectStreamCount").textContent=current?(Math.min(items.length,streamLimit)+pinnedHost.children.length)+" of "+(items.length+pinnedHost.children.length)+" matching items shown.":"";
   if(!items.length&&!pinnedHost.children.length){
-    host.append(make("div","rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center",
-      "Nothing has been posted in this classroom yet. New announcements, assignments and results will appear here."));
+    host.append(make("div","rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center",!current?"Classroom activity is not available.":filter!=="all"||term?"No activity matches these filters.":"Nothing has been posted in this classroom yet. New announcements, assignments and results will appear here."));
     return;
   }
-  for(const item of items.slice(0,40)){
+  for(const item of items.slice(0,streamLimit)){
     if(item.type==="post")host.append(postCard(item.post));
     else if(item.type==="task")host.append(assignmentCard(item.task,statuses.get(item.task.taskId),grades.get(item.task.taskId)));
     else host.append(gradeCard(item.grade,item.task));
   }
+  more.hidden=items.length<=streamLimit;
 }
+el("subjectStreamSearch").addEventListener("input",()=>{streamLimit=20;paintStream();});
+el("subjectStreamFilter").addEventListener("change",()=>{streamLimit=20;paintStream();});
+el("subjectStreamMore").addEventListener("click",()=>{streamLimit+=20;paintStream();});
 async function loadStatuses(tasks,grades=new Map()){
   const map=new Map(),queue=tasks.filter(task=>!grades.has(task.taskId)&&task.windowStatus!=="upcoming");
   let next=0;

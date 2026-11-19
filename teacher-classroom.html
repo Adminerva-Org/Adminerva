@@ -34,7 +34,7 @@
     <section class="rounded-2xl border border-cyan-200 bg-white shadow-sm overflow-hidden lg:sticky lg:top-20">
       <div class="bg-cyan-50 border-b border-cyan-200 p-4 sm:p-5">
         <p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Post to class</p>
-        <h2 class="text-xl font-extrabold mt-1">Share an update</h2>
+        <h2 id="teacherClassroomComposerTitle" class="text-xl font-extrabold mt-1">Share an update</h2>
         <p class="text-sm text-cyan-950 mt-1">Students will see this in the selected subject stream and receive an Adminerva notification.</p>
       </div>
       <form id="teacherClassroomForm" class="p-4 sm:p-5 space-y-4">
@@ -59,14 +59,17 @@
           <span><strong class="block">Pin this post</strong><span class="text-slate-600">Pinned posts stay above the normal classroom activity feed.</span></span>
         </label>
         <button id="teacherClassroomPublish" type="submit" class="w-full rounded-lg bg-cyan-800 text-white px-4 py-3 font-extrabold hover:bg-cyan-900">Publish to classroom</button>
+        <button id="teacherClassroomCancelEdit" type="button" hidden class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">Cancel editing</button>
+        <p id="teacherClassroomDraftStatus" class="text-xs text-slate-600" role="status"></p>
       </form>
     </section>
 
     <section class="space-y-4">
       <div class="flex items-end justify-between gap-3">
         <div><p class="text-xs uppercase tracking-wider font-bold text-slate-500">Teacher posts</p><h2 class="text-2xl font-extrabold mt-1">Recent stream posts</h2></div>
-        <a href="teacher-assessment-library.html" class="text-sm font-bold text-indigo-700 underline">Manage assignments →</a>
+        <a href="assessment-studio.html" class="text-sm font-bold text-indigo-700 underline">Manage assignments →</a>
       </div>
+      <div class="rounded-xl border border-slate-200 bg-white p-3 flex flex-wrap items-end gap-3"><label class="flex-1 min-w-[160px] text-xs font-bold">Search posts<input id="teacherClassroomSearch" type="search" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Title, message or teacher"></label><label class="text-xs font-bold">Type<select id="teacherClassroomFilter" class="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">All posts</option><option value="announcement">Announcements</option><option value="material">Materials</option><option value="post">Class updates</option></select></label><p id="teacherClassroomPostCount" class="w-full text-xs text-slate-500" role="status"></p><p class="w-full text-xs text-slate-500">Only the author may edit, pin or remove their posts. School permissions are checked when saving.</p></div>
       <div id="teacherClassroomPosts" class="space-y-3"></div>
     </section>
   </div>
@@ -75,6 +78,6 @@
 <script src="js/core/adminerva-loader.js?v=8449514f9dc3"></script>
 <script src="js/core/adminerva-nav.js?v=8449514f9dc3"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=8449514f9dc3"></script>
-<script type="module" src="js/assessment/classroom-stream.mjs?v=1.0.0"></script>
+<script type="module" src="js/assessment/classroom-stream.mjs?v=a80e713d1f2e"></script>
 </body>
 </html>
