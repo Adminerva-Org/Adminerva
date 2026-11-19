@@ -277,6 +277,27 @@
     </section>
     <section id="pa-classes" role="tabpanel" aria-labelledby="pa-tab-classes" tabindex="0" hidden>
       <p id="pa-classes-help" class="pa-muted">School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.</p>
+      <section class="pa-card" id="pa-workload" style="margin:1rem 0">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 style="font-weight:800;font-size:1.15rem">Faculty workload &amp; staffing</h2><p class="pa-muted">Review active teaching assignments and classes without a verified active teacher. Counts are course offerings, not teaching hours.</p></div>
+          <button type="button" class="pa-action" id="pa-workload-refresh">Refresh workload</button>
+        </div>
+        <p id="pa-workload-status" class="pa-muted mt-2" role="status" aria-live="polite">Waiting for verified school access…</p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 my-3" aria-label="Staffing coverage">
+          <div class="rounded-lg border p-3"><small class="pa-muted">Active teachers</small><strong class="pa-count" id="pa-workload-teachers">—</strong></div>
+          <div class="rounded-lg border p-3"><small class="pa-muted">Class offerings</small><strong class="pa-count" id="pa-workload-classes">—</strong></div>
+          <div class="rounded-lg border p-3"><small class="pa-muted">Unstaffed</small><strong class="pa-count" id="pa-workload-unstaffed">—</strong></div>
+          <div class="rounded-lg border p-3"><small class="pa-muted">Teachers without load</small><strong class="pa-count" id="pa-workload-idle">—</strong></div>
+        </div>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-3">
+          <label>Academic year<select id="pa-workload-year" class="pa-field"><option value="">All years</option></select></label>
+          <label>Academic period<select id="pa-workload-term" class="pa-field"><option value="">All periods</option></select></label>
+          <label>View<select id="pa-workload-mode" class="pa-field"><option value="teachers">By teacher</option><option value="unstaffed">Unstaffed classes</option><option value="classes">All class offerings</option><option value="idle">Teachers without load</option></select></label>
+          <label>Search<input type="search" id="pa-workload-search" class="pa-field" placeholder="Teacher, section or subject"></label>
+        </div>
+        <div id="pa-workload-list" role="list" aria-live="polite"></div>
+        <button class="pa-action" id="pa-workload-more" hidden type="button" style="margin-top:.75rem;background:#475569">Show more</button>
+      </section>
       <div class="pa-academic-grid">
         <section class="pa-card">
           <h2 style="font-weight:750;font-size:1.1rem">Academic structure</h2>
@@ -375,6 +396,6 @@
 <script defer src="js/core/adminerva-nav.js?v=41f59a42cc91"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=41f59a42cc91"></script>
 <script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=1.0.4"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=41f59a42cc91"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=20261119-workload1"></script>
 </body>
 </html>
