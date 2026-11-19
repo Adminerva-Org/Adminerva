@@ -95,6 +95,24 @@ function message(host,value){host.replaceChildren();const p=document.createEleme
 function perform(api,action,lease){
   return api({schoolId:lease.schoolId,action}).then(response=>{picker.scope.assertLease(lease);return response.data;});
 }
+function activityLabel(action){
+  return String(action||"directory change").replace(/^student_/,"student ").replace(/^teacher_/,"teacher ").replaceAll("_"," ");
+}
+function renderActivity(){
+  const host=get("adminActivityList"),items=model.overview?.recentActivity;
+  if(!host)return;
+  if(!Array.isArray(items)){
+    message(host,"Recent administrative activity is unavailable. Refresh to retry.");return;
+  }
+  if(!items.length){
+    message(host,"No directory administration activity has been recorded yet.");return;
+  }
+  host.innerHTML=items.map(item=>{
+    const when=item.createdAt?new Date(item.createdAt).toLocaleString():"Time unavailable";
+    const context=[item.reason,item.personId?"person "+item.personId:"",item.offeringId?"class "+item.offeringId:""].filter(Boolean).join(" · ");
+    return '<article class="p-4"><div class="flex flex-wrap items-center justify-between gap-2"><strong class="text-sm capitalize">'+escapeHTML(activityLabel(item.action))+'</strong><span class="text-xs text-slate-500">'+escapeHTML(when)+'</span></div><p class="text-xs text-slate-600 mt-1">'+escapeHTML((item.actorUid?"Actor "+item.actorUid+(context?" · ":""):"")+context)+'</p></article>';
+  }).join("");
+}
 function issueHref(item){
   if(item.source==="record")return item.targetTab==="classes"?"people-access.html#classes":"school-class-records.html";
   const identityIssue=Boolean(item.personId)&&["access","invites","people"].includes(item.targetTab);
@@ -149,12 +167,13 @@ function reset(){
   set("adminIntegrityMeta","Not checked");set("adminClassRecordMeta","Not checked");set("adminReportMeta","Not checked");
   for(const id of ["adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
   set("adminAttentionCoverage","");set("adminRecordCoverage","");get("adminAttentionMore").hidden=true;get("adminRecordMore").hidden=true;
-  message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");renderRecommendation();
+  message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");message(get("adminActivityList"),"Waiting for verified school activity…");renderRecommendation();
 }
 function renderSource(name,data){
   if(name==="directory"){
     model.overview=data;
     for(const [id,key] of [["adminPeopleCount","people"],["adminEnrollmentCount","enrollments"],["adminAssignmentCount","staff_assignments"],["adminInvitationCount","invitations"]])set(id,count(data?.counts?.[key]));
+    renderActivity();
     setWorkflow("adminWorkflowPeople",data?.counts?.people,"record");setWorkflow("adminWorkflowTeaching",data?.counts?.staff_assignments,"assignment");setWorkflow("adminWorkflowEnrollment",data?.counts?.enrollments,"enrollment");
   }else if(name==="relationships"){
     model.reconciliation=data;
