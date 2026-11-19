@@ -414,6 +414,7 @@ function updateDirtyState(){
   refreshSummaries();
 }
 function moveColumn(columnId,direction){
+  if(busy)return;
   if(dirtyColumns.size){say("Save manual score changes before reordering columns.");return;}
   const active=activeColumns(),index=active.findIndex(column=>column.columnId===columnId),target=index+direction;
   if(index<0||target<0||target>=active.length)return;
@@ -425,12 +426,14 @@ function moveColumn(columnId,direction){
   void saveLayout(next,settings,"Column order saved.").catch(error=>say(error.message));
 }
 function archiveColumn(column){
+  if(busy)return;
   if(dirtyColumns.size){say("Save manual score changes before archiving a column.");return;}
   if(!confirm("Archive "+column.label+"? Its saved scores and assessment link will be retained, but it will leave current calculations and exports."))return;
   const next=columns.map(item=>item.columnId===column.columnId?{...item,archived:true}:item);
   void saveLayout(next,settings,column.label+" archived.").then(renderArchivedList).catch(error=>say(error.message));
 }
 function restoreColumn(column){
+  if(busy)return;
   if(dirtyColumns.size){el("cr-archived-status").textContent="Save manual score changes before restoring a column.";return;}
   const next=columns.map(item=>item.columnId===column.columnId?{...item,archived:false}:item);
   el("cr-archived-status").textContent="Restoring "+column.label+"…";
@@ -742,6 +745,7 @@ function syncColumnFields(){
   if(kind==="assessment")syncAssessmentSourceNote();
 }
 function closeColumnDialog(){
+  if(busy)return;
   if(dialog.open)dialog.close();
   editingColumnId=null;
   el("cr-column-status").textContent="";
@@ -934,6 +938,8 @@ function maybeOpenAssessmentDeepLink(){
   el("cr-column-status").textContent="Assessment preselected. Choose the Class Record label/category, then add the column.";
 }
 async function saveLayout(nextColumns,nextSettings=settings,success="Class Record layout saved."){
+  if(busy||!currentOfferingId)throw Error("Finish the current Class Record operation first.");
+  if(dirtyColumns.size)throw Error("Save manual score changes before changing the Class Record layout.");
   setBusy(true,"Saving Class Record…");
   try{
     const result=await scoped(classRecordApi,"save_layout",{
@@ -961,7 +967,7 @@ async function saveManualScores(){
   try{
     for(const {columnId,cells} of batches){
       await scoped(classRecordApi,"save_manual_scores",{offeringId:currentOfferingId,columnId,values:cells.map(({personId,score})=>({personId,score}))});
-      for(const cell of cells)cell.input.dataset.original=cell.raw;
+      for(const cell of cells){cell.input.dataset.original=cell.raw;manualScores.set(key(columnId,cell.personId),cell.score);}
       saved++;dirtyColumns.delete(columnId);
     }
     const refreshed=await loadWorkspace();
@@ -1056,7 +1062,7 @@ function updateWeightTotal(){
 function openSetup(){
   renderWeightSetup();el("cr-setup-status").textContent="";setupDialog.showModal();
 }
-function closeSetup(){if(setupDialog.open)setupDialog.close();el("cr-setup-status").textContent="";}
+function closeSetup(){if(busy)return;if(setupDialog.open)setupDialog.close();el("cr-setup-status").textContent="";}
 function equalWeights(){
   const inputs=[...el("cr-weight-list").querySelectorAll("[data-weight-category]")];
   if(!inputs.length)return;
@@ -1380,6 +1386,7 @@ function renderFinalizationHistory(revisions){
   }
 }
 function closeFinalize(){
+  if(busy)return;
   if(finalizeDialog.open)finalizeDialog.close();
   finalizationPreview=null;
   el("cr-finalize-status").textContent="";
@@ -1711,6 +1718,7 @@ async function loadOfferings(){
 }
 
 offeringSelect.addEventListener("change",async()=>{
+  if(busy){offeringSelect.value=currentOfferingId;return;}
   const next=offeringSelect.value;
   if(dirtyColumns.size&&!confirm("Discard unsaved manual score changes and open another class?")){
     offeringSelect.value=currentOfferingId;return;
@@ -1740,6 +1748,7 @@ archivedButton.addEventListener("click",openArchived);
 visibilityButton.addEventListener("click",openVisibility);
 finalizeButton.addEventListener("click",()=>void openFinalize());
 refreshButton.addEventListener("click",()=>{
+  if(busy)return;
   if(dirtyColumns.size&&!confirm("Discard unsaved manual score changes and refresh this class?"))return;
   void loadWorkspace();
 });
@@ -1784,8 +1793,9 @@ releaseFinalButton.addEventListener("click",()=>void releaseFinalGrade());
 withdrawFinalButton.addEventListener("click",()=>void withdrawFinalGrade());
 importForm.addEventListener("submit",event=>{event.preventDefault();stageImportedScores();});
 
+for(const modal of [dialog,setupDialog,finalizeDialog])modal.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
 columnForm.addEventListener("submit",event=>{
-  event.preventDefault();
+  event.preventDefault();if(busy)return;
   if(!columnForm.reportValidity())return;
   const label=columnForm.elements.label.value.trim();
   const category=columnForm.elements.category.value.trim();
@@ -1820,7 +1830,7 @@ columnForm.addEventListener("submit",event=>{
 });
 
 setupForm.addEventListener("submit",event=>{
-  event.preventDefault();
+  event.preventDefault();if(busy)return;
   const weightInputs=[...el("cr-weight-list").querySelectorAll("[data-weight-category]")];
   const categoryWeights=weightInputs.map(input=>({
     category:input.dataset.weightCategory,weight:Number(input.value||0)
@@ -1853,6 +1863,7 @@ picker=createTenantSchoolPicker({
   host:el("cr-school-switcher"),
   status,
   onBeforeChange:async()=>{
+    if(busy)throw new Error("Finish the current Class Record operation before switching schools.");
     if(dirtyColumns.size)throw new Error("Save or discard manual score changes before switching schools.");
     currentOfferingId="";currentOffering=null;offerings=[];periodRecords=[];roster=[];assessments=[];collaborators=[];columns=[];gradingSchemes=[];
     finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
