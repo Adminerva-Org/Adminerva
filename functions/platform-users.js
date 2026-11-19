@@ -58,6 +58,22 @@ function createPlatformUserService({db,auth}){
       };
     }
 
+    if(action==="lookup"){
+      const query=String(input.query||"").trim();
+      if(!query||query.length>254)deny("invalid-argument","Enter an exact verified email or account ID.");
+      let user;
+      try{
+        user=query.includes("@")?await auth.getUserByEmail(query.toLowerCase()):await auth.getUser(checkedUid(query));
+      }catch(error){
+        if(error?.code==="auth/user-not-found")deny("not-found","No account matches that exact email or account ID.");
+        console.warn("Platform user exact lookup failed",{code:error?.code||"unknown"});
+        deny("unavailable","The account lookup could not finish. Retry the exact search.");
+      }
+      const platform=await db.doc("platform_admins/"+user.uid).get();
+      return {account:accountSummary(user,
+        platform.exists&&platform.data()?.status==="active"&&platform.data()?.role==="platform_admin")};
+    }
+
     if(action==="get"){
       const uid=checkedUid(input.uid);
       let user;
