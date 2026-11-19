@@ -18,7 +18,7 @@ const picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
-    lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;list.replaceChildren();workspace.hidden=true;
+    lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
     form.reset();togglePersonalizationFields();
@@ -65,21 +65,25 @@ function parseRubric(text){
 function localDateInput(date){
   return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
 }
+async function refreshAfterWrite(message){
+  try{await refresh();say(message);}
+  catch{say(message+" The list could not refresh. Use Refresh before making another change.");}
+}
 async function write(action,details,success) {
   if(pendingWrite)throw new Error("An assessment operation is still processing.");
   pendingWrite=true;say("Saving within your verified school…");
-  for(const button of document.querySelectorAll("button"))button.disabled=true;
+  const controls=[...workspace.querySelectorAll("button")].filter(button=>!button.disabled);
+  controls.forEach(button=>button.disabled=true);
   try{
     const result=await perform(action,details);
-    say(success);
-    await refresh();
+    await refreshAfterWrite(success);
     return result;
   }catch(error){
     say(error?.message||"The change was not saved. Check your school access and retry.");
     throw error;
   }finally{
     pendingWrite=false;
-    for(const button of document.querySelectorAll("button"))button.disabled=false;
+    controls.forEach(button=>button.disabled=false);
   }
 }
 function sourceLabel(source){
@@ -145,15 +149,17 @@ function renderPersonalizationState(){
 }
 async function loadPersonalization(item){
   personalizing=item;personalizationState=null;
+  for(const id of ["tl-personalization-copy","tl-personalization-import","tl-personalization-activate"])el(id).disabled=true;
   el("tl-personalization-title").textContent=item.title+" · private to your teacher account";
   el("tl-personalization-status").textContent="Loading private pool status…";
   el("tl-personalization-response").value="";
   personalizationDialog.showModal();
   try{
-    personalizationState=await perform("personalization_status",{resourceId:item.id});
-    if(personalizing?.id===item.id)renderPersonalizationState();
+    const state=await perform("personalization_status",{resourceId:item.id});
+    if(personalizing!==item||!personalizationDialog.open)return;
+    personalizationState=state;renderPersonalizationState();
   }catch(error){
-    el("tl-personalization-status").textContent=error?.message||"Personalization pool unavailable.";
+    if(personalizing===item&&personalizationDialog.open)el("tl-personalization-status").textContent=error?.message||"Personalization pool unavailable.";
   }
 }
 function openLifecycle(task,action){
@@ -476,8 +482,7 @@ async function setPublication(task,publish){
     const result=await performScoped(scopedAssessmentApi,action,{
       taskId:task.taskId,expectedRevision:task.revision||1
     });
-    await refresh();
-    say(result.alreadyCurrent?
+    await refreshAfterWrite(result.alreadyCurrent?
       "Assessment publication was already in the requested state.":
       publish?"Assessment published. Enrolled students can now see it.":
         "Assessment unpublished. Existing evidence and grades were preserved.");
@@ -548,8 +553,7 @@ el("tl-deployment-settings-form").addEventListener("submit",event=>{
       say("Saving audited deployment settings…");
       await performScoped(scopedAssessmentApi,"update_settings",details);
       el("tl-deployment-settings-dialog").close();deploymentSettingsTask=null;
-      await refresh();
-      say(task.title+" deployment settings updated.");
+      await refreshAfterWrite(task.title+" deployment settings updated.");
     }catch(error){say(error?.message||"Deployment settings could not be saved.");}
     finally{pendingWrite=false;[...form.elements].forEach(control=>control.disabled=false);}
   })();
@@ -580,8 +584,7 @@ el("tl-lifecycle-form").addEventListener("submit",event=>{
       say("Saving audited assessment lifecycle change…");
       const result=await performScoped(scopedAssessmentApi,action,details);
       el("tl-lifecycle-dialog").close();lifecycleTask=null;lifecycleAction=null;
-      await refresh();
-      say(task.title+" is now "+result.lifecycle+".");
+      await refreshAfterWrite(task.title+" is now "+result.lifecycle+".");
     }catch(error){say(error?.message||"Assessment lifecycle change could not be saved.");}
     finally{pendingWrite=false;[...form.elements].forEach(control=>control.disabled=false);}
   })();
@@ -614,17 +617,19 @@ el("tl-deploy-form").addEventListener("submit",event=>{
         opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
         allowLateSubmissions:fields.get("allowLateSubmissions")==="on",requestKey:key
       });
-      say(task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
-        "Assessment prepared privately for this class. Publish it when you are ready for students to see it.");
+      const message=task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
+        "Assessment prepared privately for this class. Publish it when you are ready for students to see it.";
       el("tl-deploy-dialog").close();deploying=null;deployRequestKey=null;
-      await refresh();
+      await refreshAfterWrite(message);
     }catch(error){say(error.message||"Deployment could not be completed. Retry the same request safely.");}
     finally{pendingWrite=false;buttons.forEach(button=>button.disabled=false);}
   })();
 });
 form.elements.personalizationMode.addEventListener("change",togglePersonalizationFields);
 form.elements.defaultSubmissionSource.addEventListener("change",toggleStudioProjectProfile);
-el("tl-personalization-close").addEventListener("click",()=>{personalizing=null;personalizationState=null;personalizationDialog.close();});
+el("tl-personalization-close").addEventListener("click",()=>{if(!pendingWrite)personalizationDialog.close();});
+personalizationDialog.addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
+personalizationDialog.addEventListener("close",()=>{personalizing=null;personalizationState=null;});
 el("tl-personalization-copy").addEventListener("click",()=>void (async()=>{
   if(!personalizing||!personalizationState)return;
   const count=Number(personalizationState.count||0),target=Number(personalizationState.variantTarget||0),
@@ -653,32 +658,44 @@ el("tl-personalization-import").addEventListener("click",()=>void (async()=>{
   const missing=Math.max(0,Number(personalizationState.variantTarget||0)-Number(personalizationState.count||0)),
     expectedCount=Math.min(15,missing);
   if(!expectedCount){el("tl-personalization-status").textContent="The pool already meets its target.";return;}
+  const item=personalizing;
+  let saved=false;
+  pendingWrite=true;el("tl-personalization-import").disabled=true;el("tl-personalization-close").disabled=true;
   try{
     const variants=await parseExternalPersonalizationResponse(el("tl-personalization-response").value,{
       expectedCount,hashPrompt:sha256Text,existingScenarios:personalizationState.scenarioRegistry||[]
     });
-    pendingWrite=true;el("tl-personalization-import").disabled=true;
+    if(personalizing!==item)throw Error("The assessment selection changed.");
     const result=await perform("personalization_import",{
-      resourceId:personalizing.id,expectedRevision:personalizing.contentRevision,variants
+      resourceId:item.id,expectedRevision:item.contentRevision,variants
     });
-    personalizationState=await perform("personalization_status",{resourceId:personalizing.id});
+    saved=true;
+    personalizationState=await perform("personalization_status",{resourceId:item.id});
     el("tl-personalization-response").value="";renderPersonalizationState();
     say("Imported "+variants.length+" private personalized variants. "+result.count+" saved for this blueprint revision.");
   }catch(error){
-    el("tl-personalization-status").textContent="Import failed: "+(error?.message||"unknown error");
-  }finally{pendingWrite=false;renderPersonalizationState();}
+    if(saved){personalizationState=null;el("tl-personalization-response").value="";for(const id of ["tl-personalization-copy","tl-personalization-import","tl-personalization-activate"])el(id).disabled=true;}
+    else renderPersonalizationState();
+    el("tl-personalization-status").textContent=saved?"Variants saved. Close and reopen the pool to refresh its status.":"Import failed: "+(error?.message||"unknown error");
+  }finally{pendingWrite=false;el("tl-personalization-close").disabled=false;}
 })());
 el("tl-personalization-activate").addEventListener("click",()=>void (async()=>{
   if(!personalizing||!personalizationState||pendingWrite)return;
+  let saved=false;
   try{
-    pendingWrite=true;el("tl-personalization-activate").disabled=true;
+    pendingWrite=true;el("tl-personalization-activate").disabled=true;el("tl-personalization-close").disabled=true;
     await perform("personalization_activate",{
       resourceId:personalizing.id,expectedRevision:personalizing.contentRevision
     });
+    saved=true;
     personalizationState=await perform("personalization_status",{resourceId:personalizing.id});
     renderPersonalizationState();say("Private personalization pool activated. This blueprint can now be deployed to Adminerva Studio.");
-  }catch(error){el("tl-personalization-status").textContent="Activation failed: "+(error?.message||"unknown error");}
-  finally{pendingWrite=false;renderPersonalizationState();}
+  }catch(error){
+    if(saved){personalizationState=null;for(const id of ["tl-personalization-copy","tl-personalization-import","tl-personalization-activate"])el(id).disabled=true;}
+    else renderPersonalizationState();
+    el("tl-personalization-status").textContent=saved?"Pool activated. Close and reopen to refresh its status.":"Activation failed: "+(error?.message||"unknown error");
+  }
+  finally{pendingWrite=false;el("tl-personalization-close").disabled=false;}
 })());
 el("tl-preview-close").addEventListener("click",()=>previewDialog.close());
 try{
