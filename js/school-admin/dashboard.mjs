@@ -9,7 +9,7 @@ const classRecordApi=httpsCallable(functions,"schoolClassRecordAdmin");
 const supportApi=httpsCallable(functions,"schoolSupport");
 const status=get("adminOverviewStatus"),attentionList=get("adminAttentionList"),recordList=get("adminClassRecordList");
 const refresh=get("adminRefresh"),attentionFilter=get("adminAttentionFilter"),recordFilter=get("adminRecordFilter"),recordSearch=get("adminRecordSearch");
-let picker=null,loadGeneration=0,model={},attentionLimit=10,recordLimit=20;
+let picker=null,loadGeneration=0,model={},attentionLimit=10,recordLimit=20,enrollmentHref="people-access.html#classes";
 const priorities={integrity:0,attention:1,review:2};
 const tabs=new Set(["overview","people","invites","classes","access","import"]);
 function escapeHTML(value){return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));}
@@ -24,6 +24,7 @@ function setWorkflow(id,value,noun){
 function applyEnrollmentRoute(scope){
   const standard=scope.current?.schoolId==="manila-cathedral-school"&&scope.current?.compatibilityMode==="v4_only";
   const href=standard?"school-enrollment.html":"people-access.html#classes";
+  enrollmentHref=href;
   const workflow=get("adminWorkflowEnrollmentLink"),shortcut=get("adminEnrollmentShortcut");
   if(workflow){workflow.href=href;workflow.textContent=standard?"Open Enrollment & Registration →":"Manage enrollment relationships →";}
   if(shortcut)shortcut.href=href;
@@ -32,6 +33,63 @@ function applyEnrollmentRoute(scope){
   if(get("adminWorkflowEnrollmentHelp"))get("adminWorkflowEnrollmentHelp").textContent=standard
     ?"Register students, confirm official placement and create subject enrollments together."
     :"Manage reviewed student-to-offering relationships for this school's current enrollment model.";
+}
+function renderRecommendation({final=false}={}){
+  const title=get("adminNextActionTitle"),detail=get("adminNextActionDetail"),link=get("adminNextActionLink"),panel=get("adminNextAction");
+  if(!title||!detail||!link||!panel)return;
+  const sources=[model.overview,model.reconciliation,model.records,model.support],complete=sources.every(value=>value!==undefined);
+  if(!final&&!complete){
+    title.textContent="Checking school operations…";
+    detail.textContent="Adminerva is comparing directory, staffing, Class Record and support signals.";
+    link.hidden=true;panel.className="av-panel p-4 sm:p-5 border-l-4 border-l-blue-600";return;
+  }
+  let action=null;
+  const critical=Number(model.support?.counts?.critical)||0;
+  const open=Number(model.support?.counts?.open)||0;
+  const loadedIssues=issues();
+  const integrity=loadedIssues.find(item=>item.severity==="integrity");
+  const attention=loadedIssues.find(item=>item.severity==="attention");
+  const assignments=Number(model.overview?.counts?.staff_assignments);
+  const enrollments=Number(model.overview?.counts?.enrollments);
+  const people=Number(model.overview?.counts?.people);
+  if(critical>0)action={
+    title:critical+" critical support report"+(critical===1?"":"s")+" need review",
+    detail:"Critical support reports take priority over routine administration because they may be blocking normal school use.",
+    href:"issues.html",label:"Open support queue",tone:"rose"
+  };
+  else if(integrity)action={
+    title:"Resolve an integrity issue first",
+    detail:(integrity.label?integrity.label+" · ":"")+(integrity.detail||"A school relationship is inconsistent and may block access."),
+    href:issueHref(integrity),label:"Review integrity issue",tone:"rose"
+  };
+  else if(attention)action={
+    title:"Review the next school relationship issue",
+    detail:(attention.label?attention.label+" · ":"")+(attention.detail||"A school relationship needs administrator attention."),
+    href:issueHref(attention),label:"Review issue",tone:"amber"
+  };
+  else if(Number.isFinite(assignments)&&assignments===0&&Number.isFinite(enrollments)&&enrollments>0)action={
+    title:"Assign teachers to active classes",
+    detail:"Student enrollment exists, but no active teaching assignments are loaded. Assign verified teachers before classroom and review workflows depend on these classes.",
+    href:"people-access.html#classes",label:"Assign teaching load",tone:"amber"
+  };
+  else if(Number.isFinite(enrollments)&&enrollments===0&&Number.isFinite(people)&&people>0)action={
+    title:"Complete student enrollment",
+    detail:"People records exist but no enrollment relationships are loaded. Use the enrollment workflow available to this school.",
+    href:enrollmentHref,label:"Open enrollment",tone:"blue"
+  };
+  else if(open>0)action={
+    title:open+" open support report"+(open===1?"":"s")+" remain",
+    detail:"No higher-priority integrity blocker is loaded. Review the remaining school support queue.",
+    href:"issues.html",label:"Review reports",tone:"blue"
+  };
+  else action={
+    title:"No blocking administrator issue found",
+    detail:complete?"The completed dashboard checks did not find a blocking directory, staffing, Class Record or support issue. Continue routine academic-policy and operations review.":"Available checks did not confirm a blocker; some sources are unavailable, so refresh before treating this as a full health result.",
+    href:"school-grading-schemes.html",label:"Review grading policies",tone:complete?"emerald":"amber"
+  };
+  title.textContent=action.title;detail.textContent=action.detail;link.href=action.href;link.textContent=action.label+" →";link.hidden=false;
+  const border=action.tone==="rose"?"border-l-rose-600":action.tone==="amber"?"border-l-amber-500":action.tone==="emerald"?"border-l-emerald-600":"border-l-blue-600";
+  panel.className="av-panel p-4 sm:p-5 border-l-4 "+border;
 }
 function message(host,value){host.replaceChildren();const p=document.createElement("p");p.className="p-5 text-sm text-slate-600";p.textContent=value;host.append(p);}
 function perform(api,action,lease){
@@ -87,7 +145,7 @@ function reset(){
   set("adminIntegrityMeta","Not checked");set("adminClassRecordMeta","Not checked");set("adminReportMeta","Not checked");
   for(const id of ["adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
   set("adminAttentionCoverage","");set("adminRecordCoverage","");get("adminAttentionMore").hidden=true;get("adminRecordMore").hidden=true;
-  message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");
+  message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");renderRecommendation();
 }
 function renderSource(name,data){
   if(name==="directory"){
@@ -112,6 +170,7 @@ function renderSource(name,data){
     for(const [id,key] of [["adminReportCount","open"],["adminSupportOpen","open"],["adminSupportCritical","critical"],["adminSupportWaiting","waiting"]])set(id,count(data?.counts?.[key]));
     set("adminReportMeta",data?count(data.counts?.critical)+" critical":"Support source unavailable");
   }
+  renderRecommendation();
 }
 async function loadDashboard(){
   const generation=++loadGeneration,lease=picker.scope.lease();
@@ -126,6 +185,7 @@ async function loadDashboard(){
   if(!current())return;
   refresh.disabled=false;set("adminLastChecked","Checked "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
   status.textContent=failed.length?"Unavailable: "+failed.join(", ")+". Other results remain usable.":"All four school operation sources loaded.";
+  renderRecommendation({final:true});
 }
 refresh.addEventListener("click",()=>{if(picker.scope.current?.roles.includes("school_admin"))void loadDashboard();else void picker.load().catch(error=>{status.textContent=error?.message||"School access unavailable.";});});
 attentionFilter.addEventListener("change",()=>{attentionLimit=10;renderAttention();});
