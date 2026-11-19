@@ -84,7 +84,7 @@ export function formatJavaSource(source,{tabSize=4,insertSpaces=true}={}){
       else if(originalNewline&&p!==".")newline(blank);
       else if(t===";"||t===","||t===")"||t==="]"||t==="."||t==="::"){}
       else if(p==="("||p==="["||p==="."||p==="::"||p==="@"||p==="~"||p==="!"){}
-      else if(t==="("){if(keywordParen.has(p))space();}
+      else if(t==="("){if(keywordParen.has(p)||spaced.has(p)||p==="return"||p==="throw"||p==="yield")space();}
       else if(t==="["){}
       else if(p==="}"||p===","||p===";"||prev?.kind==="comment")space();
       else if(spaced.has(t)||spaced.has(p)){
