@@ -27,6 +27,16 @@ function createSchoolPracticeSeasonService({
  const ref=(actor,path)=>db.doc(prefix(actor.schoolId)+path);
  const col=(actor,path)=>db.collection(prefix(actor.schoolId)+path);
 
+ async function legacyPracticeRequiresMigration(ctx,migrationState){
+  if(migrationState.exists&&migrationState.data().status==="complete")return false;
+  const base=prefix(ctx.schoolId)+"legacy_roots/";
+  const [legacyScore,legacyVerified]=await Promise.all([
+   db.doc(base+"practice_season_scores/documents/"+ctx.uid).get(),
+   db.collection(base+"practice_verified_progress/documents/"+ctx.uid+"/courses").limit(1).get()
+  ]);
+  return legacyScore.exists||!legacyVerified.empty;
+ }
+
  async function actor(request){
   const ctx=await getSchoolContext({db,request,schoolId:request.data?.schoolId,roles:["student"]});
   const token=request.auth?.token||{},user=await resolveUser(ctx.uid);
@@ -40,8 +50,10 @@ function createSchoolPracticeSeasonService({
   const personRef=db.doc(prefix(ctx.schoolId)+"people/"+personId),
    migrationRef=db.doc(prefix(ctx.schoolId)+"practice_migration_state/"+ctx.uid);
   const [person,migrationState]=await Promise.all([personRef.get(),migrationRef.get()]);
-  if(migrationState.exists&&migrationState.data().status==="in_progress")
-   reject("unavailable","Your Practice progress is being finalized for this school. No score can be submitted until reconciliation completes.","practice-migration");
+  if(migrationState.exists&&migrationState.data().status!=="complete")
+   reject("unavailable","Your Practice progress is being finalized for this school. Saved legacy progress remains protected until reconciliation completes.","practice-migration");
+  if(await legacyPracticeRequiresMigration(ctx,migrationState))
+   reject("unavailable","Your previous Practice progress is waiting for school migration reconciliation. Saved XP and completed missions remain protected; scoring will resume after migration is complete.","practice-migration");
   if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
      person.data().status!=="active"||person.data().authUid!==ctx.uid)
    reject("permission-denied","Your linked school student record is inactive or changed.","enrollment");
@@ -84,7 +96,7 @@ function createSchoolPracticeSeasonService({
    ...a.enrollments.map(item=>tx.get(item.ref)),
    ...a.enrollments.map(item=>tx.get(ref(a,"course_offerings/"+item.offeringId)))
   ]);
-  if(migrationState.exists&&migrationState.data().status==="in_progress")
+  if(migrationState.exists&&migrationState.data().status!=="complete")
    reject("unavailable","Your Practice progress is still being reconciled. Retry after the migration is complete.","practice-migration");
   if(!school.exists||school.data().state!=="active"||
      !member.exists||member.data().schoolId!==a.schoolId||member.data().status!=="active"||
