@@ -88,7 +88,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
   }
   function setBusy(value,message=""){
-    busy=value;refreshReviewControls();
+    busy=value;taskSelect.disabled=value;document.getElementById("gbV4Close").disabled=value;refreshReviewControls();
     if(message)document.getElementById("gbV4ReviewStatus").textContent=message;
   }
   async function loadTasks(){
@@ -137,11 +137,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }
   }
   async function loadInbox(){
+    const token=++generation;
     const task=tasks.get(taskSelect.value);
     currentTask=task||null;inbox.replaceChildren();
     if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
     if(!task){status.textContent="Choose an assessment to load submissions.";return;}
-    const token=++generation;
     if(task.legacyCompatibility){
       status.textContent="Historical deployment found. This assessment predates the V4 course-offering submission store.";
       if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;}
@@ -287,7 +287,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(busy||currentTask?.submissionSource!=="github"||!currentSnapshot)return;
     const verifyStatus=document.getElementById("gbV4GithubVerifyStatus");
     const verifyButton=document.getElementById("gbV4GithubVerify");
-    verifyButton.disabled=true;verifyStatus.textContent="Checking the frozen checkpoint and selected commit reachability…";
+    setBusy(true);verifyButton.disabled=true;verifyStatus.textContent="Checking the frozen checkpoint and selected commit reachability…";
     try{
       const prefs=auth.currentUser?activateConnectionOwner(auth.currentUser.uid):{};
       const client=createGithubEvidenceClient({token:prefs.githubToken||null,maxPages:10,retryCount:1});
@@ -311,7 +311,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       githubVerification=null;
       verifyStatus.textContent=(error?.message||"GitHub verification failed")+
         ". Private repositories require the teacher's account-owned GitHub connection.";
-    }finally{verifyButton.disabled=false;}
+    }finally{verifyButton.disabled=false;setBusy(false);}
   }
   function updateScore(){
     if(!currentTask)return;
@@ -397,6 +397,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     };
   }
   function applyEvaluationSuggestion(suggestion,label){
+    if(busy||!dialog.open||!currentSnapshot)return;
     currentDraftSource=label==="Internal AI"?"internal_ai":label==="External AI"?"external_ai":"teacher";
     const rows=[...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")];
     suggestion.criteria.forEach((criterion,index)=>{
@@ -455,7 +456,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4GithubEvidence").classList.toggle("hidden",currentTask.submissionSource!=="github");
     document.getElementById("gbV4GeneralEvidence").classList.toggle("hidden",!["text","link"].includes(currentTask.submissionSource));
     document.getElementById("gbV4EvidenceType").textContent="Verified "+sourceLabel(currentTask.submissionSource);
-    githubVerification=null;dialog.showModal();
+    githubVerification=null;dialog.showModal();setBusy(true);
     try{
       const evidenceApi=sourceApi(currentTask.submissionSource,{
         studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
@@ -528,8 +529,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
+      currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Review data unavailable.";
-    }
+    }finally{setBusy(false);}
   }
   document.getElementById("gbV4GithubVerify").addEventListener("click",()=>
     void verifyGithubEvidence());
@@ -566,7 +568,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const output=document.getElementById("gbV4ExternalStatus");
     const button=document.getElementById("gbV4SystemCheck");
     if(busy||!currentTask||!currentSnapshot)return;
-    button.disabled=true;
+    setBusy(true);button.disabled=true;
     output.textContent="Running Internal AI against the exact frozen submission…";
     try{
       const evaluationSnapshot=await evaluationSnapshotForCurrent();
@@ -585,12 +587,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }catch(error){
       clearEvaluationReview(document.getElementById("gbV4SystemReview"),"Internal AI review unavailable.");
       output.textContent=error?.message||"Internal AI evaluation could not complete.";
-    }finally{button.disabled=false;}
+    }finally{button.disabled=false;setBusy(false);}
   })());
 
   document.getElementById("gbV4ExternalCopy").addEventListener("click",()=>void (async()=>{
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
+    setBusy(true);
     try{
       const evaluationSnapshot=await evaluationSnapshotForCurrent();
       const packageText=buildGeneralExternalEvaluationPackage({task:currentTask,snapshot:evaluationSnapshot,checkingInstructions:currentPrivateConfig?.checkingInstructions||""});
@@ -598,7 +601,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       output.textContent="Anonymous External AI evaluation package copied. Paste the evaluator JSON below when ready.";
     }catch(error){
       output.textContent=error?.message||"Evaluation package could not be copied.";
-    }
+    }finally{setBusy(false);}
   })());
 
   document.getElementById("gbV4ExternalApply").addEventListener("click",()=>{
@@ -616,7 +619,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }
   });
 
-  document.getElementById("gbV4Close").addEventListener("click",()=>dialog.close());
+  document.getElementById("gbV4Close").addEventListener("click",()=>{if(!busy)dialog.close();});
+  dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
   bulkPublish?.addEventListener("click",()=>void (async()=>{
     if(busy||!currentTask||currentTask.legacyCompatibility||bulkPublish.dataset.ready!=="true")return;
     const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
@@ -625,10 +629,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     try{
       setBusy(true,"Publishing all valid drafts…");
       const result=await scoped(gradeApi,"publish_task_drafts",{taskId:currentTask.taskId});
-      status.textContent="Published "+result.published+" draft"+(result.published===1?"":"s")+
+      const summary="Published "+result.published+" draft"+(result.published===1?"":"s")+
         (result.zeroSkipped?" · "+result.zeroSkipped+" zero-score draft"+(result.zeroSkipped===1?" remains":"s remain")+" for attention":"")+
         (result.failed?" · "+result.failed+" draft"+(result.failed===1?" was":"s were")+" skipped after validation":"")+".";
       await loadInbox();
+      status.textContent=summary+" "+status.textContent;
     }catch(error){
       status.textContent=error?.message||"Bulk publication did not complete.";
     }finally{setBusy(false);}
@@ -794,7 +799,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   if(auth.currentUser){
     picker=createTenantSchoolPicker({
       host:document.getElementById("gbV4SchoolSwitcher"),status:null,
-      onReady:()=>void loadTasks(),
+      onReady:()=>void loadTasks().catch(error=>{panel.classList.remove("hidden");status.textContent=error?.message||"Assessment list could not be loaded."; }),
       onBeforeChange:async()=>{
         if(busy||dialog.open)throw Error("Close the current review before switching schools.");
         generation++;tasks.clear();taskSelect.replaceChildren();inbox.replaceChildren();
