@@ -6,10 +6,103 @@ export function missionMeta(course,mission){const index=course.missions.findInde
 function rotate(items,seed){const shift=Math.abs(seed)%items.length;return [...items.slice(shift),...items.slice(0,shift)];}
 function workspace(language,code){const java=language==="java",filename=java?"Main.java":language==="web"?"index.html":"main.py",content=java?"public class Main { public static void main(String[] args) {\n"+code+"\n}}":code;return {lang:language,files:{[filename]:content},fileOrder:[filename],activeFilename:filename};}
 function javaFile(content){return {lang:"java",files:{"Main.java":content},fileOrder:["Main.java"],activeFilename:"Main.java"};}
-function traceGuide(language,isOop){
-  if(isOop)return ["Identify which object each reference points to.","Apply constructor and method calls in order.","Track field changes and overridden method dispatch.","Predict only the final value or text printed."];
-  if(language==="web")return ["Read the relevant element and style or event rule.","Follow the browser condition or event in order.","Track the resulting page state.","Predict the requested final result."];
-  return ["Read the starting declarations.","Follow each statement, branch, or loop in order.","Track every value that changes.","Predict only the final output."];
+function traceGuide(course,mission,language,isOop){
+  const moduleId=missionModule(course,mission)?.id||"";
+  if(isOop){
+    if(mission.oopModule==="oop-classes")return [
+      "Identify each reference and when its object is created.",
+      "Apply constructor assignments before later field or method access.",
+      "Track the object state that changes.",
+      "Read the final field value, identity check, or printed text."
+    ];
+    if(mission.oopModule==="oop-encapsulation")return [
+      "Mark which state is private and which method is allowed to change it.",
+      "Apply constructor, setter, or instance-method calls in order.",
+      "Track the private field only through those controlled operations.",
+      "Read the value exposed by the getter or final print."
+    ];
+    if(mission.oopModule==="oop-inheritance")return [
+      "Identify the parent type and the concrete child object.",
+      "Apply superclass construction or inherited behavior before child-specific work.",
+      "Track whether an override or super call changes the executed method.",
+      "Record only the final value or text produced."
+    ];
+    if(mission.oopModule==="oop-polymorphism")return [
+      "Separate the declared reference type from the runtime object type.",
+      "Follow any interface or superclass assignment.",
+      "Resolve each method call using the runtime object's override.",
+      "Combine the dispatched results into the final output."
+    ];
+    return [
+      "Identify the objects or collection elements involved.",
+      "Follow composition, collection, static, overload, or exception behavior in order.",
+      "Track the state or runtime method selected at each step.",
+      "Record only the final requested output."
+    ];
+  }
+  if(language==="web"){
+    if(/html/.test(moduleId))return [
+      "Identify the semantic element being evaluated.",
+      "Check what content that element is intended to represent.",
+      "Follow the requested structure from outer container to inner content.",
+      "Select or enter the semantic result requested by the mission."
+    ];
+    if(/css/.test(moduleId))return [
+      "Identify the selector or property that applies.",
+      "Read the declaration value before considering the rendered effect.",
+      "Track how that rule changes sizing, spacing, or layout.",
+      "Give only the requested selector, property, or result."
+    ];
+    if(/responsive/.test(moduleId))return [
+      "Identify the viewport or responsive condition.",
+      "Check which rule changes when available width or motion preference changes.",
+      "Track the resulting layout or media behavior.",
+      "Give only the requested responsive result."
+    ];
+    if(/events/.test(moduleId))return [
+      "Identify the element selected by the DOM lookup.",
+      "Follow the event listener into its callback.",
+      "Track the state or text changed inside that callback.",
+      "Give only the final requested browser state."
+    ];
+    return [
+      "Identify the control, label, role, or accessibility relationship.",
+      "Check the relevant native or ARIA rule.",
+      "Trace how the browser exposes that relationship to interaction.",
+      "Give only the requested accessible result."
+    ];
+  }
+  if(/values/.test(moduleId))return [
+    "Write down each starting value before any update.",
+    "Apply operators in precedence order and process compound assignments in place.",
+    "Update the scratch value immediately after each changing statement.",
+    "Read the exact value used by the final print."
+  ];
+  if(/branches/.test(moduleId))return [
+    "Write the values used by the condition.",
+    "Evaluate the comparison or boolean expression exactly once.",
+    "Follow only the branch selected by that true/false result.",
+    "Record the value or text printed by that branch."
+  ];
+  if(/loops/.test(moduleId))return [
+    "Write the loop start, stopping condition, and step.",
+    "List each index value that actually enters the loop body.",
+    "Update the accumulator after every iteration, including continue/break effects.",
+    "Read the accumulator only after the loop finishes."
+  ];
+  if(/collections/.test(moduleId))return [
+    "Write the collection values and valid index range.",
+    "Resolve the index or length expression before reading an element.",
+    "Apply any update only to the selected element.",
+    "Read the requested element, length, or combined result."
+  ];
+  if(/checks/.test(moduleId))return [
+    "Write the arguments passed to the reusable operation.",
+    "Apply min, max, absolute value, subtraction, or multiplication exactly as written.",
+    "Store the operation result before later checks.",
+    "Read only the final value printed."
+  ];
+  return ["Read the starting declarations.","Follow each statement in execution order.","Track every value that changes.","Predict only the final output."];
 }
 function oopOrderingActivity(mission,seed){
   const cases={
@@ -197,7 +290,7 @@ export function seasonActivity(course,mission,seed){
   let activity={type:meta.type,code:original.code,prompt:original.prompt,why:original.why,workspace:originalWorkspace(course,mission,original),choices:original.choices,solution:original.correct};
   if(meta.type==="output"){
     const prompt=String(original.prompt||"").replace(/\s+(Explain the rule in your prediction[.]|After predicting, try changing one input in the sandbox[.]|After predicting, run a boundary example and compare it with this result[.])\s*$/,"").trim();
-    activity={...activity,prompt:prompt+" Enter only the exact output or requested value.",solution:String(original.choices[original.correct]),traceGuide:traceGuide(language,mission.oop===true)};
+    activity={...activity,prompt:prompt+" Enter only the exact output or requested value.",solution:String(original.choices[original.correct]),traceGuide:traceGuide(course,mission,language,mission.oop===true)};
   }
   if(meta.type==="ordering"){
     if(mission.oop===true)activity={...activity,...oopOrderingActivity(mission,seed)};
