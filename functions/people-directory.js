@@ -74,8 +74,27 @@ function createPeopleDirectoryService({db}) {
 
     if(input.action==="overview") {
       const scopes=["people","enrollments","staff_assignments","invitations"];
-      const counts=await Promise.all(scopes.map(name=>db.collection("schools/"+ctx.schoolId+"/"+name).count().get()));
-      return {schoolId:ctx.schoolId,counts:Object.fromEntries(scopes.map((name,i)=>[name,counts[i].data().count]))};
+      const [counts,audit]=await Promise.all([
+        Promise.all(scopes.map(name=>db.collection("schools/"+ctx.schoolId+"/"+name).count().get())),
+        db.collection("schools/"+ctx.schoolId+"/directory_audit").orderBy("createdAt","desc").limit(20).get()
+      ]);
+      const recentActivity=audit.docs.map(doc=>{
+        const row=doc.data();
+        return {
+          auditId:doc.id,
+          action:String(row.action||"directory_change").slice(0,120),
+          actorUid:String(row.actorUid||row.createdByUid||"").slice(0,128),
+          personId:typeof row.personId==="string"?row.personId.slice(0,128):null,
+          offeringId:typeof row.offeringId==="string"?row.offeringId.slice(0,330):null,
+          reason:typeof row.reason==="string"?row.reason.slice(0,300):"",
+          createdAt:row.createdAt?.toMillis?.()||0
+        };
+      });
+      return {
+        schoolId:ctx.schoolId,
+        counts:Object.fromEntries(scopes.map((name,i)=>[name,counts[i].data().count])),
+        recentActivity
+      };
     }
     if(input.action==="reconcile_directory") {
       const names=["people","memberships","enrollments","staff_assignments","course_offerings","invitations"];
