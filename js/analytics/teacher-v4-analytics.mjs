@@ -97,15 +97,19 @@ if(root){
       const preferred=getPreferred();
       select.value=offerings.some(item=>item.offeringId===preferred)?preferred:offerings[0]?.offeringId||"";
       readySchool=school;
+      if(!offerings.length){
+        metrics.replaceChildren();assessments.replaceChildren(node("p","No active class is currently assigned to your account.","rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600"));
+        studentsHost.replaceChildren();signal("No active teaching assignments found. Refresh after your class assignment changes.");
+      }
     }catch(error){if(turn===scopeRequest)signal("Assigned classes could not load: "+(error.message||"retry later"),true);}
     finally{if(turn===scopeRequest){loadingScope=false;controls();if(readySchool&&select.value)void loadClass();}}
   }
   select.addEventListener("change",()=>void loadClass());
   toggle.addEventListener("change",()=>void loadClass());
-  refresh.addEventListener("click",()=>{if(loadingScope||loadingClass)return;if(!readySchool)void loadScope();else void loadClass();});
+  refresh.addEventListener("click",()=>{if(loadingScope||loadingClass)return;if(!readySchool||!offerings.length)void loadScope();else void loadClass();});
   search.addEventListener("input",renderStudents);
   picker=createTenantSchoolPicker({host:el("verifiedTeacherSchoolPicker"),status:null,
-    onBeforeChange:async()=>{++scopeRequest;++classRequest;loadingScope=false;loadingClass=false;clear();signal("Switching verified school…");},
+    onBeforeChange:async()=>{++scopeRequest;++classRequest;loadingScope=false;loadingClass=false;toggle.checked=false;search.value="";clear();signal("Switching verified school…");},
     onReady:scope=>{if(scope.current?.roles.includes("teacher"))void loadScope();else{clear();signal("Teacher role required to view verified class analytics.");}}
   });
   clear();void auth.authStateReady().then(()=>picker.load()).catch(error=>signal(error.message||"Verified teaching access could not load.",true));
