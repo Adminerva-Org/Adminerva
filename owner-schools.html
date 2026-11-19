@@ -262,8 +262,10 @@
    <form id="owner-resume" hidden>
     <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Restore suspended school</h3>
     <p class="own-muted">Restores institution-level access after review. Existing membership suspensions, school policies and compatibility settings remain unchanged.</p>
+    <div id="owner-resume-readiness" class="own-muted" role="status" aria-live="polite">Checking recovery requirements…</div>
+    <button id="owner-resume-refresh" type="button" class="own-button" style="margin:.65rem 0">Refresh recovery checks</button>
     <label>Recovery reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
-    <button type="submit" class="own-button">Restore school access</button>
+    <button id="owner-resume-submit" type="submit" class="own-button">Restore school access</button>
    </form>
   </section>
  </div>
@@ -272,6 +274,6 @@
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
 <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
-<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-revision-aware"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-recovery-readiness"></script>
 </body>
 </html>
