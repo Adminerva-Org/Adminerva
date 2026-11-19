@@ -234,7 +234,7 @@ async function checkAccess(user){
     const page=currentPath.split("/").pop();
     const allowed=new Set([
       "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","class-record.html","pilot-sandbox.html",
-      "people-access.html","school-enrollment.html","school-admin.html","school-pilot.html","school-grading-schemes.html","school-class-records.html","school-academic-configuration.html","future-workspace.html",
+      "people-access.html","school-enrollment.html","school-admin.html","school-pilot.html","school-grading-schemes.html","school-class-records.html","school-academic-configuration.html","school-academic-structure.html","future-workspace.html",
       "reclaim-inbox.html","learning-follow-up.html","teacher-analytics.html","practice-analytics.html",
       "assessment-studio.html","submissions.html","gradebook.html","repofetch.html","repobank.html",
       "grading.html","activity-grader.html","group-inspector.html","contribution-inspector.html",
