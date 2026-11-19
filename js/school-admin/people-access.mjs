@@ -6,6 +6,7 @@ const rosterSourceApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolR
 const get=id=>document.getElementById(id);
 const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 let schoolPrograms=[],schoolTerms=[],schoolSections=[],schoolOfferings=[];
+let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0;
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
 let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
@@ -32,7 +33,7 @@ async function loadSelectedTab(name){
     name==="people"?()=>loadPeople(false):
     name==="import"?()=>Promise.all([loadAcademics(),loadRosterSourceStatus()]):
     name==="invites"?loadInvitePeople:
-    name==="classes"?loadAcademics:
+    name==="classes"?()=>Promise.all([loadAcademics(),loadWorkload()]):
     name==="access"?loadMemberships:null;
   if(!task)return;
   const active=document.querySelector("[data-tab='"+name+"']");
@@ -85,7 +86,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    schoolReady=false;
+    schoolReady=false;++workloadRun;++rosterRun;workload=null;resetWorkload();
     workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
@@ -557,12 +558,103 @@ function renderSectionAssignmentOfferings(){
       ?offerings.length+" active class"+(offerings.length===1?"":"es")+" available in this section. Tap each subject/period class this teacher handles."
       :"This section has no active course offerings yet. Configure its subjects and periods first.";
 }
+function workloadNode(tag,text,className=""){
+  const node=document.createElement(tag);node.textContent=text;if(className)node.className=className;return node;
+}
+function workloadButton(label,handler){
+  const button=workloadNode("button",label,"pa-action");button.type="button";button.addEventListener("click",handler);return button;
+}
+function resetWorkload(){
+  get("pa-workload-list")?.replaceChildren();
+  for(const key of ["teachers","classes","unstaffed","idle"])if(get("pa-workload-"+key))get("pa-workload-"+key).textContent="—";
+  if(get("pa-workload-more"))get("pa-workload-more").hidden=true;
+  if(get("pa-workload-status"))get("pa-workload-status").textContent="Waiting for verified school access…";
+  for(const [key,label] of [["year","All years"],["term","All periods"]])get("pa-workload-"+key)?.replaceChildren(new Option(label,""));
+}
+function workloadOptions(key,rows,id,name,placeholder){
+  const select=get("pa-workload-"+key),previous=select.value;
+  const options=new Map(rows.filter(row=>row[id]).map(row=>[row[id],row[name]||row[id]]));
+  select.replaceChildren(new Option(placeholder,""));
+  for(const [value,label] of [...options].sort((a,b)=>String(a[1]).localeCompare(String(b[1]))))select.add(new Option(label,value));
+  if(options.has(previous))select.value=previous;
+}
+function workloadLabel(row){return [row.subjectName,row.sectionName,row.termName,row.yearName].filter(Boolean).join(" · ");}
+function openWorkloadRoster(row){
+  if(!schoolReady||pendingWrite)return;
+  const form=get("pa-roster-form"),select=form.elements.offeringId;
+  if(![...select.options].some(option=>option.value===row.offeringId))select.add(new Option(workloadLabel(row),row.offeringId));
+  select.value=row.offeringId;form.scrollIntoView({behavior:"smooth",block:"start"});
+  void loadClassRoster(row.offeringId).catch(error=>say(error.message||"Roster unavailable."));
+}
+function openWorkloadAssignment(teacher){
+  if(!schoolReady||pendingWrite)return;
+  const form=get("pa-section-assignment-form"),select=form.elements.teacherUid;
+  if(![...select.options].some(option=>option.value===teacher.uid))select.add(new Option(teacher.name,teacher.uid));
+  select.value=teacher.uid;form.closest("details").open=true;form.scrollIntoView({behavior:"smooth",block:"start"});form.elements.sectionId.focus({preventScroll:true});
+}
+function renderWorkload(){
+  const host=get("pa-workload-list"),more=get("pa-workload-more");host.replaceChildren();more.hidden=true;
+  if(!workload){host.append(workloadNode("p","Workload data is not available.","pa-muted"));return;}
+  const year=get("pa-workload-year").value,term=get("pa-workload-term").value;
+  const rows=(workload.offerings||[]).filter(row=>(!year||row.yearId===year)&&(!term||row.termId===term));
+  const teachers=workload.teachers||[],teacherMap=new Map(teachers.map(t=>[t.uid,t.name])),byTeacher=new Map(teachers.map(t=>[t.uid,[]]));
+  for(const row of rows)for(const uid of row.teacherUids||[])byTeacher.get(uid)?.push(row);
+  const idle=teachers.filter(t=>!byTeacher.get(t.uid)?.length),unstaffed=rows.filter(row=>!row.teacherUids?.length);
+  for(const [key,count] of [["teachers",teachers.length],["classes",rows.length],["unstaffed",unstaffed.length],["idle",idle.length]])get("pa-workload-"+key).textContent=String(count);
+  const query=get("pa-workload-search").value.trim().toLocaleLowerCase(),matches=values=>!query||values.some(value=>String(value||"").toLocaleLowerCase().includes(query));
+  const mode=get("pa-workload-mode").value;let results;
+  if(mode==="teachers"||mode==="idle"){
+    results=(mode==="idle"?idle:teachers).filter(t=>matches([t.name,...(byTeacher.get(t.uid)||[]).map(workloadLabel)])).sort((a,b)=>a.name.localeCompare(b.name));
+    for(const teacher of results.slice(0,workloadLimit)){
+      const classes=(byTeacher.get(teacher.uid)||[]).slice().sort((a,b)=>workloadLabel(a).localeCompare(workloadLabel(b)));
+      const card=document.createElement("div");card.className="border rounded-xl p-3 mb-2";card.setAttribute("role","listitem");
+      const header=document.createElement("div");header.className="flex flex-wrap gap-2 items-center justify-between";
+      const summary=document.createElement("div");summary.append(workloadNode("strong",teacher.name),workloadNode("p",classes.length+" class offering(s) · "+new Set(classes.map(row=>row.sectionId)).size+" section(s)","pa-muted"));
+      header.append(summary,workloadButton("Assign classes",()=>openWorkloadAssignment(teacher)));card.append(header);
+      if(classes.length){
+        const details=document.createElement("details");details.className="mt-2";details.append(workloadNode("summary","View assigned classes","font-semibold cursor-pointer"));
+        for(const row of classes){const entry=document.createElement("div");entry.className="pa-row";entry.append(workloadNode("span",workloadLabel(row)),workloadButton("View roster",()=>openWorkloadRoster(row)));details.append(entry);}
+        card.append(details);
+      }
+      host.append(card);
+    }
+  }else{
+    results=(mode==="unstaffed"?unstaffed:rows).filter(row=>matches([workloadLabel(row),row.programName,...(row.teacherUids||[]).map(uid=>teacherMap.get(uid))])).sort((a,b)=>workloadLabel(a).localeCompare(workloadLabel(b)));
+    for(const row of results.slice(0,workloadLimit)){
+      const card=document.createElement("div");card.className="pa-row";card.setAttribute("role","listitem");
+      const info=document.createElement("div");info.className="min-w-0";
+      info.append(workloadNode("strong",workloadLabel(row)),workloadNode("p",(row.teacherUids||[]).map(uid=>teacherMap.get(uid)||"Teacher").join(", ")||"No verified active teacher","pa-muted"));
+      if(row.invalidGrantCount)info.append(workloadNode("p",row.invalidGrantCount+" active grant(s) need access review.","pa-muted"));
+      card.append(info,workloadButton("View roster",()=>openWorkloadRoster(row)));host.append(card);
+    }
+  }
+  if(!results.length)host.append(workloadNode("p","No records match these filters.","pa-muted"));
+  more.hidden=results.length<=workloadLimit;
+  const invalid=rows.reduce((sum,row)=>sum+(row.invalidGrantCount||0),0);
+  get("pa-workload-status").textContent="Showing "+Math.min(results.length,workloadLimit)+" of "+results.length+" matching records."+(invalid||workload.unmatchedGrants?" Staffing review: "+invalid+" invalid active grant(s) in this selection; "+(workload.unmatchedGrants||0)+" grant(s) reference inactive or missing offerings school-wide.":"");
+}
+function refreshWorkloadTerms(){workloadOptions("term",(workload?.offerings||[]).filter(row=>!get("pa-workload-year").value||row.yearId===get("pa-workload-year").value),"termId","termName","All periods");}
+async function loadWorkload(){
+  if(!schoolReady||!get("pa-workload"))return;
+  const run=++workloadRun,button=get("pa-workload-refresh");button.disabled=true;get("pa-workload-status").textContent="Loading faculty workload…";
+  try{
+    const result=await performAcademic("faculty_workload");if(run!==workloadRun)return;
+    workload=result;workloadLimit=12;workloadOptions("year",result.offerings||[],"yearId","yearName","All years");refreshWorkloadTerms();renderWorkload();
+  }catch(error){
+    if(run!==workloadRun)return;
+    workload=null;resetWorkload();get("pa-workload-status").textContent=error?.message||"Faculty workload unavailable.";
+  }finally{if(run===workloadRun)button.disabled=false;}
+}
+get("pa-workload-refresh")?.addEventListener("click",()=>void loadWorkload());
+get("pa-workload-year")?.addEventListener("change",()=>{refreshWorkloadTerms();workloadLimit=12;renderWorkload();});
+for(const key of ["term","mode","search"])get("pa-workload-"+key)?.addEventListener(key==="search"?"input":"change",()=>{workloadLimit=12;renderWorkload();});
+get("pa-workload-more")?.addEventListener("click",()=>{workloadLimit+=12;renderWorkload();});
 async function loadAcademics(){
   const kinds=["academic_programs","academic_years","terms","subjects","sections"];
   const [catalogs,offerings,people,teachers]=await Promise.all([
     Promise.all(kinds.map(kind=>performAcademic("list_catalog",{kind}))),
     performAcademic("planning_options"),
-    performAcademic("list_students"),
+    standardEnrollmentMode?Promise.resolve({students:[]}):performAcademic("list_students").catch(error=>({students:[],unavailable:error?.message||"Student picker unavailable."})),
     performAcademic("list_teachers")
   ]);
   for(let i=0;i<kinds.length;i++){
@@ -584,6 +676,7 @@ async function loadAcademics(){
   populateMultiOptions("[data-school-teacher-bulk]",teachers.teachers||[],"uid");
   renderSectionAssignmentOfferings();
   renderImportCourseMapping();
+  if(people.unavailable)say(people.unavailable+" Teaching and class controls remain available.");
 }
 get("pa-bulk-enrollment-form").addEventListener("submit",event=>{
   event.preventDefault();const form=event.currentTarget;
@@ -637,7 +730,7 @@ async function submitAcademic(form,action,fields,message){
     const result=await performAcademic(action,fields);
     say(message);
     form.reset();
-    await loadAcademics();
+    await Promise.allSettled([loadAcademics(),loadWorkload()]);
     return result||true;
   }catch(error){say(error?.message||"Academic operation was not saved.");return false;}
   finally{pendingWrite=false;button.disabled=false;}
@@ -690,8 +783,10 @@ function lifecycleButton(label,action,details,targetName){
 }
 async function loadClassRoster(offeringId){
   const target=get("pa-class-roster");
+  const run=++rosterRun;
   currentRosterOfferingId=offeringId;target.replaceChildren();say("Loading class roster…");
   const result=await performAcademic("class_roster",{offeringId});
+  if(run!==rosterRun||currentRosterOfferingId!==offeringId)return;
   const studentHeading=document.createElement("h3");
   studentHeading.style.cssText="font-weight:750;margin-top:.75rem";
   studentHeading.textContent="Students";target.append(studentHeading);
