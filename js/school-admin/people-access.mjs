@@ -73,6 +73,7 @@ directoryTabs.forEach(button=>{
 document.querySelectorAll("[data-pa-open-tab]").forEach(button=>{
   button.addEventListener("click",()=>{
     const tab=button.dataset.paOpenTab;
+    if(get("pa-person-detail-dialog")?.open)get("pa-person-detail-dialog").close();
     setTab(tab);
     const target=button.dataset.paFocus?get(button.dataset.paFocus):null;
     requestAnimationFrame(()=>{
@@ -1161,6 +1162,13 @@ async function openPersonDetail(person){
     get("pa-person-detail-access").textContent=result.membership?
       result.membership.status+" · "+result.membership.roles.join(", "):"No school membership";
     get("pa-person-detail-relationships").textContent=String(result.relationships?.length||0);
+    const classesAction=get("pa-person-detail-classes-action"),enrollmentAction=get("pa-person-detail-enrollment-action");
+    if(p.kind==="student"&&standardEnrollmentMode){
+      classesAction.hidden=true;enrollmentAction.style.display="inline-flex";
+    }else{
+      classesAction.hidden=false;classesAction.textContent=p.kind==="student"?"Enrollment relationships":"Teaching & classes";
+      enrollmentAction.style.display="none";
+    }
     renderDetailList(get("pa-person-detail-invites"),result.invitations,item=>
       detailRow(item.requestedRole||"Invitation",(item.status||"unknown")+
         (item.expiresAt?" · expires "+new Date(item.expiresAt).toLocaleString():"")),
