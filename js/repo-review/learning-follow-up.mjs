@@ -1,22 +1,42 @@
-import {auth,db} from "../core/firebase-core.js?v=1.3.0";
+import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,doc,getDocs,query,where,setDoc,updateDoc,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.3.2";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {COURSES} from "../student/practice-courses.mjs?v=1.3.0";
 const el=id=>document.getElementById(id),id=()=>crypto.randomUUID();
-let students=[],packs=[],projects=[],plans=[],mode="",saving=false;
+let students=[],packs=[],projects=[],plans=[],schoolSections=[],schoolId="",mode="",saving=false;
+const functions=getFunctions(app,"asia-southeast1"),packApi=httpsCallable(functions,"schoolPracticePacks"),tenantApi=httpsCallable(functions,"tenantSchools");
+const schoolKey=uid=>"Adminerva_last_verified_school_"+uid;
+function sessionValue(key){try{return sessionStorage.getItem(key)||"";}catch{return "";}}
+function currentSection(){return schoolSections.find(item=>item.sectionId===section())||null;}
+function legacySectionName(){return currentSection()?.name||section();}
+function platformMode(){return sessionValue("Adminerva_platform_school_mode")||"";}
+async function resolveSchoolContext(user){
+ const preferred=sessionValue(schoolKey(user.uid))||null,payload=(await tenantApi({preferredSchoolId:preferred})).data||{},
+  schools=(Array.isArray(payload.schools)?payload.schools:[]).filter(item=>item?.platformOverride===true||item?.roles?.some(role=>["teacher","school_admin"].includes(role))),
+  selected=schools.find(item=>item.schoolId===preferred)||schools.find(item=>item.schoolId===payload.selection?.schoolId)||(schools.length===1?schools[0]:null);
+ if(!selected)throw Error(schools.length?"Choose your active school from the account menu.":"No active teaching school is linked to this account.");
+ schoolId=selected.schoolId;return selected;
+}
 const section=()=>el("followupSection").value,student=()=>students.find(item=>item.id===el("followupStudent").value);
 function card(title,meta,body=""){const article=document.createElement("article");article.className="rounded-xl border border-slate-200 bg-white p-4";const h=document.createElement("strong");h.textContent=title;const m=document.createElement("p");m.className="text-xs text-slate-500 mt-1";m.textContent=meta;article.append(h,m);if(body){const p=document.createElement("p");p.className="text-sm text-slate-700 mt-2 whitespace-pre-wrap";p.textContent=body;article.append(p);}return article;}
 function actionButton(label,handler){const button=document.createElement("button");button.type="button";button.className="mt-3 mr-2 text-xs font-bold text-blue-700 underline";button.textContent=label;button.addEventListener("click",()=>void window.withLoading("Updating learning follow-up…",handler,{button}));return button;}
 async function setStatus(kind,item,status){
- const path=kind==="pack"?["practice_packs",item.id]:kind==="project"?["student_projects",item.id]:["improvement_plans",item.studentId,"items",item.id];
  if(!confirm((status==="archived"?"Archive ":"Mark as "+status+" ")+(item.title||"this item")+"?"))return;
- try{await updateDoc(doc(db,...path),{status,updatedAt:serverTimestamp()});await load();}
- catch(error){el("followupStatus").textContent="Update failed: "+error.message;}
+ try{
+  if(kind==="pack"){
+   await packApi({action:"archive",schoolId,sectionId:section(),packId:item.id,platformMode:platformMode()});
+  }else{
+   const path=kind==="project"?["student_projects",item.id]:["improvement_plans",item.studentId,"items",item.id];
+   await updateDoc(doc(db,...path),{status,updatedAt:serverTimestamp()});
+  }
+  await load();
+ }catch(error){el("followupStatus").textContent="Update failed: "+error.message;}
 }
 function render(){
- const sec=section(),person=student();
+ const sec=section(),legacySec=legacySectionName(),person=student();
  const packCards=packs.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.missionRefs?.length||0)+" missions"+(x.dueDate?" · due "+x.dueDate:""),x.notes);box.append(actionButton("Archive",()=>setStatus("pack",x,"archived")));return box;});
- const projectCards=projects.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.studentIds?.length?x.studentIds.length+" selected learners":"Whole section")+(x.dueDate?" · due "+x.dueDate:""),x.description);box.append(actionButton("Archive",()=>setStatus("project",x,"archived")));return box;});
+ const projectCards=projects.filter(x=>x.sectionIds?.includes(legacySec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.studentIds?.length?x.studentIds.length+" selected learners":"Whole section")+(x.dueDate?" · due "+x.dueDate:""),x.description);box.append(actionButton("Archive",()=>setStatus("project",x,"archived")));return box;});
  const planCards=plans.filter(x=>x.studentId===person?.id&&x.status!=="closed").map(x=>{const box=card(x.title||"Improvement plan",(x.status==="completed"?"Completed · ":"")+(x.skills||[]).join(" · "),x.goal+"\nNext: "+x.nextAction);if(x.status!=="completed")box.append(actionButton("Mark completed",()=>setStatus("plan",x,"completed")));box.append(actionButton("Close plan",()=>setStatus("plan",x,"closed")));return box;});
  el("practicePackList").replaceChildren(...packCards);el("studentProjectList").replaceChildren(...projectCards);el("improvementPlanList").replaceChildren(...planCards);
  for(const target of ["practicePackList","studentProjectList","improvementPlanList"])if(!el(target).children.length)el(target).append(card("Nothing assigned yet","Create an item when follow-up is needed."));
@@ -42,30 +62,44 @@ function open(kind){
  el("followupFormStatus").textContent="";el("followupDialog").showModal();
 }
 async function save(event){
- event.preventDefault();if(saving)return;const data=new FormData(event.currentTarget),sec=section(),user=auth.currentUser,now=serverTimestamp();if(!user||!sec)return;
+ event.preventDefault();if(saving)return;const data=new FormData(event.currentTarget),sec=section(),legacySec=legacySectionName(),user=auth.currentUser,now=serverTimestamp();if(!user||!sec)return;
  saving=true;const submit=el("followupForm").querySelector('[type="submit"]');if(submit)submit.disabled=true;const end=window.beginLoading?.("Saving learner follow-up…",el("followupForm"))||(()=>{});
  try{
-  if(mode==="pack"){const missionRefs=data.getAll("missionRefs");if(!data.get("title")||!missionRefs.length)throw Error("Add a title and at least one mission.");const key=id();await setDoc(doc(db,"practice_packs",key),{id:key,ownerUid:user.uid,title:String(data.get("title")).trim(),sectionIds:[sec],missionRefs,notes:String(data.get("notes")||"").trim(),dueDate:String(data.get("dueDate")||""),status:"active",createdAt:now,updatedAt:now});}
-  else if(mode==="project"){if(!data.get("title"))throw Error("Add a project title.");const key=id(),studentIds=data.getAll("studentIds");await setDoc(doc(db,"student_projects",key),{id:key,ownerUid:user.uid,title:String(data.get("title")).trim(),sectionIds:[sec],studentIds,wholeSection:studentIds.length===0,description:String(data.get("description")||"").trim(),dueDate:String(data.get("dueDate")||""),status:"active",createdAt:now,updatedAt:now});}
-  else{const person=student();if(!person||!data.get("goal")||!data.get("nextAction"))throw Error("Choose a learner and add a goal plus next action.");const key=id();await setDoc(doc(db,"improvement_plans",person.id,"items",key),{id:key,studentId:person.id,section:person.section,ownerUid:user.uid,title:String(data.get("title")||"Improvement plan").trim(),skills:String(data.get("skills")||"").split(",").map(x=>x.trim()).filter(Boolean).slice(0,12),goal:String(data.get("goal")).trim(),nextAction:String(data.get("nextAction")).trim(),packId:String(data.get("packId")||""),status:"active",createdAt:now,updatedAt:now});}
+  if(mode==="pack"){
+   const missionRefs=data.getAll("missionRefs");if(!data.get("title")||!missionRefs.length)throw Error("Add a title and at least one mission.");
+   await packApi({action:"save",schoolId,sectionId:sec,title:String(data.get("title")).trim(),missionRefs,
+    notes:String(data.get("notes")||"").trim(),dueDate:String(data.get("dueDate")||""),platformMode:platformMode()});
+  }else if(mode==="project"){
+   if(!data.get("title"))throw Error("Add a project title.");const key=id(),studentIds=data.getAll("studentIds");
+   await setDoc(doc(db,"student_projects",key),{id:key,ownerUid:user.uid,title:String(data.get("title")).trim(),sectionIds:[legacySec],studentIds,wholeSection:studentIds.length===0,description:String(data.get("description")||"").trim(),dueDate:String(data.get("dueDate")||""),status:"active",createdAt:now,updatedAt:now});
+  }else{
+   const person=student();if(!person||!data.get("goal")||!data.get("nextAction"))throw Error("Choose a learner and add a goal plus next action.");const key=id();
+   await setDoc(doc(db,"improvement_plans",person.id,"items",key),{id:key,studentId:person.id,section:person.section,ownerUid:user.uid,title:String(data.get("title")||"Improvement plan").trim(),skills:String(data.get("skills")||"").split(",").map(x=>x.trim()).filter(Boolean).slice(0,12),goal:String(data.get("goal")).trim(),nextAction:String(data.get("nextAction")).trim(),packId:String(data.get("packId")||""),status:"active",createdAt:now,updatedAt:now});
+  }
   el("followupDialog").close();await load();
  }catch(error){el("followupFormStatus").textContent=error.message;}finally{saving=false;if(submit)submit.disabled=false;end();}
 }
 async function load(){
- const sec=section(),person=student(),user=auth.currentUser;if(!user)return;
- const [studentSnap,packSnap,projectSnap]=await Promise.all([
+ const sec=section(),legacySec=legacySectionName(),person=student(),user=auth.currentUser;if(!user||!sec)return;
+ const [studentSnap,packResult,projectSnap]=await Promise.all([
   getDocs(collection(db,"students")),
-  getDocs(query(collection(db,"practice_packs"),where("sectionIds","array-contains",sec))),
-  getDocs(query(collection(db,"student_projects"),where("sectionIds","array-contains",sec)))
+  packApi({action:"list",schoolId,sectionId:sec}),
+  getDocs(query(collection(db,"student_projects"),where("sectionIds","array-contains",legacySec)))
  ]);
- students=studentSnap.docs.map(r=>({id:r.id,...r.data()})).filter(item=>item.section===sec);packs=packSnap.docs.map(r=>({id:r.id,...r.data()}));projects=projectSnap.docs.map(r=>({id:r.id,...r.data()}));
+ students=studentSnap.docs.map(r=>({id:r.id,...r.data()})).filter(item=>item.section===legacySec);
+ packs=Array.isArray(packResult.data?.packs)?packResult.data.packs:[];
+ projects=projectSnap.docs.map(r=>({id:r.id,...r.data()}));
  const prior=person?.id||el("followupStudent").value;el("followupStudent").replaceChildren(new Option("Choose learner",""),...students.map(s=>new Option(s.name||s.id,s.id)));if(prior&&students.some(s=>s.id===prior))el("followupStudent").value=prior;
  const selected=student();plans=selected?(await getDocs(collection(db,"improvement_plans",selected.id,"items"))).docs.map(r=>({id:r.id,...r.data()})):[];
- render();el("followupStatus").textContent=students.length+" learners · "+packs.length+" packs · "+projects.length+" named projects.";
+ render();el("followupStatus").textContent=students.length+" learners · "+packs.filter(pack=>pack.status!=="archived").length+" active packs · "+projects.filter(project=>project.status==="active").length+" named projects.";
 }
 await auth.authStateReady();const user=auth.currentUser,role=await resolveStaffRole(user);if(!role)location.replace("login.html");
-let sections=[];try{const roster=await getDocs(collection(db,"students"));sections=[...new Set(roster.docs.map(record=>record.data().section).filter(Boolean))].sort();}catch{}
-el("followupSection").replaceChildren(...sections.map(value=>new Option(value,value)));if(sections.length)await load();else el("followupStatus").textContent="No assigned sections.";
+try{
+ await resolveSchoolContext(user);
+ const result=await packApi({action:"sections",schoolId});schoolSections=Array.isArray(result.data?.sections)?result.data.sections:[];
+ el("followupSection").replaceChildren(...schoolSections.map(item=>new Option(item.name||item.sectionId,item.sectionId)));
+ if(schoolSections.length)await load();else el("followupStatus").textContent="No assigned school sections.";
+}catch(error){el("followupStatus").textContent=error.message||"School follow-up context is unavailable.";}
 el("followupSection").addEventListener("change",()=>void window.withLoading("Loading class follow-up…",load));el("followupStudent").addEventListener("change",()=>void window.withLoading("Loading learner follow-up…",load));
 el("newPracticePack").onclick=()=>open("pack");el("newStudentProject").onclick=()=>open("project");el("newImprovementPlan").onclick=()=>open("plan");
 el("followupClose").onclick=el("followupCancel").onclick=()=>el("followupDialog").close();el("followupForm").addEventListener("submit",save);
