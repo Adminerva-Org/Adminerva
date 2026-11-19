@@ -138,8 +138,11 @@ function renderRegistrations(){
     meta.textContent=registrationLabel(item)+" · "+item.courseCount+" subject"+(item.courseCount===1?"":"s")+
       (item.studentNumber?" · "+item.studentNumber:"")+" · "+identity+" · "+(item.source==="online"?"online application":"onsite");
     info.append(name,meta);
-    const badge=document.createElement("span");badge.className="en-badge";badge.textContent=item.status||"active";
-    row.append(info,badge);host.append(row);
+    const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;justify-content:flex-end";
+    const badge=document.createElement("span");badge.className="en-badge";badge.textContent=item.status||"active";actions.append(badge);
+    const identity=document.createElement("a");identity.className="en-btn secondary";identity.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
+    identity.textContent="Identity & access";identity.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identity);
+    row.append(info,actions);host.append(row);
   }
 }
 async function loadRegistrations(){
