@@ -190,8 +190,8 @@ async function load(){
     subjects=(s.items||[]).filter(x=>x.status==="active");
     sections=(sec.items||[]).filter(x=>x.status==="active");
     calendarOption(el("as-calendar-year"),years,"All school years");calendarOption(el("as-calendar-program"),programs,"All programs");
-    renderList();renderCalendar();say("Academic structure loaded. Select a record to edit."+(calendarIncomplete?" Some catalog results reached their display limit.":""));
-  }catch(error){if(run===loadSequence)say(error?.message||"Academic structure could not be loaded.");}
+    renderList();renderCalendar();say("Academic structure loaded. Select a record to edit."+(calendarIncomplete?" Some catalog results reached their display limit.":""));return true;
+  }catch(error){if(run===loadSequence){calendarLoaded=false;say(error?.message||"Academic structure could not be loaded.");}return false;}
   finally{if(run===loadSequence){loading=false;renderCalendar();}}
 }
 function payload(){
@@ -211,7 +211,7 @@ function payload(){
   return data;
 }
 form.addEventListener("submit",event=>{
-  event.preventDefault();if(busy||loading||!selectedId||!form.reportValidity())return;
+  event.preventDefault();if(busy||loading||!calendarLoaded||!selectedId||!form.reportValidity())return;
   const data=payload(),save=el("as-save"),notice=el("as-save-status");
   if(inPreview()){
     const item=items(currentKind).find(x=>x.id===selectedId);
@@ -221,8 +221,8 @@ form.addEventListener("submit",event=>{
   const original=save.textContent;save.textContent="Saving…";save.disabled=true;busy=true;
   void scoped("update_catalog",data).then(async()=>{
     notice.textContent="Changes saved. System ID "+selectedId+" was preserved.";notice.hidden=false;
-    await load();if(selectedId)openEditor(selectedId);
-    notice.textContent="Changes saved. System ID "+data.recordId+" was preserved.";notice.hidden=false;
+    const refreshed=await load();if(refreshed&&selectedId)openEditor(selectedId);
+    notice.textContent="Changes saved. System ID "+data.recordId+" was preserved."+(refreshed?"":" Refresh failed; reload before editing again.");notice.hidden=false;
   }).catch(error=>{
     notice.textContent=error?.message||"Changes could not be saved.";notice.hidden=false;
   }).finally(()=>{busy=false;save.disabled=false;save.textContent=original;renderCalendar();});

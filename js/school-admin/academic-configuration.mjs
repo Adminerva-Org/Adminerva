@@ -5,7 +5,7 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0
 const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const status=el("ac-status");
-let picker=null,busy=false,currentStep=1,wizardInitialized=false,toastTimer=null;
+let picker=null,busy=false,loading=false,catalogReady=false,currentStep=1,wizardInitialized=false,toastTimer=null;
 let years=[],programs=[],terms=[],subjects=[],sections=[],offerings=[];
 const WIZARD=[
   {key:"years",title:"School year"},
@@ -54,6 +54,7 @@ function setBusy(value,message=""){
   busy=value;
   document.querySelectorAll("form button,#ac-refresh,#ac-wizard-back,#ac-wizard-next,[data-wizard-go]")
     .forEach(button=>button.disabled=value);
+  document.querySelectorAll("form button[type=submit]").forEach(button=>button.disabled=value||!catalogReady);
   if(message)say(message);
   if(!value)syncWizard();
 }
@@ -454,7 +455,9 @@ function renderOfferings(){
     row.append(left,tag);host.append(row);
   }
 }
-async function load(){
+async function load({afterWrite=false}={}){
+  if(loading||busy&&!afterWrite)return false;
+  loading=true;catalogReady=false;
   setBusy(true,"Loading academic configuration…");
   try{
     const [y,p,t,s,sec,o]=await Promise.all([
@@ -470,18 +473,19 @@ async function load(){
     terms=(t.items||[]).filter(x=>x.status==="active");
     subjects=(s.items||[]).filter(x=>x.status==="active");
     sections=(sec.items||[]).filter(x=>x.status==="active");
-    offerings=o.offerings||[];
+    offerings=o.offerings||[];catalogReady=true;
     renderCatalog();
     if(!wizardInitialized){
       wizardInitialized=true;
       currentStep=firstIncompleteStep();
       showWizardStep(currentStep,{scroll:false,force:true});
     }else showWizardStep(currentStep,{scroll:false,force:true});
-    say("Academic configuration loaded. Configure one step at a time; saved steps unlock the next step.");
+    say("Academic configuration loaded. Configure one step at a time; saved steps unlock the next step."+( [y,p,t,s,sec,o].some(result=>result.truncated)?" Some results reached their display limit.":""));
+    return true;
   }catch(error){
     const message=friendlyError(error,"Academic configuration could not be loaded.");
-    say(message);notify(message,"error");
-  }finally{setBusy(false);}
+    say(message);notify(message,"error");return false;
+  }finally{loading=false;if(!afterWrite)setBusy(false);}
 }
 function payload(form){
   const data=new FormData(form),out={};
@@ -492,14 +496,17 @@ function clearManual(form){
   for(const field of form.querySelectorAll("input,select"))field.dataset.manual="false";
 }
 async function createCatalog(form,kind,extra=()=>({})){
-  if(busy)return false;
+  if(busy||!catalogReady)return false;
   if(!form.reportValidity()){
     notify("Complete the required fields in this step before saving.","error");
     return false;
   }
   const data=payload(form);
   const source={academic_years:years,academic_programs:programs,terms,subjects,sections}[kind]||[];
-  const duplicate=source.find(item=>String(item.name||"").trim().toLocaleLowerCase("en")===String(data.name||"").trim().toLocaleLowerCase("en"));
+  const nameKey=value=>String(value||"").trim().toLocaleLowerCase("en");
+  const duplicate=source.find(item=>item.id===data.recordId||(nameKey(item.name)===nameKey(data.name)&&
+    (kind!=="terms"||(item.yearId===data.yearId&&item.programId===data.programId))&&
+    (kind!=="sections"||(item.programId===data.programId&&String(item.gradeLevel)===String(data.gradeLevel)))));
   if(duplicate){
     const message="“"+data.name+"” already exists in this school. Use the existing record instead of creating a duplicate.";
     say(message);notify(message,"error");form.elements.name?.focus();return false;
@@ -521,10 +528,10 @@ async function createCatalog(form,kind,extra=()=>({})){
   try{
     const result=await scoped("create_catalog",details);
     form.reset();clearManual(form);
-    await load();
+    const refreshed=await load({afterWrite:true});
     const label={academic_years:"Academic year",academic_programs:"Division / program",terms:"Academic period",subjects:"Subject",sections:"Section"}[kind]||"Academic record";
     const message=label+" saved successfully.";
-    say(message+" Step "+currentStep+" is complete.");notify(message,"success");
+    say(refreshed?message+" Step "+currentStep+" is complete.":message+" Refresh failed; reload before creating another record.");notify(message+(refreshed?"":" Refresh required."),refreshed?"success":"info");
     return result||true;
   }catch(error){
     const message=friendlyError(error,"Academic record was not saved.");
@@ -557,7 +564,7 @@ el("ac-section-form").addEventListener("submit",event=>{
 el("ac-offering-form").addEventListener("submit",event=>{
   event.preventDefault();
   const form=event.currentTarget;
-  if(busy)return;
+  if(busy||!catalogReady)return;
   if(!form.reportValidity()){notify("Complete all course-offering fields before saving.","error");return;}
   const data=payload(form);
   if(inSystemAdminPreview()&&document.getElementById("adminerva-nav")?.dataset.platformAssistMode!=="true"){
@@ -570,8 +577,9 @@ el("ac-offering-form").addEventListener("submit",event=>{
   if(submit)submit.textContent="Saving…";
   setBusy(true,"Creating course offering…");
   void scoped("create_offering",data).then(async()=>{
-    form.reset();clearManual(form);await load();
-    say("Course offering saved successfully.");notify("Course offering saved successfully.","success");
+    form.reset();clearManual(form);const refreshed=await load({afterWrite:true});
+    const message="Course offering saved successfully."+(refreshed?"":" Refresh failed; reload before creating another offering.");
+    say(message);notify(message,refreshed?"success":"info");
   }).catch(error=>{
     const message=friendlyError(error,"Course offering was not created.");
     say(message);notify(message,"error");
@@ -644,7 +652,7 @@ el("ac-wizard-next")?.addEventListener("click",()=>{
 picker=createTenantSchoolPicker({
   host:el("ac-school-switcher"),
   status,
-  onBeforeChange:async()=>{years=[];programs=[];terms=[];subjects=[];sections=[];offerings=[];currentStep=1;wizardInitialized=false;},
+  onBeforeChange:async()=>{if(busy||loading)throw Error("Finish the academic operation before switching schools.");catalogReady=false;years=[];programs=[];terms=[];subjects=[];sections=[];offerings=[];currentStep=1;wizardInitialized=false;setBusy(false);},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
       say("School administrator access is required to configure academics.");return;
