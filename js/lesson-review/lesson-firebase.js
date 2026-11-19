@@ -219,7 +219,13 @@ window.fetchPreviousPlan = async function (
   return null;
 };
 
+let lessonSaveBusy=false;
 window.saveLessonPlan = async function () {
+  if(lessonSaveBusy)return false;
+  lessonSaveBusy=true;
+  try{return await saveLessonPlanSnapshot();}finally{lessonSaveBusy=false;}
+};
+async function saveLessonPlanSnapshot(){
   let ownerUid;
   try{ownerUid=await requireStaffWorkspace();}catch(error){alert(error.message);return false;}
   if (typeof window.syncOutputToData === "function") {
@@ -263,6 +269,8 @@ window.saveLessonPlan = async function () {
     return false;
   }
 
+  const expected=window.loadedPersonalPlan?.id===safeDocId?window.loadedPersonalPlan.version:0;
+  const planIdentity=window.loadedPersonalPlan;
   if (typeof window.showSubtleLoader === "function") {
     window.showSubtleLoader("Syncing lesson plan securely to Firebase...");
   }
@@ -284,7 +292,7 @@ window.saveLessonPlan = async function () {
         .getElementById("lpCustomInstructions")
         .value.trim(),
       instruction_map: window.cachedInstructionMap || null,
-      schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm, grade, subject, dateRange),
+      schedule: "",
       schedule_meetings: Array.isArray(window.currentLessonMeetings) ? window.currentLessonMeetings : [],
       session_structure: Array.isArray(window.currentPlan)
         ? window.currentPlan.map(session=>String(session?.session_name||"").trim())
@@ -298,27 +306,31 @@ window.saveLessonPlan = async function () {
       timestamp: new Date().toISOString(), // This is the key we use to find recent plans
     };
 
+    // Capture the draft before the timetable request yields, so later edits cannot alter this save.
+    const snapshot=JSON.parse(JSON.stringify(planData));
+    snapshot.schedule=await window.fetchScheduleForLesson(schoolYear, academicTerm, grade, subject, dateRange);
+    assertWorkspaceAccount(ownerUid);
     const currentRef=ownedDoc(db,"lesson_plans",safeDocId);
+    let savedVersion=null;
     const action=await runTransaction(db,async tx=>{
       const prior=await tx.get(currentRef);
       const existing=prior.exists()?prior.data():null;
       assertWorkspaceAccount(ownerUid);
-      const expected=window.loadedPersonalPlan?.id===safeDocId ? window.loadedPersonalPlan.version : 0;
       const version=requireCurrentVersion(existing,expected);
       if(existing){
-        const same=Object.entries(planData).every(([key,value])=>
+        const same=Object.entries(snapshot).every(([key,value])=>
           key==="timestamp" || JSON.stringify(value)===JSON.stringify(existing[key])
         );
         if(same)return "unchanged";
         tx.set(ownedDoc(db,"lesson_plans",safeDocId,"revisions",String(existing.version)),{...existing,archivedRevisionAt:serverTimestamp()});
       }
-      tx.set(currentRef,{...planData,...(existing?.recovery_provenance?{recovery_provenance:existing.recovery_provenance}:{}),...(existing?.source_legacy_plan?{source_legacy_plan:existing.source_legacy_plan}:{}),version});
-      window.pendingPersonalPlanVersion=version;
+      tx.set(currentRef,{...snapshot,...(existing?.recovery_provenance?{recovery_provenance:existing.recovery_provenance}:{}),...(existing?.source_legacy_plan?{source_legacy_plan:existing.source_legacy_plan}:{}),version});
+      savedVersion=version;
       return "saved";
     });
-    if(action==="saved"){
-      window.loadedPersonalPlan={id:safeDocId,version:window.pendingPersonalPlanVersion};
-      window.currentLessonSettings=planData.document_settings;
+    if(action==="saved"&&window.loadedPersonalPlan===planIdentity){
+      window.loadedPersonalPlan={id:safeDocId,version:savedVersion};
+      window.currentLessonSettings=snapshot.document_settings;
     }
     alert(action==="unchanged"?"No changes since the last save.":"Lesson plan saved. The previous version is retained.");
     document.dispatchEvent(new CustomEvent("adminerva:lesson-saved",{detail:{id:safeDocId,action}}));
@@ -331,9 +343,9 @@ window.saveLessonPlan = async function () {
     if (typeof window.hideSubtleLoader === "function")
       window.hideSubtleLoader();
   }
-};
+}
 
-let savedPlanSerial=0,ownersLoadedFor=null;
+let savedPlanSerial=0,ownersLoadedFor=null,lessonHistorySequence=0;
 let ownRecoveryAttemptedFor=null,ownRecoveryPromise=null;
 const ALL_SCHOOL_YEARS="__all__",UNKNOWN_SCHOOL_YEAR="School year not recorded";
 const originalTeacherSignedIn=uid=>auth.currentUser?.uid===uid&&auth.currentUser.emailVerified===true&&auth.currentUser.email?.toLowerCase()===TEACHER_EMAIL;
@@ -638,6 +650,7 @@ window.openLoadPlanModal = async function () {
 // Earlier school records remain immutable; loading history only edits the
 // current local draft. Teachers must explicitly Save to restore it in Firestore.
 window.openLessonHistory=async function(planId,ownerUid=workspaceUid()){
+  const turn=++lessonHistorySequence;
   let modal=document.getElementById("lessonHistoryModal");
   if(!modal){
     modal=document.createElement("div");
@@ -652,7 +665,7 @@ window.openLessonHistory=async function(planId,ownerUid=workspaceUid()){
     title.textContent="Lesson plan versions";title.className="font-bold text-slate-900 text-lg";
     const close=document.createElement("button");
     close.textContent="Close";close.className="px-3 py-2 rounded bg-slate-200 text-slate-900";
-    close.addEventListener("click",()=>modal.classList.add("hidden"));
+    close.addEventListener("click",()=>{++lessonHistorySequence;modal.classList.add("hidden");});
     header.append(title,close);
     const list=document.createElement("div");list.id="lessonHistoryList";list.className="space-y-2";
     panel.append(header,list);modal.append(panel);document.body.append(modal);
@@ -667,6 +680,7 @@ window.openLessonHistory=async function(planId,ownerUid=workspaceUid()){
     const records=await getDocs(query(collection(db,"staff_workspaces",ownerUid,"lesson_plans",planId,"revisions"),
       orderBy("archivedRevisionAt","desc"),limit(15)));
     assertWorkspaceAccount(viewerUid);
+    if(turn!==lessonHistorySequence||modal.classList.contains("hidden"))return;
     list.replaceChildren();
     if(records.empty)list.textContent="No prior versions have been saved for this plan.";
     records.forEach(record=>{
@@ -680,11 +694,13 @@ window.openLessonHistory=async function(planId,ownerUid=workspaceUid()){
       restore.className="bg-blue-600 text-white px-3 py-2 font-semibold rounded-lg text-xs";
       restore.textContent="Load draft";
       restore.addEventListener("click",async()=>{
+        if(lessonSaveBusy||turn!==lessonHistorySequence)return;
         if(!confirm("Load this earlier lesson into the editor? Save explicitly to restore it."))return;
         const endRestore=window.beginLoading?.("Restoring historical lesson draft…",modal)||(()=>{});
         restore.disabled=true;
         try{
           const current=await getDoc(doc(db,"staff_workspaces",ownerUid,"lesson_plans",planId));assertWorkspaceAccount(viewerUid);
+          if(turn!==lessonHistorySequence||modal.classList.contains("hidden")||lessonSaveBusy)return;
           if(!current.exists())return alert("The current plan no longer exists. Reload the saved-plan list.");
           window.loadSpecificPlan?.({...original,id:planId,ownerUid});
           if(ownerUid===viewerUid)window.loadedPersonalPlan={id:planId,version:Number(current.data().version||1)};
@@ -693,7 +709,7 @@ window.openLessonHistory=async function(planId,ownerUid=workspaceUid()){
       });
       row.append(label,restore);list.append(row);
     });
-  }catch(error){list.textContent="Could not retrieve lesson history: "+error.message;}finally{end();}
+  }catch(error){if(turn===lessonHistorySequence)list.textContent="Could not retrieve lesson history: "+error.message;}finally{end();}
 };
 
 window.deleteLessonPlan = async function (docId) {
