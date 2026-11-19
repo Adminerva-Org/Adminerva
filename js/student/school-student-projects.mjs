@@ -9,7 +9,7 @@ const assessmentApi=httpsCallable(functions,"schoolAssessments");
 const gradeApi=httpsCallable(functions,"schoolGradebook");
 const studioApi=httpsCallable(functions,"schoolStudioProjects");
 const el=id=>document.getElementById(id);
-let profile=null,assignments=[],grades=new Map(),studioProjects=[],sessionGithubToken="",busy=false,epoch=0;
+let profile=null,assignments=[],grades=new Map(),studioProjects=[],sessionGithubToken="",busy=false,epoch=0,repositoryEpoch=0,studioLimit=12,availability={};
 const projectParams=new URLSearchParams(location.search);
 const requestedOfferingId=projectParams.get("offeringId")||"";
 const requestedSubjectId=projectParams.get("subjectId")||"";
@@ -52,12 +52,17 @@ function renderSelector(){
 }
 function renderStudio(){
   const host=el("projectHubStudio");host.replaceChildren();
-  if(!studioProjects.length){
+  const filter=el("projectHubStudioSearch").value.trim().toLocaleLowerCase();
+  const rows=studioProjects.filter(project=>[project.title,project.language].some(value=>String(value||"").toLocaleLowerCase().includes(filter)));
+  el("projectHubStudioMore").hidden=rows.length<=studioLimit;
+  el("projectHubStudioCount").textContent=availability.studio?"Showing "+Math.min(rows.length,studioLimit)+" of "+rows.length+" matching projects":"";
+  if(!availability.studio){host.append(make("p","sm:col-span-2 rounded-xl border border-dashed p-4 text-sm text-slate-600","School project list unavailable. You can still open Studio to access your device drafts and retry cloud sync."));return;}
+  if(!rows.length){
     host.append(make("p","sm:col-span-2 rounded-xl border border-dashed p-4 text-sm text-slate-500",
-      "No school-synced Studio projects yet. Open Adminerva Studio to create or sync one."));
+      filter?"No projects match your search.":"No school-synced Studio projects yet. Open Adminerva Studio to create or sync one."));
     return;
   }
-  for(const project of studioProjects.slice(0,8)){
+  for(const project of rows.slice(0,studioLimit)){
     const card=make("article","rounded-xl border p-3");
     card.append(make("strong","block text-sm",project.title||"Studio project"),
       make("span","block text-xs text-slate-500 mt-1",
@@ -69,6 +74,7 @@ function renderStudio(){
 }
 function renderAssignments(){
   const host=el("projectHubAssignments");host.replaceChildren();
+  if(!availability.assignments){host.append(make("p","rounded-xl border border-dashed p-3 text-sm text-slate-600","Assignments are unavailable. Retry or open My Assessments directly."));return;}
   const current=selectedClass(),params=new URLSearchParams();
   if(current?.subjectId)params.set("subjectId",current.subjectId);
   if(current?.subject)params.set("subject",current.subject);
@@ -86,8 +92,8 @@ function renderAssignments(){
     const grade=grades.get(task.taskId),card=make("article","rounded-xl border p-3");
     card.append(make("strong","block text-sm",task.title),
       make("span","block text-xs text-slate-500 mt-1",
-        (task.submissionSource==="github"?"GitHub evidence":"Adminerva Studio")+" · due "+
-        new Date(task.dueAt).toLocaleString()));
+        (task.submissionSource==="github"?"GitHub evidence":"Adminerva Studio")+" · "+
+        (task.dueAt?"due "+new Date(task.dueAt).toLocaleString():"No deadline provided")));
     if(grade)card.append(make("span","inline-block mt-2 rounded-full bg-emerald-100 text-emerald-800 px-2 py-1 text-xs font-bold",
       "Published "+grade.awarded+" / "+grade.total));
     const link=make("a","inline-block mt-3 text-xs font-bold text-cyan-800 underline","Open assignment →");
@@ -106,9 +112,13 @@ async function githubJson(url){
   return response.json();
 }
 async function loadRepositoryActivity(){
+  const run=++repositoryEpoch, schoolEpoch=epoch, uid=auth.currentUser?.uid;
   const current=selectedClass(),host=el("projectHubCommits"),summary=el("projectHubActivitySummary"),
     link=el("projectHubRepositoryLink");
+  const stillCurrent=()=>run===repositoryEpoch&&schoolEpoch===epoch&&auth.currentUser?.uid===uid&&selectedClass()?.offeringId===current?.offeringId;
   host.replaceChildren();summary.replaceChildren();link.hidden=true;
+  el("projectHubRepositoryTitle").textContent="Repository activity";el("projectHubRepositoryMeta").textContent="";
+  if(!availability.profile){host.append(make("p","p-5 text-sm text-slate-600","Course and repository configuration is unavailable."));return;}
   if(!current){
     host.append(make("p","p-5 text-sm text-slate-500","No active course offering is available."));
     return;
@@ -128,8 +138,9 @@ async function loadRepositoryActivity(){
   host.append(make("p","p-5 text-sm text-slate-500","Loading recent GitHub activity…"));
   try{
     const rows=await githubJson("https://api.github.com/repos/"+encodeURI(current.repository)+"/commits?per_page=50");
+    if(!stillCurrent())return;
     host.replaceChildren();summary.replaceChildren();
-    const commits=Array.isArray(rows)?rows:[],login=current.githubUsername.toLowerCase(),
+    const commits=Array.isArray(rows)?rows:[],login=String(current.githubUsername||"").toLowerCase(),
       matched=login?commits.filter(item=>String(item.author?.login||"").toLowerCase()===login).length:0,
       latest=commits[0]?.commit?.author?.date||commits[0]?.commit?.committer?.date||null;
     summary.append(
@@ -157,6 +168,7 @@ async function loadRepositoryActivity(){
       host.append(row);
     }
   }catch(error){
+    if(!stillCurrent())return;
     host.replaceChildren(make("p","p-5 text-sm text-rose-700",error.message));
     summary.replaceChildren(stat(current.repository.split("/").at(-1),"Repository"),
       stat("Unavailable","Recent commits"),stat("—","Last activity"));
@@ -184,27 +196,51 @@ async function authorizeGithub(){
   }finally{setBusy(false);}
 }
 async function refresh(){
-  const sequence=++epoch;setBusy(true);say("Loading canonical Project Hub…");
+  const sequence=++epoch;repositoryEpoch++;setBusy(true);say("Loading school projects and coursework…");
+  const lease=picker.scope.lease();
+  const current=()=>sequence===epoch&&auth.currentUser?.uid===lease.uid;
   try{
-    const [profileResult,assignmentResult,gradeResult,studioResult]=await Promise.all([
-      scoped(profileApi,"my_profile"),scoped(assessmentApi,"list_student"),
-      scoped(gradeApi,"my_published"),scoped(studioApi,"list")
-    ]);
-    if(sequence!==epoch)return;
-    profile=profileResult;assignments=assignmentResult.assignments||[];
-    grades=new Map((gradeResult.grades||[]).map(item=>[item.taskId,item]));
-    studioProjects=(studioResult.projects||[]).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
-    renderSelector();renderStudio();renderAssignments();el("projectHubWorkspace").hidden=false;
-    await loadRepositoryActivity();
-    if(sequence===epoch)say("Project Hub loaded from verified school records.");
-  }catch(error){if(sequence===epoch)say(error?.message||"Project Hub could not load.",true);}
-  finally{if(sequence===epoch)setBusy(false);}
+    const sources=[
+      ["profile","course configuration",profileApi,"my_profile"],
+      ["assignments","assignments",assessmentApi,"list_student"],
+      ["grades","published grades",gradeApi,"my_published"],
+      ["studio","Studio projects",studioApi,"list"]
+    ];
+    const failed=[];
+    availability={};
+    profile=null;assignments=[];grades=new Map();studioProjects=[];
+    el("projectHubWorkspace").hidden=false;
+    el("projectHubStudio").replaceChildren(make("p","text-sm text-slate-500","Loading cloud projects…"));
+    el("projectHubAssignments").replaceChildren(make("p","text-sm text-slate-500","Loading assignments…"));
+    el("projectHubCommits").replaceChildren(make("p","p-5 text-sm text-slate-500","Loading course configuration…"));
+    el("projectHubActivitySummary").replaceChildren();el("projectHubRepositoryLink").hidden=true;
+    await Promise.all(sources.map(async ([name,label,api,action])=>{
+      try{
+        const result=await scoped(api,action);
+        if(!current())return;
+        availability[name]=true;
+        if(name==="profile"){profile=result;renderSelector();renderAssignments();void loadRepositoryActivity();}
+        if(name==="assignments"){assignments=result.assignments||[];renderAssignments();}
+        if(name==="grades"){grades=new Map((result.grades||[]).map(item=>[item.taskId,item]));renderAssignments();}
+        if(name==="studio"){studioProjects=(result.projects||[]).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));renderStudio();}
+      }catch(error){
+        if(!current())return;
+        failed.push(label);availability[name]=false;
+        if(name==="profile"){renderSelector();void loadRepositoryActivity();}
+        if(name==="assignments")renderAssignments();
+        if(name==="studio")renderStudio();
+        console.warn("Project Hub source unavailable",name,error);
+      }
+    }));
+    if(current())say(failed.length?"Unavailable: "+failed.join(", ")+". Other project tools remain usable.":"Project Hub loaded from verified school records.",failed.length>0);
+  }catch(error){if(current())say(error?.message||"Project Hub could not load.",true);}
+  finally{if(current())setBusy(false);}
 }
 const picker=createTenantSchoolPicker({
   host:el("projectHubSchoolSwitcher"),status:el("projectHubStatus"),
   onBeforeChange:async()=>{
     if(busy)throw new Error("Finish the current Project Hub operation before switching schools.");
-    ++epoch;profile=null;assignments=[];grades=new Map();studioProjects=[];
+    ++epoch;++repositoryEpoch;profile=null;assignments=[];grades=new Map();studioProjects=[];availability={};sessionGithubToken="";
     el("projectHubWorkspace").hidden=true;
   },
   onReady:scope=>{if(scope.current)void refresh();}
@@ -213,6 +249,8 @@ el("projectHubClass").addEventListener("change",()=>{
   renderAssignments();void loadRepositoryActivity();
 });
 el("projectHubRefresh").addEventListener("click",()=>void refresh());
+el("projectHubStudioSearch").addEventListener("input",()=>{studioLimit=12;renderStudio();});
+el("projectHubStudioMore").addEventListener("click",()=>{studioLimit+=12;renderStudio();});
 el("projectHubGithubConnect").addEventListener("click",()=>void authorizeGithub());
 window.addEventListener("beforeunload",()=>{sessionGithubToken="";});
 try{
