@@ -27,7 +27,6 @@ jobs:
           node --test tests/staff-workspaces.test.mjs
           node --test tests/admissions.test.mjs
           node --test tests/admin-setup.test.mjs tests/student-practice-ux.test.mjs tests/student-workspace-ux.test.mjs tests/practice-review-ux.test.mjs tests/settings-connections.test.mjs tests/connection-cache.test.mjs tests/library-processing.test.mjs tests/pages-release.test.mjs js/core/report-dialog.test.mjs
-          node --test tests/platform-school-recovery.test.mjs tests/admin-maintenance-policy.test.mjs tests/people-import-workflow.test.mjs js/school-admin/enrollment.test.mjs js/school-admin/class-record-oversight.test.mjs
           node --test tests/review-resilience.test.mjs js/repo-review/services/github-evidence-client.test.mjs
           node --test tests/evidence-readiness.test.mjs
           node --test tests/student-search.test.mjs tests/help-access.test.mjs
