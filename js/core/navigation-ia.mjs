@@ -124,7 +124,7 @@ export function buildNavigationIA(ctx){
       group("Academic Policy",[
         live("grading-policies","Grading Policies","school-grading-schemes.html","School-controlled weights, transmutation and program/subject/section applicability"),
         live("class-record-oversight","Class Record Oversight","school-class-records.html"),
-        future("school-calendar-admin","School Calendar Configuration"),
+        needs("school-calendar-admin","School Calendar","school-academic-structure.html#academic-calendar","Review school years, academic periods and date conflicts."),
         future("grade-approval","Grade Approval"),future("promotion-policy","Promotion / Retention Policy")
       ]),
       group("School Profile",[
