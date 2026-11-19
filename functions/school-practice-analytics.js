@@ -27,6 +27,7 @@ function createSchoolPracticeAnalyticsService({db}){
   const memberRef=db.doc(prefix+"memberships/"+ctx.uid);
 
   async function currentAuthority(){
+    if(ctx.platformOverride===true)return ctx.roles;
     const [school,member]=await Promise.all([schoolRef.get(),memberRef.get()]);
     if(!school.exists||school.data().state!=="active"||!member.exists||
        member.data().schoolId!==ctx.schoolId||member.data().status!=="active")
