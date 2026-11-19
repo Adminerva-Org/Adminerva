@@ -57,7 +57,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const gradeApi=httpsCallable(functions,"schoolGradebook");
   const verificationApi=httpsCallable(functions,"studioSubmissionVerification");
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null;
-  let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher";
+  let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher",reviewNeedsRefresh=false;
+  function clearTaskContext(){currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
 
   async function scoped(api,action,details={}){
     if(!picker?.scope.current)throw Error("Choose a verified school first.");
@@ -69,7 +70,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   function refreshReviewControls(){
     const published=currentGrade?.status==="published";
     const reopened=currentRow?.status==="reopened";
-    const loaded=Boolean(currentTask&&currentRow&&currentSnapshot);
+    const loaded=Boolean(currentTask&&currentRow&&currentSnapshot&&!reviewNeedsRefresh);
     const evidenceReady=currentTask?.submissionSource!=="github"||
       ["approved","reviewed"].includes(currentSnapshot?.status);
     const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1";
@@ -92,7 +93,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(message)document.getElementById("gbV4ReviewStatus").textContent=message;
   }
   async function loadTasks(){
-    const token=++generation;
+    const token=++generation,previous=taskSelect.value;
+    clearTaskContext();tasks.clear();taskSelect.replaceChildren(new Option("Loading assessments…",""));taskSelect.disabled=true;
     status.textContent="Loading your verified school assessments…";
     const [result,legacyResult]=await Promise.all([
       scoped(assessmentApi,"list_teacher"),
@@ -130,7 +132,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     status.textContent=items.length?
       (v4Count+" V4 deployment"+(v4Count===1?"":"s")+" · "+legacyCount+" historical deployment"+(legacyCount===1?"":"s")+" available."):
       "No deployed school assessments owned by this teacher in the active school." ;
-    const requested=new URL(location.href).searchParams.get("task");
+    taskSelect.disabled=busy;
+    const requested=previous||new URL(location.href).searchParams.get("task");
     if(requested&&tasks.has(requested)){
       taskSelect.value=requested;
       await loadInbox();
@@ -430,7 +433,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     });
   }
   async function openReview(row){
-    if(busy||!currentTask)return;
+    if(busy||!currentTask||dialog.open)return;
+    reviewNeedsRefresh=false;
     currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentDraftSource="teacher";
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
@@ -639,9 +643,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }finally{setBusy(false);}
   })());
   taskSelect.addEventListener("change",()=>void loadInbox());
-  document.getElementById("gbV4Refresh").addEventListener("click",()=>void loadInbox());
+  document.getElementById("gbV4Refresh").addEventListener("click",()=>{if(busy||dialog.open)return;if(tasks.size)void loadInbox();else void loadTasks().catch(error=>{taskSelect.disabled=false;status.textContent=error?.message||"Assessment list could not be loaded.";});});
   document.getElementById("gbV4SaveDraft").addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||!currentRow||!currentSnapshot)return;
+    if(busy||reviewNeedsRefresh||!currentTask||!currentRow||!currentSnapshot)return;
+    let saved=false;
     try{
       const criteria=collectCriteria();
       setBusy(true,"Saving grade draft…");
@@ -651,17 +656,19 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         feedback:document.getElementById("gbV4Feedback").value.trim(),
         draftSource:currentDraftSource
       });
+      saved=true;
       const refreshed=await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       currentGrade=refreshed.grade;renderRubric(currentGrade);
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=
         "Draft saved against frozen submission version "+currentSnapshot.version+".";
     }catch(error){
-      document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade draft was not saved.";
-    }finally{setBusy(false);}
+      if(saved){reviewNeedsRefresh=true;document.getElementById("gbV4ReviewStatus").textContent="Grade draft saved. Refresh the review before publishing; the saved revision could not reload.";}
+      else document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade draft was not saved.";
+    }finally{setBusy(false);if(saved)await loadInbox();}
   })());
   document.getElementById("gbV4Publish").addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||!currentRow)return;
+    if(busy||reviewNeedsRefresh||!currentTask||!currentRow)return;
     if(!confirm("Publish this reviewed grade to the student? The current V4 workflow does not allow ordinary edits after publication."))return;
     try{
       setBusy(true,"Verifying current submission and publishing grade…");
@@ -677,7 +684,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }finally{setBusy(false);}
   })());
   document.getElementById("gbV4ConvertLegacy").addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||!currentRow||
+    if(busy||reviewNeedsRefresh||!currentTask||!currentRow||
        !["draft","published"].includes(currentGrade?.status)||
        currentGrade?.gradeSchema!=="legacy_scalar_v1")return;
     const reason=document.getElementById("gbV4LegacyReason").value.trim();
@@ -722,7 +729,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }finally{setBusy(false);}
   })());
   document.getElementById("gbV4Correct").addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||!currentRow||currentGrade?.status!=="published")return;
+    if(busy||reviewNeedsRefresh||!currentTask||!currentRow||currentGrade?.status!=="published")return;
     const reason=document.getElementById("gbV4CorrectionReason").value.trim();
     if(reason.length<12){
       document.getElementById("gbV4ReviewStatus").textContent=
@@ -759,7 +766,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }finally{setBusy(false);}
   })());
   document.getElementById("gbV4RequestRevision").addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||!currentRow)return;
+    if(busy||reviewNeedsRefresh||!currentTask||!currentRow)return;
     const reason=document.getElementById("gbV4RevisionReason").value.trim();
     if(reason.length<12){
       document.getElementById("gbV4ReviewStatus").textContent="Explain the revision request in at least 12 characters.";return;
@@ -799,10 +806,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   if(auth.currentUser){
     picker=createTenantSchoolPicker({
       host:document.getElementById("gbV4SchoolSwitcher"),status:null,
-      onReady:()=>void loadTasks().catch(error=>{panel.classList.remove("hidden");status.textContent=error?.message||"Assessment list could not be loaded."; }),
+      onReady:()=>void loadTasks().catch(error=>{taskSelect.disabled=false;panel.classList.remove("hidden");status.textContent=error?.message||"Assessment list could not be loaded."; }),
       onBeforeChange:async()=>{
         if(busy||dialog.open)throw Error("Close the current review before switching schools.");
-        generation++;tasks.clear();taskSelect.replaceChildren();inbox.replaceChildren();
+        generation++;tasks.clear();taskSelect.replaceChildren();clearTaskContext();
       }
     });
     try{
