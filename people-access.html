@@ -306,7 +306,10 @@
           <form id="pa-section-assignment-form" style="padding-top:1rem">
             <label>Verified school teacher<select class="pa-field" name="teacherUid" data-school-teacher required></select></label>
             <label>Section<select class="pa-field" name="sectionId" data-assignment-section required></select></label>
-            <label>Classes / subjects in this section<select class="pa-field" name="offeringIds" data-section-offering-bulk multiple size="8" required></select></label>
+            <fieldset style="border:0;padding:0;margin:0">
+              <legend style="font-weight:600;margin-bottom:.35rem">Classes / subjects in this section</legend>
+              <div id="pa-section-offering-list" style="display:grid;gap:.45rem"></div>
+            </fieldset>
             <p id="pa-section-assignment-help" class="pa-muted">Choose a section to see its active subject offerings. Select only the classes this teacher actually handles.</p>
             <label>Assignment reason<input class="pa-field" name="reason" minlength="12" maxlength="140" required placeholder="Example: Faculty load for the current academic period"></label>
             <button class="pa-action" type="submit">Assign selected classes</button>
