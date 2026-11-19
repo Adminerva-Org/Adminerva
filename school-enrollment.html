@@ -175,12 +175,20 @@
             </div>
             <button id="en-refresh" class="en-btn secondary" type="button">Refresh</button>
           </div>
-          <div id="en-registration-list" class="en-list" role="list" aria-live="polite"></div>
+          <div class="grid sm:grid-cols-2 gap-2 mt-3">
+            <label class="text-sm font-bold">Find student
+              <input id="en-registration-search" class="en-input mt-1" type="search" autocomplete="off" placeholder="Name or student number">
+            </label>
+            <label class="text-sm font-bold">Section
+              <select id="en-registration-section" class="en-input mt-1"><option value="">All sections</option></select>
+            </label>
+          </div>
+          <div id="en-registration-list" class="en-list mt-3" role="list" aria-live="polite"></div>
         </section>
 
         <section class="en-card">
           <h2 class="text-lg font-extrabold">Bulk enrollment</h2>
-          <p class="en-muted mt-1">The existing CSV / Google Sheets roster importer is still available while this module is being consolidated. Its records remain school-scoped and can be used by this enrollment system.</p>
+          <p class="en-muted mt-1">Use CSV / Google Sheets import to stage school identities in bulk. Official academic placement still happens here so the chosen section, period, guardian details and all active subject enrollments are created together.</p>
           <div class="flex gap-2 flex-wrap mt-3">
             <a class="en-btn secondary" style="display:inline-flex;align-items:center;text-decoration:none" href="people-access.html#import">Open roster import</a>
             <a class="en-btn secondary" style="display:inline-flex;align-items:center;text-decoration:none" href="school-academic-configuration.html">Academic configuration</a>
@@ -195,6 +203,6 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=1.1.0"></script>
 </body>
 </html>
