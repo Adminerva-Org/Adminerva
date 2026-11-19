@@ -38,7 +38,7 @@ function setRevision(uid,schoolId,projectId,revision){
 }
 function projectPayload(project,state){
   if(!project?.id||!project?.title||!state?.files)throw Error("Open and save a named Studio project first.");
-  const files=Object.keys(state.files).sort().map(path=>({path,content:String(state.files[path]??"")}));
+  const files=Object.keys(state.files).sort((a,b)=>a.localeCompare(b)).map(path=>({path,content:String(state.files[path]??"")}));
   return {
     projectId:project.id,
     title:project.title,
@@ -49,6 +49,7 @@ function projectPayload(project,state){
       design:project.design||{},
       config:project.config||{},
       evidence:project.evidence||{events:[],runs:[]},
+      workspace:{template:project.template||"",fileOrder:state.fileOrder||[],folders:state.folders||[],projectOrder:state.projectOrder||[],activeFilename:state.activeFilename||""},
       ...(project.assessment?{assessment:project.assessment}:{})
     }
   };
@@ -160,7 +161,7 @@ export async function syncV4StudioProject(project,state,{quiet=false}={}){
       const existing=await scopedCall(projectsApi,"get",{projectId:payload.projectId});
       if(!existing)throw error;
       const localDigest=await digestPayload(payload);
-      if(existing.contentDigest!==localDigest)
+      if(existing.contentDigest!==localDigest||existing.title!==payload.title||existing.language!==payload.language)
         throw Error("This project has a different school-saved revision. Export your current work, then reload the school copy before overwriting it.");
       expectedRevision=existing.revision;
       setRevision(uid,schoolId,payload.projectId,existing.revision);
@@ -210,11 +211,15 @@ export async function listV4StudioProjects(){
   const result=await scopedCall(projectsApi,"list");
   return result?result.projects||[]:null;
 }
-export async function loadV4StudioProject(projectId){
+export async function loadV4StudioProject(projectId,{rememberRevision=true}={}){
   const result=await scopedCall(projectsApi,"get",{projectId});
-  if(result&&auth.currentUser&&picker?.scope.current)
+  if(rememberRevision&&result&&auth.currentUser&&picker?.scope.current)
     setRevision(auth.currentUser.uid,picker.scope.current.schoolId,projectId,result.revision);
   return result;
+}
+export function rememberV4StudioRevision(projectId,revision){
+  if(auth.currentUser&&activeSchool&&Number.isInteger(revision)&&revision>0)
+    setRevision(auth.currentUser.uid,activeSchool.schoolId,projectId,revision);
 }
 export async function archiveV4StudioProject(projectId){
   await init();
