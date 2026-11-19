@@ -170,7 +170,7 @@ export function createProjectStudio({
   const undoKey=projectId=>"Adminerva_Code_Project_Undo_v1_"+uid+"_"+(scopeToken?scopeToken+"_":"")+projectId;
   let activeProject=null,selectedTemplate="java-information",initialized=false,openEpoch=0;
   const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set(),cloudPending=new Map(),markerCache=new Map();
-  let merging=null,cloudStatus="Checking cloud storage…";
+  let merging=null,cloudStatus="Checking cloud storage…",designTimer=null,designPending=null,diagramEpoch=0;
   let dbSelectedTable="",dbView="browse";
 
   function projectSize(project){return enc(project);}
@@ -338,7 +338,7 @@ export function createProjectStudio({
     cacheProject({...project,id:copy.id,title:copy.title,assessment:null,createdAt:copy.createdAt,updatedAt:copy.updatedAt,lastOpenedAt:copy.lastOpenedAt});
     return copy.id;
   }
-  async function resolveCloudProject(id,{local=null}={}){
+  async function resolveCloudProject(id,{local=null,shouldApply=()=>true}={}){
     local=local||findCodeProject(projectStorage,uid,id);
     if(!cloudEnabled)return local;
     if(auth.currentUser?.uid!==uid)throw Error("Sign in with your project account.");
@@ -362,6 +362,7 @@ export function createProjectStudio({
       }
     }
     if(auth.currentUser?.uid!==uid)throw Error("Account changed before loading project.");
+    if(!shouldApply()||deletedProjects.has(id))return null;
     if(!remote)return local;
     validateProject(remote);
     const prior=readMarker(id);
@@ -387,30 +388,38 @@ export function createProjectStudio({
     if(merging)return merging;
     merging=(async()=>{
       try{
-        const school=await currentV4StudioSchool(),ids=new Set(),archivedIds=new Set();
+        const school=await currentV4StudioSchool(),ids=new Set(),archivedIds=new Set(),summaries=new Map();
+        if(auth.currentUser?.uid!==uid)throw Error("Account changed before loading projects.");
+        if(scopeToken&&!school)throw Error("Reconnect your verified school to load projects.");
+        let incomplete=false;
+        const available=id=>auth.currentUser?.uid===uid&&!deletedProjects.has(id)&&activeProject?.id!==id&&!cloudWrites.has(id)&&!cloudPending.has(id);
         if(school){
           const [remote,archived]=await Promise.all([listV4StudioProjects(),listArchivedV4StudioProjects()]);
-          for(const row of remote||[])ids.add(row.projectId);
+          if(!Array.isArray(remote)||!Array.isArray(archived))throw Error("School project listing unavailable.");
+          for(const row of remote){ids.add(row.projectId);summaries.set(row.projectId,{kind:"school",schoolId:school.schoolId,revision:row.revision});}
           for(const row of archived||[])archivedIds.add(row.projectId);
           const archiveButton=el("archivedCodeProjectsBtn");if(archiveButton)archiveButton.classList.toggle("hidden",!archived?.length);
         }
         if(school?.compatibilityMode!=="v4_only"&&!scopeToken){
           try{const snap=await getDocsFromServer(collection(db,"student_code_projects",uid,"projects"));
-          for(const row of snap.docs)if(row.data().ownerUid===uid&&row.data().status!=="archived"&&!archivedIds.has(row.id))ids.add(row.id);}catch(error){if(!school)throw error;console.warn("Legacy cloud listing unavailable",error);}
+          for(const row of snap.docs){const data=row.data();if(data.ownerUid!==uid||data.status==="archived"||archivedIds.has(row.id)||ids.has(row.id))continue;ids.add(row.id);summaries.set(row.id,{kind:"legacy",updatedAt:data.updatedAt});}}catch(error){if(!school)throw error;incomplete=true;console.warn("Legacy cloud listing unavailable",error);}
         }
         for(const id of ids){
-          if(activeProject?.id===id||cloudWrites.has(id)||cloudPending.has(id))continue;
-          try{await resolveCloudProject(id);}catch(error){console.warn("Cloud project could not be loaded",id,error);}
+          if(!available(id))continue;
+          const local=findCodeProject(projectStorage,uid,id),summary=summaries.get(id),marker=readMarker(id);
+          const sameRevision=summary?.kind==="school"?marker.kind==="school"&&marker.schoolId===summary.schoolId&&marker.revision===summary.revision:summary?.kind==="legacy"&&marker.kind==="legacy"&&marker.updatedAt===summary.updatedAt;
+          if(local&&!marker.pending&&sameRevision&&!(school&&summary.kind==="legacy"))continue;
+          try{await resolveCloudProject(id,{local,shouldApply:()=>available(id)});}catch(error){incomplete=true;console.warn("Cloud project could not be loaded",id,error);}
         }
         for(const project of readCodeProjects(projectStorage,uid)){
-          if(activeProject?.id===project.id||archivedIds.has(project.id)||cloudPending.has(project.id)||cloudWrites.has(project.id))continue;
+          if(!available(project.id)||archivedIds.has(project.id))continue;
           if(readMarker(project.id).pending){scheduleCloudSave(project);}
           else if(!ids.has(project.id)&&!readMarker(project.id).kind){
             // Verify absence before uploading device-only work; never overwrite an existing copy.
-            try{const candidate=await resolveCloudProject(project.id,{local:project});if(candidate&&!readMarker(project.id).kind)scheduleCloudSave(candidate);}catch(error){console.warn("Device draft retained",error);}
+            try{const candidate=await resolveCloudProject(project.id,{local:project,shouldApply:()=>available(project.id)});if(candidate&&available(project.id)&&!readMarker(project.id).kind)scheduleCloudSave(candidate);}catch(error){incomplete=true;console.warn("Device draft retained",error);}
           }
         }
-        if(!activeProject){renderProjectHome();setCloudStatus(cloudPending.size?"Cloud sync pending":"Cloud projects up to date");}
+        if(!activeProject&&auth.currentUser?.uid===uid){renderProjectHome();setCloudStatus(incomplete?"Some cloud projects could not refresh · device drafts retained":cloudPending.size?"Cloud sync pending":"Cloud projects up to date",incomplete?"error":"info");}
       }catch(error){console.warn("Studio cloud list unavailable:",error);if(!activeProject)setCloudStatus("Cloud unavailable · device drafts retained","error");}
     })();
     try{await merging;}finally{merging=null;}
@@ -484,8 +493,7 @@ export function createProjectStudio({
     el("archivedCodeProjectsBtn")?.addEventListener("click",()=>void showArchivedSchoolProjects());
     el("importCodeProjectBtn")?.addEventListener("click",()=>el("projectZipInput")?.click());
     el("backToProjectsBtn")?.addEventListener("click",()=>{
-      if(activeProject)saveState(captureState());
-      void flushCloudSaves();activeProject=null;showHome();
+      showHome();
     });
     el("projectSettingsBtn")?.addEventListener("click",()=>openSettings());
     el("projectWizardClose")?.addEventListener("click",closeWizard);
@@ -501,15 +509,12 @@ export function createProjectStudio({
     el("designTypeSelect")?.addEventListener("change",loadDesignEditor);
     el("saveDesignBtn")?.addEventListener("click",saveDesign);
     el("renderDesignBtn")?.addEventListener("click",()=>void renderDesignPreview());
-    let designTimer=null;
     el("designEditor")?.addEventListener("input",()=>{
-      clearTimeout(designTimer);
-      designTimer=setTimeout(()=>{
-        if(!activeProject)return;
-        const type=el("designTypeSelect")?.value||"useCase";
-        activeProject.design={...(activeProject.design||{}),[type]:el("designEditor")?.value||""};
-        try{store(activeProject,true);const status=el("designSaveStatus");if(status)status.textContent="Autosaved";}catch(error){const status=el("designSaveStatus");if(status)status.textContent=error.message;}
-      },700);
+      if(!activeProject)return;
+      const type=el("designTypeSelect")?.value||"useCase",value=el("designEditor")?.value||"";
+      activeProject.design={...(activeProject.design||{}),[type]:value};
+      designPending=activeProject.id;++diagramEpoch;
+      clearTimeout(designTimer);designTimer=setTimeout(()=>{try{flushDesignDraft();}catch(error){const status=el("designSaveStatus");if(status)status.textContent=error.message;}},700);
     });
     el("dbRunBtn")?.addEventListener("click",runSql);
     el("dbInsertRowBtn")?.addEventListener("click",()=>openDbRowEditor());
@@ -526,7 +531,7 @@ export function createProjectStudio({
     el("enableProjectDbBtn")?.addEventListener("click",()=>updateConfig({database:true}));
     document.querySelectorAll("[data-studio-view]").forEach(button=>button.addEventListener("click",()=>switchStudioView(button.dataset.studioView)));
     window.addEventListener("online",()=>{void flushCloudSaves();});
-    document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&activeProject){try{saveState(captureState());}catch{}void flushCloudSaves();}});
+    document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"){if(activeProject)try{flushDesignDraft();saveState(captureState());}catch{}void flushCloudSaves();}});
     document.addEventListener("keydown",event=>{
       if(event.key!=="Escape")return;
       if(!el("projectSettingsModal")?.classList.contains("hidden"))el("projectSettingsModal")?.classList.add("hidden");
@@ -598,8 +603,10 @@ export function createProjectStudio({
   }
 
   function showHome(){
-    ++openEpoch;
+    ++openEpoch;++diagramEpoch;
     initialize();
+    if(activeProject){try{flushDesignDraft();saveState(captureState());}catch(error){alert("Device draft could not be saved: "+error.message);return false;}}
+    activeProject=null;void flushCloudSaves();
     window.dispatchEvent(new CustomEvent("adminerva:studio-home"));
     renderProjectHome();
     el("projectHome")?.classList.remove("hidden");
@@ -725,7 +732,8 @@ export function createProjectStudio({
       try{
         if(cloudWrites.has(id))await cloudWrites.get(id);
         if(cloudPending.has(id))await flushOne(id);
-        project=await resolveCloudProject(id,{local:findCodeProject(projectStorage,uid,id)||project});
+        if(!isCurrent())return;
+        project=await resolveCloudProject(id,{local:findCodeProject(projectStorage,uid,id)||project,shouldApply:isCurrent});
       }catch(error){
         if(!isCurrent())return;
         if(!project||/archiv|not active|account changed|sign in with your project account/i.test(String(error?.message||""))||/permission-denied|unauthenticated/.test(String(error?.code||"")))return alert("Cloud project could not be opened: "+String(error?.message||error));
@@ -844,7 +852,8 @@ export function createProjectStudio({
   }
 
   function activateProject(project){
-    ++openEpoch;
+    ++openEpoch;++diagramEpoch;
+    if(activeProject&&activeProject.id!==project.id){flushDesignDraft();saveState(captureState());}
     initialize();
     activeProject={...project,lastOpenedAt:new Date().toISOString()};
     activeProject=cacheProject(activeProject);
@@ -1005,8 +1014,16 @@ export function createProjectStudio({
     if(chosen==="monitor")renderMonitor();
   }
 
+  function flushDesignDraft(){
+    clearTimeout(designTimer);designTimer=null;
+    if(!activeProject||designPending!==activeProject.id)return;
+    store(activeProject,true);designPending=null;
+    const status=el("designSaveStatus");if(status)status.textContent="Autosaved";
+  }
   function loadDesignEditor(){
+    ++diagramEpoch;
     if(!activeProject)return;
+    try{flushDesignDraft();}catch(error){const status=el("designSaveStatus");if(status)status.textContent=error.message;}
     const type=el("designTypeSelect")?.value||"useCase";
     const editor=el("designEditor");if(editor)editor.value=activeProject.design?.[type]||"";
   }
@@ -1014,20 +1031,22 @@ export function createProjectStudio({
     if(!activeProject)return;
     const type=el("designTypeSelect").value||"useCase";
     activeProject.design={...(activeProject.design||{}),[type]:el("designEditor").value};
-    store(activeProject,true);const status=el("designSaveStatus");if(status)status.textContent="Saved";
+    clearTimeout(designTimer);designTimer=null;store(activeProject,true);designPending=null;const status=el("designSaveStatus");if(status)status.textContent="Saved";
     void renderDesignPreview();renderEvidence();
   }
   async function renderDesignPreview(){
     const target=el("designPreview");if(!target||!activeProject)return;
+    const turn=++diagramEpoch,projectId=activeProject.id;
+    const current=()=>turn===diagramEpoch&&activeProject?.id===projectId;
     const source=el("designEditor")?.value.trim();
     if(!source){target.innerHTML='<p class="studio-empty">Add Mermaid diagram syntax to preview this design.</p>';return;}
     if(!globalThis.mermaid){target.textContent=source;return;}
     try{
       globalThis.mermaid.initialize({startOnLoad:false,securityLevel:"strict",theme:"neutral"});
-      const id="adminervaDiagram"+Date.now();
+      const id="adminervaDiagram"+Date.now()+"_"+turn;
       const result=await globalThis.mermaid.render(id,source);
-      target.innerHTML=result.svg;
-    }catch(error){target.innerHTML='<p class="studio-error">Diagram error: '+escapeHtml(error.message)+'</p>';}
+      if(current())target.innerHTML=result.svg;
+    }catch(error){if(current())target.innerHTML='<p class="studio-error">Diagram error: '+escapeHtml(error.message)+'</p>';}
   }
 
   function sqlLiteral(value){
