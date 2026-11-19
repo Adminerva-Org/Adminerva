@@ -4,6 +4,7 @@ import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlay
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
 import {createProjectStudio} from "./project-studio.mjs?v=20261119-cloud-sync2";
+import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
 import {currentV4StudioSchool,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.2.2";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
@@ -649,16 +650,18 @@ function createWorkspace(lang, initialFiles, initialOrder, initialActive,initial
   updateOutputView();
 }
 
+function studioFileLanguage(filename){
+  const name=String(filename).toLowerCase(),extension=name.split(".").at(-1);
+  const languages={java:"java",py:"python",cs:"csharp",cpp:"cpp",cc:"cpp",cxx:"cpp",h:"cpp",hpp:"cpp",c:"c",dart:"dart",css:"css",scss:"scss",less:"less",js:"javascript",mjs:"javascript",cjs:"javascript",ts:"typescript",html:"html",htm:"html",json:"json",xml:"xml",md:"markdown",txt:"plaintext",sql:"sql",properties:"ini"};
+  return languages[extension]||languageConfig[currentLang]?.monaco||"plaintext";
+}
 function addFile(filename, content = "", autoSwitch = true) {
   try{filename=projectPath(filename);}catch(error){alert(error.message);return;}
   if(fileOrder.length>=100)return alert("A workspace supports up to 100 files. Export this project before starting another.");
   if(workspaceFolders.includes(filename))return alert("A folder already uses that path.");
   if (workspaceFiles[filename]) return alert("File already exists!");
 
-  let syntax = languageConfig[currentLang].monaco;
-  if (filename.endsWith(".css")) syntax = "css";
-  if (filename.endsWith(".js")) syntax = "javascript";
-  if (filename.endsWith(".html")) syntax = "html";
+  const syntax=studioFileLanguage(filename);
 
   const model = monaco.editor.createModel(content, syntax);
   workspaceFiles[filename] = { model };
@@ -701,10 +704,7 @@ window.renameFile = function (oldName) {
   const idx = fileOrder.indexOf(oldName);
   fileOrder.splice(idx, 1);
 
-  let syntax = languageConfig[currentLang].monaco;
-  if (newName.endsWith(".css")) syntax = "css";
-  if (newName.endsWith(".js")) syntax = "javascript";
-  if (newName.endsWith(".html")) syntax = "html";
+  const syntax=studioFileLanguage(newName);
 
   const model = monaco.editor.createModel(content, syntax);
   workspaceFiles[newName] = { model };
@@ -1128,6 +1128,43 @@ function persistWorkspace(){
     localSaveFailed=true;
     showSaveStatus("Not saved — storage unavailable or full",true);
     return false;
+  }
+}
+let formattingStudioFile=false;
+async function formatCurrentStudioFile(){
+  const model=editorInstance?.getModel(),button=document.getElementById("formatBtn");
+  if(!model||formattingStudioFile)return;
+  const readOnly=()=>editorInstance.getOption(monaco.editor.EditorOption.readOnly)||Boolean(studioRuntimeIntegration?.locked?.()||executionController||cheerpjClient);
+  if(readOnly()){alert("The editor is locked while this execution or snapshot is active.");return;}
+  const language=model.getLanguageId(),before=model.getValue(),version=model.getVersionId();
+  if(!before.trim())return;
+  formattingStudioFile=true;
+  const label=button?.textContent;
+  if(button){button.disabled=true;button.textContent="Formatting…";}
+  try{
+    if(language==="java"){
+      const options=model.getOptions(),formatted=formatJavaSource(before,{tabSize:options.tabSize,insertSpaces:options.insertSpaces});
+      if(formatted===before){if(button)button.title="Already formatted · Shift+Alt+F";return;}
+      if(readOnly()||editorInstance.getModel()!==model||model.getVersionId()!==version)throw Error("The active file changed. Format it again.");
+      editorInstance.pushUndoStop();
+      editorInstance.executeEdits("adminerva.format",[{range:model.getFullModelRange(),text:formatted,forceMoveMarkers:true}]);
+      editorInstance.pushUndoStop();
+    }else{
+      const action=editorInstance.getAction("editor.action.formatDocument");
+      if(!action?.isSupported())throw Error("A document formatter is not available for "+language+". Your code was left unchanged.");
+      await action.run();
+      if(editorInstance.getModel()!==model||model.isDisposed())return;
+    }
+    if(model.getValue()!==before){
+      if(!persistWorkspace())throw Error("The formatting was applied, but the project could not be saved. Your editor still contains the changes.");
+    }else if(button)button.title="No formatting changes · Shift+Alt+F";
+    editorInstance.focus();
+  }catch(error){
+    console.warn("Studio formatting:",error);
+    alert(error?.message||"Formatting could not finish. Check the source syntax and try again.");
+  }finally{
+    formattingStudioFile=false;
+    if(button){button.disabled=false;button.textContent=label||"Format";}
   }
 }
 function triggerAutoSave(){
@@ -2740,8 +2777,16 @@ function bindUIEvents() {
     });
   document.getElementById("aiTutorBtn")?.addEventListener("click", askMinerva);
 
-  document.getElementById("formatBtn")?.addEventListener("click", () => {
-    editorInstance.getAction("editor.action.formatDocument").run();
+  const formatButton=document.getElementById("formatBtn");
+  if(formatButton){
+    formatButton.title="Format current file · Shift+Alt+F";
+    formatButton.setAttribute("aria-label","Format current source file");
+    formatButton.addEventListener("click",()=>void formatCurrentStudioFile());
+  }
+  editorInstance.addAction({
+    id:"adminerva.formatCurrentFile",label:"Format current file (Adminerva)",
+    keybindings:[monaco.KeyMod.Shift|monaco.KeyMod.Alt|monaco.KeyCode.KeyF],
+    precondition:"editorWritable",run:()=>formatCurrentStudioFile()
   });
 
   document.getElementById("resetBtn")?.addEventListener("click", () => {
