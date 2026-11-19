@@ -2,6 +2,7 @@ import {app,auth} from "./firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 const functions=getFunctions(app,"asia-southeast1");
 const api=httpsCallable(functions,"platformSchools");
+const usersApi=httpsCallable(functions,"platformUsers");
 const readinessApi=httpsCallable(functions,"schoolCutoverReadiness");
 const byId=id=>document.getElementById(id);
 const status=byId("owner-status"),workspace=byId("owner-content"),
@@ -25,6 +26,16 @@ function resetSchoolForms(){
 }
 async function execute(action,details={}){
   return (await api({action,...details})).data;
+}
+async function resolveAccountUid(value){
+  const identity=String(value||"").trim();
+  if(!identity)throw new Error("Enter the administrator email or account UID.");
+  if(!identity.includes("@"))return identity;
+  const result=(await usersApi({action:"lookup",query:identity})).data;
+  const account=result?.account;
+  if(!account?.uid)throw new Error("The account could not be resolved.");
+  if(account.disabled)throw new Error("This Firebase account is disabled. Re-enable the account before changing school access.");
+  return account.uid;
 }
 function isLegacyProvisioning(school=selected){
   if(!school)return false;
@@ -466,8 +477,10 @@ byId("owner-onboarding-admin")?.addEventListener("submit",event=>{
   event.preventDefault();if(!onboardingSchoolId)return;
   const f=event.currentTarget,d=new FormData(f);
   void (async()=>{
+    let targetUid;
+    try{targetUid=await resolveAccountUid(d.get("targetUid"));}catch(error){say(error?.message||"Administrator account lookup failed.");return;}
     const response=await submit(f,"grant_school_admin",{
-      schoolId:onboardingSchoolId,targetUid:String(d.get("targetUid")||"").trim(),
+      schoolId:onboardingSchoolId,targetUid,
       reason:String(d.get("reason")||"").trim()
     });
     if(response)showOnboardingStep(3);
@@ -501,23 +514,33 @@ byId("owner-governance-assign").addEventListener("submit",event=>{
 byId("owner-grant").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
   const f=event.currentTarget,d=new FormData(f);
-  void submit(f,"grant_school_admin",{schoolId:selected.schoolId,targetUid:String(d.get("targetUid")||"").trim(),
-    reason:String(d.get("reason")||"").trim()});
+  void (async()=>{
+    let targetUid;
+    try{targetUid=await resolveAccountUid(d.get("targetUid"));}catch(error){say(error?.message||"Administrator account lookup failed.");return;}
+    await submit(f,"grant_school_admin",{schoolId:selected.schoolId,targetUid,
+      reason:String(d.get("reason")||"").trim()});
+  })();
 });
 byId("owner-admin-suspend").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
   const f=event.currentTarget,d=new FormData(f);
-  const targetUid=String(d.get("targetUid")||"").trim();
-  if(!confirm("Suspend this school administrator for "+selected.displayName+"? This pauses all V4 access for that school membership."))return;
-  void submit(f,"suspend_school_admin",{schoolId:selected.schoolId,targetUid,
-    reason:String(d.get("reason")||"").trim()});
+  void (async()=>{
+    let targetUid;
+    try{targetUid=await resolveAccountUid(d.get("targetUid"));}catch(error){say(error?.message||"Administrator account lookup failed.");return;}
+    if(!confirm("Suspend this school administrator for "+selected.displayName+"? This pauses all V4 access for that school membership."))return;
+    await submit(f,"suspend_school_admin",{schoolId:selected.schoolId,targetUid,
+      reason:String(d.get("reason")||"").trim()});
+  })();
 });
 byId("owner-admin-restore").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
   const f=event.currentTarget,d=new FormData(f);
-  void submit(f,"restore_school_admin",{schoolId:selected.schoolId,
-    targetUid:String(d.get("targetUid")||"").trim(),
-    reason:String(d.get("reason")||"").trim()});
+  void (async()=>{
+    let targetUid;
+    try{targetUid=await resolveAccountUid(d.get("targetUid"));}catch(error){say(error?.message||"Administrator account lookup failed.");return;}
+    await submit(f,"restore_school_admin",{schoolId:selected.schoolId,targetUid,
+      reason:String(d.get("reason")||"").trim()});
+  })();
 });
 byId("owner-start-pilot").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
