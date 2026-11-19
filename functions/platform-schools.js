@@ -413,12 +413,20 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       if(!Number.isSafeInteger(expectedMembershipRevision)||expectedMembershipRevision<1)
         fail("invalid-argument","Refresh the School Administrator list before changing access.");
       const reason=phrase(input.reason,12,500,action==="restore_school_admin"?"Recovery reason":"Suspension reason");
-      const target=await auth.getUser(targetUid);
-      if(!target.emailVerified||target.disabled)
-        fail("failed-precondition","The target account is not a verified active identity.");
       const memberRef=db.doc("schools/"+schoolId+"/memberships/"+targetUid);
       const indexRef=db.doc("platform_users/"+targetUid+"/memberships/"+schoolId);
       const restoring=action==="restore_school_admin";
+      if(restoring){
+        let target;
+        try{target=await auth.getUser(targetUid);}
+        catch(error){
+          if(error?.code==="auth/user-not-found")
+            fail("failed-precondition","The Firebase account no longer exists. Recreate or relink the identity before restoring school access.");
+          throw error;
+        }
+        if(!target.emailVerified||target.disabled)
+          fail("failed-precondition","Restore the Firebase account to a verified active identity before restoring school access.");
+      }
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef),member=await tx.get(memberRef);
         if(!school.exists||!["draft","pilot","active","suspended"].includes(school.data().state))
