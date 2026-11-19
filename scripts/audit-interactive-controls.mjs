@@ -84,7 +84,7 @@ for(const page of pages){
       findings.push({severity:"broken",kind:"missing-route",page:pageRel,control:href,detail:"Linked HTML page does not exist"});
   }
 
-  const controlRe=/<(button|a|input)\b([^>]*?)(?:>([\s\S]*?)<\/\1>|\s*\/?>)/gi;
+  const controlRe=/<(button|a|input)\\b([^>]*?)(?:>([\\s\\S]*?)<\\/\\1\\s*>|\\s*\\/?>)/gi;
   let match;
   while((match=controlRe.exec(html))){
     const tag=match[1].toLowerCase(), a=attrs(match[2]||""), body=match[3]||"";
