@@ -48,10 +48,58 @@
     </article>
   </section>
 
+  <section class="av-panel p-4 sm:p-5" aria-labelledby="adminWorkflowHeading">
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+      <div>
+        <h2 id="adminWorkflowHeading" class="font-extrabold">Administrator workflow</h2>
+        <p class="text-sm text-slate-600 mt-1">Use this sequence when preparing a school or a new academic period. Each workspace owns one part of the process so enrollment, staffing and academic setup do not overlap.</p>
+      </div>
+      <span class="text-xs font-bold text-slate-500">School-scoped · auditable</span>
+    </div>
+    <ol class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-4">
+      <li class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div class="flex items-start justify-between gap-3"><span class="grid place-items-center w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-extrabold">1</span><span class="text-xs font-bold text-blue-700">Foundation</span></div>
+        <h3 class="font-extrabold mt-3">Academic configuration</h3>
+        <p class="text-xs text-slate-600 mt-1">Create the school year, division, periods, subjects, sections and course offerings.</p>
+        <a href="school-academic-configuration.html" class="inline-flex mt-3 text-sm font-bold text-blue-700">Configure academics →</a>
+      </li>
+      <li class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div class="flex items-start justify-between gap-3"><span class="grid place-items-center w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-extrabold">2</span><span id="adminWorkflowPeople" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700">Checking…</span></div>
+        <h3 class="font-extrabold mt-3">People &amp; access</h3>
+        <p class="text-xs text-slate-600 mt-1">Verify staff identities, school membership, roles and account access.</p>
+        <a href="people-access.html#people" class="inline-flex mt-3 text-sm font-bold text-blue-700">Manage people →</a>
+      </li>
+      <li class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div class="flex items-start justify-between gap-3"><span class="grid place-items-center w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-extrabold">3</span><span id="adminWorkflowTeaching" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700">Checking…</span></div>
+        <h3 class="font-extrabold mt-3">Teaching assignments</h3>
+        <p class="text-xs text-slate-600 mt-1">Assign verified teachers to the course offerings they actually teach.</p>
+        <a href="people-access.html#classes" class="inline-flex mt-3 text-sm font-bold text-blue-700">Assign teaching load →</a>
+      </li>
+      <li class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div class="flex items-start justify-between gap-3"><span class="grid place-items-center w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-extrabold">4</span><span id="adminWorkflowEnrollment" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700">Checking…</span></div>
+        <h3 class="font-extrabold mt-3">Enrollment &amp; registration</h3>
+        <p class="text-xs text-slate-600 mt-1">Register students, confirm official placement and create subject enrollments together.</p>
+        <a href="school-enrollment.html" class="inline-flex mt-3 text-sm font-bold text-blue-700">Open enrollment →</a>
+      </li>
+      <li class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div class="flex items-start justify-between gap-3"><span class="grid place-items-center w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-extrabold">5</span><span class="text-xs font-bold text-blue-700">Policy</span></div>
+        <h3 class="font-extrabold mt-3">Grading policies</h3>
+        <p class="text-xs text-slate-600 mt-1">Define school-controlled grading weights, transmutation and applicability before teachers finalize records.</p>
+        <a href="school-grading-schemes.html" class="inline-flex mt-3 text-sm font-bold text-blue-700">Review grading policies →</a>
+      </li>
+      <li class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div class="flex items-start justify-between gap-3"><span class="grid place-items-center w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-extrabold">6</span><span id="adminWorkflowRecords" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700">Checking…</span></div>
+        <h3 class="font-extrabold mt-3">Class Record oversight</h3>
+        <p class="text-xs text-slate-600 mt-1">Monitor finalization, release state and audit history without taking over teacher scoring.</p>
+        <a href="school-class-records.html" class="inline-flex mt-3 text-sm font-bold text-blue-700">Open oversight →</a>
+      </li>
+    </ol>
+  </section>
+
   <section class="av-panel p-4 sm:p-5" aria-label="School directory and workflow shortcuts">
-    <div class="flex flex-wrap items-baseline justify-between gap-2"><h2 class="font-extrabold">Directory &amp; academic setup</h2><p class="text-xs text-slate-500">Record totals include historical records; they are not active headcounts.</p></div>
+    <div class="flex flex-wrap items-baseline justify-between gap-2"><h2 class="font-extrabold">People, enrollment &amp; staffing</h2><p class="text-xs text-slate-500">Record totals include historical records; they are not active headcounts.</p></div>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-      <a href="people-access.html#classes" class="rounded-xl border p-3 hover:bg-slate-50"><strong id="adminEnrollmentCount" class="block text-2xl">—</strong><span class="text-sm font-bold">Course enrollment records</span><span class="block text-xs text-blue-700 mt-1">Manage classes →</span></a>
+      <a href="school-enrollment.html" class="rounded-xl border p-3 hover:bg-slate-50"><strong id="adminEnrollmentCount" class="block text-2xl">—</strong><span class="text-sm font-bold">Student enrollment records</span><span class="block text-xs text-blue-700 mt-1">Open enrollment &amp; registration →</span></a>
       <a href="people-access.html#classes" class="rounded-xl border p-3 hover:bg-slate-50"><strong id="adminAssignmentCount" class="block text-2xl">—</strong><span class="text-sm font-bold">Teaching assignment records</span><span class="block text-xs text-blue-700 mt-1">Manage teaching load →</span></a>
       <a href="people-access.html#invites" class="rounded-xl border p-3 hover:bg-slate-50"><strong id="adminInvitationCount" class="block text-2xl">—</strong><span class="text-sm font-bold">Invitation records</span><span class="block text-xs text-blue-700 mt-1">Review invitations →</span></a>
     </div>
