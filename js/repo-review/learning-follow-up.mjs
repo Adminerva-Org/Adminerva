@@ -2,7 +2,7 @@ import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,doc,getDocs,query,where,setDoc,updateDoc,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.3.2";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {COURSES} from "../student/practice-courses.mjs?v=1.3.0";
+import {COURSES} from "../student/practice-courses.mjs?v=1.5.0";
 const el=id=>document.getElementById(id),id=()=>crypto.randomUUID();
 let students=[],packs=[],projects=[],plans=[],schoolSections=[],schoolId="",mode="",saving=false;
 const functions=getFunctions(app,"asia-southeast1"),packApi=httpsCallable(functions,"schoolPracticePacks"),tenantApi=httpsCallable(functions,"tenantSchools");
@@ -53,11 +53,11 @@ function open(kind){
  }else if(kind==="project"){
    el("followupKindLabel").textContent="Named project";el("followupDialogTitle").textContent="Assign named project";box.append(field("Project title","title"),field("Due date","dueDate","date"),field("Project brief","description","textarea"));
    const fs=document.createElement("fieldset");fs.innerHTML='<legend class="font-bold text-sm">Assign to learners (leave empty for whole section)</legend>';const list=document.createElement("div");list.className="grid sm:grid-cols-2 gap-2 mt-2";
-   for(const s of students.filter(x=>x.section===sec)){const label=document.createElement("label");label.className="text-xs border rounded p-2 flex gap-2";const check=document.createElement("input");check.type="checkbox";check.name="studentIds";check.value=s.id;label.append(check,document.createTextNode(s.name||s.id));list.append(label);}fs.append(list);box.append(fs);
+   for(const s of students.filter(x=>x.section===legacySectionName())){const label=document.createElement("label");label.className="text-xs border rounded p-2 flex gap-2";const check=document.createElement("input");check.type="checkbox";check.name="studentIds";check.value=s.id;label.append(check,document.createTextNode(s.name||s.id));list.append(label);}fs.append(list);box.append(fs);
  }else{
    if(!person)return alert("Choose a student first.");el("followupKindLabel").textContent="Improvement plan";el("followupDialogTitle").textContent="Plan follow-up for "+(person.name||person.id);
    box.append(field("Plan title","title"),field("Skills to strengthen (comma-separated)","skills"),field("Goal","goal","textarea"),field("Next teacher/student action","nextAction","textarea"));
-   const pack=document.createElement("label");pack.className="block text-sm font-bold";pack.innerHTML='<span>Optional Practice Pack</span>';const select=document.createElement("select");select.name="packId";select.className="block w-full border rounded-lg p-2 mt-1 font-normal";select.append(new Option("None",""),...packs.filter(x=>x.sectionIds?.includes(sec)).map(x=>new Option(x.title,x.id)));pack.append(select);box.append(pack);
+   const pack=document.createElement("label");pack.className="block text-sm font-bold";pack.innerHTML='<span>Optional Practice Pack</span>';const select=document.createElement("select");select.name="packId";select.className="block w-full border rounded-lg p-2 mt-1 font-normal";select.append(new Option("None",""),...packs.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>new Option(x.title,x.id)));pack.append(select);box.append(pack);
  }
  el("followupFormStatus").textContent="";el("followupDialog").showModal();
 }
