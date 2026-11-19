@@ -8,6 +8,10 @@ const list=el("cro-list"),status=el("cro-status"),search=el("cro-search"),filter
 const auditDialog=el("cro-audit-dialog"),auditList=el("cro-audit-list");
 let picker=null,records=null,busy=false;
 let overviewRequest=0,auditRequest=0;
+const deepLinkParams=new URLSearchParams(location.search);
+const deepLinkOfferingId=String(deepLinkParams.get("offeringId")||"");
+const deepLinkAudit=deepLinkParams.get("audit")==="1";
+let deepLinkHandled=false;
 
 function node(tag,className,text){
   const item=document.createElement(tag);
@@ -213,22 +217,33 @@ async function load(){
   if(!picker?.scope.current?.roles.includes("school_admin"))return;
   const request=++overviewRequest;
   setBusy(true,"Loading school Class Record oversight…");
+  let deepLinkRecord=null;
   try{
     const result=await scoped("overview");
     if(request!==overviewRequest)return;
     records=result.records||[];
     renderRecords();
     status.textContent=records.length+" Class Record"+(records.length===1?"":"s")+" loaded. Oversight is read-only.";
+    if(!deepLinkHandled&&deepLinkOfferingId){
+      deepLinkRecord=records.find(record=>record.offeringId===deepLinkOfferingId)||null;
+      deepLinkHandled=true;
+      if(!deepLinkRecord)status.textContent="The requested Class Record is not available in this verified school.";
+    }
   }catch(error){
     if(request!==overviewRequest)return;
     records=null;renderRecords();status.textContent=error?.message||"Class Record oversight could not be loaded.";
   }finally{if(request===overviewRequest)setBusy(false);}
+  if(request===overviewRequest&&deepLinkRecord){
+    search.value=[deepLinkRecord.subjectName,deepLinkRecord.sectionName].filter(Boolean).join(" ");
+    renderRecords();
+    if(deepLinkAudit)void openAudit(deepLinkRecord);
+  }
 }
 
 search.addEventListener("input",renderRecords);
 filter.addEventListener("change",renderRecords);
 el("cro-refresh").addEventListener("click",()=>void load());
-el("cro-audit-close").addEventListener("click",()=>auditDialog.close());
+el("cro-audit-close").addEventListener("click",()=>{++auditRequest;auditDialog.close();});
 
 picker=createTenantSchoolPicker({
   host:el("cro-school-switcher"),
@@ -236,7 +251,7 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     ++overviewRequest;++auditRequest;
     setBusy(true);
-    records=null;search.value="";filter.value="all";renderRecords();auditList.replaceChildren();
+    records=null;deepLinkHandled=false;search.value="";filter.value="all";renderRecords();auditList.replaceChildren();
     el("cro-audit-context").textContent="";el("cro-audit-status").textContent="";
     if(auditDialog.open)auditDialog.close();
   },
