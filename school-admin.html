@@ -48,6 +48,17 @@
     </article>
   </section>
 
+  <section id="adminNextAction" class="av-panel p-4 sm:p-5 border-l-4 border-l-blue-600" aria-labelledby="adminNextActionTitle">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-xs font-extrabold uppercase tracking-wider text-blue-700">Recommended next action</p>
+        <h2 id="adminNextActionTitle" class="font-extrabold text-lg mt-1">Checking school operations…</h2>
+        <p id="adminNextActionDetail" class="text-sm text-slate-600 mt-1">Adminerva is comparing the currently available school-operation signals.</p>
+      </div>
+      <a id="adminNextActionLink" href="school-admin.html" class="av-btn shrink-0" hidden>Open workspace</a>
+    </div>
+  </section>
+
   <section class="av-panel p-4 sm:p-5" aria-labelledby="adminWorkflowHeading">
     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
       <div>
@@ -162,7 +173,7 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=21a534696b3d"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
-<script type="module" src="js/school-admin/dashboard.mjs?v=20261120-admin-workflow"></script>
+<script type="module" src="js/school-admin/dashboard.mjs?v=20261120-next-action"></script>
 <script type="module" src="js/core/home-motion.mjs?v=1.0.0"></script>
 <script type="module" src="js/core/home-experience.mjs?v=1.0.0"></script>
 </body>
