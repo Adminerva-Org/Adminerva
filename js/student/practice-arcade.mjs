@@ -1,4 +1,5 @@
 /** Independent practice simulations. No authoritative XP or course credit is issued here. */
+import {expansionModes,expansionRenderers} from "./practice-arcade-expansion.mjs?v=1.0.0";
 const make=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 const btn=(text,action,cls="arcade-button")=>{const e=make("button",text,cls);e.type="button";e.addEventListener("click",action);return e;};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -8,7 +9,8 @@ const modes=[
   {id:"trace",icon:"⌁",title:"Trace Machine",desc:"Predict each register update and unlock the next instruction.",skill:"Variables • execution"},
   {id:"data",icon:"▤",title:"Array Workshop",desc:"Swap indexed values until the array satisfies its rule.",skill:"Arrays • sorting"},
   {id:"oop",icon:"◇",title:"Object Architect",desc:"Create a connected object-oriented class diagram.",skill:"Classes • relationships"},
-  {id:"web",icon:"▣",title:"Layout Rescue",desc:"Repair a live responsive interface using layout controls.",skill:"CSS • responsive design"}
+  {id:"web",icon:"▣",title:"Layout Rescue",desc:"Repair a live responsive interface using layout controls.",skill:"CSS • responsive design"},
+  ...expansionModes
 ];
 const mazes=[
   {n:5,start:[0,4],goal:[4,0],walls:[[1,4],[1,3],[3,2],[3,1]],chips:[[2,2]],budget:10},
@@ -152,15 +154,18 @@ function webGame(root,level,ctx){
   }
   render();
 }
-const renderers={maze:mazeGame,trace:traceGame,data:dataGame,oop:oopGame,web:webGame};
-export function mountPracticeArcade(host){
+const renderers={maze:mazeGame,trace:traceGame,data:dataGame,oop:oopGame,web:webGame,...expansionRenderers};
+export function mountPracticeArcade(host,initialOwner=null){
   if(!host||host.dataset.mounted)return;host.dataset.mounted="true";
+  let storageOwner=null;
   const cleared=new Map(),catalog=make("div",null,"arcade-catalog"),stage=make("section",null,"arcade-stage");
   stage.hidden=true;let generation=0;
   const heading=make("div",null,"arcade-heading");heading.append(make("h2","Interactive Arcade"),make("span","FREE PLAY · NO SEASON XP","arcade-label"));
-  host.append(heading,make("p","Play hands-on simulations. These levels are separate from scored missions and teacher assignments."),catalog,stage);
+  host.append(heading,make("p","Play hands-on simulations. These levels are separate from scored missions and teacher assignments. Clears are saved on this browser for your account."),catalog,stage);
+  function saveClears(){if(!storageOwner)return;try{localStorage.setItem("Adminerva_Arcade_Clear_v1_"+storageOwner,JSON.stringify(Object.fromEntries([...cleared].map(([id,levels])=>[id,[...levels]]))));}catch{}}
+  function setOwner(uid){const next=typeof uid==="string"&&uid?uid:null;if(next===storageOwner)return;storageOwner=next;generation++;stage.hidden=true;stage.replaceChildren();catalog.hidden=false;cleared.clear();if(next)try{const saved=JSON.parse(localStorage.getItem("Adminerva_Arcade_Clear_v1_"+next)||"{}");for(const mode of modes){const levels=saved?.[mode.id];if(Array.isArray(levels))cleared.set(mode.id,new Set(levels.filter(x=>Number.isInteger(x)&&x>=0&&x<3)));}}catch{}renderCatalog();}
   function renderCatalog(){
-    catalog.replaceChildren(...modes.map(mode=>{const card=btn(null,()=>open(mode,0),"arcade-mode");card.append(make("span",mode.icon,"arcade-mode-icon"),make("strong",mode.title),make("small",mode.desc),make("span",mode.skill+" · "+(cleared.get(mode.id)?.size||0)+"/3 cleared","arcade-mode-progress"));return card;}));
+    catalog.replaceChildren(...modes.map(mode=>{const card=btn(null,()=>open(mode,[0,1,2].find(i=>!cleared.get(mode.id)?.has(i))??0),"arcade-mode");card.append(make("span",mode.icon,"arcade-mode-icon"),make("strong",mode.title),make("small",mode.desc),make("span",mode.skill+" · "+(cleared.get(mode.id)?.size||0)+"/3 cleared","arcade-mode-progress"));return card;}));
   }
   function open(mode,level){
     const token=++generation;stage.hidden=false;stage.replaceChildren();catalog.hidden=true;
@@ -169,11 +174,11 @@ export function mountPracticeArcade(host){
     bar.append(back,title,reset);const levels=make("div",null,"arcade-levels");
     for(let i=0;i<3;i++){const b=btn("Level "+(i+1)+(cleared.get(mode.id)?.has(i)?" ✓":""),()=>open(mode,i));b.setAttribute("aria-pressed",String(level===i));levels.append(b);}
     stage.append(bar,levels,body,result);renderers[mode.id](body,level,{active:()=>generation===token&&stage.isConnected,win:message=>{
-      if(generation!==token||won)return;won=true;if(!cleared.has(mode.id))cleared.set(mode.id,new Set());cleared.get(mode.id).add(level);
+      if(generation!==token||won)return;won=true;if(!cleared.has(mode.id))cleared.set(mode.id,new Set());cleared.get(mode.id).add(level);saveClears();
       result.hidden=false;levels.children[level].textContent="Level "+(level+1)+" ✓";result.append(make("strong","LEVEL COMPLETE"),make("p",message),btn(level<2?"Next level →":"Back to arcade",()=>{if(level<2)open(mode,level+1);else back.click();},"arcade-button primary"));
       result.scrollIntoView({block:"nearest",behavior:motion()?"auto":"smooth"});
     }});
     stage.scrollIntoView({block:"start",behavior:motion()?"auto":"smooth"});title.tabIndex=-1;title.focus({preventScroll:true});
   }
-  renderCatalog();
+  renderCatalog();setOwner(initialOwner);return {setOwner};
 }

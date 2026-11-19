@@ -18,6 +18,7 @@ const STAGE_SCORING=[
   {...DIFFICULTIES[2],name:"Master"},
   {...DIFFICULTIES[2],name:"Challenge"}
 ];
+let arcadeController=null;
 let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external||guestPage&&initialGame.id==="challenge-arena"?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
@@ -932,7 +933,7 @@ if(!guestPage){
     enhanceGamesHub();
     const arcadeHost=node("section",undefined,"arcade-hub");arcadeHost.id="gamesArcade";
     field("labGameCatalog").before(arcadeHost);
-    import("./practice-arcade.mjs?v=1.0.0").then(({mountPracticeArcade})=>mountPracticeArcade(arcadeHost)).catch(error=>{arcadeHost.hidden=true;console.warn("[Adminerva Games] Arcade unavailable.",error);});
+    import("./practice-arcade.mjs?v=1.1.0").then(({mountPracticeArcade})=>{arcadeController=mountPracticeArcade(arcadeHost,user?.uid||null);}).catch(error=>{arcadeHost.hidden=true;console.warn("[Adminerva Games] Arcade unavailable.",error);});
     window.__adminervaGamesReady.enhanced=true;
     bindControl("labHeroContinue","click",()=>{if(busy)return;const button=field("labHeroContinue"),targetCourse=COURSES.find(item=>item.id===button?.dataset.course),target=targetCourse?.missions.find(item=>item.id===button?.dataset.mission);if(target)void openMission(targetCourse,target);});
     renderSummary();
@@ -962,6 +963,7 @@ function connectBoard(){
 connectBoard();
 
 onAuthStateChanged(auth,async current=>{
+  arcadeController?.setOwner(current?.uid||null);
   epoch++;loadSequence++;user=current;eligible=false;accountPreview=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());
   connectBoard();
   try{
