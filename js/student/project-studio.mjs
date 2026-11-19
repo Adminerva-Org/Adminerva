@@ -168,7 +168,7 @@ export function createProjectStudio({
   const scopeToken=projectScopeToken(projectScope);
   const projectStorage=scopedProjectStorage(localStorage,scopeToken);
   const undoKey=projectId=>"Adminerva_Code_Project_Undo_v1_"+uid+"_"+(scopeToken?scopeToken+"_":"")+projectId;
-  let activeProject=null,selectedTemplate="java-information",initialized=false;
+  let activeProject=null,selectedTemplate="java-information",initialized=false,openEpoch=0;
   const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set(),cloudPending=new Map(),markerCache=new Map();
   let merging=null,cloudStatus="Checking cloud storage…";
   let dbSelectedTable="",dbView="browse";
@@ -598,6 +598,7 @@ export function createProjectStudio({
   }
 
   function showHome(){
+    ++openEpoch;
     initialize();
     window.dispatchEvent(new CustomEvent("adminerva:studio-home"));
     renderProjectHome();
@@ -716,6 +717,9 @@ export function createProjectStudio({
   }
 
   async function openProjectById(id){
+    const turn=++openEpoch;
+    const isCurrent=()=>turn===openEpoch&&!deletedProjects.has(id)&&(!cloudEnabled||auth.currentUser?.uid===uid);
+    if(!isCurrent())return;
     let project=findCodeProject(projectStorage,uid,id);
     if(cloudEnabled){
       try{
@@ -723,10 +727,12 @@ export function createProjectStudio({
         if(cloudPending.has(id))await flushOne(id);
         project=await resolveCloudProject(id,{local:findCodeProject(projectStorage,uid,id)||project});
       }catch(error){
-        if(!project||/archiv/i.test(String(error?.message||"")))return alert("Cloud project could not be opened: "+String(error?.message||error));
+        if(!isCurrent())return;
+        if(!project||/archiv|not active|account changed|sign in with your project account/i.test(String(error?.message||""))||/permission-denied|unauthenticated/.test(String(error?.code||"")))return alert("Cloud project could not be opened: "+String(error?.message||error));
         activateProject(project);setCloudStatus("Cloud unavailable · device draft retained","error",id);return;
       }
     }
+    if(!isCurrent())return;
     if(!project)return alert("This project is not available in your device or cloud account.");
     activateProject(project);
   }
@@ -838,6 +844,7 @@ export function createProjectStudio({
   }
 
   function activateProject(project){
+    ++openEpoch;
     initialize();
     activeProject={...project,lastOpenedAt:new Date().toISOString()};
     activeProject=cacheProject(activeProject);
