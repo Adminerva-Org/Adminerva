@@ -102,7 +102,9 @@ function featuredTarget(){
   return null;
 }
 function dailyQuestState(){
-  const target=3;
+  const target=3,server=hub.dailyQuest;
+  if(server&&Number.isFinite(Number(server.done))&&Number.isFinite(Number(server.target)))
+    return {done:Math.max(0,Math.min(Number(server.target),Number(server.done))),target:Number(server.target),date:server.date||""};
   if(!Object.prototype.hasOwnProperty.call(hub,"completedCount"))return {done:0,target};
   const now=new Date(),day=[now.getFullYear(),String(now.getMonth()+1).padStart(2,"0"),String(now.getDate()).padStart(2,"0")].join("-");
   const key="Adminerva_Games_DailyQuest_"+(hub.season||"season")+"_"+owner()+"_"+day,count=hub.completedCount||0;
