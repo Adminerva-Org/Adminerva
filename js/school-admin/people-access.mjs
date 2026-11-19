@@ -265,7 +265,12 @@ function resetImportCourseMapping(message="Preview a roster with student section
   if(get("pa-import-course-status"))get("pa-import-course-status").textContent=message;
 }
 function offeringLabel(item){
-  return [item.sectionId,item.subjectId,item.termId,item.yearId].filter(Boolean).join(" · ");
+  return [
+    item.sectionName||schoolSections.find(section=>section.id===item.sectionId)?.name||item.sectionId,
+    item.subjectName||item.subjectId,
+    item.termName||schoolTerms.find(term=>term.id===item.termId)?.name||item.termId,
+    item.yearName||item.yearId
+  ].filter(Boolean).join(" · ");
 }
 function renderImportCourseMapping(){
   const host=get("pa-import-course-groups"),statusNode=get("pa-import-course-status");
@@ -528,11 +533,26 @@ function populateMultiOptions(selector,items,idField,nameField="name"){
     }
   }
 }
+function renderSectionAssignmentOfferings(){
+  const form=get("pa-section-assignment-form");
+  if(!form)return;
+  const sectionId=String(form.elements.sectionId.value||"");
+  const offerings=schoolOfferings.filter(item=>item.sectionId===sectionId)
+    .map(item=>({...item,label:offeringLabel(item)}))
+    .sort((a,b)=>a.label.localeCompare(b.label));
+  populateMultiOptions("[data-section-offering-bulk]",offerings,"offeringId","label");
+  const help=get("pa-section-assignment-help");
+  if(help)help.textContent=!sectionId
+    ?"Choose a section to see its active subject offerings. Select only the classes this teacher actually handles."
+    :offerings.length
+      ?offerings.length+" active class"+(offerings.length===1?"":"es")+" available in this section. Select one or more subject/period classes."
+      :"This section has no active course offerings yet. Configure its subjects and periods first.";
+}
 async function loadAcademics(){
   const kinds=["academic_programs","academic_years","terms","subjects","sections"];
   const [catalogs,offerings,people,teachers]=await Promise.all([
     Promise.all(kinds.map(kind=>performAcademic("list_catalog",{kind}))),
-    performAcademic("list_offerings"),
+    performAcademic("planning_options"),
     performAcademic("list_students"),
     performAcademic("list_teachers")
   ]);
@@ -544,12 +564,16 @@ async function loadAcademics(){
     populateOptions('[data-catalog="'+kinds[i]+'"]',items,"id");
   }
   populateOptions('[data-catalog="academic_programs"]',schoolPrograms,"id");
-  schoolOfferings=offerings.offerings||[];
-  populateOptions("[data-offering]",schoolOfferings,"offeringId","offeringId");
+  schoolOfferings=(offerings.offerings||[]).map(item=>({...item,status:"active"}));
+  const labeledOfferings=schoolOfferings.map(item=>({...item,label:offeringLabel(item)}))
+    .sort((a,b)=>a.label.localeCompare(b.label));
+  populateOptions("[data-offering]",labeledOfferings,"offeringId","label");
+  populateOptions("[data-assignment-section]",schoolSections.filter(item=>item.status==="active"),"id");
   populateOptions("[data-student-person]",people.students||[],"personId");
   populateOptions("[data-school-teacher]",teachers.teachers||[],"uid");
   populateMultiOptions("[data-student-person-bulk]",people.students||[],"personId");
   populateMultiOptions("[data-school-teacher-bulk]",teachers.teachers||[],"uid");
+  renderSectionAssignmentOfferings();
   renderImportCourseMapping();
 }
 get("pa-bulk-enrollment-form").addEventListener("submit",event=>{
@@ -563,6 +587,23 @@ get("pa-bulk-enrollment-form").addEventListener("submit",event=>{
     "Bulk enrollment completed. Existing history was preserved.").then(async saved=>{
       if(!saved)return;
       await loadAcademics();
+    });
+});
+get("pa-section-assignment-form")?.elements.sectionId.addEventListener("change",renderSectionAssignmentOfferings);
+get("pa-section-assignment-form")?.addEventListener("submit",event=>{
+  event.preventDefault();const form=event.currentTarget;
+  const teacherUid=String(form.elements.teacherUid.value||""),
+    sectionId=String(form.elements.sectionId.value||""),
+    offeringIds=[...form.elements.offeringIds.selectedOptions].map(option=>option.value),
+    reason=String(form.elements.reason.value||"").trim();
+  if(!teacherUid||!sectionId){say("Choose a verified teacher and section.");return;}
+  if(!offeringIds.length){say("Select at least one class or subject offering in this section.");return;}
+  if(!confirm("Assign this teacher to "+offeringIds.length+" selected class"+(offeringIds.length===1?"":"es")+" in the section? Existing active assignments will be skipped."))return;
+  void submitAcademic(form,"assign_teacher_section",{teacherUid,sectionId,offeringIds,reason},
+    "Section teaching assignments saved.").then(result=>{
+      if(!result)return;
+      say("Section assignment complete · "+result.created+" created · "+result.alreadyActive+
+        " already active · "+result.historyExists+" ended assignment"+(result.historyExists===1?"":"s")+" left unchanged.");
     });
 });
 get("pa-bulk-assignment-form").addEventListener("submit",event=>{
