@@ -101,7 +101,7 @@ function createSchoolPracticeSeasonService({
   ]);
   if(migrationState.exists&&migrationState.data().status!=="complete")
    reject("unavailable","Your Practice progress is still being reconciled. Retry after the migration is complete.","practice-migration");
-  if(!school.exists||school.data().state!=="active"||
+  if(!school.exists||!["active","pilot"].includes(school.data().state)||
      !member.exists||member.data().schoolId!==a.schoolId||member.data().status!=="active"||
      !Array.isArray(member.data().roles)||!member.data().roles.includes("student")||
      member.data().personId!==a.personId||
