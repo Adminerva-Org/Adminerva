@@ -5,7 +5,7 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0
 const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const status=el("as-status"),form=el("as-edit-form");
-let picker=null,currentKind="academic_years",selectedId="",busy=false,loading=false,loadSequence=0,calendarIncomplete=false;
+let picker=null,currentKind="academic_years",selectedId="",busy=false,loading=false,loadSequence=0,calendarIncomplete=false,calendarLoaded=false;
 let years=[],programs=[],terms=[],subjects=[],sections=[];
 const LABELS={
   academic_years:"School Years",academic_programs:"Programs / Divisions",
@@ -86,6 +86,7 @@ function calendarDate(value){
 }
 function renderCalendar(){
   const host=el("as-calendar-list");host.replaceChildren();
+  if(!calendarLoaded){el("as-calendar-count").textContent=loading?"Loading calendar…":"Calendar unavailable. Refresh academic records to retry.";return;}
   const yearFilter=el("as-calendar-year").value,programFilter=el("as-calendar-program").value;
   const visible=terms.filter(t=>(!yearFilter||t.yearId===yearFilter)&&(!programFilter||t.programId===programFilter))
     .sort((a,b)=>String(a.startDate||"9999").localeCompare(String(b.startDate||"9999"))||Number(a.sequence||0)-Number(b.sequence||0));
@@ -147,6 +148,7 @@ function showFields(kind){
   el("as-section-fields").hidden=kind!=="sections";
 }
 function openEditor(id){
+  if(loading)return;
   const item=items(currentKind).find(x=>x.id===id);if(!item)return;
   selectedId=id;showFields(currentKind);
   form.reset();form.elements.recordId.value=item.id;form.elements.name.value=item.name||"";
@@ -181,7 +183,7 @@ async function load(){
       scoped("list_catalog",{kind:"sections"})
     ]);
     if(run!==loadSequence)return;
-    calendarIncomplete=[y,p,t,s,sec].some(result=>result.truncated);
+    calendarIncomplete=[y,p,t,s,sec].some(result=>result.truncated);calendarLoaded=true;
     years=(y.items||[]).filter(x=>x.status==="active");
     programs=(p.items||[]).filter(x=>x.status==="active");
     terms=(t.items||[]).filter(x=>x.status==="active");
@@ -238,7 +240,7 @@ for(const button of document.querySelectorAll("[data-kind]")){
 }
 picker=createTenantSchoolPicker({
   host:el("as-school-switcher"),status,
-  onBeforeChange:async()=>{if(busy)throw Error("Finish saving before switching schools.");++loadSequence;loading=false;calendarIncomplete=false;years=[];programs=[];terms=[];subjects=[];sections=[];selectedId="";el("as-editor-panel").hidden=true;el("as-list").replaceChildren();el("as-calendar-list").replaceChildren();el("as-calendar-count").textContent="Waiting for verified school access…";calendarOption(el("as-calendar-year"),[],"All school years");calendarOption(el("as-calendar-program"),[],"All programs");},
+  onBeforeChange:async()=>{if(busy)throw Error("Finish saving before switching schools.");++loadSequence;loading=false;calendarIncomplete=false;calendarLoaded=false;years=[];programs=[];terms=[];subjects=[];sections=[];selectedId="";el("as-editor-panel").hidden=true;el("as-list").replaceChildren();el("as-calendar-list").replaceChildren();el("as-calendar-count").textContent="Waiting for verified school access…";calendarOption(el("as-calendar-year"),[],"All school years");calendarOption(el("as-calendar-program"),[],"All programs");},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){say("School administrator access is required.");return;}
     void load();
