@@ -49,9 +49,11 @@ function resolveClass(classes){
   else if(requestedSubjectName)rows=rows.filter(item=>String(item.subject||"").toLowerCase()===requestedSubjectName.toLowerCase());
   if(requestedOfferingId){
     const exact=(classes||[]).find(item=>item.offeringId===requestedOfferingId);
-    if(exact)return exact;
+    if(exact&&rows.includes(exact))return exact;
+    return null;
   }
   if(rows.length)return rows[0];
+  if(requestedSubjectId||requestedSubjectName)return null;
   return (classes||[]).find(item=>/computer\s*programming|programming/i.test(String(item.subject||"")))||(classes||[])[0]||null;
 }
 function courseLabel(item){return [item.section,item.term,item.year].filter(Boolean).join(" · ");}
@@ -221,11 +223,11 @@ async function refreshLegacy(){
 
 async function refresh(){
   if(!picker?.scope.current||busy)return;
-  const turn=++epoch;busy=true;el("subjectRefresh").disabled=true;setStatus("Loading your classroom stream…");
+  const turn=++epoch;busy=true;legacyMode=false;el("subjectRefresh").disabled=true;setStatus("Loading your classroom stream…");
   try{
     profile=await scoped(profileApi,"my_profile");if(turn!==epoch)return;
     current=resolveClass(profile.classes||[]);
-    if(!current){setStatus("No active classroom subject is available for this account.",true);return;}
+    if(!current){renderHeader();renderSummary([],new Map(),new Map(),[]);renderUpcoming([],new Map(),new Map());renderStream([],[],new Map(),new Map());setStatus("The requested class is not available in this school. Return to All subjects to choose an active class.",true);return;}
     renderHeader();
     const [assignmentResult,gradeResult,streamResult]=await Promise.all([
       scoped(assessmentApi,"list_student"),
