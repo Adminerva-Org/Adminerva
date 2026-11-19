@@ -623,6 +623,17 @@ body.lab-page::after{
   color:#8cc6d1;
   white-space:normal;
 }
+.lab-stage-pill{
+  --stage-rgb:66,225,237;
+  border-color:rgba(var(--stage-rgb),.22);
+  background:rgba(var(--stage-rgb),.08);
+  color:rgb(var(--stage-rgb));
+}
+.lab-stage-pill[data-stage=explore]{--stage-rgb:112,181,255}
+.lab-stage-pill[data-stage=practice]{--stage-rgb:90,226,235}
+.lab-stage-pill[data-stage=apply]{--stage-rgb:111,222,181}
+.lab-stage-pill[data-stage=master]{--stage-rgb:190,157,255}
+.lab-stage-pill[data-stage=challenge]{--stage-rgb:244,207,112}
 .lab-game-card-visual{
   position:absolute;
   right:10px;
@@ -711,6 +722,33 @@ body.lab-page::after{
 .lab-map-heading{
   margin:1rem 0 .7rem;
 }
+.games-stage-legend{
+  display:flex;
+  align-items:center;
+  gap:.35rem;
+  overflow-x:auto;
+  margin:-.15rem 0 .85rem;
+  padding:.15rem 0 .2rem;
+  scrollbar-width:none;
+}
+.games-stage-legend::-webkit-scrollbar{display:none}
+.games-stage-legend span{
+  --stage-rgb:66,225,237;
+  flex:0 0 auto;
+  padding:.28rem .48rem;
+  border:1px solid rgba(var(--stage-rgb),.2);
+  border-radius:999px;
+  background:rgba(var(--stage-rgb),.055);
+  color:rgb(var(--stage-rgb));
+  font-size:.5rem;
+  font-weight:900;
+  letter-spacing:.035em;
+}
+.games-stage-legend [data-stage=explore]{--stage-rgb:112,181,255}
+.games-stage-legend [data-stage=practice]{--stage-rgb:90,226,235}
+.games-stage-legend [data-stage=apply]{--stage-rgb:111,222,181}
+.games-stage-legend [data-stage=master]{--stage-rgb:190,157,255}
+.games-stage-legend [data-stage=challenge]{--stage-rgb:244,207,112}
 .lab-map-heading p,
 .lab-map-key,
 .lab-module-heading small{
@@ -745,6 +783,31 @@ body.lab-page::after{
   background:linear-gradient(160deg,rgba(137,102,35,.31),rgba(60,45,18,.82));
   color:#ffe29a;
   box-shadow:0 5px 0 rgba(5,17,29,.65);
+}
+.lab-mission-node[data-stage=explore]{
+  border-color:rgba(92,167,255,.58);
+  background:linear-gradient(160deg,rgba(43,102,167,.38),rgba(13,43,72,.86));
+  color:#a9d7ff;
+}
+.lab-mission-node[data-stage=practice]{
+  border-color:rgba(66,225,237,.58);
+  background:linear-gradient(160deg,rgba(34,126,143,.34),rgba(9,50,63,.86));
+  color:#a7f3f5;
+}
+.lab-mission-node[data-stage=apply]{
+  border-color:rgba(85,214,177,.58);
+  background:linear-gradient(160deg,rgba(35,128,101,.34),rgba(11,54,50,.86));
+  color:#adf2db;
+}
+.lab-mission-node[data-stage=master]{
+  border-color:rgba(159,120,255,.62);
+  background:linear-gradient(160deg,rgba(99,69,166,.35),rgba(43,28,79,.88));
+  color:#d5c5ff;
+}
+.lab-mission-node[data-stage=challenge]{
+  border-color:rgba(241,199,91,.65);
+  background:linear-gradient(160deg,rgba(137,102,35,.34),rgba(60,45,18,.88));
+  color:#ffe29a;
 }
 .lab-mission-node.is-complete{
   border-color:rgba(75,223,166,.66);
@@ -2491,4 +2554,11 @@ body.lab-page::after{
     line-height:1;
   }
   .games-oop-flow[data-steps="5"] .games-oop-link::after{display:none}
+}
+
+@media(min-width:1001px){
+  .lab-rules-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+}
+@media(min-width:521px) and (max-width:1000px){
+  .lab-rules-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
