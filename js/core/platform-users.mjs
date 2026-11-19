@@ -12,6 +12,7 @@ function node(tag,className="",text=""){
 function setBusy(value,message=""){
   busy=value;
   el("pu-refresh").disabled=value;
+  el("pu-find-exact").disabled=value;
   el("pu-prev").disabled=value||history.length===0;
   el("pu-next").disabled=value||!nextToken;
   if(message)status.textContent=message;
@@ -73,8 +74,20 @@ function detailTile(label,value){
   const box=node("div","rounded-xl border border-slate-200 bg-slate-50 p-3");
   box.append(node("span","text-xs text-slate-500",label),node("strong","block mt-1 break-words",value));return box;
 }
-async function openDetail(item){
+async function findExact(){
   if(busy)return;
+  const query=el("pu-search").value.trim();
+  if(!query){status.textContent="Enter an exact verified email or account ID first.";el("pu-search").focus();return;}
+  setBusy(true,"Looking up exact platform account…");
+  try{
+    const result=(await api({action:"lookup",query})).data;
+    status.textContent="Exact account found.";
+    await openDetail(result.account,{allowBusy:true});
+  }catch(error){status.textContent=error?.message||"Exact account lookup failed.";}
+  finally{setBusy(false);}
+}
+async function openDetail(item,{allowBusy=false}={}){
+  if(busy&&!allowBusy)return;
   const run=++detailRun;
   el("pu-detail-title").textContent=item.displayName||item.email||"User account";
   el("pu-detail-meta").textContent=item.email||item.uid;
@@ -114,6 +127,8 @@ async function openDetail(item){
 }
 for(const id of ["pu-search","pu-account-filter","pu-role-filter"])el(id).addEventListener(id==="pu-search"?"input":"change",render);
 el("pu-refresh").addEventListener("click",()=>void loadPage(currentToken));
+el("pu-find-exact").addEventListener("click",()=>void findExact());
+el("pu-search").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();void findExact();}});
 el("pu-next").addEventListener("click",()=>{if(!busy&&nextToken){history.push(currentToken);void loadPage(nextToken);}});
 el("pu-prev").addEventListener("click",()=>{if(!busy&&history.length){const token=history.pop();void loadPage(token);}});
 el("pu-detail-close").addEventListener("click",()=>{++detailRun;dialog.close();});
