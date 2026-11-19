@@ -264,6 +264,9 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
   }
   async function join(){
     if(session||locked)return;
+    const uid=auth.currentUser?.uid;
+    if(!uid){if(output)output.textContent='Sign in again before running Java.';return;}
+    let client=null;
     try{
       const files=getFiles(false),entry=getEntry();
       if(!entry||!files[entry])throw Error('Choose a valid Java entry file.');
@@ -279,27 +282,32 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
       const cancelButton=el('studioCancelQueueBtn');
       if(cancelButton)cancelButton.disabled=true;
       el('stdinHistoryDisclosure')?.classList.add('hidden');
-      const client=new AdminervaRuntimeClient({
+      client=new AdminervaRuntimeClient({
         origin:ADMINERVA_RUNTIME_ORIGIN,
-        getToken:async()=>auth.currentUser?.getIdToken(),onEvent:runtimeEvent
+        getToken:async()=>auth.currentUser?.uid===uid?auth.currentUser.getIdToken():null,
+        onEvent:message=>{if(session===client&&auth.currentUser?.uid===uid)runtimeEvent(message);}
       });
       session=client;
       await client.enqueue({files,entry,projectId:getProjectId?.()||null});
-      if(el('studioCancelQueueBtn'))el('studioCancelQueueBtn').disabled=false;
+      if(session===client&&el('studioCancelQueueBtn'))el('studioCancelQueueBtn').disabled=false;
     }catch(error){
+      if(client&&session!==client)return;
       if(output)output.textContent+='\nCannot join queue: '+error.message;
       finish('failed');
     }
   }
   async function recover(){
     if(!enabled||guest||session||!auth.currentUser)return false;
+    const uid=auth.currentUser.uid;
     const client=new AdminervaRuntimeClient({
       origin:ADMINERVA_RUNTIME_ORIGIN,
-      getToken:async()=>auth.currentUser?.getIdToken(),onEvent:runtimeEvent
+      getToken:async()=>auth.currentUser?.uid===uid?auth.currentUser.getIdToken():null,
+      onEvent:message=>{if(session===client&&auth.currentUser?.uid===uid)runtimeEvent(message);}
     });
     session=client;
     try{
       const state=await client.resume(async frozen=>{
+        if(session!==client||auth.currentUser?.uid!==uid)throw Error('Session or account changed.');
         if(!frozen.files||!frozen.entry)throw Error('Execution snapshot is unavailable.');
         await showRecoveredSnapshot?.(frozen);
         recoveredPreview=true;
@@ -311,10 +319,11 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
         if(sendButton)sendButton.disabled=true;
         el('stdinHistoryDisclosure')?.classList.add('hidden');
       });
-      if(!state){session=null;client.dispose();return false;}
+      if(session!==client||!state){if(session===client)session=null;client.dispose();return false;}
       return true;
     }catch(error){
       client.dispose();
+      if(session!==client)return false;
       session=null;
       if(recoveredPreview)finish('failed');
       console.warn('Could not restore the existing runtime session:',error.message);
@@ -348,11 +357,12 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
     el('studioReadinessClose')?.addEventListener('click',dismiss);
     el('studioReadinessCancel')?.addEventListener('click',dismiss);
     el('studioCancelQueueBtn')?.addEventListener('click',async()=>{
-      if(!session)return;
+      const client=session;
+      if(!client?.id)return;
       const cancel=el('studioCancelQueueBtn');if(cancel)cancel.disabled=true;
-      try{await session.cancel();finish('cancelled');}
-      catch(error){if(position)position.textContent='Cancellation not confirmed: '+error.message;}
-      finally{if(cancel)cancel.disabled=false;}
+      try{await client.cancel();if(session===client)finish('cancelled');}
+      catch(error){if(session===client&&position)position.textContent='Cancellation not confirmed: '+error.message;}
+      finally{if(session===client&&cancel)cancel.disabled=false;}
     });
     window.addEventListener('beforeunload',event=>{
       if(!session?.id)return;event.preventDefault();event.returnValue='';
