@@ -7,15 +7,18 @@ import {summarizeActivity} from "./activity-model.mjs?v=1.3.0";
 
 const field = id => document.getElementById(id);
 let teacherEmail=TEACHER_EMAIL;
-let records = [], preferences = [], students = [], selectedSections = [], epoch = 0;
+let records = [], preferences = [], students = [], selectedSections = [], epoch = 0, activeOperation=null;
 function textCell(row, value) { const cell = row.insertCell(); cell.textContent = String(value); }
 async function operation(message, work) {
+  if(activeOperation||staffRole(auth.currentUser)!=="admin")return;
+  const current=epoch,uid=auth.currentUser.uid,token={};activeOperation=token;
   const end = window.beginLoading?.(message, field("operations")) || (() => {});
   field("admin-analytics-status").textContent = message;
-  field("operations").querySelectorAll("button").forEach(button => button.disabled = true);
-  const current = epoch;
-  try { await work(); } catch { if (current === epoch) field("admin-analytics-status").textContent = "Monitoring unavailable. Matching permissions and a connection are required; no academic data was changed. Try Refresh."; }
-  finally { end(); if (current === epoch) field("operations").querySelectorAll("button").forEach(button => button.disabled = false); }
+  const controls=[...field("operations").querySelectorAll("button,select,input,textarea")].filter(control=>!control.disabled);
+  controls.forEach(control=>control.disabled=true);
+  const active=()=>current===epoch&&auth.currentUser?.uid===uid&&activeOperation===token;
+  try { await work(); } catch(error) { if(active())field("admin-analytics-status").textContent = (error?.message||"Monitoring operation unavailable.")+" Check permissions and connection, then refresh."; }
+  finally { end(); if(active()){activeOperation=null;controls.forEach(control=>control.disabled=false);} }
 }
 async function refresh({requireComplete=false}={}) {
   const current = epoch;
@@ -28,7 +31,7 @@ async function refresh({requireComplete=false}={}) {
     getDoc(doc(db, "monitoring_control", "runtime")),
     getDoc(doc(db, "monitoring_status", "runtime"))
   ]);
-  if (current !== epoch || staffRole(auth.currentUser) !== "admin") return;
+  if (current !== epoch || staffRole(auth.currentUser) !== "admin") throw Error("Account or monitoring context changed.");
   const names=["optional activity","support reports","consent records","student directory","instructor assignment","maintenance policy","worker status"];
   const missing=results.flatMap((result,index)=>result.status==="rejected"?[names[index]]:[]);
   if(requireComplete&&missing.length)throw Error("Required monitoring sources unavailable");
@@ -82,11 +85,13 @@ field("save-roster").addEventListener("click", () => operation("Saving teacher a
   field("admin-analytics-status").textContent = "Assignment saved. Publish a fresh summary to replace the previous teacher snapshot.";
 }));
 field("publish-engagement").addEventListener("click", () => operation("Preparing teacher summary…", async () => {
+  const actor=auth.currentUser,generation=epoch,targetTeacher=teacherEmail;
   await refresh({requireComplete:true});
-  const captured = records.slice(), actor = auth.currentUser, generation = epoch;
+  const captured = records.slice();
+  if(generation!==epoch||auth.currentUser?.uid!==actor.uid)throw Error("Account changed.");
   if (!confirm("Replace the teacher's engagement summary from the current sample? Consent and assigned sections will be checked again before saving. This does not change grades or publish to students.")) return;
   await runTransaction(db, async transaction => {
-    const roster = await transaction.get(doc(db, "analytics_rosters", teacherEmail));
+    const roster = await transaction.get(doc(db, "analytics_rosters", targetTeacher));
     const sections = roster.data()?.sections || [];
     const ownerUids = [...new Set(captured.map(event => event.ownerUid))];
     const studentIds = [...new Set(captured.map(event => event.studentId).filter(Boolean))];
@@ -97,7 +102,7 @@ field("publish-engagement").addEventListener("click", () => operation("Preparing
     const rows = summarizeActivity(captured.filter(event => allowed.has(event.studentId) && consent.get(event.ownerUid) === event.studentId));
     if (rows.length > 100) throw Error("Narrow the assigned sections before publishing.");
     if (generation !== epoch || auth.currentUser?.uid !== actor.uid) throw Error("Account changed.");
-    transaction.set(doc(db, "analytics_views", teacherEmail), {teacherEmail:teacherEmail, rows, sections, windowDays:7, eventLimit:500, publishedBy:actor.uid, publishedAt:serverTimestamp()});
+    transaction.set(doc(db, "analytics_views", targetTeacher), {teacherEmail:targetTeacher, rows, sections, windowDays:7, eventLimit:500, publishedBy:actor.uid, publishedAt:serverTimestamp()});
   });
   field("admin-analytics-status").textContent = "Teacher summary refreshed. Only coarse student learning activity is included, never diagnostic trails or bug reports.";
 }));
@@ -120,28 +125,36 @@ field("save-maintenance").addEventListener("click", () => operation("Saving main
 }));
 field("purge-events").addEventListener("click", () => operation("Removing expired monitoring records…", async () => {
   if (!confirm("Permanently delete up to 500 expired events and 500 expired diagnostic attachments? Academic records are not affected.")) return;
-  let count = 0;
-  for (const name of ["activity_events", "issue_diagnostics"]) {
-    const expired = await getDocs(query(collection(db, name), where("expiresAt", "<=", Timestamp.now()), limit(500)));
-    if (expired.empty) continue;
-    const batch = writeBatch(db); expired.docs.forEach(record => batch.delete(record.ref)); await batch.commit(); count += expired.size;
-  }
-  await refresh();
+  let count=0;const actor=auth.currentUser,generation=epoch;
+  try{
+    for (const name of ["activity_events", "issue_diagnostics"]) {
+      if(generation!==epoch||auth.currentUser?.uid!==actor.uid)return;
+      const expired = await getDocs(query(collection(db, name), where("expiresAt", "<=", Timestamp.now()), limit(500)));
+      if(generation!==epoch||auth.currentUser?.uid!==actor.uid)return;
+      if (expired.empty) continue;
+      const batch = writeBatch(db); expired.docs.forEach(record => batch.delete(record.ref)); await batch.commit(); count += expired.size;
+    }
+  }catch(error){if(generation===epoch)field("admin-analytics-status").textContent=count+" expired records removed before cleanup stopped: "+(error?.message||"unknown error");return;}
+  try{await refresh();}catch{if(generation===epoch)field("admin-analytics-status").textContent=count+" expired records removed. Monitoring could not refresh.";return;}
   field("admin-analytics-status").textContent = count + " expired records removed. Repeat if the batch limit was reached. Automatic TTL cleanup requires separate server configuration.";
 }));
 onAuthStateChanged(auth, user => {
-  epoch++; records = []; preferences = []; students = [];
+  epoch++; activeOperation=null; records = []; preferences = []; students = [];
+  field("operations").querySelectorAll("button,select,input,textarea").forEach(control=>control.disabled=false);
   field("raw-events").replaceChildren(); field("module-usage").replaceChildren();
   field("operations").hidden = staffRole(user) !== "admin";
   if (staffRole(user) === "admin") void operation("Loading monitoring…", async()=>{
+    const generation=epoch;
     const accounts=await getDocs(collection(db,"staff_access"));
+    if(generation!==epoch||auth.currentUser?.uid!==user.uid)return;
     const selector=field("roster-teacher");selector.replaceChildren();
     const emails=new Set([TEACHER_EMAIL,user.email.toLowerCase(),...accounts.docs.filter(record=>record.data().status==="active").map(record=>record.id)]);
     for(const email of emails)selector.add(new Option(email,email));
+    if(!emails.has(teacherEmail))teacherEmail=emails.values().next().value;
     selector.value=teacherEmail;
     await refresh();
   });
   else field("admin-analytics-status").textContent = "Administrator access requires a verified authorized account. No monitoring records were requested.";
 });
 
-field("roster-teacher").addEventListener("change",()=>{teacherEmail=field("roster-teacher").value;epoch++;void operation("Loading selected instructor assignment…",refresh);});
+field("roster-teacher").addEventListener("change",()=>{if(activeOperation){field("roster-teacher").value=teacherEmail;return;}teacherEmail=field("roster-teacher").value;epoch++;void operation("Loading selected instructor assignment…",refresh);});
