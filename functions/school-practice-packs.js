@@ -22,7 +22,8 @@ function packView(doc,{id=doc.id,sectionIds=null,legacy=false}={}){
       Array.isArray(data.sectionIds)?data.sectionIds:[]),
     missionRefs:Array.isArray(data.missionRefs)?data.missionRefs:[],
     notes:clean(data.notes,1200),dueDate:clean(data.dueDate,10),
-    status:data.status==="archived"?"archived":"active",legacy
+    status:data.status==="archived"?"archived":"active",legacy,
+    gradingMode:"practice_only"
   };
 }
 async function missionCatalog(){
@@ -112,7 +113,10 @@ function createSchoolPracticePackService({db,Timestamp}){
     if(action==="list")return {schoolId:ctx.schoolId,sectionId,packs:await listPacks(ctx,[sectionId],{includeArchived:true})};
     if(action==="save"){
       const title=clean(input.title,120),notes=clean(input.notes,1200),dueDate=clean(input.dueDate,10),
+        gradingMode=clean(input.gradingMode||"practice_only",40),
         missionRefs=[...new Set(Array.isArray(input.missionRefs)?input.missionRefs.map(value=>clean(value,180)).filter(Boolean):[])];
+      if(gradingMode!=="practice_only")
+        deny("failed-precondition","Practice Packs cannot change school grades unless a separate grade-bearing assessment linkage is explicitly configured.");
       if(!title)deny("invalid-argument","Add a Practice Pack title.");
       if(!missionRefs.length||missionRefs.length>120)deny("invalid-argument","Choose 1–120 Practice missions.");
       if(dueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))deny("invalid-argument","Use a valid due date.");
@@ -121,9 +125,9 @@ function createSchoolPracticePackService({db,Timestamp}){
       const id=packId(),now=Timestamp.now();
       await db.doc(prefix(ctx.schoolId)+"practice_packs/"+id).create({
         id,schoolId:ctx.schoolId,ownerUid:ctx.uid,title,sectionIds:[sectionId],missionRefs,
-        notes,dueDate,status:"active",createdAt:now,updatedAt:now
+        notes,dueDate,gradingMode:"practice_only",status:"active",createdAt:now,updatedAt:now
       });
-      return {schoolId:ctx.schoolId,pack:{id,title,sectionIds:[sectionId],missionRefs,notes,dueDate,status:"active"}};
+      return {schoolId:ctx.schoolId,pack:{id,title,sectionIds:[sectionId],missionRefs,notes,dueDate,gradingMode:"practice_only",status:"active"}};
     }
     if(action==="archive"){
       const id=checkedId(input.packId,"Practice Pack ID"),ref=db.doc(prefix(ctx.schoolId)+"practice_packs/"+id),record=await ref.get();

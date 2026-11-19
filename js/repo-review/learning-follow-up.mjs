@@ -35,7 +35,7 @@ async function setStatus(kind,item,status){
 }
 function render(){
  const sec=section(),legacySec=legacySectionName(),person=student();
- const packCards=packs.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.missionRefs?.length||0)+" missions"+(x.dueDate?" · due "+x.dueDate:"")+(x.legacy?" · legacy read-only":""),x.notes);if(!x.legacy)box.append(actionButton("Archive",()=>setStatus("pack",x,"archived")));return box;});
+ const packCards=packs.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.missionRefs?.length||0)+" missions"+(x.dueDate?" · due "+x.dueDate:"")+" · Practice XP only"+(x.legacy?" · legacy read-only":""),x.notes);if(!x.legacy)box.append(actionButton("Archive",()=>setStatus("pack",x,"archived")));return box;});
  const projectCards=projects.filter(x=>x.sectionIds?.includes(legacySec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.studentIds?.length?x.studentIds.length+" selected learners":"Whole section")+(x.dueDate?" · due "+x.dueDate:""),x.description);box.append(actionButton("Archive",()=>setStatus("project",x,"archived")));return box;});
  const planCards=plans.filter(x=>x.studentId===person?.id&&x.status!=="closed").map(x=>{const box=card(x.title||"Improvement plan",(x.status==="completed"?"Completed · ":"")+(x.skills||[]).join(" · "),x.goal+"\nNext: "+x.nextAction);if(x.status!=="completed")box.append(actionButton("Mark completed",()=>setStatus("plan",x,"completed")));box.append(actionButton("Close plan",()=>setStatus("plan",x,"closed")));return box;});
  el("practicePackList").replaceChildren(...packCards);el("studentProjectList").replaceChildren(...projectCards);el("improvementPlanList").replaceChildren(...planCards);
@@ -48,6 +48,7 @@ function open(kind){
  if(kind==="pack"){
    el("followupKindLabel").textContent="Practice pack";el("followupDialogTitle").textContent="Assign Practice Pack";
    box.append(field("Pack title","title"),field("Due date","dueDate","date"),field("Teacher note","notes","textarea"));
+   const policy=document.createElement("p");policy.className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900";policy.textContent="Practice only · These missions award Practice XP and do not change assessment or class-record grades. Grade-bearing use requires a separate assessment linkage.";box.append(policy);
    const fs=document.createElement("fieldset");fs.innerHTML='<legend class="font-bold text-sm">Missions</legend>';const list=document.createElement("div");list.className="grid sm:grid-cols-2 gap-2 mt-2 max-h-64 overflow-y-auto";
    for(const course of COURSES)for(const mission of course.missions){const label=document.createElement("label");label.className="text-xs border rounded p-2 flex gap-2";const check=document.createElement("input");check.type="checkbox";check.name="missionRefs";check.value=course.id+":"+mission.id;label.append(check,document.createTextNode(course.name+" · "+mission.title));list.append(label);}fs.append(list);box.append(fs);
  }else if(kind==="project"){
@@ -67,7 +68,7 @@ async function save(event){
  try{
   if(mode==="pack"){
    const missionRefs=data.getAll("missionRefs");if(!data.get("title")||!missionRefs.length)throw Error("Add a title and at least one mission.");
-   await packApi({action:"save",schoolId,sectionId:sec,title:String(data.get("title")).trim(),missionRefs,
+   await packApi({action:"save",schoolId,sectionId:sec,title:String(data.get("title")).trim(),missionRefs,gradingMode:"practice_only",
     notes:String(data.get("notes")||"").trim(),dueDate:String(data.get("dueDate")||""),platformMode:platformMode()});
   }else if(mode==="project"){
    if(!data.get("title"))throw Error("Add a project title.");const key=id(),studentIds=data.getAll("studentIds");
