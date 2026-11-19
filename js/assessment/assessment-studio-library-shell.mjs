@@ -297,5 +297,5 @@ if(host){
 
   `;
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=20261119-runtime-profile2");
+  await import("../repo-review/teacher-assessment-library.mjs?v=ebc673211d57");
 }
