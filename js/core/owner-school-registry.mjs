@@ -130,7 +130,8 @@ async function loadSchoolAudit(schoolId=selected?.schoolId){
       card.style.cssText="border:1px solid #e2e8f0;border-radius:10px;padding:.75rem;background:#f8fafc";
       const title=document.createElement("strong");title.textContent=auditLabel(event.action);
       const meta=document.createElement("p");meta.className="own-muted";
-      meta.textContent=(event.createdAt?new Date(event.createdAt).toLocaleString():"Time unavailable")+
+      meta.textContent=(event.source==="assist"?"System Admin assist · ":"Platform control · ")+
+        (event.createdAt?new Date(event.createdAt).toLocaleString():"Time unavailable")+
         (event.actorUid?" · actor "+event.actorUid:"");
       card.append(title,meta);
       const parts=[];
