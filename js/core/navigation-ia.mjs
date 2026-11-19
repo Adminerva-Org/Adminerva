@@ -285,7 +285,7 @@ export function buildNavigationIA(ctx){
           needs("learning-plan","C-map / Learning Plan","lesson-planner.html","Active planning workflow; generation and curriculum alignment continue to be refined."),
           needs("slides","Slides Editor","presentation.html","Active slide workflow; editing and presentation UX still need enhancement."),
           needs("library","Reference Library","library.html","Active reference library; ingestion and organization continue to be improved."),
-          needs("schedule","Schedule","schedule.html","Active schedule surface; broader scheduling functions remain under development."),future("scope-sequence","Scope and Sequence"),
+          needs("schedule","Teaching Timetable","schedule.html","Manage weekly schedules using verified school teaching assignments; legacy schedules remain available where permitted."),future("scope-sequence","Scope and Sequence"),
           future("department-files","Department Files"),future("letters","Letters"),
           ...(scope.isSchoolAdmin?[future("faculty-scheduling","Faculty Scheduling","Admin role · Future development")]:[])
         ])
