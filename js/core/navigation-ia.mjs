@@ -312,9 +312,9 @@ export function buildNavigationIA(ctx){
         future("usage-analytics","Usage & Performance")
       ])
     ]),
-    ws("directory","Directory","owner-schools.html","Users, schools and platform directory administration",[
+    ws("directory","Directory","system-users.html","Users, schools and platform directory administration",[
       group("Users",[
-        future("system-users","Users","Unified platform user directory · Future development")
+        live("system-users","Users","system-users.html","Read-only platform account directory with on-demand school membership metadata")
       ]),
       group("Schools",[
         live("system-schools","Schools","owner-schools.html"),live("school-details","School Details","owner-schools.html"),
