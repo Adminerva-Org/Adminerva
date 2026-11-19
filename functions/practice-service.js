@@ -168,6 +168,7 @@ function createPracticeService({db,Timestamp,resolveUser,now=Date.now,randomId=i
       return {awarded:!award.exists,points:count*10,completedCount:count,alreadyRecorded:award.exists};
     });
   }
-  return {acquire,start,predict,complete,...createPracticeSeasonService({db,Timestamp,resolveUser,now,randomId,catalog,reject})};
+  return {acquire,start,predict,complete,...createPracticeSeasonService({db,Timestamp,resolveUser,now,randomId,catalog,reject}),
+    pilotSeason:createPracticeSeasonService({db,Timestamp,resolveUser,now,randomId,catalog,reject,pilotOnly:true})};
 }
 module.exports={createPracticeService,PracticeError,CATALOG_VERSION};
