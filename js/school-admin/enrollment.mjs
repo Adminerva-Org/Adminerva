@@ -6,7 +6,7 @@ const get=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
 let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]},
-  saving=false,loadedApplication=null,registrations=[];
+  saving=false,loadedApplication=null,registrations=[],registrationChange=null;
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -132,16 +132,23 @@ function renderRegistrations(){
     const row=document.createElement("article");row.className="en-row";row.setAttribute("role","listitem");
     const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
     name.textContent=item.displayName;meta.className="en-muted";
-    const identity=item.accountResponsibility==="guardian"
+    const identityState=item.accountResponsibility==="guardian"
       ?"guardian-managed · no student login required"
       :(item.accountLinked?"student account linked":"student activation pending");
     meta.textContent=registrationLabel(item)+" · "+item.courseCount+" subject"+(item.courseCount===1?"":"s")+
-      (item.studentNumber?" · "+item.studentNumber:"")+" · "+identity+" · "+(item.source==="online"?"online application":"onsite");
+      (item.studentNumber?" · "+item.studentNumber:"")+" · "+identityState+" · "+(item.source==="online"?"online application":"onsite");
     info.append(name,meta);
     const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;justify-content:flex-end";
     const badge=document.createElement("span");badge.className="en-badge";badge.textContent=item.status||"active";actions.append(badge);
-    const identity=document.createElement("a");identity.className="en-btn secondary";identity.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
-    identity.textContent="Identity & access";identity.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identity);
+    const identityLink=document.createElement("a");identityLink.className="en-btn secondary";identityLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
+    identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identityLink);
+    if(item.status==="active"){
+      const end=document.createElement("button");end.type="button";end.className="en-btn secondary";end.textContent="End / change placement";
+      end.addEventListener("click",()=>openRegistrationChange(item,"end"));actions.append(end);
+    }else if(item.status==="ended"){
+      const restore=document.createElement("button");restore.type="button";restore.className="en-btn secondary";restore.textContent="Restore";
+      restore.addEventListener("click",()=>openRegistrationChange(item,"restore"));actions.append(restore);
+    }
     row.append(info,actions);host.append(row);
   }
 }
@@ -151,6 +158,59 @@ async function loadRegistrations(){
     registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));
   renderRegistrations();
 }
+function openRegistrationChange(item,mode){
+  if(saving)return;
+  registrationChange={item,mode};
+  const dialog=get("en-registration-change-dialog"),form=get("en-registration-change-form");
+  form.reset();
+  get("en-registration-change-title").textContent=mode==="restore"?"Restore registration":"End registration / prepare placement change";
+  get("en-registration-change-target").textContent=item.displayName+" · "+registrationLabel(item);
+  get("en-registration-change-help").textContent=mode==="restore"
+    ?"Restore only the subject enrollments that were ended with this registration. Restoration is blocked if another active official placement exists or required course offerings are no longer active."
+    :"This ends the official registration and its currently active subject enrollments without deleting history or the student identity. Afterward, use the enrollment form to create a corrected/new placement if needed.";
+  const confirmButton=get("en-registration-change-confirm");
+  confirmButton.textContent=mode==="restore"?"Restore registration":"End registration";
+  confirmButton.style.background=mode==="restore"?"#166534":"#9a3412";
+  confirmButton.style.borderColor=mode==="restore"?"#166534":"#9a3412";
+  dialog.showModal();
+}
+function closeRegistrationChange(){
+  if(saving)return;
+  registrationChange=null;
+  get("en-registration-change-dialog").close();
+}
+get("en-registration-change-close").addEventListener("click",closeRegistrationChange);
+get("en-registration-change-cancel").addEventListener("click",closeRegistrationChange);
+get("en-registration-change-dialog").addEventListener("cancel",event=>{if(saving)event.preventDefault();else registrationChange=null;});
+get("en-registration-change-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(saving||!registrationChange||!event.currentTarget.reportValidity())return;
+  const {item,mode}=registrationChange,reason=String(new FormData(event.currentTarget).get("reason")||"").trim();
+  const action=mode==="restore"?"restore_registration":"end_registration";
+  void (async()=>{
+    saving=true;
+    get("en-registration-change-confirm").disabled=true;
+    get("en-registration-change-cancel").disabled=true;
+    get("en-registration-change-close").disabled=true;
+    status.textContent=mode==="restore"?"Restoring official registration…":"Ending official registration and subject enrollments…";
+    try{
+      const result=await perform(action,{registrationId:item.registrationId,reason});
+      const message=mode==="restore"
+        ?item.displayName+" restored · "+result.courseCount+" subject enrollment"+(result.courseCount===1?"":"s")+" reactivated."
+        :item.displayName+" ended · "+result.courseCount+" active subject enrollment"+(result.courseCount===1?"":"s")+" ended. A corrected placement can now be registered if needed.";
+      registrationChange=null;get("en-registration-change-dialog").close();
+      await loadRegistrations();
+      status.textContent=message;
+    }catch(error){status.textContent=error?.message||"The registration change was not saved.";}
+    finally{
+      saving=false;
+      get("en-registration-change-confirm").disabled=false;
+      get("en-registration-change-cancel").disabled=false;
+      get("en-registration-change-close").disabled=false;
+      updateCoursePreview();
+    }
+  })();
+});
 function applicationMeta(item){
   const year=catalog.years.find(x=>x.id===item.yearId)?.name||item.yearId;
   const program=catalog.programs.find(x=>x.id===item.preferredProgramId)?.name||"No program preference";
@@ -322,7 +382,9 @@ picker=createTenantSchoolPicker({
   host:get("en-school-picker"),status,
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current enrollment before switching schools.");
-    loadedApplication=null;workspace.hidden=true;
+    loadedApplication=null;registrationChange=null;
+    if(get("en-registration-change-dialog").open)get("en-registration-change-dialog").close();
+    workspace.hidden=true;
   },
   onReady:scope=>{
     const current=scope.current;
