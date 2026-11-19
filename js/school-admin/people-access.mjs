@@ -14,6 +14,8 @@ let importRun=0,rosterSourceRun=0,rosterSourceConfigured=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
+const requestedPersonId=String(new URL(location.href).searchParams.get("personId")||"");
+let requestedPersonSchoolId=null;
 let schoolReady=false,standardEnrollmentMode=false;
 function rememberedTab(){
   const hash=location.hash.slice(1);
@@ -125,11 +127,24 @@ const picker=createTenantSchoolPicker({
       if(get(id))get(id).hidden=standardEnrollmentMode;
     if(get("pa-classes-help"))get("pa-classes-help").innerHTML=standardEnrollmentMode
       ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for Manila Cathedral School. Teaching assignments and roster review remain available here.'
-      :"School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.";
+      :"School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.";
+    const enrollmentSummary=get("pa-enrollment-summary-link");
+    if(enrollmentSummary)enrollmentSummary.href=standardEnrollmentMode?"school-enrollment.html":"people-access.html#classes";
+    if(get("pa-enrollment-summary-action"))get("pa-enrollment-summary-action").textContent=standardEnrollmentMode
+      ?"Open Enrollment & Registration →":"Manage enrollment relationships →";
+    if(get("pa-legacy-requests-help"))get("pa-legacy-requests-help").innerHTML=standardEnrollmentMode
+      ?'Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; student registration continues in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>, while teaching assignments remain in Teaching &amp; classes.'
+      :"Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; enrollment and teaching relationships are managed in Teaching & classes.";
     if(get("pa-import-course-help"))get("pa-import-course-help").innerHTML=standardEnrollmentMode
       ?'For Manila Cathedral School, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
       :"Section values from the roster are hints only. After the people import is committed, review each matched section, choose the exact active course offering, and explicitly enroll the listed students.";
     workspace.hidden=false;schoolReady=true;
+    if(requestedPersonId&&requestedPersonSchoolId!==scope.current.schoolId){
+      requestedPersonSchoolId=scope.current.schoolId;
+      setTab("people",{remember:false});
+      void openPersonDetail({personId:requestedPersonId,displayName:"Student record"});
+      return;
+    }
     // Load only the active section. Large school directories should not fetch
     // six unrelated panels when the administrator only needs the overview.
     void loadSelectedTab(activeTab());
