@@ -5,8 +5,8 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 const get=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
-let picker=null,catalog={years:[],programs:[],terms:[],sections:[],offerings:[]},
-  saving=false,loadedApplication=null;
+let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]},
+  saving=false,loadedApplication=null,registrations=[];
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -29,6 +29,7 @@ function options(select,items,label){
     option.value=item.id;option.textContent=item.name||item.id;select.append(option);
   }
   if(items.some(item=>item.id===previous))select.value=previous;
+  else if(items.length===1)select.value=items[0].id;
 }
 function selected(name){return String(form.elements[name].value||"");}
 function gradeRequiresStudentEmail(level){
@@ -69,24 +70,37 @@ function updateCoursePreview(){
   const yearId=selected("yearId"),programId=selected("programId"),
     termId=selected("termId"),sectionId=selected("sectionId");
   const section=currentSection(),required=updateStudentEmailPolicy();
-  const count=catalog.offerings.filter(row=>
-    row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.sectionId===sectionId).length;
-  const grade=section?.gradeLevel?levelLabel(section.gradeLevel):"";
+  const matched=catalog.offerings.filter(row=>
+    row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.sectionId===sectionId);
+  const count=matched.length,grade=section?.gradeLevel?levelLabel(section.gradeLevel):"";
+  const subjectNames=[...new Set(matched.map(row=>
+    catalog.subjects.find(subject=>subject.id===row.subjectId)?.name||row.subjectId).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b));
+  const subjectSummary=subjectNames.length>6
+    ?subjectNames.slice(0,6).join(", ")+" +"+(subjectNames.length-6)+" more"
+    :subjectNames.join(", ");
   get("en-course-preview").textContent=!yearId||!programId||!termId||!sectionId
-    ?"Choose the academic placement to see how many active subject offerings will be enrolled."
+    ?"Choose the academic placement to see exactly which active subjects will be enrolled."
     :count
-      ?grade+" · "+count+" active subject offering"+(count===1?"":"s")+" · "+
+      ?grade+" · "+count+" active subject"+(count===1?"":"s")+
+        (subjectSummary?": "+subjectSummary:"")+" · "+
         (required?"student email required for Adminerva sign-in":"guardian-managed; student login not required")
       :"No active subject offerings match this placement. Configure the section subjects before enrolling students.";
   get("en-register-button").disabled=saving||count===0;
 }
 async function loadCatalog(){
   catalog=await perform("catalog");
+  catalog.subjects=catalog.subjects||[];
   options(form.elements.yearId,catalog.years||[],"Choose academic year");
   options(form.elements.programId,catalog.programs||[],"Choose program / division");
-  blank(form.elements.termId,"Choose academic period");
-  blank(form.elements.sectionId,"Choose section");
-  updateCoursePreview();
+  const sectionFilter=get("en-registration-section"),previousSection=sectionFilter?.value||"";
+  if(sectionFilter){
+    sectionFilter.replaceChildren(new Option("All sections",""));
+    for(const section of (catalog.sections||[]).slice().sort((a,b)=>a.name.localeCompare(b.name)))
+      sectionFilter.append(new Option(section.name,section.id));
+    if((catalog.sections||[]).some(row=>row.id===previousSection))sectionFilter.value=previousSection;
+  }
+  refreshPlacement();
 }
 function registrationLabel(row){
   const year=catalog.years.find(x=>x.id===row.yearId)?.name||row.yearId;
@@ -95,13 +109,24 @@ function registrationLabel(row){
   const section=catalog.sections.find(x=>x.id===row.sectionId)?.name||row.sectionId;
   return [year,program,term,section].filter(Boolean).join(" · ");
 }
-async function loadRegistrations(){
-  const result=await perform("list_registrations"),host=get("en-registration-list");
+function renderRegistrations(){
+  const host=get("en-registration-list");
+  if(!host)return;
   host.replaceChildren();
-  const items=result.items||[];
+  const query=String(get("en-registration-search")?.value||"").trim().toLocaleLowerCase("en");
+  const sectionId=String(get("en-registration-section")?.value||"");
+  const items=registrations.filter(item=>{
+    if(sectionId&&item.sectionId!==sectionId)return false;
+    if(!query)return true;
+    return [item.displayName,item.studentNumber,registrationLabel(item)]
+      .some(value=>String(value||"").toLocaleLowerCase("en").includes(query));
+  });
   if(!items.length){
     const empty=document.createElement("p");empty.className="en-muted";
-    empty.textContent="No standard enrollment registrations yet.";host.append(empty);return;
+    empty.textContent=registrations.length
+      ?"No registrations match the current student/section filter."
+      :"No standard enrollment registrations yet.";
+    host.append(empty);return;
   }
   for(const item of items){
     const row=document.createElement("article");row.className="en-row";row.setAttribute("role","listitem");
@@ -116,6 +141,12 @@ async function loadRegistrations(){
     const badge=document.createElement("span");badge.className="en-badge";badge.textContent=item.status||"active";
     row.append(info,badge);host.append(row);
   }
+}
+async function loadRegistrations(){
+  const result=await perform("list_registrations");
+  registrations=(result.items||[]).slice().sort((a,b)=>
+    registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));
+  renderRegistrations();
 }
 function applicationMeta(item){
   const year=catalog.years.find(x=>x.id===item.yearId)?.name||item.yearId;
@@ -227,6 +258,8 @@ form.elements.yearId.addEventListener("change",refreshPlacement);
 form.elements.programId.addEventListener("change",refreshPlacement);
 form.elements.termId.addEventListener("change",updateCoursePreview);
 form.elements.sectionId.addEventListener("change",updateCoursePreview);
+get("en-registration-search")?.addEventListener("input",renderRegistrations);
+get("en-registration-section")?.addEventListener("change",renderRegistrations);
 get("en-clear-application").addEventListener("click",()=>clearLoadedApplication({resetIdentity:true}));
 get("en-refresh-applications").addEventListener("click",()=>void loadApplications().catch(error=>{
   status.textContent=error?.message||"Online applications could not be refreshed.";
