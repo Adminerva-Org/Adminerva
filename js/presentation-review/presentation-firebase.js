@@ -22,7 +22,7 @@ window.selectedPlanData = null;
 window.selectedSessionData = null;
 window.selectedSessionIndex = null;
 window.db = db;
-let sessionLoadSequence=0;
+let sessionLoadSequence=0,presentationHistorySequence=0,presentationWriteBusy=false;
 
 workspaceOnReady( () => {
   injectPlanSelectorUI();
@@ -123,6 +123,7 @@ window.fetchSavedLessonPlans = async function () {
 };
 
 window.handlePlanSelection = function () {
+  if(presentationWriteBusy){document.getElementById("presentationPlanSelect").value=window.selectedPlanData?.id||"";return;}
   const planId = document.getElementById("presentationPlanSelect").value;
   if(window.adminervaPresentationDirty&&window.selectedPlanData?.id!==planId&&!confirm("Discard unsaved slide edits and choose another saved lesson?")){
     document.getElementById("presentationPlanSelect").value=window.selectedPlanData?.id||"";return;
@@ -156,13 +157,12 @@ window.handlePlanSelection = function () {
 };
 
 window.handleSessionSelection = async function () {
+  if(presentationWriteBusy){document.getElementById("presentationSessionSelect").value=window.selectedSessionIndex??"";return;}
   const sequence=++sessionLoadSequence;
   const planId = document.getElementById("presentationPlanSelect").value;
   const sessionIdx = document.getElementById("presentationSessionSelect").value;
   const btnGen = document.getElementById("btnGenerateSlides");
   const btnDelete = document.getElementById("btnDeletePresentation");
-
-  if (btnDelete) btnDelete.classList.add("hidden");
 
   if (sessionIdx !== "") {
     if (window.adminervaPresentationDirty &&
@@ -171,6 +171,8 @@ window.handleSessionSelection = async function () {
       if(select)select.value=window.selectedSessionIndex ?? "";
       return;
     }
+    if (btnDelete) btnDelete.classList.add("hidden");
+    window.loadedPersonalDeck=null;
     window.selectedSessionIndex = sessionIdx;
     window.selectedSessionData = window.selectedPlanData.sessions[sessionIdx];
     window.presentationSourceLessonVersion=null;
@@ -186,6 +188,7 @@ window.handleSessionSelection = async function () {
           ownedDoc(window.db,"presentations", presentationId),
         );
         if(sequence!==sessionLoadSequence)return;
+        if(window.adminervaPresentationDirty){document.getElementById("presentationSourceStatus").textContent="Cloud lookup finished after editing began. Your draft was retained. Reselect this session to load its saved version.";return;}
         document.getElementById("presentationSourceStatus").textContent=lessonSourceChanged(docSnap.data(),window.selectedPlanData)?"Saved deck has older or unknown lesson provenance. Slides are not overwritten by lesson updates. Review the source before rebuilding.":"Lesson version "+Number(window.selectedPlanData.version||1)+" selected. Slides remain editable; save explicitly.";
 
         if (docSnap.exists() && !docSnap.data().is_archived) {
@@ -211,9 +214,12 @@ window.handleSessionSelection = async function () {
             if (typeof window.selectSlide === "function") window.selectSlide(0);
           }
         }
-      } catch (e) {}
+      } catch (e) {if(sequence===sessionLoadSequence)document.getElementById("presentationSourceStatus").textContent="Saved presentation could not be checked: "+(e?.message||"connection unavailable");}
     }
   } else {
+    if(window.adminervaPresentationDirty&&!confirm("Discard unsaved slide edits?")){document.getElementById("presentationSessionSelect").value=window.selectedSessionIndex??"";return;}
+    if(btnDelete)btnDelete.classList.add("hidden");
+    window.loadedPersonalDeck=null;
     window.selectedSessionData = null;
     window.selectedSessionIndex = null;
     btnGen.disabled = true;
@@ -222,6 +228,7 @@ window.handleSessionSelection = async function () {
 };
 
 window.savePresentationToCloud = async function () {
+  if(presentationWriteBusy)return;
   const planId = document.getElementById("presentationPlanSelect")?.value;
   const sessionIdx = window.selectedSessionIndex;
 
@@ -237,6 +244,9 @@ window.savePresentationToCloud = async function () {
   const saveBtn = document.getElementById("btnSavePresentation");
   const originalText = saveBtn.innerHTML;
   const draftSnapshot=JSON.stringify(window.currentPresentationDeck);
+  const presentationId = `${planId}_session${sessionIdx}`;
+  const expected=window.loadedPersonalDeck?.id===presentationId?window.loadedPersonalDeck.version:0;
+  presentationWriteBusy=true;
   saveBtn.innerHTML = "⏳ Saving...";
   saveBtn.disabled = true;
   if (typeof window.showSubtleLoader === "function") {
@@ -244,7 +254,6 @@ window.savePresentationToCloud = async function () {
   }
 
   try {
-    const presentationId = `${planId}_session${sessionIdx}`;
     const payload = {
       ownerUid:workspaceUid(),
       plan_id: planId,
@@ -267,7 +276,6 @@ window.savePresentationToCloud = async function () {
     const currentRef=ownedDoc(window.db,"presentations",presentationId);
     const action=await runTransaction(window.db,async tx=>{
       const previous=await tx.get(currentRef);
-      const expected=window.loadedPersonalDeck?.id===presentationId?window.loadedPersonalDeck.version:0;
       payload.version=requireCurrentVersion(previous.exists()?previous.data():null,expected);
       assertWorkspaceAccount(payload.ownerUid);
       if(previous.exists()){
@@ -290,6 +298,7 @@ window.savePresentationToCloud = async function () {
     alert("Failed to save: " + e.message);
   } finally {
     saveBtn.innerHTML = originalText;
+    presentationWriteBusy=false;
     saveBtn.disabled = false;
     if (typeof window.hideSubtleLoader === "function") {
       window.hideSubtleLoader();
@@ -298,6 +307,7 @@ window.savePresentationToCloud = async function () {
 };
 
 window.deletePresentationFromCloud = async function () {
+  if(presentationWriteBusy)return;
   const planId = document.getElementById("presentationPlanSelect")?.value;
   const sessionIdx = window.selectedSessionIndex;
 
@@ -311,6 +321,7 @@ window.deletePresentationFromCloud = async function () {
 
   const btnDelete = document.getElementById("btnDeletePresentation");
   const originalText = btnDelete.innerHTML;
+  presentationWriteBusy=true;
   btnDelete.innerHTML = "⏳ Archiving...";
   btnDelete.disabled = true;
   if (typeof window.showSubtleLoader === "function") {
@@ -336,6 +347,8 @@ window.deletePresentationFromCloud = async function () {
     alert("🗑️ Presentation moved to Archive.");
     btnDelete.classList.replace("flex", "hidden");
 
+    window.loadedPersonalDeck=null;
+    window.adminervaPresentationDirty=false;
     window.currentPresentationDeck = [];
     window.activeSlideIndex = -1;
     if (typeof window.renderSlideBlocks === "function")
@@ -344,6 +357,7 @@ window.deletePresentationFromCloud = async function () {
     alert("Failed to archive: " + e.message);
   } finally {
     btnDelete.innerHTML = originalText;
+    presentationWriteBusy=false;
     btnDelete.disabled = false;
     if (typeof window.hideSubtleLoader === "function") {
       window.hideSubtleLoader();
@@ -483,6 +497,8 @@ window.hardDeleteDocument = async function (collectionName, docId) {
 
 
 window.openPresentationHistory=async function(){
+  if(presentationWriteBusy)return;
+  const turn=++presentationHistorySequence;
   const planId=document.getElementById("presentationPlanSelect")?.value;
   const session=window.selectedSessionIndex;
   if(!planId||session===null||session===undefined)return alert("Select a lesson session first.");
@@ -502,7 +518,7 @@ window.openPresentationHistory=async function(){
     title.className="font-bold text-lg text-slate-900";title.textContent="Presentation versions";
     const close=document.createElement("button");
     close.textContent="Close";close.className="px-3 py-2 bg-slate-200 rounded-lg text-sm font-bold";
-    close.addEventListener("click",()=>modal.classList.add("hidden"));
+    close.addEventListener("click",()=>{++presentationHistorySequence;modal.classList.add("hidden");});
     header.append(title,close);
     const list=document.createElement("div");list.id="presentationVersionsList";list.className="space-y-3";
     panel.append(header,list);modal.append(panel);document.body.append(modal);
@@ -514,6 +530,7 @@ window.openPresentationHistory=async function(){
   try{
     const snap=await getDocs(query(ownedCollection(db,"presentations",presentationId,"revisions"),
       orderBy("archivedRevisionAt","desc"),limit(20)));
+    if(turn!==presentationHistorySequence||modal.classList.contains("hidden"))return;
     container.replaceChildren();
     if(snap.empty)container.textContent="No earlier versions yet. Saving a changed deck will preserve the previous one.";
     snap.forEach(docSnap=>{
@@ -529,6 +546,7 @@ window.openPresentationHistory=async function(){
       restore.className="bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg shrink-0";
       restore.textContent="Load draft";
       restore.addEventListener("click",()=>{
+        if(presentationWriteBusy||turn!==presentationHistorySequence||document.getElementById("presentationPlanSelect")?.value!==planId||String(window.selectedSessionIndex)!==String(session))return alert("The selected lesson session changed. Reopen its history.");
         if(!confirm("Load this earlier deck into the editor? Save afterward to keep the restoration."))return;
         window.presentationSourceLessonVersion=revision.source_lesson_version||null;
         window.currentPresentationDeck=(revision.deck||[]).map(slide=>({
@@ -536,6 +554,7 @@ window.openPresentationHistory=async function(){
           contentLeft:window.sanitizePresentationHtml?.(slide.contentLeft)??"",
           contentRight:window.sanitizePresentationHtml?.(slide.contentRight)??""
         }));
+        window.adminervaPresentationDirty=true;
         window.activeSlideIndex=window.currentPresentationDeck.length?0:-1;
         window.renderSlideBlocks?.();
         if(window.currentPresentationDeck.length)window.selectSlide?.(0);
@@ -544,6 +563,6 @@ window.openPresentationHistory=async function(){
       row.append(info,restore);container.append(row);
     });
   }catch(error){
-    container.textContent="Could not load version history: "+error.message;
+    if(turn===presentationHistorySequence)container.textContent="Could not load version history: "+error.message;
   }finally{end();}
 };
