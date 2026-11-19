@@ -297,5 +297,5 @@ if(host){
 
   `;
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=ebc673211d57");
+  await import("../repo-review/teacher-assessment-library.mjs?v=20261120-classroom-deploy");
 }

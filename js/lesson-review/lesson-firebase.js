@@ -270,7 +270,7 @@ async function saveLessonPlanSnapshot(){
   }
 
   const expected=window.loadedPersonalPlan?.id===safeDocId?window.loadedPersonalPlan.version:0;
-  const planIdentity=window.loadedPersonalPlan;
+  const planIdentity=window.loadedPersonalPlan,planSessions=window.currentPlan,draftRevision=window.getLessonDraftRevision?.();
   if (typeof window.showSubtleLoader === "function") {
     window.showSubtleLoader("Syncing lesson plan securely to Firebase...");
   }
@@ -328,12 +328,12 @@ async function saveLessonPlanSnapshot(){
       savedVersion=version;
       return "saved";
     });
-    if(action==="saved"&&window.loadedPersonalPlan===planIdentity){
+    if(action==="saved"&&window.loadedPersonalPlan===planIdentity&&window.currentPlan===planSessions){
       window.loadedPersonalPlan={id:safeDocId,version:savedVersion};
       window.currentLessonSettings=snapshot.document_settings;
     }
     alert(action==="unchanged"?"No changes since the last save.":"Lesson plan saved. The previous version is retained.");
-    document.dispatchEvent(new CustomEvent("adminerva:lesson-saved",{detail:{id:safeDocId,action}}));
+    document.dispatchEvent(new CustomEvent("adminerva:lesson-saved",{detail:{id:safeDocId,action,draftRevision}}));
     return true;
   } catch (e) {
     console.error("Error saving plan:", e);
