@@ -19,7 +19,7 @@ const STAGE_SCORING=[
   {...DIFFICULTIES[2],name:"Challenge"}
 ];
 let arcadeController=null;
-let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external||guestPage&&initialGame.id==="challenge-arena"?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
+let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external||guestPage&&initialGame.id==="challenge-arena"?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,hubSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
 function localSet(key,value){try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
@@ -65,11 +65,12 @@ function sprintCorrect(){
 function sprintMiss(){
   const state=sprintState();if(!state.streak)return;state.streak=0;saveSprint(state);renderSprintHud();
 }
-function saveDraft(){if(mission)localSet(draftKey(),{answer});}
+function questionKey(question){return JSON.stringify([question?.type,question?.prompt,question?.code,question?.choices,question?.items,question?.left,question?.right]);}
+function saveDraft(){if(mission&&attempt?.question)localSet(draftKey(),{attemptId:attempt.attemptId||null,questionKey:questionKey(attempt.question),answer});}
 function sync(message,tone="ready"){field("labSync").textContent=message;field("labSync").dataset.tone=tone;}
 function notice(message,tone="info"){field("labNoticeText").textContent=message;field("labNotice").hidden=!message;field("labNotice").dataset.tone=tone;}
 function feedback(message,tone="info"){field("practiceFeedback").textContent=message;field("practiceFeedback").dataset.tone=tone;field("practiceFeedback").hidden=!message;}
-function setBusy(value){busy=value;field("practiceMissionPanel").setAttribute("aria-busy",String(value));for(const id of ["practiceCheckBtn","practiceBackBtn","practiceReconnectBtn","practiceTransferBtn","practiceSyncBtn","labPreferencesSave","labNextMission","labHintBtn"])field(id).disabled=value;field("practiceClass").disabled=value||!(hub.classes||[]).length;for(const control of field("practiceChoices").querySelectorAll("input,select,button"))control.disabled=value||!!pending||control.dataset.boundary==="true";field("practiceCheckBtn").textContent=value?(pending?"Saving…":"Please wait…"):pending?"Retry save":attempt?.completed?"Check replay":!guestPage&&["ordering","matching","debugging"].includes(attempt?.question?.type)?"Check build":"Submit answer";field("practiceCheckBtn").disabled=value||!eligible||!attempt?.attemptId;}
+function setBusy(value){busy=value;field("practiceMissionPanel").setAttribute("aria-busy",String(value));for(const id of ["practiceCheckBtn","practiceBackBtn","practiceReconnectBtn","practiceTransferBtn","practiceSyncBtn","labPreferencesSave","labNextMission","labHintBtn"])field(id).disabled=value;field("practiceClass").disabled=value||!(hub.classes||[]).length;for(const control of field("practiceChoices").querySelectorAll("input,select,button"))control.disabled=value||!!pending||control.dataset.boundary==="true"||control.dataset.boardUnavailable==="true";field("practiceCheckBtn").textContent=value?(pending?"Saving…":"Please wait…"):pending?"Retry save":attempt?.completed?"Check replay":!guestPage&&["ordering","matching","debugging"].includes(attempt?.question?.type)?"Check build":"Submit answer";field("practiceCheckBtn").disabled=value||!eligible||!attempt?.attemptId;}
 function completed(id){return (hub.courses||[]).some(row=>row.completed?.includes(id));}
 function earned(id){for(const row of hub.courses||[])if(row.missionScores?.[id]!==undefined)return row.missionScores[id];return 0;}
 function renderSummary(){
@@ -407,7 +408,7 @@ function renderConnectedHub(){
   return !failed;
 }
 async function refreshHub(classId=field("practiceClass").value){
-  const version=epoch,uid=user?.uid,reconnect=field("practiceReconnectBtn");
+  const version=epoch,sequence=++hubSequence,uid=user?.uid,reconnect=field("practiceReconnectBtn");
   if(reconnect)reconnect.hidden=true;
   accountPreview=false;
   if(!user){
@@ -416,7 +417,7 @@ async function refreshHub(classId=field("practiceClass").value){
   }
   try{
     const context=await resolvePracticeContext();
-    if(version!==epoch||uid!==user?.uid)return;
+    if(version!==epoch||sequence!==hubSequence||uid!==user?.uid)return;
     if(context.mode==="preview"){
       eligible=false;accountPreview=true;
       hub={season:PRACTICE_SEASON,eligible:false,classes:[],courses:[],legacyCount:0,points:0,completedCount:0};
@@ -427,7 +428,7 @@ async function refreshHub(classId=field("practiceClass").value){
       return;
     }
     const result=await call("practiceHub",{classId:classId||""});
-    if(version!==epoch||uid!==user?.uid)return;
+    if(version!==epoch||sequence!==hubSequence||uid!==user?.uid)return;
     hub=result;eligible=result.eligible===true;
     if(Array.isArray(result.publicRows)){globalRows=result.publicRows;publicBoardReady=true;publicBoardError=false;}
     const rendered=renderConnectedHub();
@@ -439,7 +440,7 @@ async function refreshHub(classId=field("practiceClass").value){
     sync(result.practicePilot===true?"Saved · MCS pilot school":"Saved to your school");
     if(!pending)notice(rendered?"":"Your school is connected and progress is saved. Some display panels could not load; refresh to restore them.",rendered?"info":"warning");
   }catch(error){
-    if(version!==epoch)return;
+    if(version!==epoch||sequence!==hubSequence)return;
     eligible=false;accountPreview=false;sync("Connection needed","error");
     const reason=error.details?.reason||"";
     const message=reason==="practice-migration"?"Your Practice progress is being finalized for this school. Saved scores are protected while reconciliation completes.":
@@ -591,12 +592,12 @@ function gameSnapBoard(question,container){
   function select(index){if(busy||pending)return;selected=selected===index?null:index;draw("token",index);}
   function bindDrag(button,index){
     button.addEventListener("pointerdown",event=>{
-      if(busy||pending||!event.isPrimary||event.button!==0)return;
+      if(drag||busy||pending||!event.isPrimary||event.button!==0)return;
       drag={id:event.pointerId,index,x:event.clientX,y:event.clientY,ghost:null,target:null};
       button.setPointerCapture?.(event.pointerId);
     });
     function targetAt(event){const target=document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-snap-slot]");return target&&board.contains(target)?target:null;}
-    function cleanup(){if(!drag)return;drag.ghost?.remove();drag.target?.classList.remove("is-drop-target");button.classList.remove("is-drag-origin");drag=null;}
+    function cleanup(event){if(!drag||(event&&drag.id!==event.pointerId))return;drag.ghost?.remove();drag.target?.classList.remove("is-drop-target");button.classList.remove("is-drag-origin");drag=null;}
     button.addEventListener("pointermove",event=>{
       if(!drag||drag.id!==event.pointerId)return;
       if(!drag.ghost&&Math.hypot(event.clientX-drag.x,event.clientY-drag.y)<7)return;
@@ -624,7 +625,7 @@ function gameSnapBoard(question,container){
     const complete=count===size;
     status.textContent=selected!==null?"Card selected. Choose a socket or return it to the tray.":count+" / "+size+(build?" blocks placed":match?" connections made":" patches installed")+(complete?" · ready to check":"");
     const pool=node("div",undefined,"game-snap-pool");tokens.forEach((text,index)=>{if(!values.includes(index))pool.append(card(text,index,null));});
-    const returnButton=node("button","Return selected card","game-snap-return");returnButton.type="button";returnButton.disabled=busy||!!pending||selected===null||!values.includes(selected);returnButton.addEventListener("click",()=>{const index=selected;change(index,-1);tray.querySelector('[data-snap-token="'+index+'"]')?.focus();});
+    const returnButton=node("button","Return selected card","game-snap-return");returnButton.type="button";returnButton.dataset.boardUnavailable=String(selected===null||!values.includes(selected));returnButton.disabled=busy||!!pending||returnButton.dataset.boardUnavailable==="true";returnButton.addEventListener("click",()=>{const index=selected;change(index,-1);tray.querySelector('[data-snap-token="'+index+'"]')?.focus();});
     tray.append(node("strong",build?"Available blocks":match?"Available terminals":"Available patches"),pool,returnButton);tray.dataset.snapSlot="-1";
     if(!pool.children.length)pool.append(node("span","All cards placed","game-snap-empty"));
     values.forEach((value,slot)=>{
@@ -793,15 +794,18 @@ function renderMechanicAid(question){
 }
 function pointsText(){const meta=attempt.question.difficulty,stage=missionStage(course,mission);field("labMissionPoints").textContent=attempt.completed?attempt.earnedPoints+" pts earned":attempt.availablePoints+" pts available";field("labScoringHint").textContent=attempt.completed?stage+" complete · replays do not change XP.":stage+" · "+meta.maximum+" pts max · −"+meta.deduction+" per miss · "+meta.floor+" pt floor · experiments are free.";}
 async function openMission(selectedCourse,selectedMission){
-  if(busy)return;const end=window.beginLoading?.("Preparing practice mission…")||(()=>{});saveDraft();course=selectedCourse;mission=selectedMission;persistentSet(resumeKey(),{courseId:course.id,missionId:mission.id,gameId:activeGame,openedAt:Date.now()});attempt=null;hintLevel=0;builderSelection=null;bugLineFound=false;answer=localGet(draftKey())?.answer??null;const version=epoch,sequence=++loadSequence;
+  if(busy)return;const end=window.beginLoading?.("Preparing practice mission…")||(()=>{});saveDraft();course=selectedCourse;mission=selectedMission;persistentSet(resumeKey(),{courseId:course.id,missionId:mission.id,gameId:activeGame,openedAt:Date.now()});attempt=null;hintLevel=0;builderSelection=null;bugLineFound=false;answer=null;const savedDraft=localGet(draftKey()),version=epoch,sequence=++loadSequence,uid=user?.uid;
   field("labReopenMission").hidden=true;
   field("practiceCheckBtn").hidden=true;field("labSubmitSignin").hidden=true;
   const themeGame=["all","challenge-arena"].includes(activeGame)?missionGameId(course,mission):activeGame;field("labMapPanel").hidden=true;const missionPanel=field("practiceMissionPanel");missionPanel.hidden=false;missionPanel.classList.remove("is-complete");missionPanel.dataset.game=themeGame;if(themeGame!=="code-sprint")field("labNextMission").textContent="Next mission →";renderSprintHud();field("practiceMissionTitle").textContent=mission.title.replace(/ · (Guided|Apply|Challenge)$/,"");field("practiceCourseName").textContent=course.name;field("labMissionType").textContent=typeNames[missionMeta(course,mission).type];field("labMissionStage").textContent=missionStage(course,mission);field("labMissionStage").dataset.stage=missionStage(course,mission).toLowerCase();field("practiceChoices").replaceChildren();field("practiceCode").textContent="";field("practicePrompt").textContent="Preparing your mission…";field("labExperimentLink").hidden=true;field("labNextMission").hidden=true;feedback("");setBusy(true);
   field("labGameName").textContent=activeGame==="challenge-arena"?"Challenge Arena · "+getProgrammingGame(themeGame).name:getProgrammingGame(themeGame).name;field("labDeviceHint").textContent=gameDeviceLabel(getProgrammingGame(themeGame));field("practiceMissionTitle").focus({preventScroll:true});field("practiceMissionPanel").scrollIntoView({behavior:"smooth",block:"start"});
   try{
-    if(eligible&&user){if(!activePracticeSession()||activePracticeSession().expiresAt<Date.now())await connect();attempt=await practiceRequest("practiceMissionStart",{courseId:course.id,missionId:mission.id});}
-    else{const preview=seasonActivity(course,mission,Math.abs(hashSeed(PRACTICE_SEASON+mission.id))),meta=missionMeta(course,mission);attempt={question:publicActivity(preview),availablePoints:meta.maximum,completed:false,previewWorkspace:preview.workspace};}
-    if(version!==epoch||sequence!==loadSequence)return;
+    let loaded;
+    if(eligible&&user){if(!activePracticeSession()||activePracticeSession().expiresAt<Date.now())await connect();if(version!==epoch||sequence!==loadSequence||uid!==user?.uid)return;loaded=await practiceRequest("practiceMissionStart",{courseId:selectedCourse.id,missionId:selectedMission.id});}
+    else{const preview=seasonActivity(selectedCourse,selectedMission,Math.abs(hashSeed(PRACTICE_SEASON+selectedMission.id))),meta=missionMeta(selectedCourse,selectedMission);loaded={question:publicActivity(preview),availablePoints:meta.maximum,completed:false,previewWorkspace:preview.workspace};}
+    if(version!==epoch||sequence!==loadSequence||uid!==user?.uid)return;
+    attempt=loaded;
+    if(savedDraft?.questionKey===questionKey(attempt.question)&&savedDraft.attemptId===(attempt.attemptId||null))answer=savedDraft.answer??null;
     if(pending?.missionId===mission.id){if(pending.attemptId===attempt.attemptId)answer=pending.answer;else{pending=null;localSet(pendingKey(),null);notice("The previous answer session ended. This mission shows your latest server score; no answer was submitted again.");}}
     field("practiceCode").textContent=attempt.question.code||"";field("practiceCode").hidden=!attempt.question.code;field("practicePrompt").textContent=attempt.question.prompt;renderMechanicAid(attempt.question);pointsText();renderAnswer();renderHintControl();
     field("labSubmitSignin").hidden=eligible||accountPreview;field("practiceCheckBtn").hidden=!eligible;
@@ -849,7 +853,7 @@ async function submit(){
           :sprintRoundCleared
             ?(sprintComplete?"Sprint complete! ":"Round clear! ")+"Replay earns no additional XP. "
             :"Correct replay. Your original reward stays saved. "
-      )+(result.explanation||""),"success");if(result.awarded)celebrateMission();await refreshHub();sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
+      )+(result.explanation||""),"success");if(result.awarded)celebrateMission();await refreshHub();if(version!==epoch||user?.uid!==uid)return;if(eligible)sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
     else if(result.alreadyRecorded){feedback("Not quite. This is a replay, so your saved points are unchanged. "+(result.explanation||""),"warning");sync("Replay checked");}
     else{attempt.availablePoints=result.availablePoints;attempt.wrongSubmissions=result.wrongSubmissions;if(!guestPage){const visual=field("labMechanicPanel")?.querySelector(".game-visual-header");setGameStatus(visual,"Recheck your solution","warning","!");playGameFx("error",field("practiceChoices"));if(attempt.question.type==="debugging")bugLineFound=true;revealHint();if(field("practiceMissionPanel").dataset.game==="code-sprint")sprintMiss();}feedback(result.deduction?"Not quite. This scored submission used "+result.deduction+" points from this mission’s possible reward. "+result.availablePoints+" points remains available. Adjust your answer and try again.":"Not quite. You have reached this mission’s minimum reward; more attempts cannot reduce it further. Keep trying.","warning");sync("Attempt saved");}
     pointsText();renderAnswer();
@@ -964,17 +968,19 @@ connectBoard();
 
 onAuthStateChanged(auth,async current=>{
   arcadeController?.setOwner(current?.uid||null);
-  epoch++;loadSequence++;user=current;eligible=false;accountPreview=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());
+  const version=++epoch;loadSequence++;hubSequence++;user=current;eligible=false;accountPreview=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());
   connectBoard();
   try{
     field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;field("practiceTransferBtn").hidden=true;
     renderSummary();renderCourses();renderBoard();
     await refreshHub();
+    if(version!==epoch)return;
     window.__adminervaGamesReady.backend=true;
     pendingNotice();
     const params=new URLSearchParams(location.search),requested=COURSES.find(item=>item.id===params.get("course")),target=requested?.missions.find(item=>item.id===params.get("mission"));
     if(target)await openMission(requested,target);
   }catch(error){
+    if(version!==epoch)return;
     eligible=false;busy=false;setBusy(false);
     renderSummary();renderCourses();renderBoard();
     console.error("[Adminerva Games] Account initialization failed; browse mode remains active.",error);
