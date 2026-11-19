@@ -29,6 +29,29 @@ function createSchoolPracticeSeasonService({
  const prefix=schoolId=>"schools/"+schoolId+"/";
  const ref=(actor,path)=>db.doc(prefix(actor.schoolId)+path);
  const col=(actor,path)=>db.collection(prefix(actor.schoolId)+path);
+ const pilotId="mcs-manila";
+ const inactiveRosterStatuses=new Set(["archived","suspended","inactive","disabled","deleted","ended","withdrawn","rejected","pending"]);
+ const activeRosterSection=(row,email)=>row&&String(row.email||"").trim().toLowerCase()===email&&
+  row.active!==false&&!inactiveRosterStatuses.has(String(row.status||"active").trim().toLowerCase())&&
+  typeof row.section==="string"&&row.section.trim();
+ function pilotCompatible(school){
+  return school.exists&&["active","pilot"].includes(school.data().state)&&school.data().compatibilityMode!=="v4_only";
+ }
+ async function pilotRosterForUnplacedStudent(ctx,token,user,enrollmentSnap){
+  // No explicit enrollment history may be overridden by the compatibility path.
+  if(ctx.schoolId!==pilotId||!enrollmentSnap.empty||ctx.platformOverride)return [];
+  const email=String(token.email||"").trim().toLowerCase();
+  if(!email||String(user.email||"").trim().toLowerCase()!==email)return [];
+  const [school,roster,request,staff]=await Promise.all([
+   db.doc("platform_schools/"+pilotId).get(),
+   db.collection("students").where("email","==",email).limit(11).get(),
+   db.doc("account_requests/"+ctx.uid).get(),db.doc("staff_access/"+email).get()
+  ]);
+  if(!pilotCompatible(school)||roster.size>10||request.data()?.status==="rejected"||
+     (request.data()?.status==="approved"&&request.data()?.approvedRole==="teacher")||
+     (staff.data()?.status==="active"&&["teacher","admin","school_admin"].includes(staff.data()?.role)))return [];
+  return roster.docs.filter(doc=>activeRosterSection(doc.data(),email)).map(doc=>({ref:doc.ref,section:doc.data().section.trim()}));
+ }
 
  async function legacyPracticeRequiresMigration(ctx,migrationState){
   if(migrationState.exists&&migrationState.data().status==="complete")return false;
@@ -66,13 +89,14 @@ function createSchoolPracticeSeasonService({
    reject("resource-exhausted","Your current enrollment list needs school review before Practice can continue.","enrollment");
   const enrollmentDocs=enrollmentSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
    doc.data().status==="active");
-  if(!enrollmentDocs.length)
+  const pilotRoster=enrollmentDocs.length?[]:await pilotRosterForUnplacedStudent(ctx,token,user,enrollmentSnap);
+  if(!enrollmentDocs.length&&!pilotRoster.length)
    reject("permission-denied","An active school enrollment is required to save Practice progress.","enrollment");
   const offerings=await Promise.all(enrollmentDocs.map(row=>
    db.doc(prefix(ctx.schoolId)+"course_offerings/"+row.data().offeringId).get()));
   const active=enrollmentDocs.filter((row,index)=>offerings[index].exists&&
    offerings[index].data().schoolId===ctx.schoolId&&offerings[index].data().status==="active");
-  if(!active.length)
+  if(!active.length&&!pilotRoster.length)
    reject("permission-denied","Your active Practice class is not currently available.","enrollment");
   const sectionIds=[...new Set(active.map(row=>row.data().sectionId).filter(Boolean))];
   const sectionDocs=await Promise.all(sectionIds.map(sectionId=>
@@ -84,7 +108,7 @@ function createSchoolPracticeSeasonService({
   }));
   return {
    ...ctx,uid:ctx.uid,schoolId:ctx.schoolId,personId,token,migrationPending,
-   memberRef,personRef,migrationRef,
+   memberRef,personRef,migrationRef,pilotRoster,
    enrollments:active.map(row=>({
     ref:row.ref,id:row.id,offeringId:row.data().offeringId,
     sectionId:row.data().sectionId,subjectId:row.data().subjectId
@@ -108,6 +132,22 @@ function createSchoolPracticeSeasonService({
      !person.exists||person.data().schoolId!==a.schoolId||person.data().kind!=="student"||
      person.data().status!=="active"||person.data().authUid!==a.uid)
    reject("permission-denied","Your school enrollment changed. Reload Practice before continuing.","enrollment");
+  if(a.pilotRoster?.length){
+   const email=String(a.token.email||"").trim().toLowerCase();
+   const [roster,placements,admission,staff]=await Promise.all([
+    Promise.all(a.pilotRoster.map(item=>tx.get(item.ref))),
+    tx.get(col(a,"enrollments").where("personId","==",a.personId).limit(1)),
+    tx.get(db.doc("account_requests/"+a.uid)),tx.get(db.doc("staff_access/"+email))
+   ]);
+   if(!pilotCompatible(school)||!placements.empty||admission.data()?.status==="rejected"||
+      (admission.data()?.status==="approved"&&admission.data()?.approvedRole==="teacher")||
+      (staff.data()?.status==="active"&&["teacher","admin","school_admin"].includes(staff.data()?.role))||
+      roster.some((record,index)=>!record.exists||!activeRosterSection(record.data(),email)||
+       record.data().section.trim()!==a.pilotRoster[index].section))
+    reject("permission-denied","Your MCS pilot roster changed. Reconnect Games.","enrollment");
+   // School XP remains canonical. Class ranking awaits actual course placement.
+   return [];
+  }
   const count=a.enrollments.length,enrollments=records.slice(0,count),offerings=records.slice(count);
   if(enrollments.some((record,index)=>!record.exists||
       record.data().schoolId!==a.schoolId||record.data().personId!==a.personId||
@@ -239,7 +279,7 @@ function createSchoolPracticeSeasonService({
     return data.season===season&&data.completed===true&&completedAt>=dayStart&&completedAt<dayEnd;
    }).length,
    dailyQuest={date:manilaDayKey(time),done:Math.min(3,dailyDone),target:3};
-  return {schoolId:a.schoolId,season,eligible:true,alias:score.alias,optIn:score.optIn,
+  return {schoolId:a.schoolId,season,eligible:true,pilotRosterPlacementPending:Boolean(a.pilotRoster?.length),alias:score.alias,optIn:score.optIn,
    points:score.points,completedCount:score.completedCount,
    classes:a.classes,classId:current?.id||"",classRows,publicRows,resume,dailyQuest,
    courses:progress.docs.map(row=>row.data()).filter(row=>row.season===season),
