@@ -8,6 +8,14 @@ import {createVerifiedSchoolScope,renderSchoolSwitcher} from "./verified-school-
 const callable=httpsCallable(getFunctions(app,"asia-southeast1"),"tenantSchools");
 const preferredKey=uid=>"Adminerva_last_verified_school_"+uid;
 function preferred(uid) {try{return sessionStorage.getItem(preferredKey(uid))||null;}catch{return null;}}
+function requestedSchool(uid){
+  try{
+    const query=new URL(location.href).searchParams.get("schoolId")||"";
+    const platform=sessionStorage.getItem("Adminerva_platform_view_school")||"";
+    const candidate=query||platform||preferred(uid)||"";
+    return /^[a-z][a-z0-9-]{1,63}$/.test(candidate)?candidate:null;
+  }catch{return preferred(uid);}
+}
 function remember(uid,id) {try{if(id)sessionStorage.setItem(preferredKey(uid),id);}catch{}}
 export function createTenantSchoolPicker({host,status,onBeforeChange=async()=>{},onReady=()=>{}}) {
   const scope=createVerifiedSchoolScope({
@@ -42,7 +50,7 @@ export function createTenantSchoolPicker({host,status,onBeforeChange=async()=>{}
       await auth.authStateReady();
       const uid=auth.currentUser?.uid;
       if(!uid){scope.clear();return null;}
-      return scope.refresh({uid,preferredSchoolId:preferred(uid)});
+      return scope.refresh({uid,preferredSchoolId:requestedSchool(uid)});
     },
     signOut(){scope.clear();host.replaceChildren();host.hidden=true;}
   };
