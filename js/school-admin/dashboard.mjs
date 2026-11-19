@@ -15,6 +15,24 @@ const tabs=new Set(["overview","people","invites","classes","access","import"]);
 function escapeHTML(value){return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));}
 function count(value){return Number.isFinite(value)&&value>=0?value.toLocaleString():"—";}
 function set(id,value){get(id).textContent=value;}
+function setWorkflow(id,value,noun){
+  const node=get(id);if(!node)return;
+  const numeric=Number(value),known=Number.isFinite(numeric)&&numeric>=0;
+  node.textContent=!known?"Unavailable":numeric>0?numeric.toLocaleString()+" "+noun+(numeric===1?"":"s"):"Not started";
+  node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(!known?"bg-amber-100 text-amber-900":numeric>0?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");
+}
+function applyEnrollmentRoute(scope){
+  const standard=scope.current?.schoolId==="manila-cathedral-school"&&scope.current?.compatibilityMode==="v4_only";
+  const href=standard?"school-enrollment.html":"people-access.html#classes";
+  const workflow=get("adminWorkflowEnrollmentLink"),shortcut=get("adminEnrollmentShortcut");
+  if(workflow){workflow.href=href;workflow.textContent=standard?"Open Enrollment & Registration →":"Manage enrollment relationships →";}
+  if(shortcut)shortcut.href=href;
+  if(get("adminEnrollmentShortcutAction"))get("adminEnrollmentShortcutAction").textContent=standard?"Open Enrollment & Registration →":"Manage enrollment relationships →";
+  if(get("adminWorkflowEnrollmentTitle"))get("adminWorkflowEnrollmentTitle").textContent=standard?"Enrollment & Registration":"Student enrollment";
+  if(get("adminWorkflowEnrollmentHelp"))get("adminWorkflowEnrollmentHelp").textContent=standard
+    ?"Register students, confirm official placement and create subject enrollments together."
+    :"Manage reviewed student-to-offering relationships for this school's current enrollment model.";
+}
 function message(host,value){host.replaceChildren();const p=document.createElement("p");p.className="p-5 text-sm text-slate-600";p.textContent=value;host.append(p);}
 function perform(api,action,lease){
   return api({schoolId:lease.schoolId,action}).then(response=>{picker.scope.assertLease(lease);return response.data;});
@@ -60,13 +78,14 @@ function renderRecords(){
   set("adminRecordCoverage","Showing "+shown.length+" of "+matching.length+" matching · "+records.length+" loaded");
   get("adminRecordMore").hidden=shown.length>=matching.length;
   if(!shown.length){message(recordList,records.length?"No Class Records match the filters.":"No Class Records have been created yet.");return;}
-  const rows=shown.map(record=>{const state=recordState(record);return '<tr class="border-b border-slate-100"><td class="px-4 py-3 text-sm font-semibold">'+escapeHTML(record.subjectName)+'</td><td class="px-4 py-3 text-sm">'+escapeHTML(record.sectionName)+'</td><td class="px-4 py-3 text-sm">'+escapeHTML((record.teacherNames||[]).join(", ")||"Unassigned")+'</td><td class="px-4 py-3 text-sm text-center">'+count(record.activeColumnCount)+'</td><td class="px-4 py-3 text-sm font-bold '+state.tone+'">'+state.label+'</td></tr>';}).join("");
-  recordList.innerHTML='<table class="min-w-full"><thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th scope="col" class="px-4 py-2 text-left">Subject</th><th scope="col" class="px-4 py-2 text-left">Section</th><th scope="col" class="px-4 py-2 text-left">Teacher</th><th scope="col" class="px-4 py-2 text-center">Activities</th><th scope="col" class="px-4 py-2 text-left">State</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  const rows=shown.map(record=>{const state=recordState(record),auditHref="school-class-records.html?offeringId="+encodeURIComponent(record.offeringId||"")+"&audit=1";return '<tr class="border-b border-slate-100"><td class="px-4 py-3 text-sm font-semibold">'+escapeHTML(record.subjectName)+'</td><td class="px-4 py-3 text-sm">'+escapeHTML(record.sectionName)+'</td><td class="px-4 py-3 text-sm">'+escapeHTML((record.teacherNames||[]).join(", ")||"Unassigned")+'</td><td class="px-4 py-3 text-sm text-center">'+count(record.activeColumnCount)+'</td><td class="px-4 py-3 text-sm font-bold '+state.tone+'">'+state.label+'</td><td class="px-4 py-3 text-sm"><a class="font-bold text-blue-700 whitespace-nowrap" href="'+auditHref+'">Audit →</a></td></tr>';}).join("");
+  recordList.innerHTML='<table class="min-w-full"><thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th scope="col" class="px-4 py-2 text-left">Subject</th><th scope="col" class="px-4 py-2 text-left">Section</th><th scope="col" class="px-4 py-2 text-left">Teacher</th><th scope="col" class="px-4 py-2 text-center">Activities</th><th scope="col" class="px-4 py-2 text-left">State</th><th scope="col" class="px-4 py-2 text-left">Action</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
 function reset(){
   model={};attentionLimit=10;recordLimit=20;
   for(const id of ["adminPeopleCount","adminAttentionCount","adminClassRecordCount","adminReportCount","adminSupportOpen","adminSupportCritical","adminSupportWaiting","adminEnrollmentCount","adminAssignmentCount","adminInvitationCount"])set(id,"—");
   set("adminIntegrityMeta","Not checked");set("adminClassRecordMeta","Not checked");set("adminReportMeta","Not checked");
+  for(const id of ["adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
   set("adminAttentionCoverage","");set("adminRecordCoverage","");get("adminAttentionMore").hidden=true;get("adminRecordMore").hidden=true;
   message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");
 }
@@ -74,6 +93,7 @@ function renderSource(name,data){
   if(name==="directory"){
     model.overview=data;
     for(const [id,key] of [["adminPeopleCount","people"],["adminEnrollmentCount","enrollments"],["adminAssignmentCount","staff_assignments"],["adminInvitationCount","invitations"]])set(id,count(data?.counts?.[key]));
+    setWorkflow("adminWorkflowPeople",data?.counts?.people,"record");setWorkflow("adminWorkflowTeaching",data?.counts?.staff_assignments,"assignment");setWorkflow("adminWorkflowEnrollment",data?.counts?.enrollments,"enrollment");
   }else if(name==="relationships"){
     model.reconciliation=data;
     set("adminAttentionCount",count(data?.counts?.total));
@@ -85,6 +105,7 @@ function renderSource(name,data){
     const finalized=model.records?.filter(row=>row.finalization&&!row.finalization.layoutChangedSinceFinalization).length;
     const released=model.records?.filter(row=>recordState(row).key==="released").length;
     set("adminClassRecordMeta",model.records?count(finalized)+" finalized · "+count(released)+" released":"Class Record source unavailable");
+    setWorkflow("adminWorkflowRecords",model.records?.length,"record");
     renderRecords();renderAttention();
   }else if(name==="support"){
     model.support=data;
@@ -116,7 +137,7 @@ picker=createTenantSchoolPicker({host:get("sa-school-picker"),status,
   onBeforeChange:async()=>{++loadGeneration;reset();refresh.disabled=true;get("adminSchoolName").textContent="Checking school…";},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){reset();refresh.disabled=false;status.textContent="School administrator access required.";return;}
-    set("adminSchoolName",scope.current.name||scope.current.schoolId);
+    set("adminSchoolName",scope.current.name||scope.current.schoolId);applyEnrollmentRoute(scope);
     void loadDashboard().catch(error=>{refresh.disabled=false;status.textContent=error?.message||"School operations could not be loaded.";});
   }
 });
