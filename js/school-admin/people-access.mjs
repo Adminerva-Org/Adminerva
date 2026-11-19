@@ -113,7 +113,14 @@ const picker=createTenantSchoolPicker({
       if(get(id))get(id).hidden=standardEnrollmentMode;
     if(get("pa-classes-help"))get("pa-classes-help").innerHTML=standardEnrollmentMode
       ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for Manila Cathedral School. Teaching assignments and roster review remain available here.'
-      :"School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.";
+      :"School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.";
+    const enrollmentSummary=get("pa-enrollment-summary-link");
+    if(enrollmentSummary)enrollmentSummary.href=standardEnrollmentMode?"school-enrollment.html":"people-access.html#classes";
+    if(get("pa-enrollment-summary-action"))get("pa-enrollment-summary-action").textContent=standardEnrollmentMode
+      ?"Open Enrollment & Registration →":"Manage enrollment relationships →";
+    if(get("pa-legacy-requests-help"))get("pa-legacy-requests-help").innerHTML=standardEnrollmentMode
+      ?'Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; student registration continues in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>, while teaching assignments remain in Teaching &amp; classes.'
+      :"Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; enrollment and teaching relationships are managed in Teaching & classes.";
     if(get("pa-import-course-help"))get("pa-import-course-help").innerHTML=standardEnrollmentMode
       ?'For Manila Cathedral School, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
       :"Section values from the roster are hints only. After the people import is committed, review each matched section, choose the exact active course offering, and explicitly enroll the listed students.";
