@@ -128,7 +128,8 @@ export function buildNavigationIA(ctx){
         future("grade-approval","Grade Approval"),future("promotion-policy","Promotion / Retention Policy")
       ]),
       group("School Profile",[
-        future("school-profile","School Profile & Campuses"),future("departments","Departments / Faculties"),
+        live("school-profile","School Profile & Campuses","school-profile.html","Canonical institution contact, address, timezone and campus records"),
+        future("departments","Departments / Faculties"),
         future("school-policies","Policies & Handbooks"),future("school-integrations","Integrations")
       ])
     ]),
