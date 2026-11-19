@@ -40,7 +40,10 @@ test("all root application pages mount help and public routes load no authentica
       assert.doesNotMatch(content,/auth-guard[^"\s]*\.js|activity-client|(?:^|\/)notifications\.mjs/);
       continue;
     }
-    assert.ok(readFileSync(file,"utf8").includes("adminerva-loader.js"),file+" needs the shared help/loader entry");
+    const content=readFileSync(file,"utf8");
+    const redirect=content.match(/location\.replace\(\s*["']([\w-]+\.html)["']\s*\+\s*location\.search\s*\+\s*location\.hash\s*\)/);
+    if(redirect){assert.notEqual(redirect[1],file);assert.ok(existsSync(redirect[1]),file+" redirects to a missing page");assert.ok(readFileSync(redirect[1],"utf8").includes("adminerva-loader.js"),file+" must redirect to a page with shared help");continue;}
+    assert.ok(content.includes("adminerva-loader.js"),file+" needs the shared help/loader entry");
   }
   for (const file of ["wiki.html","patch-notes.html","index.html"]) assert.doesNotMatch(readFileSync(file,"utf8"),/auth-guard[^"\s]*\.js/);
 });
