@@ -24,6 +24,7 @@
     .en-list{display:grid;gap:.55rem;margin-top:.75rem}
     .en-row{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;padding:.8rem;border:1px solid #e2e8f0;border-radius:.8rem;background:#f8fafc}
     .en-badge{display:inline-flex;border-radius:999px;padding:.2rem .55rem;background:#dcfce7;color:#166534;font-size:.72rem;font-weight:800}
+    .en-badge[data-state="ended"]{background:#e2e8f0;color:#475569}
     .en-summary{border:1px solid #cbd5e1;background:#f8fafc;border-radius:.8rem;padding:.75rem}
     .en-dialog{border:0;border-radius:1rem;padding:0;width:min(92vw,560px);box-shadow:0 24px 70px #0f172a55}
     .en-dialog::backdrop{background:#020617aa}
@@ -173,7 +174,7 @@
           <div class="flex justify-between gap-3 items-start">
             <div>
               <h2 class="text-lg font-extrabold">Current registrations</h2>
-              <p class="en-muted mt-1">School-scoped registration records for this standard enrollment system.</p>
+              <p class="en-muted mt-1">School-scoped registration records for this standard enrollment system. End a registration before correcting its official placement; history and identity remain preserved.</p>
             </div>
             <button id="en-refresh" class="en-btn secondary" type="button">Refresh</button>
           </div>
@@ -226,6 +227,6 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261120-admin-workflow"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261120-admin-lifecycle"></script>
 </body>
 </html>
