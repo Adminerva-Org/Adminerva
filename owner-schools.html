@@ -96,9 +96,9 @@
     <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.75rem">
       <button id="owner-pilot-jump" type="button" class="own-button">Review school state</button>
       <a href="#owner-grant" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#1d4ed8">Assign school administrator</a>
-      <a href="people-access.html#access" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">Manage teacher access</a>
-      <a href="people-access.html#overview" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">Open People &amp; Access</a>
-      <a href="school-admin.html" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#475569">School administration</a>
+      <button type="button" class="own-button" data-owner-assist-target="people-access.html#access" style="background:#0f766e">Assist teacher access</button>
+      <button type="button" class="own-button" data-owner-assist-target="people-access.html#overview" style="background:#0f766e">Assist People &amp; Access</button>
+      <button type="button" class="own-button" data-owner-assist-target="school-admin.html" style="background:#475569">Assist School Administration</button>
     </div>
    </section>
    <section id="owner-standard-setup" hidden style="margin-top:1rem;padding:1rem;border:1px solid #bfdbfe;border-radius:12px;background:#f8fbff">
@@ -283,6 +283,6 @@
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
 <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
-<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-audit-history"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-assist-context"></script>
 </body>
 </html>
