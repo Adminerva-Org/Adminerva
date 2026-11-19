@@ -15,6 +15,9 @@ const millis=value=>value?.toMillis?.()||0;
 const randomId=()=>randomBytes(24).toString("hex");
 const reject=(code,message,reason)=>{throw new PracticeError(code,message,reason);};
 const schoolPracticeClassRankId=(sectionId,uid)=>hash(JSON.stringify([sectionId,uid])).slice(0,40);
+const DAY_MS=86400000,MANILA_OFFSET_MS=8*60*60*1000;
+const manilaDayStart=time=>Math.floor((time+MANILA_OFFSET_MS)/DAY_MS)*DAY_MS-MANILA_OFFSET_MS;
+const manilaDayKey=time=>new Date(time+MANILA_OFFSET_MS).toISOString().slice(0,10);
 async function defaultCatalog(){return import("./practice-courses.mjs");}
 async function defaultSeason(){return import("./practice-season.mjs");}
 
@@ -177,14 +180,17 @@ function createSchoolPracticeSeasonService({
  }
 
  async function hub(request){
-  const a=await actor(request),rules=await seasonRules(),season=rules.PRACTICE_SEASON;
-  const [saved,progress,legacy,publicBoard,resumeRecord]=await Promise.all([
+  const a=await actor(request),rules=await seasonRules(),season=rules.PRACTICE_SEASON,time=now();
+  const [saved,progress,legacy,publicBoard,resumeRecord,missionStates]=await Promise.all([
    ref(a,"practice_season_scores/"+a.uid).get(),
    col(a,"practice_season_progress/"+a.uid+"/courses").get(),
    col(a,"practice_verified_progress/"+a.uid+"/courses").get(),
    col(a,"practice_public_rankings").orderBy("points","desc").limit(30).get(),
-   ref(a,"practice_resume/"+a.uid).get()
+   ref(a,"practice_resume/"+a.uid).get(),
+   col(a,"practice_season_scores/"+a.uid+"/mission_state").limit(501).get()
   ]);
+  if(missionStates.size===501)
+   reject("resource-exhausted","Practice mission history requires pagination before Daily Quest can continue.","practice-history");
   const score=scoreSeed(a,season,saved.data()),
    current=a.classes.find(item=>item.id===request.data?.classId)||a.classes[0];
   let classRows=[];
@@ -202,9 +208,15 @@ function createSchoolPracticeSeasonService({
   const resume=resumeRecord.exists&&resumeRecord.data().season===season?
    {courseId:resumeRecord.data().courseId,missionId:resumeRecord.data().missionId,
     openedAt:millis(resumeRecord.data().openedAt)}:null;
+  const dayStart=manilaDayStart(time),dayEnd=dayStart+DAY_MS,
+   dailyDone=missionStates.docs.filter(row=>{
+    const data=row.data(),completedAt=millis(data.completedAt);
+    return data.season===season&&data.completed===true&&completedAt>=dayStart&&completedAt<dayEnd;
+   }).length,
+   dailyQuest={date:manilaDayKey(time),done:Math.min(3,dailyDone),target:3};
   return {schoolId:a.schoolId,season,eligible:true,alias:score.alias,optIn:score.optIn,
    points:score.points,completedCount:score.completedCount,
-   classes:a.classes,classId:current?.id||"",classRows,publicRows,resume,
+   classes:a.classes,classId:current?.id||"",classRows,publicRows,resume,dailyQuest,
    courses:progress.docs.map(row=>row.data()).filter(row=>row.season===season),
    legacyCount:legacy.docs.reduce((count,row)=>count+(row.data().completed?.length||0),0)};
  }
@@ -302,7 +314,7 @@ function createSchoolPracticeSeasonService({
    tx.set(stateRef,{schoolId:a.schoolId,ownerUid:a.uid,personId:a.personId,
     season:attempt.season,courseId:attempt.courseId,missionId:attempt.missionId,
     wrongSubmissions:wrong,completed:correct,earnedPoints:correct?availablePoints:0,
-    lastSubmittedAt:stamp(time)});
+    lastSubmittedAt:stamp(time),...(correct?{completedAt:stamp(time)}:{})});
    if(correct){
     result.explanation=question.why;result.workspace=question.workspace;
     const progress=progressRecord.data()||{},
