@@ -5,7 +5,7 @@ import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com
 import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.0";
 import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches,gameDeviceLabel} from "./practice-games.mjs?v=1.4.0";
 import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.7.0";
-import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest,resolvePracticeContext} from "./practice-session.mjs?v=1.5.0";
+import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest,resolvePracticeContext} from "./practice-session.mjs?v=1.5.1";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
 const field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
 const typeNames=guestPage?{choice:"Choose the answer",output:"Write the output",ordering:"Build the sequence",matching:"Match the pairs",debugging:"Fix the bug"}:{choice:"Quick Pick",output:"Code Trace",ordering:"Code Builder",matching:"Logic Match",debugging:"Bug Hunt"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
@@ -422,7 +422,7 @@ async function refreshHub(classId=field("practiceClass").value){
       notice("Migration preview · Your preserved Practice XP and completed missions are shown below. You can browse and play missions, but scored submissions stay disabled until school reconciliation finishes.","warning");
       return;
     }
-    sync("Saved to your school");
+    sync(result.practicePilot===true?"Saved · MCS pilot school":"Saved to your school");
     if(!pending)notice("");
   }catch(error){
     if(version!==epoch)return;
