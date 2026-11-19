@@ -21,6 +21,18 @@ function setWorkflow(id,value,noun){
   node.textContent=!known?"Unavailable":numeric>0?numeric.toLocaleString()+" "+noun+(numeric===1?"":"s"):"Not started";
   node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(!known?"bg-amber-100 text-amber-900":numeric>0?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");
 }
+function applyEnrollmentRoute(scope){
+  const standard=scope.current?.schoolId==="manila-cathedral-school"&&scope.current?.compatibilityMode==="v4_only";
+  const href=standard?"school-enrollment.html":"people-access.html#classes";
+  const workflow=get("adminWorkflowEnrollmentLink"),shortcut=get("adminEnrollmentShortcut");
+  if(workflow){workflow.href=href;workflow.textContent=standard?"Open Enrollment & Registration →":"Manage enrollment relationships →";}
+  if(shortcut)shortcut.href=href;
+  if(get("adminEnrollmentShortcutAction"))get("adminEnrollmentShortcutAction").textContent=standard?"Open Enrollment & Registration →":"Manage enrollment relationships →";
+  if(get("adminWorkflowEnrollmentTitle"))get("adminWorkflowEnrollmentTitle").textContent=standard?"Enrollment & Registration":"Student enrollment";
+  if(get("adminWorkflowEnrollmentHelp"))get("adminWorkflowEnrollmentHelp").textContent=standard
+    ?"Register students, confirm official placement and create subject enrollments together."
+    :"Manage reviewed student-to-offering relationships for this school's current enrollment model.";
+}
 function message(host,value){host.replaceChildren();const p=document.createElement("p");p.className="p-5 text-sm text-slate-600";p.textContent=value;host.append(p);}
 function perform(api,action,lease){
   return api({schoolId:lease.schoolId,action}).then(response=>{picker.scope.assertLease(lease);return response.data;});
@@ -125,7 +137,7 @@ picker=createTenantSchoolPicker({host:get("sa-school-picker"),status,
   onBeforeChange:async()=>{++loadGeneration;reset();refresh.disabled=true;get("adminSchoolName").textContent="Checking school…";},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){reset();refresh.disabled=false;status.textContent="School administrator access required.";return;}
-    set("adminSchoolName",scope.current.name||scope.current.schoolId);
+    set("adminSchoolName",scope.current.name||scope.current.schoolId);applyEnrollmentRoute(scope);
     void loadDashboard().catch(error=>{refresh.disabled=false;status.textContent=error?.message||"School operations could not be loaded.";});
   }
 });
