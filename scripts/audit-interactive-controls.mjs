@@ -41,6 +41,25 @@ function includesRef(code,value){
 function genericClickDelegation(code){
   return /addEventListener\s*\(\s*["']click["']/.test(code)&&/(closest|matches|dataset|getAttribute|querySelector)/.test(code);
 }
+function appendModuleGraph(file,seen=new Set()){
+  const absolute=resolve(file);
+  if(seen.has(absolute)||!existsSync(absolute)) return "";
+  seen.add(absolute);
+  let source;
+  try{source=readFileSync(absolute,"utf8");}catch{return "";}
+  let combined=source;
+  const specs=[];
+  for(const match of source.matchAll(/\b(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g)) specs.push(match[1]);
+  for(const match of source.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g)) specs.push(match[1]);
+  for(const spec of specs){
+    if(!spec.startsWith(".")) continue;
+    const target=resolve(dirname(absolute),stripUrl(spec));
+    const candidates=[target,target+".js",target+".mjs",resolve(target,"index.js"),resolve(target,"index.mjs")];
+    const found=candidates.find(existsSync);
+    if(found) combined+="\n"+appendModuleGraph(found,seen);
+  }
+  return combined;
+}
 
 const pages=walk(ROOT).filter(file=>extname(file)===".html");
 const findings=[];
@@ -56,7 +75,7 @@ for(const page of pages){
       findings.push({severity:"broken",kind:"missing-script",page:pageRel,control:source,detail:"Local script target does not exist"});
       continue;
     }
-    code+="\n"+readFileSync(target,"utf8");
+    code+="\n"+appendModuleGraph(target);
   }
 
   for(const match of html.matchAll(/\bhref\s*=\s*["']([^"']+)["']/gi)){
