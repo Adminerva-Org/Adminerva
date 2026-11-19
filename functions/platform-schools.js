@@ -346,8 +346,12 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return {schoolId,state:"draft"};
     }
     if(action==="list_school_admins"){
-      const snap=await db.collection("schools/"+schoolId+"/memberships")
-        .where("roles","array-contains","school_admin").limit(101).get();
+      const [school,snap]=await Promise.all([
+        schoolRef.get(),
+        db.collection("schools/"+schoolId+"/memberships")
+          .where("roles","array-contains","school_admin").limit(101).get()
+      ]);
+      if(!school.exists)fail("not-found","The school does not exist.");
       if(snap.size===101)fail("resource-exhausted","School Administrator list requires pagination.");
       const rows=snap.docs.filter(doc=>{
         const row=doc.data();
@@ -362,7 +366,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       }
       const users=new Map((resolved.users||[]).map(user=>[user.uid,user]));
       const activeCount=rows.filter(doc=>doc.data().status==="active").length;
-      const school=await schoolRef.get(),firstAdminUid=school.exists?String(school.data().firstAdminUid||""):"";
+      const firstAdminUid=String(school.data().firstAdminUid||"");
       return {
         schoolId,activeCount,
         admins:rows.map(doc=>{
