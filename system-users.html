@@ -34,10 +34,11 @@
   </header>
 
   <section class="pu-panel">
-    <div class="grid md:grid-cols-[minmax(0,1fr)_190px_190px] gap-3 items-end">
-      <label class="text-sm font-bold">Filter loaded page
-        <input id="pu-search" class="pu-input mt-1" type="search" autocomplete="off" placeholder="Name, email or account ID">
+    <div class="grid md:grid-cols-[minmax(0,1fr)_auto_190px_190px] gap-3 items-end">
+      <label class="text-sm font-bold">Filter loaded page or enter exact account
+        <input id="pu-search" class="pu-input mt-1" type="search" autocomplete="off" placeholder="Name, exact email or account ID">
       </label>
+      <button id="pu-find-exact" class="pu-btn primary" type="button">Find exact account</button>
       <label class="text-sm font-bold">Account
         <select id="pu-account-filter" class="pu-input mt-1">
           <option value="">All accounts</option>
@@ -101,6 +102,6 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=21a534696b3d"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
-<script type="module" src="js/core/platform-users.mjs?v=20261120-system-users"></script>
+<script type="module" src="js/core/platform-users.mjs?v=20261120-system-users2"></script>
 </body>
 </html>
