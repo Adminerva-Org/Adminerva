@@ -6,7 +6,7 @@ const get=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
 let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]},
-  saving=false,draftDirty=false,loadedApplication=null,registrations=[];
+  saving=false,draftDirty=false,loadedApplication=null,registrations=[],registrationChange=null;
 const requestVersions={catalog:0,applications:0,registrations:0};
 let refreshVersion=0;
 
@@ -35,7 +35,7 @@ function setSaving(value){
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
-  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea"))
     control.disabled=value;
   updateCoursePreview();
 }
@@ -161,14 +161,24 @@ function renderRegistrations(){
     const row=document.createElement("article");row.className="en-row";row.setAttribute("role","listitem");
     const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
     name.textContent=item.displayName;meta.className="en-muted";
-    const identity=item.accountResponsibility==="guardian"
+    const identityState=item.accountResponsibility==="guardian"
       ?"guardian-managed · no student login required"
       :(item.accountLinked?"student account linked":"student activation pending");
     meta.textContent=registrationLabel(item)+" · "+item.courseCount+" subject"+(item.courseCount===1?"":"s")+
-      (item.studentNumber?" · "+item.studentNumber:"")+" · "+identity+" · "+(item.source==="online"?"online application":"onsite");
+      (item.studentNumber?" · "+item.studentNumber:"")+" · "+identityState+" · "+(item.source==="online"?"online application":"onsite");
     info.append(name,meta);
-    const badge=document.createElement("span");badge.className="en-badge";badge.textContent=item.status||"active";
-    row.append(info,badge);host.append(row);
+    const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;justify-content:flex-end";
+    const badge=document.createElement("span");badge.className="en-badge";badge.dataset.state=item.status||"active";badge.textContent=item.status||"active";actions.append(badge);
+    const identityLink=document.createElement("a");identityLink.className="en-btn secondary";identityLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
+    identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identityLink);
+    if(item.status==="active"){
+      const end=document.createElement("button");end.type="button";end.className="en-btn secondary";end.textContent="End / change placement";
+      end.addEventListener("click",()=>openRegistrationChange(item,"end"));actions.append(end);
+    }else if(item.status==="ended"){
+      const restore=document.createElement("button");restore.type="button";restore.className="en-btn secondary";restore.textContent="Restore";
+      restore.addEventListener("click",()=>openRegistrationChange(item,"restore"));actions.append(restore);
+    }
+    row.append(info,actions);host.append(row);
   }
 }
 async function loadRegistrations(){
@@ -178,6 +188,50 @@ async function loadRegistrations(){
     registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));
   renderRegistrations();
 }
+function openRegistrationChange(item,mode){
+  if(saving)return;
+  registrationChange={item,mode};
+  const dialog=get("en-registration-change-dialog"),form=get("en-registration-change-form");
+  form.reset();
+  get("en-registration-change-title").textContent=mode==="restore"?"Restore registration":"End registration / prepare placement change";
+  get("en-registration-change-target").textContent=item.displayName+" · "+registrationLabel(item);
+  get("en-registration-change-help").textContent=mode==="restore"
+    ?"Restore only the subject enrollments that were ended with this registration. Restoration is blocked if another active official placement exists or required course offerings are no longer active."
+    :"This ends the official registration and its currently active subject enrollments without deleting history or the student identity. Afterward, use the enrollment form to create a corrected/new placement if needed.";
+  const confirmButton=get("en-registration-change-confirm");
+  confirmButton.textContent=mode==="restore"?"Restore registration":"End registration";
+  confirmButton.style.background=mode==="restore"?"#166534":"#9a3412";
+  confirmButton.style.borderColor=mode==="restore"?"#166534":"#9a3412";
+  dialog.showModal();
+}
+function closeRegistrationChange(){
+  if(saving)return;
+  registrationChange=null;
+  get("en-registration-change-dialog").close();
+}
+get("en-registration-change-close").addEventListener("click",closeRegistrationChange);
+get("en-registration-change-cancel").addEventListener("click",closeRegistrationChange);
+get("en-registration-change-dialog").addEventListener("cancel",event=>{if(saving)event.preventDefault();else registrationChange=null;});
+get("en-registration-change-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(saving||!registrationChange||!event.currentTarget.reportValidity())return;
+  const {item,mode}=registrationChange,reason=String(new FormData(event.currentTarget).get("reason")||"").trim();
+  const action=mode==="restore"?"restore_registration":"end_registration";
+  void (async()=>{
+    setSaving(true);
+    status.textContent=mode==="restore"?"Restoring official registration…":"Ending official registration and subject enrollments…";
+    try{
+      const result=await perform(action,{registrationId:item.registrationId,reason});
+      const message=mode==="restore"
+        ?item.displayName+" restored · "+result.courseCount+" subject enrollment"+(result.courseCount===1?"":"s")+" reactivated."
+        :item.displayName+" ended · "+result.courseCount+" active subject enrollment"+(result.courseCount===1?"":"s")+" ended. A corrected placement can now be registered if needed.";
+      registrationChange=null;get("en-registration-change-dialog").close();
+      await loadRegistrations();
+      status.textContent=message;
+    }catch(error){status.textContent=error?.message||"The registration change was not saved.";}
+    finally{setSaving(false);}
+  })();
+});
 function applicationMeta(item){
   const year=catalog.years.find(x=>x.id===item.yearId)?.name||item.yearId;
   const program=catalog.programs.find(x=>x.id===item.preferredProgramId)?.name||"No program preference";
@@ -189,7 +243,6 @@ function loadApplicationIntoForm(item){
   form.elements.applicationId.value=item.applicationId;
   form.elements.displayName.value=item.displayName||"";
   form.elements.birthDate.value=item.birthDate||"";
-  // Student numbers belong to the student being enrolled, never the previous draft.
   form.elements.studentNumber.value="";
   form.elements.guardianName.value=item.guardianName||"";
   form.elements.guardianRelationship.value=item.guardianRelationship||"";
@@ -366,8 +419,9 @@ picker=createTenantSchoolPicker({
     if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
     ++refreshVersion;
     for(const source of Object.keys(requestVersions))++requestVersions[source];
-    loadedApplication=null;draftDirty=false;registrations=[];
+    loadedApplication=null;registrationChange=null;draftDirty=false;registrations=[];
     catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]};
+    if(get("en-registration-change-dialog").open)get("en-registration-change-dialog").close();
     form.reset();clearLoadedApplication({resetIdentity:true});
     get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
     workspace.hidden=true;
