@@ -112,7 +112,43 @@ function choose(id,afterWrite=false){
     void loadStandardSetup(selected.schoolId);
   }
   if(selected.state==="suspended")void loadRecoveryStatus(selected.schoolId);
+  void loadSchoolAudit(selected.schoolId);
   void loadGovernanceRoles(selected.schoolId);
+}
+function auditLabel(action){
+  return String(action||"platform change").replace(/^school_/,"").replace(/^platform_/,"").replaceAll("_"," ");
+}
+async function loadSchoolAudit(schoolId=selected?.schoolId){
+  const turn=selectionEpoch,host=byId("owner-audit-list"),message=byId("owner-audit-status");
+  if(!host||!message||!schoolId)return null;
+  host.replaceChildren();message.textContent="Loading recent platform audit history…";
+  try{
+    const result=await execute("list_school_audit",{schoolId});
+    if(turn!==selectionEpoch||selected?.schoolId!==schoolId)return null;
+    for(const event of result.events||[]){
+      const card=document.createElement("article");
+      card.style.cssText="border:1px solid #e2e8f0;border-radius:10px;padding:.75rem;background:#f8fafc";
+      const title=document.createElement("strong");title.textContent=auditLabel(event.action);
+      const meta=document.createElement("p");meta.className="own-muted";
+      meta.textContent=(event.createdAt?new Date(event.createdAt).toLocaleString():"Time unavailable")+
+        (event.actorUid?" · actor "+event.actorUid:"");
+      card.append(title,meta);
+      const parts=[];
+      for(const [key,value] of Object.entries(event.detail||{}))if(value)
+        parts.push((key==="reason"?"Reason":key.replaceAll("_"," "))+": "+value);
+      if(parts.length){const detail=document.createElement("p");detail.className="own-muted";detail.textContent=parts.join(" · ");card.append(detail);}
+      host.append(card);
+    }
+    if(!host.children.length){
+      const empty=document.createElement("p");empty.className="own-muted";empty.textContent="No school-scoped platform audit events are recorded yet.";host.append(empty);
+    }
+    message.textContent=(result.events||[]).length+" recent event"+((result.events||[]).length===1?"":"s")+" loaded."+
+      (result.truncated?" Showing the most recent 50.":"");
+    return result;
+  }catch(error){
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId)message.textContent=error?.message||"Platform audit history could not be loaded.";
+    return null;
+  }
 }
 async function loadRecoveryStatus(schoolId=selected?.schoolId){
   const turn=selectionEpoch,form=byId("owner-resume"),host=byId("owner-resume-readiness"),
@@ -569,6 +605,9 @@ byId("owner-suspend").addEventListener("submit",event=>{
   if(!confirm("Suspend "+selected.displayName+"? All verified v4 school access will be denied."))return;
   void submit(f,"suspend",{schoolId:selected.schoolId,expectedRevision:selected.revision,
     reason:String(d.get("reason")||"").trim()});
+});
+byId("owner-audit-refresh")?.addEventListener("click",()=>{
+  if(selected&&!busy)void loadSchoolAudit(selected.schoolId);
 });
 byId("owner-resume-refresh")?.addEventListener("click",()=>{
   if(selected?.state==="suspended"&&!busy)void loadRecoveryStatus(selected.schoolId);
