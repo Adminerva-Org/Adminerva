@@ -39,7 +39,8 @@ window.setCurrentLessonMeetings=function(meetings=[],sessionNames=[]){
   }
 };
 const LESSON_DRAFT_KEY="Adminerva_lesson_editor_draft_v1";
-let lessonDraftDirty=false,lessonDraftTimer=null;
+let lessonDraftDirty=false,lessonDraftTimer=null,lessonDraftRevision=0;
+window.getLessonDraftRevision=()=>lessonDraftRevision;
 function lessonDraftStatus(label,tone="info",detail=""){
   const node=document.getElementById("lessonDraftStatusBadge");
   if(!node)return;
@@ -72,7 +73,7 @@ function persistLessonDraft(){
   }catch(error){console.warn("Lesson draft could not be cached:",error);}
 }
 function markLessonDraftDirty(){
-  lessonDraftDirty=true;clearTimeout(lessonDraftTimer);
+  ++lessonDraftRevision;lessonDraftDirty=true;clearTimeout(lessonDraftTimer);
   lessonDraftTimer=setTimeout(persistLessonDraft,300);
   lessonDraftStatus("Saving…","warning","Protecting unsaved lesson changes on this device.");
 }
@@ -529,7 +530,7 @@ window.loadSpecificPlan = function (planData) {
 
   window.renderOverview();
   window.renderOutput();
-  lessonDraftDirty=false;
+  ++lessonDraftRevision;lessonDraftDirty=false;clearTimeout(lessonDraftTimer);
   lessonDraftStatus("Saved plan","info","Edits will be protected automatically.");
   window.closeLoadPlanModal();
   alert(planData.document_settings?"Lesson loaded with saved document settings. Account defaults are unchanged.":"Lesson loaded. This older plan has no saved coordinator settings; review signatories before exporting.");
@@ -577,7 +578,8 @@ window.generateRollingWeekDropdown = function () {
   }
 };
 
-document.addEventListener("adminerva:lesson-saved",clearLessonDraft);
+document.addEventListener("adminerva:lesson-saved",event=>{if(event.detail?.draftRevision===lessonDraftRevision)clearLessonDraft();else if(lessonDraftDirty)persistLessonDraft();});
+document.addEventListener("visibilitychange",()=>{if(document.hidden&&lessonDraftDirty)persistLessonDraft();});
 window.addEventListener("beforeunload",()=>{if(lessonDraftDirty)persistLessonDraft();});
 workspaceOnReady(()=>{
   let draft=null;

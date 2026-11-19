@@ -232,12 +232,13 @@ window.handleMediaUpload = function (event) {
     event.target.value = "";
     return;
   }
+  if(!/^image\/(png|jpeg|webp|gif)$/i.test(file.type)){alert("Choose a PNG, JPEG, WebP or GIF image.");event.target.value="";return;}
+  const slide=window.currentPresentationDeck[window.activeSlideIndex];if(!slide)return;
   const reader = new FileReader();
   reader.onload = function (e) {
-    rememberDeckState();
-    window.currentPresentationDeck[window.activeSlideIndex].mediaUrl = e.target.result;
-    window.adminervaPresentationDirty = true;
-    renderMediaPreview();
+    if(!window.currentPresentationDeck.includes(slide)||slide.layout!=="media")return;
+    rememberDeckState();slide.mediaUrl=e.target.result;window.adminervaPresentationDirty=true;
+    if(window.currentPresentationDeck[window.activeSlideIndex]===slide)renderMediaPreview();
   };
   reader.readAsDataURL(file);
 };
@@ -428,6 +429,7 @@ window.selectSlide = function (index) {
   if (quillStandard) quillStandard.root.innerHTML = safeSlideHTML(slide.content);
   if (quillLeft) quillLeft.root.innerHTML = safeSlideHTML(slide.contentLeft);
   if (quillRight) quillRight.root.innerHTML = safeSlideHTML(slide.contentRight);
+  for(const editor of [quillStandard,quillLeft,quillRight])editor?.history?.clear();
 };
 
 // 🚀 ADD SLIDE MODAL LOGIC
