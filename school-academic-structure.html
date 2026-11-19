@@ -68,6 +68,18 @@
     <div id="as-list" class="as-list mt-4"></div>
   </section>
 
+  <section id="academic-calendar" class="as-panel" style="scroll-margin-top:7rem">
+    <div class="flex flex-wrap items-start justify-between gap-2">
+      <div><h2 class="text-lg font-extrabold">Academic calendar</h2><p class="as-muted mt-1">Review the dates of configured school years and academic periods. This view does not create or publish school events.</p></div>
+    </div>
+    <div class="as-grid mt-3">
+      <label class="text-sm font-bold">School year<select id="as-calendar-year" class="as-input mt-1"><option value="">All school years</option></select></label>
+      <label class="text-sm font-bold">Program / division<select id="as-calendar-program" class="as-input mt-1"><option value="">All programs</option></select></label>
+    </div>
+    <p id="as-calendar-count" class="as-muted mt-3" role="status" aria-live="polite">Waiting for verified school access…</p>
+    <div id="as-calendar-list" class="as-list mt-3"></div>
+  </section>
+
   <section id="as-editor-panel" class="as-panel" hidden>
     <div class="flex items-start justify-between gap-3">
       <div>
@@ -125,6 +137,6 @@
 <script src="js/core/adminerva-loader.js?v=4e71c890c777"></script>
 <script defer src="js/core/adminerva-nav.js?v=4e71c890c777"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4e71c890c777"></script>
-<script type="module" src="js/school-admin/academic-structure.mjs?v=a6e1e964cc58"></script>
+<script type="module" src="js/school-admin/academic-structure.mjs?v=20261119-calendar1"></script>
 </body>
 </html>
