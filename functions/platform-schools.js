@@ -543,6 +543,35 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return {schoolId,compatibilityMode:mode};
     }
 
+    if(action==="get_recovery_status"){
+      const school=await schoolRef.get();
+      if(!school.exists)fail("not-found","The school does not exist.");
+      const admins=await db.collection("schools/"+schoolId+"/memberships")
+        .where("roles","array-contains","school_admin").limit(101).get();
+      if(admins.size===101)
+        fail("resource-exhausted","School administrator recovery review requires pagination.");
+      const activeAdmins=admins.docs.filter(doc=>{
+        const row=doc.data();
+        return row.schoolId===schoolId&&row.status==="active"&&
+          Array.isArray(row.roles)&&row.roles.includes("school_admin");
+      });
+      const suspendedAdmins=admins.docs.filter(doc=>{
+        const row=doc.data();
+        return row.schoolId===schoolId&&row.status==="suspended"&&
+          Array.isArray(row.roles)&&row.roles.includes("school_admin");
+      });
+      const data=school.data(),blockers=[];
+      if(data.state!=="suspended")blockers.push("The institution is not currently suspended.");
+      if(data.productionAuthorized!==true)blockers.push("The institution has no prior production authorization to restore.");
+      if(!activeAdmins.length)blockers.push("Restore or designate an active School Administrator before restoring the institution.");
+      return {
+        schoolId,state:data.state,revision:Number(data.revision)||1,
+        productionAuthorized:data.productionAuthorized===true,
+        activeAdminCount:activeAdmins.length,suspendedAdminCount:suspendedAdmins.length,
+        canResume:blockers.length===0,blockers
+      };
+    }
+
     if(action==="resume") {
       const reason=phrase(input.reason,12,500,"School recovery reason");
       if(!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<1)
