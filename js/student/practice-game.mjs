@@ -68,7 +68,7 @@ function saveDraft(){if(mission)localSet(draftKey(),{answer});}
 function sync(message,tone="ready"){field("labSync").textContent=message;field("labSync").dataset.tone=tone;}
 function notice(message,tone="info"){field("labNoticeText").textContent=message;field("labNotice").hidden=!message;field("labNotice").dataset.tone=tone;}
 function feedback(message,tone="info"){field("practiceFeedback").textContent=message;field("practiceFeedback").dataset.tone=tone;field("practiceFeedback").hidden=!message;}
-function setBusy(value){busy=value;field("practiceMissionPanel").setAttribute("aria-busy",String(value));for(const id of ["practiceCheckBtn","practiceBackBtn","practiceReconnectBtn","practiceTransferBtn","practiceSyncBtn","labPreferencesSave","labNextMission","labHintBtn"])field(id).disabled=value;field("practiceClass").disabled=value||!(hub.classes||[]).length;for(const control of field("practiceChoices").querySelectorAll("input,select,button"))control.disabled=value||!!pending||control.dataset.boundary==="true";field("practiceCheckBtn").textContent=value?(pending?"Saving…":"Please wait…"):pending?"Retry save":attempt?.completed?"Check replay":"Submit answer";field("practiceCheckBtn").disabled=value||!eligible||!attempt?.attemptId;}
+function setBusy(value){busy=value;field("practiceMissionPanel").setAttribute("aria-busy",String(value));for(const id of ["practiceCheckBtn","practiceBackBtn","practiceReconnectBtn","practiceTransferBtn","practiceSyncBtn","labPreferencesSave","labNextMission","labHintBtn"])field(id).disabled=value;field("practiceClass").disabled=value||!(hub.classes||[]).length;for(const control of field("practiceChoices").querySelectorAll("input,select,button"))control.disabled=value||!!pending||control.dataset.boundary==="true";field("practiceCheckBtn").textContent=value?(pending?"Saving…":"Please wait…"):pending?"Retry save":attempt?.completed?"Check replay":!guestPage&&["ordering","matching","debugging"].includes(attempt?.question?.type)?"Check build":"Submit answer";field("practiceCheckBtn").disabled=value||!eligible||!attempt?.attemptId;}
 function completed(id){return (hub.courses||[]).some(row=>row.completed?.includes(id));}
 function earned(id){for(const row of hub.courses||[])if(row.missionScores?.[id]!==undefined)return row.missionScores[id];return 0;}
 function renderSummary(){
@@ -454,6 +454,7 @@ async function refreshHub(classId=field("practiceClass").value){
 function errorFeedback(error){const reason=error.details?.reason,transfer=["transfer-required","recent-sign-in","session-moved","revoked-sign-in"].includes(reason);field("practiceTransferBtn").hidden=!transfer;if(transfer)notice("Practice needs to reconnect. Continue on this device to resume safely.","warning");sync("Not saved yet","error");feedback(transfer?"Continue practice on this device to reconnect. Your saved points stay safe.":error.message||"The answer could not be confirmed. Retry the same answer to avoid counting it twice.","warning");}
 async function connect(takeover=false){const result=await resumePracticeSession({season:true,takeover,reauthenticate:takeover});field("practiceTransferBtn").hidden=true;sync(result.transferred?"Practice moved here":"Connected");return result;}
 function readAnswer(){
+  if(!guestPage&&attempt.question.type==="debugging")return answer;
   if(["choice","debugging"].includes(attempt.question.type)){const selected=field("practiceChoices").querySelector("input:checked");return selected?Number(selected.value):null;}
   if(attempt.question.type==="output")return field("labOutputAnswer").value.trim();
   if(["ordering","matching"].includes(attempt.question.type))return answer;
@@ -559,8 +560,93 @@ function moveOrder(from,to,swap=false){
   else{const [item]=answer.splice(from,1);answer.splice(to,0,item);}
   builderSelection=null;saveDraft();renderAnswer();const list=field("practiceChoices").querySelector(".lab-order-list");playGameFx("snap",list);
 }
+
+/** Pointer-based token placement: the original server answer indices remain authoritative. */
+function gameSnapBoard(question,container){
+  const type=question.type,build=type==="ordering",match=type==="matching",patch=type==="debugging";
+  const tokens=build?question.items:match?question.right:question.choices;
+  const size=build?tokens.length:match?question.left.length:1;
+  const valid=value=>Number.isInteger(value)&&value>=0&&value<tokens.length;
+  if(patch){if(!valid(answer))answer=null;}
+  else if(!Array.isArray(answer)||answer.length!==size)answer=Array(size).fill(null);
+  else {const seen=new Set();answer=answer.map(value=>{if(!valid(value)||seen.has(value))return null;seen.add(value);return value;});}
+  const placed=()=>patch?[answer]:answer;
+  const board=node("section",undefined,"game-snap-board"),heading=node("div",undefined,"game-snap-heading"),status=node("p",undefined,"game-snap-status"),tray=node("div",undefined,"game-snap-tray"),slots=node("div",undefined,"game-snap-slots");
+  board.dataset.mechanic=type;status.setAttribute("role","status");status.setAttribute("aria-live","polite");
+  const title=build?"Assembly bay":match?"Circuit board":"Patch workbench";
+  heading.append(node("strong",title),node("span",build?"START → FINISH":match?"CONNECT THE CIRCUIT":"ISOLATE → REPAIR"));
+  const instructions=node("p","Drag a card into a socket, or select a card and then tap a socket. Return cards to the tray to undo.","game-snap-help");
+  let selected=null,drag=null,ignoreClick=false;
+  function change(index,slot){
+    if(busy||pending||!valid(index))return;
+    const before=placed().slice(),from=before.indexOf(index);
+    if(slot===-1){if(from>=0)before[from]=null;}
+    else if(slot>=0&&slot<size&&from!==slot){
+      const displaced=before[slot];before[slot]=index;
+      if(from>=0)before[from]=displaced;
+    }
+    answer=patch?before[0]:before;selected=null;saveDraft();draw();playGameFx("snap",board);
+  }
+  function select(index){if(busy||pending)return;selected=selected===index?null:index;draw("token",index);}
+  function bindDrag(button,index){
+    button.addEventListener("pointerdown",event=>{
+      if(busy||pending||!event.isPrimary||event.button!==0)return;
+      drag={id:event.pointerId,index,x:event.clientX,y:event.clientY,ghost:null,target:null};
+      button.setPointerCapture?.(event.pointerId);
+    });
+    function targetAt(event){const target=document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-snap-slot]");return target&&board.contains(target)?target:null;}
+    function cleanup(){if(!drag)return;drag.ghost?.remove();drag.target?.classList.remove("is-drop-target");button.classList.remove("is-drag-origin");drag=null;}
+    button.addEventListener("pointermove",event=>{
+      if(!drag||drag.id!==event.pointerId)return;
+      if(!drag.ghost&&Math.hypot(event.clientX-drag.x,event.clientY-drag.y)<7)return;
+      if(!drag.ghost){drag.ghost=node("div",tokens[index],"game-snap-ghost");drag.ghost.setAttribute("aria-hidden","true");document.body.append(drag.ghost);button.classList.add("is-drag-origin");}
+      event.preventDefault();drag.ghost.style.left=event.clientX+"px";drag.ghost.style.top=event.clientY+"px";
+      const target=targetAt(event);if(target!==drag.target){drag.target?.classList.remove("is-drop-target");target?.classList.add("is-drop-target");drag.target=target;}
+    });
+    button.addEventListener("pointerup",event=>{
+      if(!drag||drag.id!==event.pointerId)return;
+      const moved=!!drag.ghost,target=moved?targetAt(event):null;
+      cleanup();if(moved){ignoreClick=true;event.preventDefault();if(target)change(index,Number(target.dataset.snapSlot));setTimeout(()=>{ignoreClick=false;},0);}
+    });
+    button.addEventListener("pointercancel",cleanup);button.addEventListener("lostpointercapture",cleanup);
+  }
+  function card(text,index,location){
+    const button=node("button",undefined,"game-snap-card");button.type="button";button.dataset.snapToken=String(index);button.dataset.blockKind=codeBlockKind(text);
+    button.append(node("span","⠿","game-snap-grip"),node(build||patch?"code":"span",text));
+    button.setAttribute("aria-label",(location===null?"Select ":"Move ")+text);button.setAttribute("aria-pressed",String(selected===index));button.disabled=busy||!!pending;
+    button.addEventListener("click",event=>{if(ignoreClick)return;event.stopPropagation();if(location!==null&&selected!==null&&selected!==index){change(selected,location);slots.querySelector('[data-snap-slot="'+location+'"] button')?.focus();}else select(index);});
+    bindDrag(button,index);return button;
+  }
+  function draw(focusKind,focusIndex){
+    const values=placed();tray.replaceChildren();slots.replaceChildren();
+    const count=values.filter(valid).length;
+    const complete=count===size;
+    status.textContent=selected!==null?"Card selected. Choose a socket or return it to the tray.":count+" / "+size+(build?" blocks placed":match?" connections made":" patches installed")+(complete?" · ready to check":"");
+    const pool=node("div",undefined,"game-snap-pool");tokens.forEach((text,index)=>{if(!values.includes(index))pool.append(card(text,index,null));});
+    const returnButton=node("button","Return selected card","game-snap-return");returnButton.type="button";returnButton.disabled=busy||!!pending||selected===null||!values.includes(selected);returnButton.addEventListener("click",()=>{const index=selected;change(index,-1);tray.querySelector('[data-snap-token="'+index+'"]')?.focus();});
+    tray.append(node("strong",build?"Available blocks":match?"Available terminals":"Available patches"),pool,returnButton);tray.dataset.snapSlot="-1";
+    if(!pool.children.length)pool.append(node("span","All cards placed","game-snap-empty"));
+    values.forEach((value,slot)=>{
+      const row=node("div",undefined,"game-snap-row"),label=node("span",build?String(slot+1).padStart(2,"0"):match?question.left[slot]:"Line "+(question.focusLine||"?"),"game-snap-label"),socket=node("div",undefined,"game-snap-socket"+(valid(value)?" is-filled":""));
+      socket.dataset.snapSlot=String(slot);row.append(label,node("span",undefined,"game-snap-wire"),socket);
+      if(valid(value))socket.append(card(tokens[value],value,slot));
+      else{const empty=node("button",build?"Snap a block here":match?"Connect a terminal":"Install a patch","game-snap-placeholder");empty.type="button";empty.disabled=busy||!!pending;empty.setAttribute("aria-label",label.textContent+": "+empty.textContent);empty.addEventListener("click",()=>{if(selected!==null){change(selected,slot);slots.querySelector('[data-snap-slot="'+slot+'"] button')?.focus();}});socket.append(empty);}
+      slots.append(row);
+    });
+    const visual=field("labMechanicPanel")?.querySelector(".game-visual-header");setGameStatus(visual,count+" / "+size+" placed",complete?"success":"info",complete?"✓":"◇");
+    if(focusKind==="token")board.querySelector('[data-snap-token="'+focusIndex+'"]')?.focus({preventScroll:true});
+  }
+  const reset=node("button","Reset board","game-snap-reset");reset.type="button";reset.addEventListener("click",()=>{if(busy||pending)return;answer=patch?null:Array(size).fill(null);selected=null;saveDraft();draw();});reset.disabled=busy||!!pending;
+  const footer=node("div",undefined,"game-snap-footer");footer.append(status,reset);
+  if(patch&&question.code&&Number.isInteger(question.focusLine)){
+    const original=node("div",undefined,"game-snap-original");original.append(node("small","DEFECTIVE LINE"),node("code",question.code.split("\n")[question.focusLine-1]||""));board.append(heading,instructions,original,tray,slots,footer);
+  }else board.append(heading,instructions,tray,slots,footer);
+  container.append(board);draw();
+}
+
 function renderAnswer(){
   const question=attempt.question,container=field("practiceChoices");container.replaceChildren();container.hidden=!guestPage&&question.type==="debugging"&&!bugLineFound;
+  if(!guestPage&&["ordering","matching","debugging"].includes(question.type)){if(!container.hidden)gameSnapBoard(question,container);return;}
   if(["choice","debugging"].includes(question.type))question.choices.forEach((value,index)=>{const label=node("label",undefined,"lab-answer-choice"),radio=document.createElement("input");radio.type="radio";radio.name="practiceAnswer";radio.value=String(index);radio.checked=answer===index;radio.addEventListener("change",()=>{answer=index;saveDraft();});label.append(radio,node("span",value));container.append(label);});
   else if(question.type==="output"){const label=node("label","Your exact answer","lab-answer-label"),input=document.createElement("input");input.id="labOutputAnswer";input.type="text";input.maxLength=500;input.autocomplete="off";input.spellcheck=false;input.value=typeof answer==="string"?answer:"";input.placeholder="Type the result or requested element…";input.addEventListener("input",()=>{answer=input.value;saveDraft();});label.htmlFor=input.id;container.append(label,input);}
   else if(question.type==="ordering"){
@@ -678,7 +764,7 @@ function renderMechanicAid(question){
     if(!guestPage&&(attempt?.completed||answer!==null))bugLineFound=true;
     const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong",guestPage?"Case file":bugLineFound?"Defect located":"Find the defect"));const visual=!guestPage&&gameId==="bug-detective"?gameVisualHeader("bug","Bug Hunt","Scan → isolate → repair"):null;
     const hint=node("p",question.caseHint||"Inspect the highlighted line and compare it with the stated goal.","lab-case-hint");
-    const viewer=node("div",undefined,"lab-code-case"),status=node("p",guestPage?"":bugLineFound?"Defect located. Choose the repair.":"Select the line you think contains the defect. No points are lost while hunting.","games-bug-status");
+    const viewer=node("div",undefined,"lab-code-case"),status=node("p",guestPage?"":bugLineFound?"Defect located. Install a repair patch.":"Select the line you think contains the defect. No points are lost while hunting.","games-bug-status");
     question.code.split("\n").forEach((text,index)=>{
       const lineNumber=index+1,row=node("div",undefined,"lab-code-line"+((guestPage||bugLineFound)&&lineNumber===question.focusLine?" is-focus":""));row.append(node("span",String(lineNumber),"lab-code-line-number"),node("code",text||" "));
       if(!guestPage&&!bugLineFound){
@@ -686,7 +772,7 @@ function renderMechanicAid(question){
         const choose=()=>{
           if(busy||bugLineFound)return;
           if(lineNumber===question.focusLine){
-            bugLineFound=true;row.classList.add("is-focus");status.textContent="Defect located. Choose the repair.";head.querySelector("strong").textContent="Defect located";field("practicePrompt").textContent=question.prompt;playGameFx("success",viewer);if(visual)setGameStatus(visual,"Defect isolated","success","✓");renderAnswer();
+            bugLineFound=true;row.classList.add("is-focus");status.textContent="Defect located. Install a repair patch.";head.querySelector("strong").textContent="Defect located";field("practicePrompt").textContent=question.prompt;playGameFx("success",viewer);if(visual)setGameStatus(visual,"Defect isolated","success","✓");renderAnswer();
           }else{
             row.classList.remove("is-wrong-suspect");void row.offsetWidth;row.classList.add("is-wrong-suspect");status.textContent="Not that line — no points lost. Keep hunting.";playGameFx("error",row);if(visual)setGameStatus(visual,"Keep scanning","warning","!");
           }
@@ -695,13 +781,13 @@ function renderMechanicAid(question){
       }
       viewer.append(row);
     });
-    if(guestPage)panel.append(head,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Find the defective line, then choose the repair.";if(visual&&bugLineFound)setGameStatus(visual,"Defect isolated","success","✓");panel.append(...(visual?[visual]:[]),head,viewer,status);}
+    if(guestPage)panel.append(head,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Find the defective line, then install a repair patch.";if(visual&&bugLineFound)setGameStatus(visual,"Defect isolated","success","✓");panel.append(...(visual?[visual]:[]),head,viewer,status);}
   }
   if(!guestPage&&question.type==="ordering"){
-    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const visual=gameId==="algorithm-maze"?gameVisualHeader("builder","Code Builder","Assemble the execution path"):null,track=node("div",undefined,"games-builder-track"),head=node("div",undefined,"lab-mechanic-head");if(visual){for(let index=0;index<question.items.length;index++)track.append(node("span",String(index+1)));visual.append(track);setGameStatus(visual,question.items.length+" blocks","info","▦");}head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(...(visual?[visual]:[]),head,node("p","Build the program in execution order.","games-mechanic-note"));
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const visual=gameId==="algorithm-maze"?gameVisualHeader("builder","Code Builder","Assemble the execution path"):null,track=node("div",undefined,"games-builder-track"),head=node("div",undefined,"lab-mechanic-head");if(visual){for(let index=0;index<question.items.length;index++)track.append(node("span",String(index+1)));visual.append(track);setGameStatus(visual,question.items.length+" blocks","info","▦");}head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(...(visual?[visual]:[]),head,node("p","Snap blocks from the assembly tray into execution-order sockets.","games-mechanic-note"));
   }
   if(!guestPage&&question.type==="matching"){
-    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const visual=gameId==="logic-circuit"?gameVisualHeader("match","Logic Match","Connect each rule to its result"):null,head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(...(visual?[visual]:[]),head,node("p","Each match can be used once.","games-mechanic-note"));
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const visual=gameId==="logic-circuit"?gameVisualHeader("match","Logic Match","Connect each rule to its result"):null,head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(...(visual?[visual]:[]),head,node("p","Connect each input to one terminal. Move or return cards before checking.","games-mechanic-note"));
   }
 }
 function pointsText(){const meta=attempt.question.difficulty,stage=missionStage(course,mission);field("labMissionPoints").textContent=attempt.completed?attempt.earnedPoints+" pts earned":attempt.availablePoints+" pts available";field("labScoringHint").textContent=attempt.completed?stage+" complete · replays do not change XP.":stage+" · "+meta.maximum+" pts max · −"+meta.deduction+" per miss · "+meta.floor+" pt floor · experiments are free.";}
