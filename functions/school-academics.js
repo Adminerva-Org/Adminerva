@@ -270,6 +270,9 @@ function createSchoolAcademicsService({db}) {
    const kind=input.kind;
    if(!CATALOG.has(kind))deny("invalid-argument","Unknown academic catalog type.");
    const itemId=checkId(input.recordId),ref=schoolRoot.doc(kind+"/"+itemId);
+   const expectedRevision=Number(input.expectedRevision);
+   if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+     deny("invalid-argument","Refresh this academic record before saving changes.");
    const name=checkName(input.name),parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null,
     parentProgram=input.programId?checkId(input.programId,"Academic program ID"):null,
     gradeLevel=kind==="sections"?sectionLevel(input.gradeLevel):null,
@@ -296,6 +299,9 @@ function createSchoolAcademicsService({db}) {
     const current=await tx.get(ref);
     if(!current.exists||current.data().schoolId!==ctx.schoolId)
       deny("not-found","Academic record was not found in this school.");
+    const currentRevision=Number(current.data().revision)||1;
+    if(currentRevision!==expectedRevision)
+      deny("failed-precondition","This academic record changed after you opened it. Refresh Academic Structure, review the latest values, then save again.");
     if(kind==="terms"||kind==="sections"){
       if(!parentProgram)deny("invalid-argument",(kind==="terms"?"Academic period":"Section")+" requires an academic program/division.");
       const program=await tx.get(schoolRoot.doc("academic_programs/"+parentProgram));
@@ -322,11 +328,11 @@ function createSchoolAcademicsService({db}) {
       endMonth:kind==="academic_years"?endMonth:null,
       startDate:["academic_years","terms"].includes(kind)?startDate:null,
       endDate:["academic_years","terms"].includes(kind)?endDate:null,
-      revision:(Number(current.data().revision)||1)+1,updatedByUid:uid,updatedAt:now
+      revision:currentRevision+1,updatedByUid:uid,updatedAt:now
     });
     tx.create(auditRef,audit("academic_catalog_updated",{kind,recordId:itemId}));
    });
-   return {recordId:itemId,kind,status:"active"};
+   return {recordId:itemId,kind,status:"active",revision:expectedRevision+1};
   }
   if(input.action==="list_catalog"){
    requireAdmin();
@@ -344,7 +350,7 @@ function createSchoolAcademicsService({db}) {
       academicMonth(doc.data().endMonth,DEFAULT_ACADEMIC_YEAR_END_MONTH,"Academic-year end month"):null,
     startDate:["academic_years","terms"].includes(kind)?(doc.data().startDate||null):null,
     endDate:["academic_years","terms"].includes(kind)?(doc.data().endDate||null):null,
-    status:doc.data().status})),truncated:snap.size===200};
+    status:doc.data().status,revision:Number(doc.data().revision)||1})),truncated:snap.size===200};
   }
   if(input.action==="create_offering"){
    requireAdmin();
