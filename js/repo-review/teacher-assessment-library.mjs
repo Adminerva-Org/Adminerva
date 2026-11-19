@@ -91,6 +91,7 @@ function studioProfileLabel(profile){
     "java-console":"Java Console",
     "java-desktop":"Java Desktop",
     "java-database":"Java + Database",
+    "java-desktop-database":"Java Desktop + Database",
     web:"Web",
     "python-console":"Python Console"
   })[String(profile||"auto")]||"Auto project setup";
