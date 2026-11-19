@@ -97,6 +97,10 @@ function perform(api,action,lease){
 }
 function issueHref(item){
   if(item.source==="record")return item.targetTab==="classes"?"people-access.html#classes":"school-class-records.html";
+  const identityIssue=Boolean(item.personId)&&["access","invites","people"].includes(item.targetTab);
+  if(identityIssue)return "people-access.html?personId="+encodeURIComponent(item.personId)+"#people";
+  if(item.type==="student_no_enrollment"&&picker?.scope.current?.schoolId==="manila-cathedral-school"&&
+     picker.scope.current?.compatibilityMode==="v4_only")return "school-enrollment.html";
   return "people-access.html#"+(tabs.has(item.targetTab)?item.targetTab:"overview");
 }
 function recordState(record){
