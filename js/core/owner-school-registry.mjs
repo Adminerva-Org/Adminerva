@@ -437,7 +437,7 @@ byId("owner-start-pilot").addEventListener("submit",event=>{
   };
   if(!Object.values(acknowledgements).every(Boolean)){say("Complete all controlled-pilot acknowledgements.");return;}
   if(!confirm("Start limited V4 pilot access for "+selected.displayName+" while keeping legacy compatibility?"))return;
-  void submit(f,"start_pilot",{schoolId:selected.schoolId,
+  void submit(f,"start_pilot",{schoolId:selected.schoolId,expectedRevision:selected.revision,
     scopeReference:String(d.get("scopeReference")||"").trim(),
     reason:String(d.get("reason")||"").trim(),acknowledgements});
 });
@@ -445,7 +445,8 @@ byId("owner-end-pilot").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
   const f=event.currentTarget,d=new FormData(f);
   if(!confirm("Return "+selected.displayName+" to draft access? Canonical pilot data will be preserved."))return;
-  void submit(f,"end_pilot",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim()});
+  void submit(f,"end_pilot",{schoolId:selected.schoolId,expectedRevision:selected.revision,
+    reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-activate").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
@@ -454,7 +455,8 @@ byId("owner-activate").addEventListener("submit",event=>{
     .map(name=>[name,d.get(name)==="on"]));
   if(!Object.values(attestation).every(Boolean)){say("Complete all required institutional attestations.");return;}
   if(!confirm("Activate "+selected.displayName+"? Only proceed with verified authority and readiness."))return;
-  void submit(f,"activate",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim(),attestation});
+  void submit(f,"activate",{schoolId:selected.schoolId,expectedRevision:selected.revision,
+    reason:String(d.get("reason")||"").trim(),attestation});
 });
 byId("owner-cutover-package").addEventListener("submit",async event=>{
   event.preventDefault();if(!selected||selected.schoolId!=="mcs-manila"||busy)return;
@@ -498,7 +500,8 @@ byId("owner-activate-standard")?.addEventListener("submit",event=>{
   event.preventDefault();if(!selected||isLegacyProvisioning(selected))return;
   const f=event.currentTarget,d=new FormData(f);
   if(!confirm("Activate "+selected.displayName+" for normal school operations?"))return;
-  void submit(f,"activate_standard",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim()});
+  void submit(f,"activate_standard",{schoolId:selected.schoolId,expectedRevision:selected.revision,
+    reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-readiness-refresh").addEventListener("click",()=>{
   if(selected)void loadReadiness(selected.schoolId);
@@ -510,21 +513,22 @@ byId("owner-cutover").addEventListener("submit",event=>{
     attestation=Object.fromEntries(keys.map(key=>[key,d.get(key)==="on"]));
   if(!Object.values(attestation).every(Boolean)){say("Complete all cutover attestations.");return;}
   if(!confirm("Enable V4-only compatibility for "+selected.displayName+"? Legacy 3.x data is preserved, but migrated staff will be fenced from legacy global workspaces."))return;
-  void submit(f,"set_compatibility_mode",{schoolId:selected.schoolId,mode:"v4_only",
+  void submit(f,"set_compatibility_mode",{schoolId:selected.schoolId,expectedRevision:selected.revision,mode:"v4_only",
     reason:String(d.get("reason")||"").trim(),attestation});
 });
 byId("owner-cutover-rollback").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
   const f=event.currentTarget,d=new FormData(f);
   if(!confirm("Restore legacy compatibility for "+selected.displayName+"? Canonical V4 data will remain unchanged."))return;
-  void submit(f,"set_compatibility_mode",{schoolId:selected.schoolId,mode:"legacy_allowed",
+  void submit(f,"set_compatibility_mode",{schoolId:selected.schoolId,expectedRevision:selected.revision,mode:"legacy_allowed",
     reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-suspend").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
   const f=event.currentTarget,d=new FormData(f);
   if(!confirm("Suspend "+selected.displayName+"? All verified v4 school access will be denied."))return;
-  void submit(f,"suspend",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim()});
+  void submit(f,"suspend",{schoolId:selected.schoolId,expectedRevision:selected.revision,
+    reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-resume").addEventListener("submit",event=>{
   event.preventDefault();if(!selected||selected.state!=="suspended")return;
