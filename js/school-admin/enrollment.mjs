@@ -187,15 +187,19 @@ function clearLoadedApplication({resetIdentity=false}={}){
   refreshPlacement();
 }
 async function reviewApplication(item,nextStatus){
+  if(saving)return;
   const label=nextStatus==="rejected"?"rejection":"request for more information";
   const reason=prompt("Enter the reason for this "+label+". This is recorded in the enrollment review history.");
   if(!reason)return;
+  saving=true;
   status.textContent="Saving enrollment review…";
   try{
     await perform("review_application",{applicationId:item.applicationId,status:nextStatus,reason});
-    status.textContent=nextStatus==="rejected"?"Application rejected.":"Application marked as needing information.";
-    await loadApplications();
+    const message=nextStatus==="rejected"?"Application rejected.":"Application marked as needing information.";
+    status.textContent=message;
+    try{await loadApplications();}catch{status.textContent=message+" The list could not refresh. Use Refresh applications.";}
   }catch(error){status.textContent=error?.message||"Application review was not saved.";}
+  finally{saving=false;updateCoursePreview();}
 }
 async function loadApplications(){
   const result=await perform("list_applications"),host=get("en-application-list");
@@ -300,7 +304,9 @@ form.addEventListener("submit",event=>{
           :(result.accountLinked?"student account already linked.":"student account ready for email activation."));
       clearLoadedApplication({resetIdentity:true});
       form.elements.studentNumber.value="";
-      await Promise.all([loadApplications(),loadRegistrations()]);
+      const message=status.textContent;
+      const refreshes=await Promise.allSettled([loadApplications(),loadRegistrations()]);
+      if(refreshes.some(item=>item.status==="rejected"))status.textContent=message+" Some lists could not refresh; use Refresh.";
     }catch(error){status.textContent=error?.message||"Student enrollment was not saved.";}
     finally{saving=false;updateCoursePreview();}
   })();
