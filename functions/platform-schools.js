@@ -158,20 +158,29 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     const auditRef=db.collection("platform_audit").doc();
     const cutoverDecisionRef=db.doc("platform_schools/"+schoolId+"/private_config/cutover_decisions");
     if(action==="list_school_audit"){
-      const snap=await db.collection("platform_audit").where("schoolId","==",schoolId).limit(101).get();
-      if(snap.size===101)fail("resource-exhausted","School platform audit history requires pagination.");
-      const events=snap.docs.map(doc=>{
+      const [platformSnap,assistSnap]=await Promise.all([
+        db.collection("platform_audit").where("schoolId","==",schoolId).limit(101).get(),
+        db.collection("platform_admin_assistance_audit").where("schoolId","==",schoolId).limit(101).get()
+      ]);
+      if(platformSnap.size===101||assistSnap.size===101)
+        fail("resource-exhausted","School platform audit history requires pagination.");
+      const normalize=(doc,source)=>{
         const row=doc.data(),detail={};
         for(const key of ["reason","roleId","mode","scopeReference","targetUid"]){
           if(typeof row[key]==="string"&&row[key])detail[key]=row[key].slice(0,key==="reason"?500:160);
         }
         return {
-          auditId:doc.id,action:String(row.action||"platform_change").slice(0,120),
+          auditId:source+":"+doc.id,source,
+          action:String(row.action||"platform_change").slice(0,120),
           actorUid:String(row.actorUid||"").slice(0,128),
           createdAt:row.createdAt?.toMillis?.()||0,detail
         };
-      }).sort((a,b)=>b.createdAt-a.createdAt).slice(0,50);
-      return {schoolId,events,truncated:snap.size>50};
+      };
+      const combined=[
+        ...platformSnap.docs.map(doc=>normalize(doc,"platform")),
+        ...assistSnap.docs.map(doc=>normalize(doc,"assist"))
+      ].sort((a,b)=>b.createdAt-a.createdAt);
+      return {schoolId,events:combined.slice(0,50),truncated:combined.length>50};
     }
     if(action==="list_school_governance_roles"){
       const snap=await db.collection("platform_schools/"+schoolId+"/governance_roles").limit(100).get();
