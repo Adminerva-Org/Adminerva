@@ -3,7 +3,7 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=20261118-runtime-evidence1";
+import {createProjectStudio} from "./project-studio.mjs?v=20261119-assessment-runtime1";
 import {currentV4StudioSchool,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.2.1";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
@@ -284,11 +284,19 @@ function inferAssessmentProjectSetup(task={}){
   if(/\b(html|css|javascript|web app|web page|website|browser app)\b/.test(text))
     return {templateId:"web",config:{runMode:"web",database:false,design:false}};
 
-  // Auto mode is intentionally conservative. A scenario may be called an
-  // "information system" or "record system" while still being a console OOP task.
-  // Only explicit technology requirements enable GUI/database capabilities.
-  const database=/\b(jdbc|java\.sql|sql database|relational database|database connection|adminerva db|sqlite|mysql|postgres(?:ql)?)\b/.test(text);
-  const desktop=/\b(swing|awt|jframe|jpanel|jdialog|graphical user interface|\bgui\b|desktop gui|desktop application)\b/.test(text);
+  // Auto mode is intentionally conservative. Negative requirements such as
+  // "do not use a GUI" must not be interpreted as a positive desktop request.
+  // Explicit console wording also wins over incidental GUI terminology.
+  const consoleRequired=/\b(java\s+console|console[- ](?:based|application|program)|command[- ]line(?:\s+(?:application|program))?|\bcli\b|terminal[- ]based)\b/.test(text);
+  const noDesktop=
+    /\b(?:without|no|not using|do not use|don't use|must not use|avoid)\s+(?:an?\s+)?(?:java\s+)?(?:gui|graphical user interface|swing|awt|jframe|jpanel|jdialog|desktop(?:\s+(?:gui|application))?)\b/.test(text)||
+    /\b(?:gui|graphical user interface|swing|awt|jframe|jpanel|jdialog|desktop(?:\s+(?:gui|application))?)\s+(?:is|are)\s+not\s+(?:required|allowed|needed|permitted)\b/.test(text);
+  const noDatabase=
+    /\b(?:without|no|not using|do not use|don't use|must not use|avoid)\s+(?:an?\s+)?(?:sql\s+)?(?:database|jdbc|java\.sql|adminerva db|sqlite|mysql|postgres(?:ql)?)\b/.test(text)||
+    /\b(?:database|jdbc|sql|adminerva db|sqlite|mysql|postgres(?:ql)?)\s+(?:is|are)\s+not\s+(?:required|allowed|needed|permitted)\b/.test(text);
+  const database=!noDatabase&&/\b(jdbc|java\.sql|sql database|relational database|database connection|adminerva db|sqlite|mysql|postgres(?:ql)?)\b/.test(text);
+  const desktop=!consoleRequired&&!noDesktop&&
+    /\b(swing|awt|jframe|jpanel|jdialog|graphical user interface|gui|desktop gui|desktop application)\b/.test(text);
 
   if(database&&desktop)
     return {templateId:"java-information",config:{javaVersion:"17",runMode:"desktop",database:true,design:true}};
@@ -2623,14 +2631,6 @@ function bindUIEvents() {
   });
   document.getElementById('stdinLineInput')?.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();sendConsoleInputLine();}});
   document.getElementById('javaRunMode')?.addEventListener('change',event=>{
-    const active=projectStudio?.getActiveProject?.();
-    if(active?.assessment?.provisionedBy==="assessment-launch"){
-      javaRunMode=active.config?.runMode==="desktop"?"desktop":"console";
-      event.target.value=javaRunMode;
-      event.target.disabled=true;
-      event.target.title="Runtime is assigned by this assessment.";
-      return;
-    }
     javaRunMode=event.target.value==='desktop'?'desktop':'console';
     try{localStorage.setItem(JAVA_RUN_MODE_KEY,javaRunMode);}catch{}
     if(javaRunMode!=='desktop')stopJavaDesktop(true);
@@ -2770,8 +2770,10 @@ function updateOutputView() {
     modeSelect.value=javaRunMode;
     const assessmentManaged=assessmentRuntimeManaged();
     const runtimeLocked=Boolean(executionController||studioRuntimeIntegration?.locked?.()||cheerpjClient);
-    modeSelect.disabled=assessmentManaged||runtimeLocked;
-    modeSelect.title=assessmentManaged?"Runtime is assigned by this assessment.":"Choose how Java should run";
+    modeSelect.disabled=runtimeLocked;
+    modeSelect.title=assessmentManaged
+      ?"Choose how to run this Java project for testing. The assessment requirements still apply."
+      :"Choose how Java should run";
   }
   const engineSelect=document.getElementById('javaEngineSelect'),engineLabel=document.getElementById('javaEngineLabel');
   const showEngine=isJava&&!desktop&&currentBrowserJavaAccess().enabled;
