@@ -117,7 +117,7 @@ function openCampus(campus=null){
   campusDialog.showModal();
 }
 function closeCampus({force=false}={}){
-  if(busy||(!force&&!discardCampus()))return false;
+  if((busy&&!force)||(!force&&!discardCampus()))return false;
   campusDirty=false;editingCampus=null;if(campusDialog.open)campusDialog.close();return true;
 }
 el("sp-add-campus").addEventListener("click",()=>openCampus());
