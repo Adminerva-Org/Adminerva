@@ -84,11 +84,12 @@ for(const page of pages){
       findings.push({severity:"broken",kind:"missing-route",page:pageRel,control:href,detail:"Linked HTML page does not exist"});
   }
 
-  const controlRe=/<(button|a|input)\\b([^>]*?)(?:>([\\s\\S]*?)<\\/\\1\\s*>|\\s*\\/?>)/gi;
+  const controlRe=/<(button|a|input)\b([^>]*?)(?:>([\s\S]*?)<\/\1>|\s*\/?>)/gi;
   let match;
   while((match=controlRe.exec(html))){
     const tag=match[1].toLowerCase(), a=attrs(match[2]||""), body=match[3]||"";
     const type=(a.type||"").toLowerCase();
+    if(tag==="button"&&String(a.class||"").split(/\s+/).some(name=>name.startsWith("ql-"))) continue;
     if(tag==="input"&&!["button","submit","reset","image"].includes(type)) continue;
     const text=(a["aria-label"]||a.title||a.value||visibleText(body)||"(unlabeled)").slice(0,90);
     const id=a.id||"";
