@@ -8,6 +8,16 @@ import {summarizeActivity} from "./activity-model.mjs?v=1.3.0";
 const field = id => document.getElementById(id);
 let teacherEmail=TEACHER_EMAIL;
 let records = [], preferences = [], students = [], selectedSections = [], epoch = 0, activeOperation=null;
+let reviewedPolicyRevision = null;
+function syncPolicyControls() {
+  const unavailable = reviewedPolicyRevision === null;
+  for (const id of ["maintenance-cleanup", "maintenance-summary"]) {
+    field(id).indeterminate = unavailable;
+  }
+  for (const id of ["maintenance-cleanup", "maintenance-summary", "maintenance-reason", "save-maintenance"]) {
+    field(id).disabled = unavailable || Boolean(activeOperation);
+  }
+}
 function textCell(row, value) { const cell = row.insertCell(); cell.textContent = String(value); }
 async function operation(message, work) {
   if(activeOperation||staffRole(auth.currentUser)!=="admin")return;
@@ -18,7 +28,7 @@ async function operation(message, work) {
   controls.forEach(control=>control.disabled=true);
   const active=()=>current===epoch&&auth.currentUser?.uid===uid&&activeOperation===token;
   try { await work(); } catch(error) { if(active())field("admin-analytics-status").textContent = (error?.message||"Monitoring operation unavailable.")+" Check permissions and connection, then refresh."; }
-  finally { end(); if(active()){activeOperation=null;controls.forEach(control=>control.disabled=false);} }
+  finally { end(); if(active()){activeOperation=null;controls.forEach(control=>control.disabled=false);syncPolicyControls();} }
 }
 async function refresh({requireComplete=false}={}) {
   const current = epoch;
@@ -34,6 +44,10 @@ async function refresh({requireComplete=false}={}) {
   if (current !== epoch || staffRole(auth.currentUser) !== "admin") throw Error("Account or monitoring context changed.");
   const names=["optional activity","support reports","consent records","student directory","instructor assignment","maintenance policy","worker status"];
   const missing=results.flatMap((result,index)=>result.status==="rejected"?[names[index]]:[]);
+  if (results[5].status === "rejected") {
+    reviewedPolicyRevision = null;
+    syncPolicyControls();
+  }
   if(requireComplete&&missing.length)throw Error("Required monitoring sources unavailable");
   const snapshots=results.map(result=>result.status==="fulfilled"?result.value:{docs:[],data:()=>null});
   records = snapshots[0].docs.map(record => ({id:record.id, ...record.data()}));
@@ -41,9 +55,12 @@ async function refresh({requireComplete=false}={}) {
   students = snapshots[3].docs.map(record => ({id:record.id, ...record.data()}));
   selectedSections = snapshots[4].data()?.sections || [];
   const policy = snapshots[5].data(), maintenance = snapshots[6].data();
+  reviewedPolicyRevision = results[5].status === "fulfilled" ? (policy?.revision ?? 0) : null;
+  syncPolicyControls();
   field("maintenance-cleanup").checked = policy?.cleanupEnabled === true;
   field("maintenance-summary").checked = policy?.summaryRefreshEnabled === true;
-  field("maintenance-status").textContent = maintenance ?
+  field("maintenance-status").textContent = results[6].status === "rejected" ?
+    "Worker status is unavailable. Refresh monitoring to retry." : maintenance ?
     "Last server result: " + maintenance.state + ". " + (maintenance.finishedAt?.toDate().toLocaleString() || "Run in progress") +
     ". Expired events removed: " + (maintenance.eventsRemoved || 0) + "; diagnostic trails removed: " + (maintenance.diagnosticsRemoved || 0) +
     ". Summary refreshed: " + (maintenance.summaryRefreshed ? "yes" : "no") + (maintenance.cleanupCapped ? ". Cleanup limit reached; a backlog may remain." : "") :
@@ -107,19 +124,28 @@ field("publish-engagement").addEventListener("click", () => operation("Preparing
   field("admin-analytics-status").textContent = "Teacher summary refreshed. Only coarse student learning activity is included, never diagnostic trails or bug reports.";
 }));
 field("save-maintenance").addEventListener("click", () => operation("Saving maintenance policy…", async () => {
-  if((field("operations").dataset.unavailable||"").includes("maintenance policy"))throw Error("Reload the maintenance policy first");
+  const expectedRevision = reviewedPolicyRevision;
+  if (expectedRevision === null) throw Error("Refresh monitoring to load the current maintenance policy first.");
   const cleanupEnabled = field("maintenance-cleanup").checked, summaryRefreshEnabled = field("maintenance-summary").checked;
   const reason = field("maintenance-reason").value.trim(), actor = auth.currentUser, generation = epoch;
   if (reason.length < 12 || reason.length > 600) { field("admin-analytics-status").textContent = "Explain this policy change in 12–600 characters before saving."; return; }
   if ((cleanupEnabled || summaryRefreshEnabled) && !confirm("Save this automatic-maintenance policy? Only an already approved and deployed backend can execute it. Review school privacy, cost and retention policy first. Grades and feedback are never published by maintenance.")) return;
-  await runTransaction(db, async transaction => {
+  const savedRevision = await runTransaction(db, async transaction => {
     const ref = doc(db, "monitoring_control", "runtime"), snapshot = await transaction.get(ref);
-    const before = snapshot.exists() ? snapshot.data() : null, revision = (before?.revision || 0) + 1;
-    const after = {cleanupEnabled, summaryRefreshEnabled, reason, revision, updatedBy:actor.uid, updatedAt:serverTimestamp()};
+    const before = snapshot.exists() ? snapshot.data() : null;
     if (generation !== epoch || auth.currentUser?.uid !== actor.uid) throw Error("Account changed.");
+    if ((before?.revision ?? 0) !== expectedRevision) {
+      reviewedPolicyRevision = null;
+      throw Error("Another administrator changed the maintenance policy. Refresh monitoring and review the new settings before saving.");
+    }
+    const revision = expectedRevision + 1;
+    const after = {cleanupEnabled, summaryRefreshEnabled, reason, revision, updatedBy:actor.uid, updatedAt:serverTimestamp()};
     transaction.set(ref, after);
     transaction.set(doc(ref, "revisions", String(revision)), {before, after, reason, actorUid:actor.uid, createdAt:serverTimestamp()});
+    return revision;
   });
+  if (generation !== epoch || auth.currentUser?.uid !== actor.uid) return;
+  reviewedPolicyRevision = savedRevision;
   field("maintenance-reason").value = "";
   field("admin-analytics-status").textContent = "Maintenance policy saved with an immutable audit record. This does not deploy a worker; check its recorded server result after activation.";
 }));
@@ -140,7 +166,10 @@ field("purge-events").addEventListener("click", () => operation("Removing expire
 }));
 onAuthStateChanged(auth, user => {
   epoch++; activeOperation=null; records = []; preferences = []; students = [];
+  reviewedPolicyRevision = null;
+  field("maintenance-reason").value = "";
   field("operations").querySelectorAll("button,select,input,textarea").forEach(control=>control.disabled=false);
+  syncPolicyControls();
   field("raw-events").replaceChildren(); field("module-usage").replaceChildren();
   field("operations").hidden = staffRole(user) !== "admin";
   if (staffRole(user) === "admin") void operation("Loading monitoring…", async()=>{

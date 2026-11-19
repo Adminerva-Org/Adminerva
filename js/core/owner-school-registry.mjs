@@ -8,6 +8,21 @@ const status=byId("owner-status"),workspace=byId("owner-content"),
   schoolList=byId("owner-schools"),actions=byId("owner-actions");
 let selected=null,schools=[],governanceRoles=[],busy=false,latestReadiness=null,latestCutoverPackage=null,onboardingSchoolId="",selectionEpoch=0;
 const say=text=>status.textContent=text;
+function scopedForms(){return [...actions.querySelectorAll("form")].filter(form=>form.id!=="owner-governance-create");}
+function setFormReady(form,ready){
+  if(!form)return;
+  form.dataset.scopeReady=String(ready);
+  for(const field of form.elements)field.disabled=busy||!ready;
+}
+function resetSchoolForms(){
+  for(const form of scopedForms()){
+    form.reset();
+    form.dataset.schoolId=selected?.schoolId||"";
+    form.dataset.selectionEpoch=String(selectionEpoch);
+    setFormReady(form,!["owner-cutover-decisions","owner-governance-assign","owner-activate-standard"].includes(form.id));
+  }
+  byId("owner-governance-role-select")?.replaceChildren();
+}
 async function execute(action,details={}){
   return (await api({action,...details})).data;
 }
@@ -21,11 +36,13 @@ function updateCutoverAvailability(){
   if(!button||!selected)return;
   const packageReady=selected.schoolId!=="mcs-manila"||
     (latestCutoverPackage?.recorded===true&&latestCutoverPackage?.ready===true&&latestCutoverPackage?.fresh===true);
-  button.disabled=!(latestReadiness?.ready===true&&packageReady);
+  button.disabled=busy||!(latestReadiness?.ready===true&&packageReady);
 }
-function choose(id){
+function choose(id,afterWrite=false){
+  if(busy&&!afterWrite)return;
   ++selectionEpoch;
   selected=schools.find(s=>s.schoolId===id)||null;
+  resetSchoolForms();
   for(const button of schoolList.querySelectorAll("button"))
     button.setAttribute("aria-pressed",String(button.dataset.schoolId===id));
   actions.hidden=!selected;
@@ -75,6 +92,7 @@ function choose(id){
   byId("owner-end-pilot").hidden=!legacy||selected.state!=="pilot";
   byId("owner-activate").hidden=!legacy||!["draft","pilot"].includes(selected.state);
   byId("owner-suspend").hidden=selected.state!=="active";
+  byId("owner-resume").hidden=selected.state!=="suspended";
   byId("owner-grant").hidden=selected.state==="archived";
   byId("owner-cutover").hidden=!legacy||selected.compatibilityMode==="v4_only";
   byId("owner-cutover-rollback").hidden=!legacy||selected.compatibilityMode!=="v4_only";
@@ -99,6 +117,7 @@ async function loadStandardSetup(schoolId=selected?.schoolId){
   const turn=selectionEpoch;
   const host=byId("owner-setup-readiness"),form=byId("owner-activate-standard");
   if(!host||!schoolId)return null;
+  setFormReady(form,false);
   host.textContent="Checking school setup…";
   try{
     const result=await execute("get_setup_status",{schoolId});
@@ -118,7 +137,7 @@ async function loadStandardSetup(schoolId=selected?.schoolId){
       list.append(item);
     }
     host.append(list);
-    if(form)form.hidden=!(result.ready&&result.state==="draft");
+    if(form){form.hidden=!(result.ready&&result.state==="draft");setFormReady(form,!form.hidden);}
     return result;
   }catch(error){
     if(turn===selectionEpoch&&selected?.schoolId===schoolId)host.textContent=error?.message||"School setup status could not be loaded.";
@@ -184,6 +203,8 @@ async function loadGovernanceRoles(schoolId=selected?.schoolId){
   const turn=selectionEpoch;
   const message=byId("owner-governance-status"),select=byId("owner-governance-role-select");
   if(!message||!select||!schoolId)return null;
+  const form=byId("owner-governance-assign");
+  setFormReady(form,false);
   message.textContent="Loading governance roles…";
   try{
     const [catalog,assigned]=await Promise.all([
@@ -201,6 +222,7 @@ async function loadGovernanceRoles(schoolId=selected?.schoolId){
       select.append(option);
     }
     if(governanceRoles.some(role=>role.roleId===previous))select.value=previous;
+    setFormReady(form,true);
     message.textContent=assignedIds.size?
       assignedIds.size+" governance role(s) assigned to "+selected.displayName+".":
       "No custom governance role is assigned to this school. School Admin remains the default data steward.";
@@ -214,6 +236,7 @@ async function loadCutoverDecisions(schoolId=selected?.schoolId){
   const turn=selectionEpoch;
   const form=byId("owner-cutover-decisions"),message=byId("owner-cutover-decisions-status");
   if(!form||!message||!schoolId)return null;
+  setFormReady(form,false);
   message.textContent="Loading owner decision record…";
   try{
     const result=await execute("get_cutover_decisions",{schoolId});
@@ -227,6 +250,7 @@ async function loadCutoverDecisions(schoolId=selected?.schoolId){
     for(const name of ["firstAdminAcknowledged","schoolAdminConfigurationReviewed"]){
       const field=form.elements.namedItem(name);if(field)field.checked=data[name]===true;
     }
+    setFormReady(form,true);
     const first=result.firstAdminUid||"not designated";
     message.textContent=result.decisions?
       "Decision record loaded. First school administrator: "+first+(result.firstAdminActive?" (active).":" (not active)."):
@@ -258,14 +282,19 @@ async function refresh(prefer=selected?.schoolId){
     blank.textContent="No schools have been provisioned.";
     schoolList.append(blank);
   }
-  choose(prefer||schools[0]?.schoolId);
+  choose(prefer||schools[0]?.schoolId,true);
   workspace.hidden=false;
 }
 async function submit(form,action,fields){
   if(busy)return null;
+  if(scopedForms().includes(form)&&(!selected||form.dataset.schoolId!==fields.schoolId||
+     form.dataset.selectionEpoch!==String(selectionEpoch)||form.dataset.scopeReady!=="true")){
+    say("Wait for the selected school's form to load before recording a change.");return null;
+  }
   if(!form.reportValidity())return null;
   const buttons=[...document.querySelectorAll(".own-button")].filter(button=>!button.disabled);
   busy=true;buttons.forEach(button=>button.disabled=true);
+  for(const scoped of scopedForms())setFormReady(scoped,scoped.dataset.scopeReady==="true");
   say("Checking owner privileges and recording the action…");
   try {
     const response=await execute(action,fields);
@@ -274,7 +303,11 @@ async function submit(form,action,fields){
     try{await refresh(response.schoolId||fields.schoolId);say(message);}catch{say(message+" School list could not refresh. Reload before the next change.");}
     return response;
   }catch(error){say(error?.message||"The change was not recorded. No local permission was granted.");return null;}
-  finally{busy=false;buttons.forEach(button=>button.disabled=false);updateCutoverAvailability();}
+  finally{
+    busy=false;buttons.forEach(button=>button.disabled=false);
+    for(const scoped of scopedForms())setFormReady(scoped,scoped.dataset.scopeReady==="true");
+    updateCutoverAvailability();
+  }
 }
 function schoolSlug(value){
   return String(value||"").trim().toLowerCase().normalize("NFKD")
@@ -492,6 +525,13 @@ byId("owner-suspend").addEventListener("submit",event=>{
   const f=event.currentTarget,d=new FormData(f);
   if(!confirm("Suspend "+selected.displayName+"? All verified v4 school access will be denied."))return;
   void submit(f,"suspend",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim()});
+});
+byId("owner-resume").addEventListener("submit",event=>{
+  event.preventDefault();if(!selected||selected.state!=="suspended")return;
+  const f=event.currentTarget,d=new FormData(f);
+  if(!confirm("Restore normal access for "+selected.displayName+"? Existing membership suspensions and school policies will still apply."))return;
+  void submit(f,"resume",{schoolId:selected.schoolId,expectedRevision:selected.revision,
+    reason:String(d.get("reason")||"").trim()});
 });
 try {
   await auth.authStateReady();

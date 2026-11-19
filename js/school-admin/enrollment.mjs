@@ -6,7 +6,9 @@ const get=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
 let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]},
-  saving=false,loadedApplication=null,registrations=[];
+  saving=false,draftDirty=false,loadedApplication=null,registrations=[];
+const requestVersions={catalog:0,applications:0,registrations:0};
+let refreshVersion=0;
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -15,6 +17,30 @@ function perform(action,details={}){
   const lease=picker.scope.lease();
   return api({schoolId:lease.schoolId,action,...details,...(assistMode()?{platformMode:"assist"}:{})})
     .then(response=>{picker.scope.assertLease(lease);return response.data;});
+}
+async function latest(source,action){
+  const version=++requestVersions[source];
+  try{
+    const result=await perform(action);
+    return version===requestVersions[source]?result:null;
+  }catch(error){
+    if(version!==requestVersions[source])return null;
+    throw error;
+  }
+}
+function setSaving(value){
+  saving=value;
+  if(value){
+    ++refreshVersion;
+    for(const source of Object.keys(requestVersions))++requestVersions[source];
+  }
+  for(const control of form.elements)control.disabled=value;
+  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications"))
+    control.disabled=value;
+  updateCoursePreview();
+}
+function discardDraft(){
+  return !draftDirty||confirm("Discard the unsaved enrollment details for the current student?");
 }
 function blank(select,label){
   select.replaceChildren();
@@ -89,7 +115,9 @@ function updateCoursePreview(){
   get("en-register-button").disabled=saving||count===0;
 }
 async function loadCatalog(){
-  catalog=await perform("catalog");
+  const result=await latest("catalog","catalog");
+  if(!result)return false;
+  catalog=result;
   catalog.subjects=catalog.subjects||[];
   options(form.elements.yearId,catalog.years||[],"Choose academic year");
   options(form.elements.programId,catalog.programs||[],"Choose program / division");
@@ -101,6 +129,7 @@ async function loadCatalog(){
     if((catalog.sections||[]).some(row=>row.id===previousSection))sectionFilter.value=previousSection;
   }
   refreshPlacement();
+  return true;
 }
 function registrationLabel(row){
   const year=catalog.years.find(x=>x.id===row.yearId)?.name||row.yearId;
@@ -143,7 +172,8 @@ function renderRegistrations(){
   }
 }
 async function loadRegistrations(){
-  const result=await perform("list_registrations");
+  const result=await latest("registrations","list_registrations");
+  if(!result)return;
   registrations=(result.items||[]).slice().sort((a,b)=>
     registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));
   renderRegistrations();
@@ -154,23 +184,28 @@ function applicationMeta(item){
   return [item.reference,year,levelLabel(item.incomingLevel),program].filter(Boolean).join(" · ");
 }
 function loadApplicationIntoForm(item){
+  if(saving||loadedApplication?.applicationId===item.applicationId||!discardDraft())return;
   loadedApplication=item;
   form.elements.applicationId.value=item.applicationId;
   form.elements.displayName.value=item.displayName||"";
   form.elements.birthDate.value=item.birthDate||"";
+  // Student numbers belong to the student being enrolled, never the previous draft.
+  form.elements.studentNumber.value="";
   form.elements.guardianName.value=item.guardianName||"";
   form.elements.guardianRelationship.value=item.guardianRelationship||"";
   form.elements.guardianEmail.value=item.guardianEmail||"";
   form.elements.guardianMobile.value=item.guardianMobile||"";
   form.elements.studentEmail.value=item.studentEmail||"";
   form.elements.studentEmailType.value=item.studentEmailType||"personal";
-  if((catalog.years||[]).some(row=>row.id===item.yearId))form.elements.yearId.value=item.yearId;
-  if((catalog.programs||[]).some(row=>row.id===item.preferredProgramId))form.elements.programId.value=item.preferredProgramId;
+  form.elements.yearId.value=(catalog.years||[]).some(row=>row.id===item.yearId)?item.yearId:"";
+  form.elements.programId.value=(catalog.programs||[]).some(row=>row.id===item.preferredProgramId)?item.preferredProgramId:"";
+  form.elements.termId.value="";form.elements.sectionId.value="";
   get("en-register-title").textContent="Review & place online application";
   get("en-register-help").textContent=item.reference+" · "+levelLabel(item.incomingLevel)+
     ". Confirm official program, period and section before enrollment.";
   get("en-clear-application").hidden=false;
   refreshPlacement();
+  draftDirty=false;
   form.scrollIntoView({behavior:"smooth",block:"start"});
   form.elements.displayName.focus();
 }
@@ -185,24 +220,27 @@ function clearLoadedApplication({resetIdentity=false}={}){
     form.elements.studentEmailType.value="personal";
   }
   refreshPlacement();
+  draftDirty=false;
 }
 async function reviewApplication(item,nextStatus){
   if(saving)return;
   const label=nextStatus==="rejected"?"rejection":"request for more information";
   const reason=prompt("Enter the reason for this "+label+". This is recorded in the enrollment review history.");
   if(!reason)return;
-  saving=true;
+  setSaving(true);
   status.textContent="Saving enrollment review…";
   try{
     await perform("review_application",{applicationId:item.applicationId,status:nextStatus,reason});
+    if(loadedApplication?.applicationId===item.applicationId)clearLoadedApplication({resetIdentity:true});
     const message=nextStatus==="rejected"?"Application rejected.":"Application marked as needing information.";
     status.textContent=message;
     try{await loadApplications();}catch{status.textContent=message+" The list could not refresh. Use Refresh applications.";}
   }catch(error){status.textContent=error?.message||"Application review was not saved.";}
-  finally{saving=false;updateCoursePreview();}
+  finally{setSaving(false);}
 }
 async function loadApplications(){
-  const result=await perform("list_applications"),host=get("en-application-list");
+  const result=await latest("applications","list_applications"),host=get("en-application-list");
+  if(!result)return;
   host.replaceChildren();
   const items=result.items||[];
   if(!items.length){
@@ -234,12 +272,16 @@ async function loadApplications(){
     }
     row.append(info,actions);host.append(row);
   }
+  if(saving)for(const button of host.querySelectorAll("button"))button.disabled=true;
 }
 async function refreshAll(){
+  const version=++refreshVersion;
   status.textContent="Loading enrollment configuration…";
-  await loadCatalog();
-  await Promise.all([loadApplications(),loadRegistrations()]);
-  status.textContent="";
+  if(!await loadCatalog()||version!==refreshVersion)return;
+  const outcomes=await Promise.allSettled([loadApplications(),loadRegistrations()]);
+  if(version!==refreshVersion)return;
+  const unavailable=["Online applications","Current registrations"].filter((_,index)=>outcomes[index].status==="rejected");
+  status.textContent=unavailable.length?unavailable.join(" and ")+" could not refresh. Available results remain usable; use Refresh to retry.":"";
 }
 function activationUrl(){
   const url=new URL("join-school.html",location.href);
@@ -264,7 +306,9 @@ form.elements.termId.addEventListener("change",updateCoursePreview);
 form.elements.sectionId.addEventListener("change",updateCoursePreview);
 get("en-registration-search")?.addEventListener("input",renderRegistrations);
 get("en-registration-section")?.addEventListener("change",renderRegistrations);
-get("en-clear-application").addEventListener("click",()=>clearLoadedApplication({resetIdentity:true}));
+form.addEventListener("input",()=>{draftDirty=true;});
+form.addEventListener("change",()=>{draftDirty=true;});
+get("en-clear-application").addEventListener("click",()=>{if(!saving&&discardDraft())clearLoadedApplication({resetIdentity:true});});
 get("en-refresh-applications").addEventListener("click",()=>void loadApplications().catch(error=>{
   status.textContent=error?.message||"Online applications could not be refreshed.";
 }));
@@ -280,7 +324,7 @@ form.addEventListener("submit",event=>{
     form.elements.studentEmail.focus();return;
   }
   void (async()=>{
-    saving=true;get("en-register-button").disabled=true;
+    setSaving(true);
     status.textContent=loadedApplication
       ?"Creating official enrollment from the reviewed application…"
       :"Registering onsite student and creating section subject enrollments…";
@@ -308,7 +352,7 @@ form.addEventListener("submit",event=>{
       const refreshes=await Promise.allSettled([loadApplications(),loadRegistrations()]);
       if(refreshes.some(item=>item.status==="rejected"))status.textContent=message+" Some lists could not refresh; use Refresh.";
     }catch(error){status.textContent=error?.message||"Student enrollment was not saved.";}
-    finally{saving=false;updateCoursePreview();}
+    finally{setSaving(false);}
   })();
 });
 get("en-refresh").addEventListener("click",()=>void refreshAll().catch(error=>{
@@ -319,7 +363,14 @@ picker=createTenantSchoolPicker({
   host:get("en-school-picker"),status,
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current enrollment before switching schools.");
-    loadedApplication=null;workspace.hidden=true;
+    if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
+    ++refreshVersion;
+    for(const source of Object.keys(requestVersions))++requestVersions[source];
+    loadedApplication=null;draftDirty=false;registrations=[];
+    catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]};
+    form.reset();clearLoadedApplication({resetIdentity:true});
+    get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
+    workspace.hidden=true;
   },
   onReady:scope=>{
     const current=scope.current;

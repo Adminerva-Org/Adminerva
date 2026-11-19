@@ -23,7 +23,6 @@ export function mountHelp() {
   if (document.getElementById("adminerva-help")) return;
   if(!document.querySelector('link[href*="workspace-navigation.css"]')){const styles=document.createElement("link");styles.rel="stylesheet";styles.href="css/workspace-navigation.css?v=1.3.0";document.head.append(styles);}
   import("../core/display-preferences.mjs?v=1.3.0").catch(()=>{});
-  import("../core/section-navigation.mjs?v=1.3.0").then(module=>{module.mountSectionNavigation();document.addEventListener("adminerva:role-ready",()=>setTimeout(module.mountSectionNavigation,300),{once:true});}).catch(()=>{});
   const [title, description, anchor] = guides[pageForPath(location.pathname)];
   const footer = document.createElement("footer"); footer.id = "adminerva-help";
   footer.className = "av-site-footer";

@@ -1,0 +1,110 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import vm from "node:vm";
+
+// Run the actual enrollment controller with a small DOM/callable adapter.
+function harness(){
+  class Element{
+    constructor(){this.value="";this.children=[];this.listeners={};this.style={};this.disabled=false;}
+    replaceChildren(...items){this.children=[];this.append(...items);}
+    append(...items){this.children.push(...items);for(const item of items)if(item.selected)this.value=item.value;}
+    addEventListener(type,callback){(this.listeners[type]??=[]).push(callback);}
+    dispatch(type){for(const callback of this.listeners[type]||[])callback({preventDefault(){}});}
+    setAttribute(){}
+    scrollIntoView(){}
+    focus(){}
+    select(){}
+    querySelectorAll(){return this.children.flatMap(item=>item.querySelectorAll?.()||[]);}
+  }
+  const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id);};
+  const form=get("en-register-form"),fields=["applicationId","displayName","birthDate","studentNumber","guardianName","guardianRelationship","guardianEmail","guardianMobile","studentEmail","studentEmailType","yearId","programId","termId","sectionId"];
+  form.elements=fields.map(name=>{const node=new Element();node.name=name;return node;});
+  for(const field of form.elements)form.elements[field.name]=field;
+  form.reset=()=>{for(const field of form.elements)field.value="";};
+  const actionButton=new Element(),requests=[];
+  let allowDiscard=true,pickerOptions;
+  const scope={lease:()=>({schoolId:"manila-cathedral-school",uid:"admin"}),assertLease(){}};
+  const context=vm.createContext({
+    app:{},auth:{currentUser:{uid:"admin"}},getFunctions:()=>({}),
+    httpsCallable:()=>payload=>new Promise((resolve,reject)=>requests.push({payload,resolve:data=>resolve({data}),reject})),
+    createTenantSchoolPicker:options=>{pickerOptions=options;return {scope};},
+    document:{getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[actionButton]},
+    location:{href:"https://example.test/school-enrollment.html"},URL,
+    Option:class extends Element{constructor(label,value){super();this.textContent=label;this.value=value;}},
+    sessionStorage:{getItem:()=>null},navigator:{},prompt:()=>"Verified review reason",confirm:()=>allowDiscard
+  });
+  let source=readFileSync(new URL("./enrollment.mjs",import.meta.url),"utf8").replace(/^import .*;\r?$/gm,"");
+  source=source.slice(0,source.lastIndexOf("\ntry{"));
+  vm.runInContext(source+"\nglobalThis.setCatalog=value=>catalog=value;",context);
+  const catalog={years:[{id:"new-year"},{id:"old-year"}],programs:[{id:"new-program"},{id:"old-program"}],
+    terms:[{id:"new-period",yearId:"new-year",programId:"new-program"},{id:"other-period",yearId:"new-year",programId:"new-program"}],
+    sections:[{id:"new-section",programId:"new-program",gradeLevel:"7"},{id:"other-section",programId:"new-program",gradeLevel:"7"}],
+    subjects:[],offerings:[]};
+  context.setCatalog(catalog);
+  const applicant={applicationId:"app-new",reference:"MCS-NEW",displayName:"New student",birthDate:"2013-03-01",guardianEmail:"new.parent@example.test",incomingLevel:"7",yearId:"new-year",preferredProgramId:"new-program"};
+  return {context,form,get,applicant,requests,actionButton,setDiscard:value=>{allowDiscard=value;},get pickerOptions(){return pickerOptions;}};
+}
+
+test("reviewing a different applicant clears the previous student's number and placement",()=>{
+  const h=harness();
+  for(const name of ["studentNumber","yearId","programId","termId","sectionId"])h.form.elements[name].value="previous-"+name;
+  h.context.loadApplicationIntoForm(h.applicant);
+  assert.equal(h.form.elements.applicationId.value,"app-new");
+  assert.equal(h.form.elements.studentNumber.value,"");
+  assert.equal(h.form.elements.yearId.value,"new-year");
+  assert.equal(h.form.elements.programId.value,"new-program");
+  assert.equal(h.form.elements.termId.value,"");
+  assert.equal(h.form.elements.sectionId.value,"");
+});
+
+test("canceling replacement preserves the unsaved student's identity",()=>{
+  const h=harness();
+  h.form.elements.displayName.value="Walk-in student";
+  h.form.elements.studentNumber.value="ONSITE-001";
+  h.form.dispatch("input");h.setDiscard(false);
+  h.context.loadApplicationIntoForm(h.applicant);
+  assert.equal(h.form.elements.displayName.value,"Walk-in student");
+  assert.equal(h.form.elements.studentNumber.value,"ONSITE-001");
+  assert.equal(h.form.elements.applicationId.value,"");
+});
+
+test("saving locks identity edits and applicant selection until completion",()=>{
+  const h=harness();h.form.elements.displayName.value="Saving student";
+  h.context.setSaving(true);
+  assert.equal(h.form.elements.every(field=>field.disabled),true);
+  assert.equal(h.actionButton.disabled,true);
+  h.context.loadApplicationIntoForm(h.applicant);
+  assert.equal(h.form.elements.displayName.value,"Saving student");
+  h.context.setSaving(false);
+  assert.equal(h.form.elements.every(field=>!field.disabled),true);
+  assert.equal(h.actionButton.disabled,false);
+});
+
+test("an older enrollment reload cannot replace newer data or show a stale failure",async()=>{
+  const h=harness();
+  const old=h.context.latest("applications","list_applications");
+  const recent=h.context.latest("applications","list_applications");
+  h.requests[1].resolve({items:[{applicationId:"newest"}]});
+  assert.equal((await recent).items[0].applicationId,"newest");
+  h.requests[0].reject(new Error("Old request failed"));
+  assert.equal(await old,null);
+});
+
+test("starting an enrollment save invalidates in-flight catalog reloads",async()=>{
+  const h=harness(),pending=h.context.latest("catalog","catalog");
+  h.context.setSaving(true);
+  h.requests[0].resolve({years:[{id:"outdated"}]});
+  assert.equal(await pending,null);
+});
+
+test("school switching veto preserves the draft, then accepted switching clears private data",async()=>{
+  const h=harness();h.context.loadApplicationIntoForm(h.applicant);
+  h.form.elements.studentNumber.value="DRAFT-7";h.form.dispatch("input");h.setDiscard(false);
+  await assert.rejects(h.pickerOptions.onBeforeChange(),/unsaved enrollment/);
+  assert.equal(h.form.elements.applicationId.value,"app-new");
+  h.setDiscard(true);await h.pickerOptions.onBeforeChange();
+  assert.equal(h.form.elements.applicationId.value,"");
+  assert.equal(h.form.elements.studentNumber.value,"");
+  assert.equal(h.get("en-workspace").hidden,true);
+});

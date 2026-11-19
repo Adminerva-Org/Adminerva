@@ -6,7 +6,8 @@ const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolClassRecordAdmin");
 const list=el("cro-list"),status=el("cro-status"),search=el("cro-search"),filter=el("cro-filter");
 const auditDialog=el("cro-audit-dialog"),auditList=el("cro-audit-list");
-let picker=null,records=[],busy=false;
+let picker=null,records=null,busy=false;
+let overviewRequest=0,auditRequest=0;
 
 function node(tag,className,text){
   const item=document.createElement(tag);
@@ -49,6 +50,10 @@ function visible(record){
   return true;
 }
 function renderSummary(){
+  if(records===null){
+    for(const id of ["cro-total","cro-finalized","cro-released","cro-changed"])el(id).textContent="—";
+    return;
+  }
   el("cro-total").textContent=records.length;
   el("cro-finalized").textContent=records.filter(row=>row.finalization).length;
   el("cro-released").textContent=records.filter(row=>row.finalization?.releasedRevision).length;
@@ -61,6 +66,7 @@ function chip(text,kind=""){
 }
 function renderRecords(){
   renderSummary();list.replaceChildren();
+  if(records===null)return;
   const rows=records.filter(visible);
   if(!rows.length){
     list.append(node("p","text-sm text-slate-600 py-8 text-center md:col-span-2",
@@ -101,7 +107,7 @@ function renderRecords(){
   }
 }
 function setBusy(value,message=""){
-  busy=value;el("cro-refresh").disabled=value||!picker?.scope.current;
+  busy=value;el("cro-refresh").disabled=value||!picker?.scope.current?.roles.includes("school_admin");
   if(message)status.textContent=message;
 }
 function layoutChangeText(change){
@@ -187,29 +193,36 @@ function renderAudit(result){
   }
 }
 async function openAudit(record){
-  if(busy)return;
+  if(busy||!records?.includes(record))return;
+  const request=++auditRequest;
   auditList.replaceChildren(node("p","text-sm text-slate-600 py-8 text-center","Loading Class Record audit history…"));
   el("cro-audit-status").textContent="";
   el("cro-audit-context").textContent=record.subjectName+" · "+record.sectionName;
   auditDialog.showModal();
   try{
     const result=await scoped("audit",{offeringId:record.offeringId});
+    if(request!==auditRequest||!auditDialog.open)return;
     renderAudit(result);
     el("cro-audit-status").textContent=(result.events||[]).length+" audit event"+((result.events||[]).length===1?"":"s")+" loaded.";
   }catch(error){
+    if(request!==auditRequest||!auditDialog.open)return;
     auditList.replaceChildren(node("p","text-sm text-rose-700 py-6",error?.message||"Audit history could not be loaded."));
   }
 }
 async function load(){
+  if(!picker?.scope.current?.roles.includes("school_admin"))return;
+  const request=++overviewRequest;
   setBusy(true,"Loading school Class Record oversight…");
   try{
     const result=await scoped("overview");
+    if(request!==overviewRequest)return;
     records=result.records||[];
     renderRecords();
     status.textContent=records.length+" Class Record"+(records.length===1?"":"s")+" loaded. Oversight is read-only.";
   }catch(error){
-    records=[];renderRecords();status.textContent=error?.message||"Class Record oversight could not be loaded.";
-  }finally{setBusy(false);}
+    if(request!==overviewRequest)return;
+    records=null;renderRecords();status.textContent=error?.message||"Class Record oversight could not be loaded.";
+  }finally{if(request===overviewRequest)setBusy(false);}
 }
 
 search.addEventListener("input",renderRecords);
@@ -221,12 +234,15 @@ picker=createTenantSchoolPicker({
   host:el("cro-school-switcher"),
   status,
   onBeforeChange:async()=>{
-    records=[];renderRecords();auditList.replaceChildren();
+    ++overviewRequest;++auditRequest;
+    setBusy(true);
+    records=null;search.value="";filter.value="all";renderRecords();auditList.replaceChildren();
+    el("cro-audit-context").textContent="";el("cro-audit-status").textContent="";
     if(auditDialog.open)auditDialog.close();
   },
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
-      records=[];renderRecords();
+      records=null;renderRecords();setBusy(false);
       status.textContent="School administrator access is required for Class Record oversight.";
       return;
     }

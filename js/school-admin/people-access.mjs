@@ -10,6 +10,7 @@ let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0,inviteRun=0,staffSe
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false,peopleReloadQueued=false,peopleRun=0;
 let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
+let importRun=0,rosterSourceRun=0,rosterSourceConfigured=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
@@ -86,10 +87,21 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
+    ++importRun;++rosterSourceRun;rosterSourceConfigured=false;
+    // Enter the next school with empty forms, including copied IDs and emails.
+    for(const form of workspace.querySelectorAll("form"))form.reset();
+    for(const control of workspace.querySelectorAll("[data-catalog],[data-offering],[data-assignment-section],[data-student-person],[data-school-teacher],[data-student-person-bulk],[data-school-teacher-bulk]"))
+      control.replaceChildren(new Option("Choose an option",""));
+    get("pa-staff-access-person").replaceChildren(new Option("Search this school's linked staff first",""));
+    get("pa-staff-access-query").value="";
+    get("pa-staff-access-status").textContent="Search linked staff in the selected school.";
     schoolReady=false;++peopleRun;peopleReloadQueued=false;clearTimeout(peopleSearchTimer);++workloadRun;++rosterRun;++inviteRun;++staffSearchRun;++detailRun;++academicRun;++membershipRun;workload=null;resetWorkload();
     workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-person-detail-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
+    get("pa-sheet-source-form").reset();
+    get("pa-sheet-preview").disabled=true;get("pa-sheet-clear").disabled=true;
+    get("pa-sheet-status").textContent="No Google Sheets roster source loaded.";
   },
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
@@ -129,21 +141,44 @@ async function performRosterSource(action,details={}){
   picker.scope.assertLease(lease);return result;
 }
 async function loadRosterSourceStatus(){
-  const result=await performRosterSource("status");
+  if(pendingWrite)return;
+  const run=++rosterSourceRun;
+  let result;
+  try{result=await performRosterSource("status");}
+  catch(error){if(run!==rosterSourceRun||!schoolReady||pendingWrite)return;throw error;}
+  if(run!==rosterSourceRun||!schoolReady||pendingWrite)return;
   const form=get("pa-sheet-source-form");
+  rosterSourceConfigured=result.configured===true;
   form.elements.url.value=result.url||"";
-  get("pa-sheet-preview").disabled=!result.configured;
-  get("pa-sheet-clear").disabled=!result.configured;
+  get("pa-sheet-preview").disabled=pendingWrite||!rosterSourceConfigured;
+  get("pa-sheet-clear").disabled=pendingWrite||!rosterSourceConfigured;
   get("pa-sheet-status").textContent=result.configured?
     "Configured Google Sheets roster source"+(result.gid?" · tab "+result.gid:"")+".":
     "No Google Sheets roster source configured for this school.";
   return result;
 }
-async function previewImportRows(rows,sourceLabel){
+function clearImportReview(){
+  ++importRun;
+  importRows=[];importDigest=null;importPreview=null;importCommitted=false;
+  get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";
+  get("pa-import-commit").disabled=true;resetImportCourseMapping();
+}
+function beginImportPreview(){
+  const lease=picker.scope.lease();
+  clearImportReview();
+  return {run:importRun,lease};
+}
+function currentImportPreview(token){
+  if(token.run!==importRun||!schoolReady)return false;
+  try{picker.scope.assertLease(token.lease);return true;}catch{return false;}
+}
+async function previewImportRows(rows,sourceLabel,token){
+  if(!currentImportPreview(token))return null;
   importRows=rows;importDigest=null;importPreview=null;importCommitted=false;
   get("pa-import-commit").disabled=true;resetImportCourseMapping("Validating section hints after the roster preview…");
   get("pa-import-status").textContent="Validating "+sourceLabel+" against the active school directory…";
   const preview=await perform("preview_import_people",{rows:importRows});
+  if(!currentImportPreview(token))return null;
   importPreview=preview;importDigest=preview.digest;renderImportPreview(preview);renderImportCourseMapping();
   const invalid=Number(preview.summary?.invalid||0);
   get("pa-import-commit").disabled=invalid>0||!importDigest;
@@ -222,6 +257,9 @@ function importRowsFromCsv(text){
     ["kind","kind"],["email","email"],["externalid","externalId"],["section","section"]
   ]);
   const headers=matrix[0].map(value=>supported.get(normalizeImportHeader(value))||null);
+  const recognized=headers.filter(Boolean);
+  if(new Set(recognized).size!==recognized.length)
+    throw new Error("CSV has duplicate columns. Keep one column for each supported field before previewing.");
   if(!headers.includes("displayName")&&!(headers.includes("firstName")||headers.includes("lastName")))
     throw new Error("CSV needs displayName or firstName/lastName columns.");
   if(!headers.includes("email")&&!headers.includes("externalId"))
@@ -390,11 +428,12 @@ function renderImportCourseMapping(){
     statusNode.textContent="People import committed. Review each section group and explicitly choose a course offering before enrolling.";
   }
 }
+get("pa-sheet-source-form").addEventListener("input",()=>{++rosterSourceRun;});
 get("pa-sheet-source-form").addEventListener("submit",event=>{
   event.preventDefault();if(pendingWrite)return;
   const form=event.currentTarget,values=new FormData(form);
   void (async()=>{
-    pendingWrite=true;
+    pendingWrite=true;++rosterSourceRun;clearImportReview();
     const controls=[...form.querySelectorAll("button,input")];controls.forEach(control=>control.disabled=true);
     get("pa-sheet-status").textContent="Validating and saving this school roster source…";
     try{
@@ -403,6 +442,7 @@ get("pa-sheet-source-form").addEventListener("submit",event=>{
         reason:String(values.get("reason")||"").trim()
       });
       form.elements.url.value=result.url||"";
+      rosterSourceConfigured=true;
       form.elements.reason.value="";
       get("pa-sheet-preview").disabled=false;get("pa-sheet-clear").disabled=false;
       get("pa-sheet-status").textContent="Google Sheets roster source saved for this school.";
@@ -410,26 +450,29 @@ get("pa-sheet-source-form").addEventListener("submit",event=>{
     finally{
       pendingWrite=false;
       controls.forEach(control=>control.disabled=false);
-      const configured=Boolean(form.elements.url.value);
-      get("pa-sheet-preview").disabled=!configured;get("pa-sheet-clear").disabled=!configured;
+      get("pa-sheet-preview").disabled=!rosterSourceConfigured;get("pa-sheet-clear").disabled=!rosterSourceConfigured;
     }
   })();
 });
 get("pa-sheet-preview").addEventListener("click",()=>{
-  if(pendingWrite)return;
+  if(pendingWrite||!schoolReady||!rosterSourceConfigured)return;
+  const token=beginImportPreview();
   void (async()=>{
     const button=get("pa-sheet-preview");button.disabled=true;get("pa-import-commit").disabled=true;
     get("pa-sheet-status").textContent="Fetching the configured published Google Sheet…";
     try{
       const result=await performRosterSource("fetch_csv");
+      if(!currentImportPreview(token))return;
       const rows=importRowsFromCsv(result.csv);
-      await previewImportRows(rows,"the configured Google Sheet");
+      await previewImportRows(rows,"the configured Google Sheet",token);
+      if(!currentImportPreview(token))return;
       get("pa-sheet-status").textContent="Google Sheet fetched and previewed. Review the rows before committing.";
     }catch(error){
+      if(!currentImportPreview(token))return;
       importRows=[];importDigest=null;importPreview=null;importCommitted=false;resetImportCourseMapping();
       get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="Preview failed.";
       get("pa-sheet-status").textContent=error?.message||"The configured Google Sheet could not be previewed.";
-    }finally{button.disabled=false;}
+    }finally{if(currentImportPreview(token))button.disabled=pendingWrite||!rosterSourceConfigured;}
   })();
 });
 get("pa-sheet-clear").addEventListener("click",()=>{
@@ -437,21 +480,25 @@ get("pa-sheet-clear").addEventListener("click",()=>{
   const reason=prompt("Explain why this school roster source is being removed:");
   if(reason===null)return;
   void (async()=>{
-    pendingWrite=true;get("pa-sheet-clear").disabled=true;get("pa-sheet-preview").disabled=true;
+    pendingWrite=true;++rosterSourceRun;clearImportReview();get("pa-sheet-clear").disabled=true;get("pa-sheet-preview").disabled=true;
     try{
       await performRosterSource("clear",{reason:String(reason).trim()});
+      rosterSourceConfigured=false;
       get("pa-sheet-source-form").reset();
       get("pa-sheet-status").textContent="Google Sheets roster source cleared for this school.";
     }catch(error){
       get("pa-sheet-status").textContent=error?.message||"Roster source was not cleared.";
       await loadRosterSourceStatus().catch(()=>{});
-    }finally{pendingWrite=false;}
+    }finally{
+      pendingWrite=false;
+      get("pa-sheet-clear").disabled=!rosterSourceConfigured;get("pa-sheet-preview").disabled=!rosterSourceConfigured;
+    }
   })();
 });
 get("pa-import-file").addEventListener("change",event=>{
-  importRows=[];importDigest=null;importPreview=null;importCommitted=false;resetImportCourseMapping();
-  get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";
-  get("pa-import-commit").disabled=true;
+  if(pendingWrite)return;
+  clearImportReview();
+  get("pa-sheet-preview").disabled=!rosterSourceConfigured;
   const file=event.target.files?.[0]||null;
   get("pa-import-preview").disabled=!file;
   get("pa-import-status").textContent=file?
@@ -465,42 +512,63 @@ get("pa-import-template").addEventListener("click",event=>{
   document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
 });
 get("pa-import-preview").addEventListener("click",()=>{
-  if(pendingWrite)return;
+  if(pendingWrite||!schoolReady)return;
   const file=get("pa-import-file").files?.[0];
   if(!file)return;
+  const token=beginImportPreview();
   void (async()=>{
-    if(file.size>512000)throw new Error("CSV is larger than 500 KB.");
     get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;
     get("pa-import-status").textContent="Validating this CSV against the active school directory…";
     try{
-      importRows=importRowsFromCsv(await file.text());
-      await previewImportRows(importRows,"this CSV");
+      if(file.size>512000)throw new Error("CSV is larger than 500 KB.");
+      const text=await file.text();
+      if(!currentImportPreview(token))return;
+      const rows=importRowsFromCsv(text);
+      await previewImportRows(rows,"this CSV",token);
     }catch(error){
+      if(!currentImportPreview(token))return;
       importRows=[];importDigest=null;importPreview=null;importCommitted=false;resetImportCourseMapping();
       get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="Preview failed.";
       get("pa-import-status").textContent=error?.message||"The CSV could not be previewed.";
-    }finally{get("pa-import-preview").disabled=!get("pa-import-file").files?.length;}
-  })().catch(error=>{get("pa-import-status").textContent=error?.message||"The CSV could not be previewed.";});
+    }finally{
+      if(currentImportPreview(token)){
+        get("pa-import-preview").disabled=pendingWrite||!get("pa-import-file").files?.length;
+        get("pa-sheet-preview").disabled=pendingWrite||!rosterSourceConfigured;
+      }
+    }
+  })();
 });
 get("pa-import-commit").addEventListener("click",()=>{
   if(pendingWrite||!importDigest||!importRows.length)return;
   if(!confirm("Create the previewed school person records? This does not grant accounts, memberships, enrollments, teaching assignments, or grades."))return;
+  const reviewedRows=importRows,reviewedPreview=importPreview,reviewedDigest=importDigest;
   void (async()=>{
-    pendingWrite=true;get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;
-    get("pa-import-status").textContent="Committing the exact reviewed CSV preview…";
+    pendingWrite=true;++importRun;++rosterSourceRun;
+    const controls=[get("pa-import-file"),get("pa-import-preview"),get("pa-import-commit"),
+      ...get("pa-sheet-source-form").querySelectorAll("button,input")];
+    const disabledBefore=controls.map(control=>control.disabled);
+    controls.forEach(control=>control.disabled=true);
+    get("pa-import-status").textContent="Committing the exact reviewed roster preview…";
     try{
-      const result=await perform("commit_import_people",{rows:importRows,expectedDigest:importDigest});
-      get("pa-import-status").textContent=result.alreadyCommitted?
+      const result=await perform("commit_import_people",{rows:reviewedRows,expectedDigest:reviewedDigest});
+      const savedMessage=result.alreadyCommitted?
         "This exact import was already committed. No duplicate people were created.":
         "Import committed: "+result.created+" people created · "+result.skipped+" already present.";
-      importCommitted=true;importDigest=null;
-      await Promise.all([loadPeople(false),loadOverview(),loadInvitePeople(),loadAcademics()]);
+      importRows=reviewedRows;importPreview=reviewedPreview;importCommitted=true;importDigest=null;
+      get("pa-import-status").textContent=savedMessage;
+      const refreshes=await Promise.allSettled([loadPeople(false),loadOverview(),loadInvitePeople(),loadAcademics()]);
       renderImportCourseMapping();
+      if(refreshes.some(result=>result.status==="rejected"))
+        get("pa-import-status").textContent=savedMessage+" Some school data could not refresh. Reopen the affected tab to retry.";
     }catch(error){
       get("pa-import-status").textContent=error?.message||"Import was not committed. Preview the file again before retrying.";
-      get("pa-import-commit").disabled=false;
+      importDigest=null;
     }finally{
-      pendingWrite=false;get("pa-import-preview").disabled=!get("pa-import-file").files?.length;
+      pendingWrite=false;
+      controls.forEach((control,index)=>control.disabled=disabledBefore[index]);
+      get("pa-import-commit").disabled=true;
+      get("pa-import-preview").disabled=!get("pa-import-file").files?.length;
+      get("pa-sheet-preview").disabled=!rosterSourceConfigured;get("pa-sheet-clear").disabled=!rosterSourceConfigured;
     }
   })();
 });

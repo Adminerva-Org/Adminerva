@@ -516,6 +516,30 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return {schoolId,compatibilityMode:mode};
     }
 
+    if(action==="resume") {
+      const reason=phrase(input.reason,12,500,"School recovery reason");
+      if(!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<1)
+        fail("invalid-argument","Refresh the school before restoring access.");
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef);
+        if(!school.exists||school.data().state!=="suspended")
+          fail("failed-precondition","Only a suspended school can be restored.");
+        if(school.data().revision!==input.expectedRevision)
+          fail("failed-precondition","The school changed. Refresh before restoring access.");
+        if(school.data().productionAuthorized!==true)
+          fail("failed-precondition","Restore access only for a previously authorized institution.");
+        const admins=await tx.get(db.collection("schools/"+schoolId+"/memberships")
+          .where("roles","array-contains","school_admin"));
+        if(!admins.docs.some(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active"))
+          fail("failed-precondition","Restore or designate an active school administrator before restoring the school.");
+        const now=FieldValue.serverTimestamp();
+        tx.update(schoolRef,{state:"active",revision:school.data().revision+1,
+          resumedByUid:uid,resumedAt:now,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"school_resumed",reason,
+          beforeState:"suspended",afterState:"active",createdAt:now});
+      });
+      return {schoolId,state:"active"};
+    }
     if(action==="suspend") {
       const reason=phrase(input.reason,12,500,"Suspension reason");
       await db.runTransaction(async tx=>{
