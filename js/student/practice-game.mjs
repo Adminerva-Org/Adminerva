@@ -251,7 +251,7 @@ function enhanceGamesHub(){
   const app=field("practiceApp"),existing=[...app.children],shell=node("div",undefined,"games-shell"),rail=node("nav",undefined,"games-rail"),content=node("div",undefined,"games-content");
   rail.setAttribute("aria-label","Games navigation");
   const setCurrentRail=link=>{for(const item of rail.querySelectorAll(".games-rail-link")){const current=item===link;item.classList.toggle("is-current",current);if(current)item.setAttribute("aria-current","location");else item.removeAttribute("aria-current");}};
-  [["#gamesHome","⌂","Hub"],["#labGameCatalog","🎮","Games"],["#gamesChallenges","✦","Challenges"],["#gamesProgress","◫","Progress"]].forEach(([href,icon,label],index)=>{const link=document.createElement("a");link.href=href;link.className="games-rail-link"+(index===0?" is-current":"");if(index===0)link.setAttribute("aria-current","location");if(label==="Challenges")link.id="gamesChallengesNav";link.append(node("span",icon),node("span",label));link.addEventListener("click",()=>{const href=link.getAttribute("href");if(href!=="#gamesProgress"&&!field("practiceMissionPanel").hidden)returnToGamesHub();setCurrentRail(link);});rail.append(link);});
+  [["#gamesHome","⌂","Hub"],["#gamesArcade","🎮","Arcade"],["#labGameCatalog","▦","Missions"],["#gamesChallenges","✦","Challenges"],["#gamesProgress","◫","Progress"]].forEach(([href,icon,label],index)=>{const link=document.createElement("a");link.href=href;link.className="games-rail-link"+(index===0?" is-current":"");if(index===0)link.setAttribute("aria-current","location");if(label==="Challenges")link.id="gamesChallengesNav";link.append(node("span",icon),node("span",label));link.addEventListener("click",()=>{const href=link.getAttribute("href");if(href!=="#gamesProgress"&&!field("practiceMissionPanel").hidden)returnToGamesHub();setCurrentRail(link);});rail.append(link);});
   content.append(...existing);const celebrationLayer=node("div",undefined,"games-celebration");celebrationLayer.id="gamesCelebrationLayer";celebrationLayer.setAttribute("aria-hidden","true");shell.append(rail,content,celebrationLayer);app.replaceChildren(shell);
   const statusbar=content.querySelector(".lab-statusbar");if(statusbar){statusbar.classList.add("games-statusbar");field("labIdentity").hidden=true;field("labAccountLink").hidden=true;field("practiceSyncBtn").textContent="↻";field("practiceSyncBtn").setAttribute("aria-label","Refresh game progress");field("practiceSyncBtn").title="Refresh game progress";}
   const hero=content.querySelector(".lab-hero");hero.id="gamesHome";hero.className="games-hero";
@@ -930,6 +930,9 @@ renderBoard();
 if(!guestPage){
   try{
     enhanceGamesHub();
+    const arcadeHost=node("section",undefined,"arcade-hub");arcadeHost.id="gamesArcade";
+    field("labGameCatalog").before(arcadeHost);
+    import("./practice-arcade.mjs?v=1.0.0").then(({mountPracticeArcade})=>mountPracticeArcade(arcadeHost)).catch(error=>{arcadeHost.hidden=true;console.warn("[Adminerva Games] Arcade unavailable.",error);});
     window.__adminervaGamesReady.enhanced=true;
     bindControl("labHeroContinue","click",()=>{if(busy)return;const button=field("labHeroContinue"),targetCourse=COURSES.find(item=>item.id===button?.dataset.course),target=targetCourse?.missions.find(item=>item.id===button?.dataset.mission);if(target)void openMission(targetCourse,target);});
     renderSummary();
