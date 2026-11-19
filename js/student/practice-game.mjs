@@ -164,15 +164,19 @@ function renderHubHero(){
   field("labHeroSub").textContent=target?(target.challenge?(target.challengeTitle+" · "+target.course.name):(target.course.name+" · "+typeNames[missionMeta(target.course,target.mission).type])):"Choose a game and start a mission.";
   field("labHeroProgress").style.width=progress+"%";field("labHeroProgressText").textContent=progress+"%";
   const button=field("labHeroContinue");button.disabled=!target;button.dataset.course=target?.course.id||"";button.dataset.mission=target?.mission.id||"";button.querySelector("span:last-child").textContent=target?.resume?"Resume":target?.challenge?"Play Challenge":target&&completed(target.mission.id)?"Replay":"Continue";
-  field("labLevelText").textContent="Lv. "+level;field("labLevelPoints").textContent=(points%250)+" / 250 XP";field("labLevelProgress").style.width=levelProgress+"%";
+  const levelText=field("labLevelText"),levelPoints=field("labLevelPoints"),levelMeter=field("labLevelProgress");
+  if(levelText)levelText.textContent="Lv. "+level;
+  if(levelPoints)levelPoints.textContent=(points%250)+" / 250 XP";
+  if(levelMeter)levelMeter.style.width=levelProgress+"%";
   const debugDone=COURSES.flatMap(entry=>entry.missions.filter(item=>missionMeta(entry,item).type==="debugging")).filter(item=>completed(item.id)).length;
   const oopDone=COURSES.find(entry=>entry.id==="java")?.missions.filter(item=>item.oop===true&&completed(item.id)).length||0;
-  field("labBadgeStarter").classList.toggle("is-earned",count>=1);
-  field("labBadgeExplorer").classList.toggle("is-earned",debugDone>=5);
-  field("labBadgeMaster").classList.toggle("is-earned",oopDone>=10);
-  const daily=dailyQuestState();field("labDailyQuestText").textContent=daily.done+" / "+daily.target+" missions";
-  [...field("labDailyQuestPips").children].forEach((pip,index)=>{const done=index<daily.done;pip.classList.toggle("is-complete",done);pip.textContent=done?"✓":String(index+1);});
-  for(const item of progressBreakdown()){const ring=field(item.id);ring.style.setProperty("--value",String(item.value));ring.setAttribute("aria-label",item.label+" "+item.value+" percent");ring.querySelector("strong").textContent=item.value+"%";}
+  field("labBadgeStarter")?.classList.toggle("is-earned",count>=1);
+  field("labBadgeExplorer")?.classList.toggle("is-earned",debugDone>=5);
+  field("labBadgeMaster")?.classList.toggle("is-earned",oopDone>=10);
+  const daily=dailyQuestState(),dailyText=field("labDailyQuestText"),dailyPips=field("labDailyQuestPips");
+  if(dailyText)dailyText.textContent=daily.done+" / "+daily.target+" missions";
+  [...(dailyPips?.children||[])].forEach((pip,index)=>{const done=index<daily.done;pip.classList.toggle("is-complete",done);pip.textContent=done?"✓":String(index+1);});
+  for(const item of progressBreakdown()){const ring=field(item.id);if(!ring)continue;ring.style.setProperty("--value",String(item.value));ring.setAttribute("aria-label",item.label+" "+item.value+" percent");const label=ring.querySelector("strong");if(label)label.textContent=item.value+"%";}
 }
 function formatChallengeDue(value){
   if(!value)return "";
@@ -259,7 +263,7 @@ function enhanceGamesHub(){
   const art=node("div",undefined,"games-hero-art");["one","two","three"].forEach(kind=>art.append(node("span",undefined,"games-orb "+kind)));const image=document.createElement("img");image.src="assets/adminerva-owl.png";image.alt="";art.append(image);hero.replaceChildren(copy,art);
   const map=field("labMapPanel");map.classList.add("games-section");const headings=map.querySelectorAll(".lab-section-heading h2");if(headings[0])headings[0].textContent="Game modes";if(headings[1])headings[1].textContent="Skill paths";
   const challenges=node("section",undefined,"games-challenges");challenges.id="gamesChallenges";const challengeHead=node("div",undefined,"games-challenge-section-head"),challengeTitle=node("div");challengeTitle.append(node("p","CHALLENGES","lab-eyebrow"),node("h2","Teacher missions"));const challengeCount=node("span","None assigned","lab-pill");challengeCount.id="gamesChallengeCount";challengeHead.append(challengeTitle,challengeCount);const challengeList=node("div",undefined,"games-challenge-list");challengeList.id="gamesChallengeList";challenges.append(challengeHead,challengeList);map.prepend(challenges);
-  const sidebar=content.querySelector(".lab-sidebar"),dailyCard=node("section",undefined,"games-utility-card games-glass games-daily-card"),dailyTitle=node("div",undefined,"games-utility-title");dailyTitle.append(node("strong","Daily Quest"),node("span","◫"));const dailyRow=node("div",undefined,"games-daily-row"),dailyText=node("span","0 / 3 missions");dailyText.id="labDailyQuestText";const dailyPips=node("div",undefined,"games-daily-pips");dailyPips.id="labDailyQuestPips";for(let index=1;index<=3;index++)dailyPips.append(node("span",String(index)));dailyRow.append(dailyText,dailyPips);dailyCard.append(dailyTitle,dailyRow),levelCard=node("section",undefined,"games-utility-card games-glass"),levelTitle=node("div",undefined,"games-utility-title"),levelLabel=node("strong","Skill XP"),levelText=node("span","Lv. 1");levelText.id="labLevelText";levelTitle.append(levelLabel,levelText);const levelRow=node("div",undefined,"games-level-row"),nextLevel=node("strong","Next level"),levelPoints=node("small","0 / 250 XP");levelPoints.id="labLevelPoints";levelRow.append(nextLevel,levelPoints);const levelMeter=node("div",undefined,"games-meter"),levelFill=node("span");levelFill.id="labLevelProgress";levelMeter.append(levelFill);levelCard.append(levelTitle,levelRow,levelMeter);
+  const sidebar=content.querySelector(".lab-sidebar"),dailyCard=node("section",undefined,"games-utility-card games-glass games-daily-card"),dailyTitle=node("div",undefined,"games-utility-title");dailyTitle.append(node("strong","Daily Quest"),node("span","◫"));const dailyRow=node("div",undefined,"games-daily-row"),dailyText=node("span","0 / 3 missions");dailyText.id="labDailyQuestText";const dailyPips=node("div",undefined,"games-daily-pips");dailyPips.id="labDailyQuestPips";for(let index=1;index<=3;index++)dailyPips.append(node("span",String(index)));dailyRow.append(dailyText,dailyPips);dailyCard.append(dailyTitle,dailyRow);const levelCard=node("section",undefined,"games-utility-card games-glass"),levelTitle=node("div",undefined,"games-utility-title"),levelLabel=node("strong","Skill XP"),levelText=node("span","Lv. 1");levelText.id="labLevelText";levelTitle.append(levelLabel,levelText);const levelRow=node("div",undefined,"games-level-row"),nextLevel=node("strong","Next level"),levelPoints=node("small","0 / 250 XP");levelPoints.id="labLevelPoints";levelRow.append(nextLevel,levelPoints);const levelMeter=node("div",undefined,"games-meter"),levelFill=node("span");levelFill.id="labLevelProgress";levelMeter.append(levelFill);levelCard.append(levelTitle,levelRow,levelMeter);
   const achievementCard=node("section",undefined,"games-utility-card games-glass"),achievementTitle=node("div",undefined,"games-utility-title");achievementTitle.append(node("strong","Achievements"),node("span","◆"));const achievements=node("div",undefined,"games-achievements");[["labBadgeStarter","✦","First Win · complete 1 mission"],["labBadgeExplorer","⌁","Bug Hunter · complete 5 debugging missions"],["labBadgeMaster","◇","OOP Architect · complete 10 OOP missions"]].forEach(([id,icon,label])=>{const badge=node("span",icon,"games-badge");badge.id=id;badge.title=label;badge.setAttribute("aria-label",label);achievements.append(badge);});achievementCard.append(achievementTitle,achievements);
   const progressCard=node("section",undefined,"games-utility-card games-glass"),progressTitle=node("div",undefined,"games-utility-title");progressTitle.append(node("strong","Your progress"),node("span","▥"));const rings=node("div",undefined,"games-progress-rings");[["labProgressLogic","Logic","all","logic"],["labProgressDebug","Debug","bug-detective",""],["labProgressOop","OOP","oop-builder","java"]].forEach(([id,label,gameId,courseId])=>{const wrap=node("button",undefined,"games-progress-item"),ring=node("div",undefined,"games-progress-ring");wrap.type="button";wrap.setAttribute("aria-label","Open "+label+" practice");wrap.addEventListener("click",()=>{if(busy)return;activeGame=gameId;if(courseId)course=COURSES.find(item=>item.id===courseId)||course;ensureCourseForGame();const url=new URL(location.href);if(gameId==="all")url.searchParams.delete("game");else url.searchParams.set("game",gameId);if(courseId)url.searchParams.set("course",courseId);else url.searchParams.delete("course");url.searchParams.delete("mission");history.replaceState(null,"",url);renderCourses();const gameLink=rail.querySelector('a[href="#labGameCatalog"]');if(gameLink)setCurrentRail(gameLink);field("labGameCatalog")?.scrollIntoView({behavior:"smooth",block:"start"});});ring.id=id;ring.style.setProperty("--value","0");ring.append(node("strong","0%"));wrap.append(ring,node("small",label));rings.append(wrap);});progressCard.id="gamesProgress";progressCard.append(progressTitle,rings,field("practiceOverview"),field("labPreviousProgress"));
   const preferences=sidebar.querySelector(".lab-public-preferences");if(preferences?.querySelector("summary"))preferences.querySelector("summary").textContent="Leaderboard profile";
@@ -392,6 +396,15 @@ function renderBoard(){
   let rank=0,prior=null;rows.forEach((row,index)=>{if(row.points!==prior)rank=index+1;prior=row.points;const item=node("li",undefined,"lab-rank-row"+(row.isCurrent?" is-you":""));item.append(node("span",rank<=3?["🥇","🥈","🥉"][rank-1]:String(rank),"lab-rank-number"),node("span",row.alias+(row.isCurrent?" · You":"")),node("strong",row.points.toLocaleString()+" points"));list.append(item);});
 }
 async function call(name,payload={}){return practiceSchoolRequest(name,payload);}
+function renderConnectedHub(){
+  // Rendering is not authorization. A broken optional panel must never revoke
+  // the eligibility already verified by the server.
+  let failed=false;
+  for(const render of [renderSummary,renderCourses,renderBoard,renderChallenges]){
+    try{render();}catch(error){failed=true;console.error("[Adminerva Games] Panel rendering failed",render.name,error);}
+  }
+  return !failed;
+}
 async function refreshHub(classId=field("practiceClass").value){
   const version=epoch,uid=user?.uid,reconnect=field("practiceReconnectBtn");
   if(reconnect)reconnect.hidden=true;
@@ -407,7 +420,7 @@ async function refreshHub(classId=field("practiceClass").value){
       eligible=false;accountPreview=true;
       hub={season:PRACTICE_SEASON,eligible:false,classes:[],courses:[],legacyCount:0,points:0,completedCount:0};
       globalRows=[];publicBoardReady=true;publicBoardError=false;
-      renderSummary();renderCourses();renderBoard();renderChallenges();
+      renderConnectedHub();
       sync("Staff preview");
       notice("Preview mode · Games are interactive, but XP and scored submissions are disabled for staff/admin accounts.","info");
       return;
@@ -416,14 +429,14 @@ async function refreshHub(classId=field("practiceClass").value){
     if(version!==epoch||uid!==user?.uid)return;
     hub=result;eligible=result.eligible===true;
     if(Array.isArray(result.publicRows)){globalRows=result.publicRows;publicBoardReady=true;publicBoardError=false;}
-    renderSummary();renderCourses();renderBoard();renderChallenges();
+    const rendered=renderConnectedHub();
     if(result.migrationPending===true){
       sync("Progress protected","saving");
       notice("Migration preview · Your preserved Practice XP and completed missions are shown below. You can browse and play missions, but scored submissions stay disabled until school reconciliation finishes.","warning");
       return;
     }
     sync(result.practicePilot===true?"Saved · MCS pilot school":"Saved to your school");
-    if(!pending)notice("");
+    if(!pending)notice(rendered?"":"Your school is connected and progress is saved. Some display panels could not load; refresh to restore them.",rendered?"info":"warning");
   }catch(error){
     if(version!==epoch)return;
     eligible=false;accountPreview=false;sync("Connection needed","error");
@@ -435,7 +448,7 @@ async function refreshHub(classId=field("practiceClass").value){
       ["revoked-sign-in","recent-sign-in","verified-sign-in"].includes(reason)?"Your sign-in needs to be renewed before Practice can save scores.":
       error.message&&error.message!=="internal" ? error.message : "Practice could not connect to your school. The map remains available.";
     if(reconnect&&["revoked-sign-in","recent-sign-in","verified-sign-in","session-moved"].includes(reason)){reconnect.hidden=false;reconnect.textContent="Reconnect account";}
-    notice(message,"error");renderSummary();renderBoard();
+    notice(message,"error");renderConnectedHub();
   }
 }
 function errorFeedback(error){const reason=error.details?.reason,transfer=["transfer-required","recent-sign-in","session-moved","revoked-sign-in"].includes(reason);field("practiceTransferBtn").hidden=!transfer;if(transfer)notice("Practice needs to reconnect. Continue on this device to resume safely.","warning");sync("Not saved yet","error");feedback(transfer?"Continue practice on this device to reconnect. Your saved points stay safe.":error.message||"The answer could not be confirmed. Retry the same answer to avoid counting it twice.","warning");}
