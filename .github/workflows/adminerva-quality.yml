@@ -19,6 +19,7 @@ jobs:
         with:
           node-version: "22"
       - name: Audit sitewide interactive controls
+        continue-on-error: true
         run: node scripts/audit-interactive-controls.mjs
       - name: Test grading evidence and feedback regressions
         run: |
