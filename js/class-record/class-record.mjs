@@ -336,7 +336,7 @@ function setBusy(value,message=""){
     form.querySelectorAll("button,input,select").forEach(control=>{
       if(["cr-column-close","cr-column-cancel","cr-setup-close","cr-setup-cancel","cr-import-close","cr-import-cancel","cr-score-status-close","cr-score-status-cancel"].includes(control.id))return;
       if(value){
-        control.dataset.busyDisabled=String(control.disabled);
+        if(control.dataset.busyDisabled===undefined)control.dataset.busyDisabled=String(control.disabled);
         control.disabled=true;
       }else if(control.dataset.busyDisabled!==undefined){
         control.disabled=control.dataset.busyDisabled==="true";
@@ -949,23 +949,27 @@ async function saveLayout(nextColumns,nextSettings=settings,success="Class Recor
   }
 }
 async function saveManualScores(){
-  if(!dirtyColumns.size)return;
+  if(busy||!dirtyColumns.size)return;
+  const inputs=[...tableWrap.querySelectorAll("input[data-column-id]")];
+  const controls=inputs.filter(input=>!input.disabled);
+  const batches=[...dirtyColumns].map(columnId=>({columnId,cells:inputs.filter(input=>input.dataset.columnId===columnId).map(input=>({
+    input,personId:input.dataset.personId,raw:input.value.trim(),score:input.value.trim()===""?null:Number(input.value)
+  }))}));
+  let saved=0;
   setBusy(true,"Saving manual scores…");
+  controls.forEach(input=>input.disabled=true);
   try{
-    for(const columnId of [...dirtyColumns]){
-      const inputs=[...tableWrap.querySelectorAll('input[data-column-id="'+CSS.escape(columnId)+'"]')];
-      const values=inputs.map(input=>({
-        personId:input.dataset.personId,
-        score:input.value.trim()===""?null:Number(input.value)
-      }));
-      await scoped(classRecordApi,"save_manual_scores",{offeringId:currentOfferingId,columnId,values});
+    for(const {columnId,cells} of batches){
+      await scoped(classRecordApi,"save_manual_scores",{offeringId:currentOfferingId,columnId,values:cells.map(({personId,score})=>({personId,score}))});
+      for(const cell of cells)cell.input.dataset.original=cell.raw;
+      saved++;dirtyColumns.delete(columnId);
     }
-    dirtyColumns.clear();
-    await loadWorkspace();
-    say("Manual scores saved.");
+    const refreshed=await loadWorkspace();
+    say(refreshed?"Manual scores saved.":"Manual scores saved, but the Class Record could not refresh. Use Refresh before further changes.");
   }catch(error){
-    say(error?.message||"Manual scores were not fully saved. Review the changed cells and retry.");
+    say(saved+" of "+batches.length+" manual columns saved. Remaining changes are still available for retry. "+(error?.message||"Check your connection and retry."));
   }finally{
+    controls.forEach(input=>input.disabled=false);
     setBusy(false);updateDirtyState();
   }
 }
@@ -1664,8 +1668,9 @@ async function loadWorkspace(){
     renderArchivedList();
     maybeOpenAssessmentDeepLink();
     say(finalization?.stale?"Finalized grade needs review after recent changes.":"");
+    return true;
   }catch(error){
-    panel.hidden=true;say(error?.message||"Class Record could not be loaded.");
+    panel.hidden=true;say(error?.message||"Class Record could not be loaded.");return false;
   }finally{
     setBusy(false);updateDirtyState();
   }
