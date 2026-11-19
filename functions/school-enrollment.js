@@ -279,8 +279,9 @@ function createSchoolEnrollmentService({db}){
           const slotData={schoolId:ctx.schoolId,personId:data.personId,yearId:data.yearId,
             programId:data.programId,termId:data.termId,sectionId:data.sectionId,
             registrationId,status:"ended",updatedByUid:ctx.uid,updatedAt:now};
-          if(slot.exists)tx.set(slotRef,{...slotData,revision:(slot.data().revision||1)+1},{merge:true});
-          else tx.create(slotRef,{...slotData,revision:1,createdByUid:ctx.uid,createdAt:now});
+          if(!slot.exists)tx.create(slotRef,{...slotData,revision:1,createdByUid:ctx.uid,createdAt:now});
+          else if(slot.data().registrationId===registrationId||slot.data().status!=="active")
+            tx.set(slotRef,{...slotData,revision:(slot.data().revision||1)+1},{merge:true});
         }
         const auditRef=db.collection(root+"directory_audit").doc();
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId:data.personId,
