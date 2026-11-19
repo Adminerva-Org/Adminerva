@@ -53,6 +53,7 @@ function preferredSubject(){
 }
 function renderSubjects(){
   const host=el("classroomSubjects");host.replaceChildren();
+  if(!subjects.length)host.append(node("p","rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600","No active subjects are assigned to this school account yet."));
   for(const item of subjects){
     const card=node("a","text-left rounded-xl border p-4 hover:border-cyan-400 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-cyan-500 transition","");
     card.href=subjectPageFor(item);card.dataset.subjectId=item.subjectId;
@@ -72,21 +73,22 @@ function renderSubjects(){
   }
 }
 function groupSubjects(profile,tasks){
-  const map=new Map();
+  const map=new Map(),byOffering=new Map();
+  const countsAvailable=Array.isArray(tasks);
   for(const row of profile?.classes||[]){
     const id=String(row.subjectId||subjectKey(row.subject)||"subject");
-    if(!map.has(id))map.set(id,{subjectId:id,subject:row.subject||"Subject",classes:[],offeringIds:[],legacy:false,assignmentCount:0});
-    const item=map.get(id);item.classes.push(row);item.offeringIds.push(row.offeringId);
+    if(!map.has(id))map.set(id,{subjectId:id,subject:row.subject||"Subject",classes:[],offeringIds:[],legacy:false,assignmentCount:countsAvailable?0:null});
+    const item=map.get(id);item.classes.push(row);if(row.offeringId&&!item.offeringIds.includes(row.offeringId)){item.offeringIds.push(row.offeringId);byOffering.set(row.offeringId,item);}
   }
   for(const task of tasks||[]){
-    const item=[...map.values()].find(entry=>entry.offeringIds.includes(task.offeringId));
+    const item=byOffering.get(task.offeringId);
     if(item)item.assignmentCount++;
   }
   const rows=[...map.values()].sort((a,b)=>{
     const ap=programmingSubject(a)?0:1,bp=programmingSubject(b)?0:1;
     return ap-bp||a.subject.localeCompare(b.subject);
   });
-  return rows.length?rows:[fallback];
+  return rows;
 }
 function say(message,error=false){
   el("classroomStatus").textContent=message;
@@ -103,18 +105,17 @@ async function refresh(){
   try{
     const [profile,tasks]=await Promise.all([
       scoped(profileApi,"my_profile"),
-      scoped(assessmentsApi,"list_student").catch(()=>({assignments:[]}))
+      scoped(assessmentsApi,"list_student").catch(()=>null)
     ]);
     if(sequence!==epoch)return;
-    subjects=groupSubjects(profile,tasks.assignments||[]);
+    subjects=groupSubjects(profile,tasks?.assignments??null);
     renderSubjects();
-    say(subjects.length===1?
-      subjects[0].subject+" is your active classroom subject.":
-      subjects.length+" active subjects are available. Computer Programming stays the default when it is enrolled.");
+    const message=subjects.length===0?"No active school subjects found. Ask your adviser to check enrollment.":subjects.length===1?subjects[0].subject+" is your active classroom subject.":subjects.length+" active subjects are available. Computer Programming stays the default when it is enrolled.";
+    say(message+(tasks?"":" Assignment counts are temporarily unavailable."),!tasks||!subjects.length);
   }catch(error){
     if(sequence!==epoch)return;
-    subjects=[fallback];renderSubjects();
-    say("Using the Computer Programming classroom. Verified school subjects could not be loaded: "+(error?.message||"retry later"),true);
+    subjects=[];renderSubjects();
+    say("Verified school subjects could not be loaded: "+(error?.message||"retry later")+". Refresh to retry.",true);
   }finally{
     if(sequence===epoch){busy=false;el("classroomRefresh").disabled=false;}
   }
@@ -122,7 +123,7 @@ async function refresh(){
 renderSubjects();
 picker=createTenantSchoolPicker({
   host:el("classroomSchoolSwitcher"),status:null,
-  onBeforeChange:async()=>{if(busy)throw new Error("Finish loading before switching schools.");++epoch;subjects=[fallback];renderSubjects();},
+  onBeforeChange:async()=>{if(busy)throw new Error("Finish loading before switching schools.");++epoch;subjects=[];renderSubjects();},
   onReady:scope=>{if(scope.current)void refresh();}
 });
 el("classroomRefresh").addEventListener("click",()=>void refresh());
