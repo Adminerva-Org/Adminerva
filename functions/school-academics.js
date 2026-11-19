@@ -141,6 +141,54 @@ function createSchoolAcademicsService({db}) {
     })).filter(item=>item.programName&&item.sectionName&&item.subjectName)
    };
   }
+  if(input.action==="faculty_workload"){
+   requireAdmin();
+   const prefix="schools/"+ctx.schoolId+"/";
+   // One bounded school-wide read. Only active course grants are used;
+   // suspended accounts cannot make a course appear staffed.
+   const [members,offerings,grants]=await Promise.all([
+    db.collection(prefix+"memberships").where("roles","array-contains","teacher").limit(501).get(),
+    db.collection(prefix+"course_offerings").where("status","==","active").limit(1001).get(),
+    db.collection(prefix+"staff_assignments").where("status","==","active").limit(2001).get()
+   ]);
+   if(members.size===501||offerings.size===1001||grants.size===2001)
+    deny("resource-exhausted","Faculty workload exceeds its current review limit. No partial staffing counts are displayed.");
+   const teachers=members.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
+    .map(doc=>({uid:doc.id,name:typeof doc.data().displayName==="string"?doc.data().displayName:"Teacher "+doc.id.slice(0,8)}));
+   const teacherIds=new Set(teachers.map(row=>row.uid));
+   const classes=offerings.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>{
+    const row=doc.data();
+    return {offeringId:doc.id,sectionId:row.sectionId||"",subjectId:row.subjectId||"",yearId:row.yearId||"",termId:row.termId||"",programId:row.programId||"",teacherUids:[],invalidGrantCount:0};
+   });
+   const byId=new Map(classes.map(row=>[row.offeringId,row]));
+   let unmatchedGrants=0;
+   for(const doc of grants.docs){
+    const row=doc.data();if(row.schoolId!==ctx.schoolId)continue;
+    const offering=byId.get(row.offeringId);
+    if(!offering){unmatchedGrants++;continue;}
+    if(!teacherIds.has(row.teacherUid)||["yearId","termId","sectionId","subjectId"].some(key=>row[key]&&row[key]!==offering[key])){
+     offering.invalidGrantCount++;continue;
+    }
+    if(!offering.teacherUids.includes(row.teacherUid))offering.teacherUids.push(row.teacherUid);
+   }
+   const catalogFields=[["sections","sectionId","sectionName"],["subjects","subjectId","subjectName"],["academic_years","yearId","yearName"],["terms","termId","termName"],["academic_programs","programId","programName"]];
+   const refs=[];
+   for(const [collection,field] of catalogFields){
+    for(const id of new Set(classes.map(row=>row[field]).filter(id=>typeof id==="string"&&id&&!id.includes("/"))))
+     refs.push({collection,id,ref:db.doc(prefix+collection+"/"+id)});
+   }
+   if(refs.length>1000)deny("resource-exhausted","Faculty workload catalog references exceed the current review limit.");
+   const labels=new Map();
+   for(let i=0;i<refs.length;i+=200){
+    const batch=refs.slice(i,i+200),docs=await db.getAll(...batch.map(item=>item.ref));
+    docs.forEach((doc,index)=>{
+     if(doc.exists&&doc.data().schoolId===ctx.schoolId&&typeof doc.data().name==="string")
+      labels.set(batch[index].collection+"/"+batch[index].id,doc.data().name);
+    });
+   }
+   for(const row of classes)for(const [collection,field,label] of catalogFields)row[label]=labels.get(collection+"/"+row[field])||row[field]||"Unspecified";
+   return {schoolId:ctx.schoolId,teachers,offerings:classes,unmatchedGrants};
+  }
   if(input.action==="list_teachers"){
    requireAdmin();
    const snap=await db.collection("schools/"+ctx.schoolId+"/memberships")
