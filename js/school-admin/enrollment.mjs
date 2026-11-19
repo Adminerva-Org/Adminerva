@@ -49,7 +49,7 @@ function updateStudentEmailPolicy(){
   get("en-guardian-account-panel").hidden=required;
   form.elements.studentEmail.required=required;
   form.elements.studentEmailType.required=required;
-  if(!required){
+  if(section&&!required){
     form.elements.studentEmail.value="";
     form.elements.studentEmailType.value="personal";
   }
