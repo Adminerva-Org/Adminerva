@@ -186,10 +186,15 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return await standardSetupStatus({db,schoolId,schoolData:school.data()});
     }
     if(action==="activate_standard"){
-      const reason=phrase(input.reason,12,500,"Activation reason");
+      const reason=phrase(input.reason,12,500,"Activation reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before activating it.");
       const school=await schoolRef.get();
       if(!school.exists)fail("not-found","The school does not exist.");
       const data=school.data();
+      if(data.revision!==expectedRevision)
+        fail("failed-precondition","The school changed after you reviewed setup. Refresh before activating.");
       const mode=data.provisioningMode||
         ((data.compatibilityMode||"legacy_allowed")==="v4_only"?"standard":"legacy_migration");
       if(mode!=="standard"||(data.compatibilityMode||"legacy_allowed")!=="v4_only")
@@ -203,6 +208,8 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         const current=await tx.get(schoolRef);
         if(!current.exists||current.data().state!=="draft")
           fail("failed-precondition","The school state changed. Refresh before activating.");
+        if(current.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after setup review. Refresh before activating.");
         const now=FieldValue.serverTimestamp();
         tx.update(schoolRef,{state:"active",productionAuthorized:true,
           revision:(current.data().revision||0)+1,activatedByUid:uid,activatedAt:now,updatedAt:now});
@@ -381,13 +388,18 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     }
     if(action==="start_pilot") {
       const scopeReference=phrase(input.scopeReference,8,240,"Pilot scope reference"),
-        reason=phrase(input.reason,12,500,"Pilot reason"),ack=input.acknowledgements||{};
+        reason=phrase(input.reason,12,500,"Pilot reason"),ack=input.acknowledgements||{},
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before starting a pilot.");
       for(const key of ["limitedScopeReviewed","legacyCompatibilityRequired","productionNotAuthorized"])
         if(ack[key]!==true)fail("failed-precondition","Confirm the limited scope, legacy compatibility and non-production pilot status.");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
         if(!school.exists||school.data().state!=="draft")
           fail("failed-precondition","Only a draft school can enter controlled pilot mode.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before starting the pilot.");
         const adminUid=school.data().firstAdminUid;
         if(!adminUid)fail("failed-precondition","Designate the first verified school administrator before pilot access.");
         const member=await tx.get(db.doc("schools/"+schoolId+"/memberships/"+adminUid));
@@ -405,11 +417,16 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return {schoolId,state:"pilot",compatibilityMode:"legacy_allowed",productionAuthorized:false};
     }
     if(action==="end_pilot") {
-      const reason=phrase(input.reason,12,500,"Pilot close reason");
+      const reason=phrase(input.reason,12,500,"Pilot close reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before ending the pilot.");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
         if(!school.exists||school.data().state!=="pilot")
           fail("failed-precondition","Only a controlled pilot can be returned to draft.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before ending the pilot.");
         const now=FieldValue.serverTimestamp(),pilot=school.data().pilot||{};
         tx.update(schoolRef,{state:"draft",compatibilityMode:"legacy_allowed",productionAuthorized:false,
           pilot:{...pilot,status:"ended",productionAuthorized:false,endedByUid:uid,endedAt:now},
@@ -424,11 +441,16 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const attestation=input.attestation||{};
       if(requiredAttestations.some(key=>attestation[key]!==true))
         fail("failed-precondition","Institutional authority, provenance, calendar and privacy approval must be confirmed.");
-      const reason=phrase(input.reason,12,500,"Activation reason");
+      const reason=phrase(input.reason,12,500,"Activation reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before activation.");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
         if(!school.exists||!["draft","pilot"].includes(school.data().state))
           fail("failed-precondition","Only a draft or controlled-pilot institution can be activated.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before activation.");
         const adminUid=school.data().firstAdminUid;
         if(!adminUid)fail("failed-precondition","Designate the first verified school administrator.");
         const member=await tx.get(db.doc("schools/"+schoolId+"/memberships/"+adminUid));
@@ -450,7 +472,10 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const mode=input.mode;
       if(!["legacy_allowed","v4_only"].includes(mode))
         fail("invalid-argument","Choose a supported school compatibility mode.");
-      const reason=phrase(input.reason,12,500,"Compatibility-mode reason");
+      const reason=phrase(input.reason,12,500,"Compatibility-mode reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before changing compatibility mode.");
       let requiredMcsPackage=null;
       if(mode==="v4_only"){
         const readiness=await evaluateSchoolCutoverReadiness({db,schoolId});
@@ -476,6 +501,8 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         const school=await tx.get(schoolRef);
         if(!school.exists||!["active","suspended"].includes(school.data().state))
           fail("failed-precondition","Compatibility mode can be changed only for an active or suspended school.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before changing compatibility mode.");
         if(mode==="v4_only"&&requiredMcsPackage){
           const packageDoc=await tx.get(requiredMcsPackage.ref),data=packageDoc.exists?packageDoc.data():null,
             recordedAt=data?.recordedAt?.toMillis?.()||0;
@@ -541,11 +568,16 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return {schoolId,state:"active"};
     }
     if(action==="suspend") {
-      const reason=phrase(input.reason,12,500,"Suspension reason");
+      const reason=phrase(input.reason,12,500,"Suspension reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before suspension.");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
         if(!school.exists||school.data().state!=="active")
           fail("failed-precondition","Only an active school may be suspended.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before suspension.");
         tx.update(schoolRef,{state:"suspended",revision:(school.data().revision||0)+1,
           updatedAt:FieldValue.serverTimestamp()});
         tx.create(auditRef,{schoolId,actorUid:uid,action:"school_suspended",reason,
