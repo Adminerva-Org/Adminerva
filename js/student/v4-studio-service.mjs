@@ -143,12 +143,12 @@ async function scopedCall(api,action,details={}){
   picker.scope.assertLease(lease);
   return result;
 }
-export async function syncV4StudioProject(project,state,{quiet=false}={}){
+export async function syncV4StudioProject(project,state,{quiet=false,expectedRevision:baseRevision=undefined}={}){
   await init();
   if(!activeSchool||!auth.currentUser)return null;
   const payload=projectPayload(project,state);
   const uid=auth.currentUser.uid,schoolId=activeSchool.schoolId;
-  let expectedRevision=getRevision(uid,schoolId,payload.projectId);
+  let expectedRevision=baseRevision===undefined?getRevision(uid,schoolId,payload.projectId):baseRevision;
   try{
     let result;
     try{
