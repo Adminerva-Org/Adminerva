@@ -139,7 +139,7 @@ function renderRegistrations(){
       (item.studentNumber?" · "+item.studentNumber:"")+" · "+identityState+" · "+(item.source==="online"?"online application":"onsite");
     info.append(name,meta);
     const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;justify-content:flex-end";
-    const badge=document.createElement("span");badge.className="en-badge";badge.textContent=item.status||"active";actions.append(badge);
+    const badge=document.createElement("span");badge.className="en-badge";badge.dataset.state=item.status||"active";badge.textContent=item.status||"active";actions.append(badge);
     const identityLink=document.createElement("a");identityLink.className="en-btn secondary";identityLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
     identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identityLink);
     if(item.status==="active"){
