@@ -5,7 +5,7 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0
 const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const status=el("as-status"),form=el("as-edit-form");
-let picker=null,currentKind="academic_years",selectedId="",busy=false;
+let picker=null,currentKind="academic_years",selectedId="",busy=false,loading=false,loadSequence=0,calendarIncomplete=false;
 let years=[],programs=[],terms=[],subjects=[],sections=[];
 const LABELS={
   academic_years:"School Years",academic_programs:"Programs / Divisions",
@@ -23,7 +23,7 @@ function scoped(action,details={}){
   if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
   const lease=picker.scope.lease();
   return api({schoolId:lease.schoolId,action,...platformModePayload(),...details}).then(response=>{
-    lease.assert();return response.data;
+    picker.scope.assertLease(lease);return response.data;
   });
 }
 function items(kind){
@@ -75,6 +75,52 @@ function displayMeta(kind,item){
   }
   return "ID: "+item.id;
 }
+function calendarOption(select,records,label){
+  const prior=select.value;select.replaceChildren(new Option(label,""));
+  for(const row of records.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name))))select.add(new Option(row.name||row.id,row.id));
+  if(records.some(row=>row.id===prior))select.value=prior;
+}
+function calendarDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(value||"")))return null;
+  const date=new Date(value+"T00:00:00Z");return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value?date.getTime():null;
+}
+function renderCalendar(){
+  const host=el("as-calendar-list");host.replaceChildren();
+  const yearFilter=el("as-calendar-year").value,programFilter=el("as-calendar-program").value;
+  const visible=terms.filter(t=>(!yearFilter||t.yearId===yearFilter)&&(!programFilter||t.programId===programFilter))
+    .sort((a,b)=>String(a.startDate||"9999").localeCompare(String(b.startDate||"9999"))||Number(a.sequence||0)-Number(b.sequence||0));
+  const dates=new Map(visible.map(t=>[t.id,[calendarDate(t.startDate),calendarDate(t.endDate)]]));
+  const missing=visible.filter(t=>dates.get(t.id).some(value=>value===null)).length;
+  let flagged=0;
+  for(const t of visible){
+    const y=years.find(row=>row.id===t.yearId),p=programs.find(row=>row.id===t.programId),[start,end]=dates.get(t.id),notes=[];
+    const yearStart=calendarDate(y?.startDate),yearEnd=calendarDate(y?.endDate);
+    if(start===null||end===null)notes.push("Dates incomplete");
+    else if(start>end)notes.push("End precedes start");
+    else{
+      if(yearStart!==null&&start<yearStart||yearEnd!==null&&end>yearEnd)notes.push("Outside school-year dates");
+      const overlap=visible.some(other=>{
+        if(other.id===t.id||other.yearId!==t.yearId||other.programId!==t.programId||(other.periodType||"term")!==(t.periodType||"term"))return false;
+        const [a,b]=dates.get(other.id);return a!==null&&b!==null&&a<=b&&start<=b&&end>=a;
+      });
+      if(overlap)notes.push("Overlaps another period of the same type");
+    }
+    if(!y||!p)notes.push("Year or program reference unavailable");
+    if(notes.length)flagged++;
+    const row=document.createElement("article");row.className="as-row";
+    const info=document.createElement("div");info.className="min-w-0";
+    const heading=document.createElement("strong");heading.textContent=t.name||t.id;
+    const meta=document.createElement("p");meta.className="as-muted mt-1";meta.textContent=[y?.name||t.yearId,p?.name||t.programId,t.periodType].filter(Boolean).join(" · ");
+    const date=document.createElement("p");date.className="text-sm mt-1";date.textContent=(t.startDate||"Start not set")+" → "+(t.endDate||"End not set");
+    info.append(heading,meta,date);
+    if(notes.length){const warning=document.createElement("p");warning.className="text-xs font-semibold text-amber-800 mt-2";warning.textContent=notes.join(" · ");info.append(warning);}
+    const edit=document.createElement("button");edit.type="button";edit.className="as-btn";edit.textContent="Edit dates";edit.disabled=busy||loading;
+    edit.addEventListener("click",()=>{if(busy||loading)return;currentKind="terms";renderList();openEditor(t.id);});
+    row.append(info,edit);host.append(row);
+  }
+  if(!visible.length){const p=document.createElement("p");p.className="as-muted";p.textContent="No active academic periods match the selected filters.";host.append(p);}
+  el("as-calendar-count").textContent=visible.length+" periods · "+missing+" incomplete dates · "+flagged+" need review"+(calendarIncomplete?" · Catalog may be incomplete.":"");
+}
 function renderList(){
   el("as-list-title").textContent=LABELS[currentKind];
   for(const button of document.querySelectorAll("[data-kind]"))
@@ -125,7 +171,7 @@ function openEditor(id){
   el("as-editor-panel").scrollIntoView({behavior:"smooth",block:"start"});
 }
 async function load(){
-  if(busy)return;busy=true;say("Loading academic structure…");
+  if(loading)return;loading=true;const run=++loadSequence;say("Loading academic structure…");
   try{
     const [y,p,t,s,sec]=await Promise.all([
       scoped("list_catalog",{kind:"academic_years"}),
@@ -134,14 +180,17 @@ async function load(){
       scoped("list_catalog",{kind:"subjects"}),
       scoped("list_catalog",{kind:"sections"})
     ]);
+    if(run!==loadSequence)return;
+    calendarIncomplete=[y,p,t,s,sec].some(result=>result.truncated);
     years=(y.items||[]).filter(x=>x.status==="active");
     programs=(p.items||[]).filter(x=>x.status==="active");
     terms=(t.items||[]).filter(x=>x.status==="active");
     subjects=(s.items||[]).filter(x=>x.status==="active");
     sections=(sec.items||[]).filter(x=>x.status==="active");
-    renderList();say("Academic structure loaded. Select a record to edit.");
-  }catch(error){say(error?.message||"Academic structure could not be loaded.");}
-  finally{busy=false;}
+    calendarOption(el("as-calendar-year"),years,"All school years");calendarOption(el("as-calendar-program"),programs,"All programs");
+    renderList();renderCalendar();say("Academic structure loaded. Select a record to edit."+(calendarIncomplete?" Some catalog results reached their display limit.":""));
+  }catch(error){if(run===loadSequence)say(error?.message||"Academic structure could not be loaded.");}
+  finally{if(run===loadSequence){loading=false;renderCalendar();}}
 }
 function payload(){
   const data={kind:currentKind,recordId:selectedId,name:form.elements.name.value.trim()};
@@ -160,34 +209,36 @@ function payload(){
   return data;
 }
 form.addEventListener("submit",event=>{
-  event.preventDefault();if(busy||!selectedId||!form.reportValidity())return;
+  event.preventDefault();if(busy||loading||!selectedId||!form.reportValidity())return;
   const data=payload(),save=el("as-save"),notice=el("as-save-status");
   if(inPreview()){
     const item=items(currentKind).find(x=>x.id===selectedId);
     Object.assign(item,data);notice.textContent="Temporary preview updated. Reloading or exiting role preview discards this change.";
-    notice.hidden=false;renderList();return;
+    notice.hidden=false;renderList();renderCalendar();return;
   }
   const original=save.textContent;save.textContent="Saving…";save.disabled=true;busy=true;
   void scoped("update_catalog",data).then(async()=>{
     notice.textContent="Changes saved. System ID "+selectedId+" was preserved.";notice.hidden=false;
-    await load();openEditor(selectedId);
+    await load();if(selectedId)openEditor(selectedId);
+    notice.textContent="Changes saved. System ID "+data.recordId+" was preserved.";notice.hidden=false;
   }).catch(error=>{
     notice.textContent=error?.message||"Changes could not be saved.";notice.hidden=false;
-  }).finally(()=>{busy=false;save.disabled=false;save.textContent=original;});
+  }).finally(()=>{busy=false;save.disabled=false;save.textContent=original;renderCalendar();});
 });
 form.elements.sectionProgramId.addEventListener("change",()=>{
   updateLevelPicker(form.elements.sectionProgramId.value,"");
 });
-el("as-close").addEventListener("click",()=>{selectedId="";el("as-editor-panel").hidden=true;});
-el("as-refresh").addEventListener("click",()=>void load());
+el("as-close").addEventListener("click",()=>{if(busy)return;selectedId="";el("as-editor-panel").hidden=true;});
+el("as-refresh").addEventListener("click",()=>{if(!busy)void load();});
+for(const id of ["as-calendar-year","as-calendar-program"])el(id).addEventListener("change",renderCalendar);
 for(const button of document.querySelectorAll("[data-kind]")){
   button.addEventListener("click",()=>{
-    currentKind=button.dataset.kind;selectedId="";el("as-editor-panel").hidden=true;renderList();
+    if(busy||loading)return;currentKind=button.dataset.kind;selectedId="";el("as-editor-panel").hidden=true;renderList();
   });
 }
 picker=createTenantSchoolPicker({
   host:el("as-school-switcher"),status,
-  onBeforeChange:async()=>{years=[];programs=[];terms=[];subjects=[];sections=[];selectedId="";},
+  onBeforeChange:async()=>{if(busy)throw Error("Finish saving before switching schools.");++loadSequence;loading=false;calendarIncomplete=false;years=[];programs=[];terms=[];subjects=[];sections=[];selectedId="";el("as-editor-panel").hidden=true;el("as-list").replaceChildren();el("as-calendar-list").replaceChildren();el("as-calendar-count").textContent="Waiting for verified school access…";calendarOption(el("as-calendar-year"),[],"All school years");calendarOption(el("as-calendar-program"),[],"All programs");},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){say("School administrator access is required.");return;}
     void load();
