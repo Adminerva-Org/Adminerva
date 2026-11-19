@@ -4,6 +4,7 @@
  */
 export const PROGRAMMING_GAMES=[
   {id:"all",name:"All Missions",icon:"◇",tag:"BROWSE",device:"any",description:"Browse every Java, Python, Web, Logic, and OOP mission."},
+  {id:"challenge-arena",name:"Challenge Arena",icon:"✦",tag:"ASSIGNED",device:"mobile",description:"Play teacher-assigned missions from your active Practice Packs without creating duplicate scores."},
   {id:"bug-detective",name:"Bug Hunt",icon:"⌁",tag:"DEBUG",device:"mobile",description:"Find broken code, choose the repair, and learn why the defect happened."},
   {id:"trace-quest",name:"Code Trace",icon:"⌨",tag:"TRACE",device:"mobile",description:"Follow changing values and predict the exact result before revealing it."},
   {id:"algorithm-maze",name:"Code Builder",icon:"⇅",tag:"BUILD",device:"mobile",description:"Arrange statements in the right order to make the program reach its goal."},
@@ -18,6 +19,7 @@ export const getProgrammingGame=id=>PROGRAMMING_GAMES.find(game=>game.id===id)||
 export const gameDeviceLabel=game=>game?.device==="computer"?"⌨ Computer recommended":game?.device==="coding"?"</> Coding required":game?.device==="mobile"?"☝ Mobile friendly":"◇ Any device";
 export function programmingGameMatches(gameId,course,mission,meta,module){
   switch(gameId){
+    case "challenge-arena": return false;
     case "bug-detective": return meta.type==="debugging";
     case "trace-quest": return meta.type==="output";
     case "algorithm-maze": return meta.type==="ordering";
