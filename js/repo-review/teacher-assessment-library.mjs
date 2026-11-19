@@ -11,13 +11,13 @@ const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
 const requestedFilter=new URL(location.href).searchParams.get("view");
 let items=[],deployments=[],filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
-  lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null;
+  lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
-    items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
+    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
     lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
@@ -426,15 +426,16 @@ form.addEventListener("submit",event=>{
   void write(action,details,action==="create"?"Private assessment created.":"Assessment draft updated.").then(resetEditor).catch(()=>{});
 });
 async function share(item){
-  sharing=item;el("tl-share-title").textContent=item.title;
+  const turn=++shareEpoch;sharing=item;recipientsReady=false;el("tl-share-title").textContent=item.title;
+  el("tl-recipients").textContent="Loading verified teachers…";
   const radios=[...shareDialog.querySelectorAll('input[name="visibility"]')];
   radios.forEach(radio=>radio.checked=radio.value===item.visibility);
   toggleRecipients();
   shareDialog.showModal();
   try{
     const data=await perform("recipients");
-    if(sharing?.id!==item.id)return;
-    const host=el("tl-recipients");host.replaceChildren();
+    if(turn!==shareEpoch||!shareDialog.open||sharing?.id!==item.id)return;
+    recipientsReady=true;const host=el("tl-recipients");host.replaceChildren();
     for(const teacher of data.teachers||[]){
       const label=document.createElement("label");label.style.cssText="display:flex;gap:.6rem;align-items:center;padding:.55rem 0";
       const check=document.createElement("input");check.type="checkbox";check.value=teacher.uid;
@@ -449,7 +450,7 @@ async function share(item){
     if(data.truncated){
       const warning=document.createElement("p");warning.textContent="Showing the first 100 active teachers.";host.append(warning);
     }
-  }catch(error){say(error?.message||"Teacher directory unavailable.");}
+  }catch(error){if(turn===shareEpoch&&shareDialog.open){el("tl-recipients").textContent="Teacher directory not available. Reopen sharing to retry.";say(error?.message||"Teacher directory unavailable.");}}
 }
 function toggleRecipients(){
   const chosen=shareDialog.querySelector('input[name="visibility"]:checked')?.value;
@@ -457,12 +458,15 @@ function toggleRecipients(){
 }
 shareDialog.querySelectorAll('input[name="visibility"]').forEach(radio=>
   radio.addEventListener("change",toggleRecipients));
-el("tl-cancel-share").addEventListener("click",()=>shareDialog.close());
+el("tl-cancel-share").addEventListener("click",()=>{if(!pendingWrite)shareDialog.close();});
+shareDialog.addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
+shareDialog.addEventListener("close",()=>{++shareEpoch;sharing=null;recipientsReady=false;});
 el("tl-share-form").addEventListener("submit",event=>{
-  event.preventDefault();if(!sharing)return;
+  event.preventDefault();if(!sharing||pendingWrite)return;
   const visibility=shareDialog.querySelector('input[name="visibility"]:checked')?.value;
   const teacherUids=visibility==="selected_teachers"?
     [...el("tl-recipients").querySelectorAll('input:checked')].map(input=>input.value):[];
+  if(visibility==="selected_teachers"&&!recipientsReady){say("Wait for the verified teacher list before saving.");return;}
   if(visibility==="selected_teachers"&&!teacherUids.length){
     say("Select at least one verified school teacher.");return;
   }
@@ -490,15 +494,19 @@ async function setPublication(task,publish){
   finally{pendingWrite=false;}
 }
 async function prepareDeployment(item){
+  if(pendingWrite)return;
+  const turn=++deployEpoch;deployReady=false;
   if(personalized(item)){
     try{
       const pool=await perform("personalization_status",{resourceId:item.id});
+      if(turn!==deployEpoch)return;
       if(!pool.ready){
         say("Complete and activate the private personalization pool before deployment.");
         await loadPersonalization(item);return;
       }
     }catch(error){say(error?.message||"Personalization readiness could not be verified.");return;}
   }
+  if(turn!==deployEpoch)return;
   deploying=item;deployRequestKey=crypto.randomUUID();
   el("tl-deploy-title").textContent=item.title;
   const form=el("tl-deploy-form");
@@ -512,22 +520,23 @@ async function prepareDeployment(item){
   select.replaceChildren();
   const placeholder=document.createElement("option");
   placeholder.value="";placeholder.textContent="Loading your assigned classes…";
-  select.append(placeholder);
+  select.append(placeholder);select.disabled=true;form.querySelector('button[type="submit"]').disabled=true;
   el("tl-deploy-dialog").showModal();
   try{
-    const offerings=(await performScoped(schoolAcademicsApi,"list_offerings")).offerings||[];
-    if(deploying?.id!==item.id)return;
+    const offerings=(await performScoped(schoolAcademicsApi,"planning_options",{assignmentScope:"teacher"})).offerings||[];
+    if(turn!==deployEpoch||!el("tl-deploy-dialog").open||deploying?.id!==item.id)return;
     select.replaceChildren();
     const initial=document.createElement("option");
     initial.value="";initial.textContent=offerings.length?"Choose your assigned class":"No active course offerings assigned";
     initial.selected=true;initial.disabled=true;select.append(initial);
-    for(const offering of offerings.filter(row=>row.status==="active")){
+    for(const offering of offerings.sort((a,b)=>String(a.subjectName+" "+a.sectionName).localeCompare(String(b.subjectName+" "+b.sectionName)))){
       const option=document.createElement("option");
       option.value=offering.offeringId;
-      option.textContent=offering.sectionId+" · "+offering.subjectId+" · "+offering.yearId+" / "+offering.termId;
+      option.textContent=[offering.subjectName||offering.subjectId,offering.sectionName||offering.sectionId,offering.yearName||offering.yearId,offering.termName||offering.termId].filter(Boolean).join(" · ");
       select.append(option);
     }
-    if(select.options.length===1)say("Your school administrator must assign you a class offering before deployment.");
+    deployReady=select.options.length>1;select.disabled=!deployReady;form.querySelector('button[type="submit"]').disabled=!deployReady;
+    if(!deployReady)say("No active teaching assignments are available for deployment.");
   }catch(error){say(error.message||"Could not load assigned classes.");}
 }
 el("tl-deployment-settings-cancel").addEventListener("click",()=>{
@@ -590,16 +599,20 @@ el("tl-lifecycle-form").addEventListener("submit",event=>{
   })();
 });
 el("tl-cancel-deploy").addEventListener("click",()=>{
+  if(pendingWrite)return;
   el("tl-deploy-form").elements.submissionSource.disabled=false;
   el("tl-deploy-dialog").close();
 });
-el("tl-deploy-form").addEventListener("input",()=>{deployRequestKey=crypto.randomUUID();});
+el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
+el("tl-deploy-dialog").addEventListener("close",()=>{++deployEpoch;deployReady=false;deploying=null;deployRequestKey=null;});
+el("tl-deploy-form").addEventListener("input",()=>{if(!pendingWrite)deployRequestKey=crypto.randomUUID();});
 el("tl-deploy-form").addEventListener("submit",event=>{
-  event.preventDefault();if(!deploying||pendingWrite)return;
+  event.preventDefault();if(!deploying||pendingWrite||!deployReady)return;
   const form=event.currentTarget;
   if(!form.reportValidity())return;
   const fields=new FormData(form);
-  const key=deployRequestKey||crypto.randomUUID();
+  const key=deployRequestKey||crypto.randomUUID(),resource=deploying;
+  deployRequestKey=key;
   const opensAt=new Date(String(fields.get("opensAt")||""));
   const dueAt=new Date(String(fields.get("dueAt")||""));
   if(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt){
@@ -607,13 +620,13 @@ el("tl-deploy-form").addEventListener("submit",event=>{
   }
   void (async()=>{
     pendingWrite=true;
-    const buttons=[...form.querySelectorAll("button")];
-    buttons.forEach(button=>button.disabled=true);
+    const controls=[...form.elements].filter(control=>!control.disabled);
+    controls.forEach(control=>control.disabled=true);
     say("Checking your course assignment and deploying a frozen assessment…");
     try{
       const task=await performScoped(scopedAssessmentApi,"deploy",{
-        blueprintId:deploying.id,offeringId:String(fields.get("offeringId")||""),
-        submissionSource:personalized(deploying)?"studio":String(fields.get("submissionSource")||""),
+        blueprintId:resource.id,offeringId:String(fields.get("offeringId")||""),
+        submissionSource:personalized(resource)?"studio":String(fields.get("submissionSource")||""),
         opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
         allowLateSubmissions:fields.get("allowLateSubmissions")==="on",requestKey:key
       });
@@ -622,7 +635,7 @@ el("tl-deploy-form").addEventListener("submit",event=>{
       el("tl-deploy-dialog").close();deploying=null;deployRequestKey=null;
       await refreshAfterWrite(message);
     }catch(error){say(error.message||"Deployment could not be completed. Retry the same request safely.");}
-    finally{pendingWrite=false;buttons.forEach(button=>button.disabled=false);}
+    finally{pendingWrite=false;controls.forEach(control=>control.disabled=false);}
   })();
 });
 form.elements.personalizationMode.addEventListener("change",togglePersonalizationFields);
