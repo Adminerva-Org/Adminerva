@@ -7,7 +7,7 @@ const readinessApi=httpsCallable(functions,"schoolCutoverReadiness");
 const byId=id=>document.getElementById(id);
 const status=byId("owner-status"),workspace=byId("owner-content"),
   schoolList=byId("owner-schools"),actions=byId("owner-actions");
-let selected=null,schools=[],governanceRoles=[],busy=false,latestReadiness=null,latestCutoverPackage=null,onboardingSchoolId="",selectionEpoch=0;
+let selected=null,schools=[],governanceRoles=[],schoolAdmins=[],busy=false,latestReadiness=null,latestCutoverPackage=null,onboardingSchoolId="",selectionEpoch=0;
 const say=text=>status.textContent=text;
 function scopedForms(){return [...actions.querySelectorAll("form")].filter(form=>form.id!=="owner-governance-create");}
 function setFormReady(form,ready){
@@ -27,14 +27,15 @@ function resetSchoolForms(){
 async function execute(action,details={}){
   return (await api({action,...details})).data;
 }
-async function resolveAccountUid(value){
+async function resolveAccountUid(value,{allowDisabled=false}={}){
   const identity=String(value||"").trim();
   if(!identity)throw new Error("Enter the administrator email or account UID.");
   if(!identity.includes("@"))return identity;
   const result=(await usersApi({action:"lookup",query:identity})).data;
   const account=result?.account;
   if(!account?.uid)throw new Error("The account could not be resolved.");
-  if(account.disabled)throw new Error("This Firebase account is disabled. Re-enable the account before changing school access.");
+  if(account.disabled&&!allowDisabled)
+    throw new Error("This Firebase account is disabled. Re-enable the account before granting or restoring school access.");
   return account.uid;
 }
 function isLegacyProvisioning(school=selected){
@@ -123,8 +124,78 @@ function choose(id,afterWrite=false){
     void loadStandardSetup(selected.schoolId);
   }
   if(selected.state==="suspended")void loadRecoveryStatus(selected.schoolId);
+  schoolAdmins=[];renderSchoolAdmins();void loadSchoolAdmins(selected.schoolId);
   void loadSchoolAudit(selected.schoolId);
   void loadGovernanceRoles(selected.schoolId);
+}
+function administratorIdentity(admin){
+  return admin.email||admin.uid;
+}
+function prefillAdminAccess(admin,mode){
+  const form=byId(mode==="restore"?"owner-admin-restore":"owner-admin-suspend");
+  if(!form)return;
+  form.elements.targetUid.value=administratorIdentity(admin);
+  form.scrollIntoView({behavior:"smooth",block:"center"});
+  form.elements.reason.focus({preventScroll:true});
+}
+function renderSchoolAdmins(){
+  const host=byId("owner-admin-list"),message=byId("owner-admin-list-status");
+  if(!host||!message)return;
+  host.replaceChildren();
+  if(!schoolAdmins.length){
+    const empty=document.createElement("p");empty.className="own-muted";
+    empty.textContent="No School Administrator membership is currently recorded.";
+    host.append(empty);message.textContent="0 School Administrators loaded.";return;
+  }
+  const activeCount=schoolAdmins.filter(admin=>admin.status==="active").length;
+  for(const admin of schoolAdmins){
+    const card=document.createElement("article");
+    card.style.cssText="display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;flex-wrap:wrap;border:1px solid #e2e8f0;border-radius:10px;padding:.75rem;background:#f8fafc";
+    const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
+    name.textContent=admin.displayName||admin.email||admin.uid;meta.className="own-muted";
+    meta.textContent=[
+      admin.email||"No account email",
+      admin.status,
+      "membership rev "+admin.revision,
+      admin.isFirstAdmin?"designated first administrator":"",
+      admin.accountDisabled?"Firebase account disabled":admin.emailVerified?"verified account":"account verification unavailable"
+    ].filter(Boolean).join(" · ");
+    info.append(name,meta);
+    const controls=document.createElement("div");controls.style.cssText="display:flex;gap:.45rem;flex-wrap:wrap";
+    if(admin.status==="active"){
+      const button=document.createElement("button");button.type="button";button.className="own-button warn";button.textContent="Suspend";
+      button.disabled=activeCount<=1;
+      button.title=activeCount<=1?"Designate another active School Administrator before suspending the last administrator.":"";
+      button.addEventListener("click",()=>prefillAdminAccess(admin,"suspend"));controls.append(button);
+    }else if(admin.status==="suspended"){
+      const button=document.createElement("button");button.type="button";button.className="own-button";button.textContent="Restore";
+      button.disabled=admin.accountDisabled||!admin.emailVerified;
+      button.title=button.disabled?"Restore the Firebase identity to a verified active account first.":"";
+      button.addEventListener("click",()=>prefillAdminAccess(admin,"restore"));controls.append(button);
+    }
+    card.append(info,controls);host.append(card);
+  }
+  message.textContent=schoolAdmins.length+" School Administrator"+(schoolAdmins.length===1?"":"s")+" loaded · "+activeCount+" active.";
+}
+async function loadSchoolAdmins(schoolId=selected?.schoolId){
+  const turn=selectionEpoch,message=byId("owner-admin-list-status");
+  if(!schoolId||!message)return null;
+  message.textContent="Loading current School Administrators…";
+  try{
+    const result=await execute("list_school_admins",{schoolId});
+    if(turn!==selectionEpoch||selected?.schoolId!==schoolId)return null;
+    schoolAdmins=result.admins||[];renderSchoolAdmins();return result;
+  }catch(error){
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId){
+      schoolAdmins=[];renderSchoolAdmins();
+      message.textContent=error?.message||"School Administrators could not be loaded.";
+    }
+    return null;
+  }
+}
+function reviewedAdminRevision(targetUid){
+  const admin=schoolAdmins.find(item=>item.uid===targetUid);
+  return Number(admin?.revision)||null;
 }
 function auditLabel(action){
   return String(action||"platform change").replace(/^school_/,"").replace(/^platform_/,"").replaceAll("_"," ");
@@ -517,8 +588,9 @@ byId("owner-grant").addEventListener("submit",event=>{
   void (async()=>{
     let targetUid;
     try{targetUid=await resolveAccountUid(d.get("targetUid"));}catch(error){say(error?.message||"Administrator account lookup failed.");return;}
-    await submit(f,"grant_school_admin",{schoolId:selected.schoolId,targetUid,
+    const response=await submit(f,"grant_school_admin",{schoolId:selected.schoolId,targetUid,
       reason:String(d.get("reason")||"").trim()});
+    if(response)void loadSchoolAdmins(selected.schoolId);
   })();
 });
 byId("owner-admin-suspend").addEventListener("submit",event=>{
@@ -526,10 +598,15 @@ byId("owner-admin-suspend").addEventListener("submit",event=>{
   const f=event.currentTarget,d=new FormData(f);
   void (async()=>{
     let targetUid;
-    try{targetUid=await resolveAccountUid(d.get("targetUid"));}catch(error){say(error?.message||"Administrator account lookup failed.");return;}
+    try{targetUid=await resolveAccountUid(d.get("targetUid"),{allowDisabled:true});}catch(error){say(error?.message||"Administrator account lookup failed.");return;}
+    const expectedMembershipRevision=reviewedAdminRevision(targetUid);
+    if(!Number.isSafeInteger(expectedMembershipRevision)){
+      say("Refresh the School Administrator list and choose the administrator again.");return;
+    }
     if(!confirm("Suspend this school administrator for "+selected.displayName+"? This pauses all V4 access for that school membership."))return;
-    await submit(f,"suspend_school_admin",{schoolId:selected.schoolId,targetUid,
+    const response=await submit(f,"suspend_school_admin",{schoolId:selected.schoolId,targetUid,expectedMembershipRevision,
       reason:String(d.get("reason")||"").trim()});
+    if(response)void loadSchoolAdmins(selected.schoolId);
   })();
 });
 byId("owner-admin-restore").addEventListener("submit",event=>{
@@ -538,8 +615,13 @@ byId("owner-admin-restore").addEventListener("submit",event=>{
   void (async()=>{
     let targetUid;
     try{targetUid=await resolveAccountUid(d.get("targetUid"));}catch(error){say(error?.message||"Administrator account lookup failed.");return;}
-    await submit(f,"restore_school_admin",{schoolId:selected.schoolId,targetUid,
+    const expectedMembershipRevision=reviewedAdminRevision(targetUid);
+    if(!Number.isSafeInteger(expectedMembershipRevision)){
+      say("Refresh the School Administrator list and choose the administrator again.");return;
+    }
+    const response=await submit(f,"restore_school_admin",{schoolId:selected.schoolId,targetUid,expectedMembershipRevision,
       reason:String(d.get("reason")||"").trim()});
+    if(response)void loadSchoolAdmins(selected.schoolId);
   })();
 });
 byId("owner-start-pilot").addEventListener("submit",event=>{
@@ -643,6 +725,9 @@ byId("owner-suspend").addEventListener("submit",event=>{
   if(!confirm("Suspend "+selected.displayName+"? All verified v4 school access will be denied."))return;
   void submit(f,"suspend",{schoolId:selected.schoolId,expectedRevision:selected.revision,
     reason:String(d.get("reason")||"").trim()});
+});
+byId("owner-admin-list-refresh")?.addEventListener("click",()=>{
+  if(selected&&!busy)void loadSchoolAdmins(selected.schoolId);
 });
 byId("owner-audit-refresh")?.addEventListener("click",()=>{
   if(selected&&!busy)void loadSchoolAudit(selected.schoolId);
