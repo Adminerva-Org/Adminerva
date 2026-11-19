@@ -15,6 +15,12 @@ const tabs=new Set(["overview","people","invites","classes","access","import"]);
 function escapeHTML(value){return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));}
 function count(value){return Number.isFinite(value)&&value>=0?value.toLocaleString():"—";}
 function set(id,value){get(id).textContent=value;}
+function setWorkflow(id,value,noun){
+  const node=get(id);if(!node)return;
+  const numeric=Number(value),known=Number.isFinite(numeric)&&numeric>=0;
+  node.textContent=!known?"Unavailable":numeric>0?numeric.toLocaleString()+" "+noun+(numeric===1?"":"s"):"Not started";
+  node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(!known?"bg-amber-100 text-amber-900":numeric>0?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");
+}
 function message(host,value){host.replaceChildren();const p=document.createElement("p");p.className="p-5 text-sm text-slate-600";p.textContent=value;host.append(p);}
 function perform(api,action,lease){
   return api({schoolId:lease.schoolId,action}).then(response=>{picker.scope.assertLease(lease);return response.data;});
@@ -67,6 +73,7 @@ function reset(){
   model={};attentionLimit=10;recordLimit=20;
   for(const id of ["adminPeopleCount","adminAttentionCount","adminClassRecordCount","adminReportCount","adminSupportOpen","adminSupportCritical","adminSupportWaiting","adminEnrollmentCount","adminAssignmentCount","adminInvitationCount"])set(id,"—");
   set("adminIntegrityMeta","Not checked");set("adminClassRecordMeta","Not checked");set("adminReportMeta","Not checked");
+  for(const id of ["adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
   set("adminAttentionCoverage","");set("adminRecordCoverage","");get("adminAttentionMore").hidden=true;get("adminRecordMore").hidden=true;
   message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");
 }
@@ -74,6 +81,7 @@ function renderSource(name,data){
   if(name==="directory"){
     model.overview=data;
     for(const [id,key] of [["adminPeopleCount","people"],["adminEnrollmentCount","enrollments"],["adminAssignmentCount","staff_assignments"],["adminInvitationCount","invitations"]])set(id,count(data?.counts?.[key]));
+    setWorkflow("adminWorkflowPeople",data?.counts?.people,"record");setWorkflow("adminWorkflowTeaching",data?.counts?.staff_assignments,"assignment");setWorkflow("adminWorkflowEnrollment",data?.counts?.enrollments,"enrollment");
   }else if(name==="relationships"){
     model.reconciliation=data;
     set("adminAttentionCount",count(data?.counts?.total));
@@ -85,6 +93,7 @@ function renderSource(name,data){
     const finalized=model.records?.filter(row=>row.finalization&&!row.finalization.layoutChangedSinceFinalization).length;
     const released=model.records?.filter(row=>recordState(row).key==="released").length;
     set("adminClassRecordMeta",model.records?count(finalized)+" finalized · "+count(released)+" released":"Class Record source unavailable");
+    setWorkflow("adminWorkflowRecords",model.records?.length,"record");
     renderRecords();renderAttention();
   }else if(name==="support"){
     model.support=data;
