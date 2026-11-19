@@ -9,7 +9,7 @@ import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.4
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.2";
 
-let listenEpoch=0;
+let listenEpoch=0,pushEpoch=0;
 const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false, pushState:null };
 const isAdmin = () => staffRole(state.user)==="admin";
 const isTeacher = () => staffRole(state.user)==="teacher";
@@ -80,6 +80,7 @@ function render(){
   badge.textContent=count>99?"99+":String(count);
   badge.classList.toggle("hidden",count===0);
   el("av-alert-toggle").setAttribute("aria-label",count+" unread notifications");
+  document.querySelectorAll("[data-av-notification-filter]").forEach(tab=>tab.setAttribute("aria-pressed",String(tab.dataset.avNotificationFilter===state.filter)));
   list.replaceChildren();
   const search=state.search.toLowerCase();
   const visible=items.filter(n=>!state.muted.has(n.type) &&
@@ -101,10 +102,13 @@ function render(){
     link.append(heading);
     if(n.body)link.append(make("p","text-xs leading-5 text-slate-600 break-words mt-0.5 av-notification-body",n.body));
     link.addEventListener("click",async event=>{
+      // Preserve normal browser open-in-new-tab gestures.
+      if(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey){void markRead(n);return;}
       event.preventDefault();
+      const epoch=listenEpoch,uid=state.user?.uid;
       void markRead(n);
       await Promise.race([remember(n,Boolean(n.pinned)),new Promise(resolve=>setTimeout(resolve,1300))]);
-      window.location.assign(targetUrl(n.target));
+      if(epoch===listenEpoch&&state.user?.uid===uid)window.location.assign(targetUrl(n.target));
     });
     const meta=make("div","flex items-center gap-2 mt-1.5 min-w-0");
     meta.append(make("span","av-notification-type",typeLabels[n.type]||"Notice"));
@@ -151,16 +155,19 @@ async function markRead(item){
   }catch(err){console.warn("Read state could not sync",err)}
 }
 async function markAllRead(){
+  const uid=state.user?.uid;if(!uid)return;
   const pending=collectionItems().filter(unread);
   for(const item of pending)state.read.add(item.key);
   storeRead();render();
   await Promise.allSettled(pending.filter(n=>n.saved).map(n=>
-    updateDoc(doc(db,"notifications",state.user.uid,"items",n.id),{readAt:serverTimestamp()})));
+    updateDoc(doc(db,"notifications",uid,"items",n.id),{readAt:serverTimestamp()})));
 }
 async function listen(user){
   const current=++listenEpoch;
   state.unsubscribe.forEach(stop=>stop());state.unsubscribe=[];
-  state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];state.history=user?localHistory():[];
+  state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];state.releases=[];state.pushState=null;state.history=user?localHistory():[];
+  const active=()=>current===listenEpoch&&state.user?.uid===user?.uid;
+  el("av-push-prompt")?.classList.add("hidden");
   state.errors.clear();
   state.read=restoreRead();state.muted=restorePreferences();
   document.querySelectorAll("#av-alert-panel input[data-alert-category]").forEach(input=>{
@@ -178,27 +185,29 @@ async function listen(user){
     collection(db,"notification_history",user.uid,"items"),
     orderBy("lastInteractedAt","desc"),limit(NOTIFICATION_HISTORY_LIMIT)),
     snap=>{
+      if(!active())return;
       const records=snap.docs.map(d=>d.data());
       const merged=new Map(state.history.map(item=>[item.sourceKey,item]));
       for(const item of records)merged.set(item.sourceKey,item);
       state.history=[...merged.values()].slice(0,NOTIFICATION_HISTORY_LIMIT);
       state.errors.delete("History");render();
-    },err=>{console.warn("Notification history unavailable:",err);state.errors.add("History");render();}));
+    },err=>{if(!active())return;console.warn("Notification history unavailable:",err);state.errors.add("History");render();}));
   const error=name=>err=>{
+    if(!active())return;
     console.warn(name+" listener unavailable:",err.message);
     state.errors.add(name);render();
   };
   const success=name=>{state.errors.delete(name);render()};
   state.unsubscribe.push(onSnapshot(
     query(collection(db,"notifications",user.uid,"items"),orderBy("createdAt","desc"),limit(60)),
-    snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));success("Notifications")},error("Notifications")));
+    snap=>{if(!active())return;state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));success("Notifications")},error("Notifications")));
   const staff=!!staffRole(user);
   // Teachers use their authoritative per-user notification feed. Broad source
   // collection listeners can violate section-scoped Firestore query rules.
   if(isAdmin()){
     state.unsubscribe.push(onSnapshot(
       query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40)),
-      snap=>{state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));success("Issue reports")},
+      snap=>{if(!active())return;state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));success("Issue reports")},
       error("Issue reports")));
   }
   // Student submission/grade/report alerts come only from the authoritative
@@ -206,20 +215,24 @@ async function listen(user){
   if(isAdmin()){
     state.unsubscribe.push(onSnapshot(
       query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30)),
-      snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));success("Grading alerts")},
+      snap=>{if(!active())return;state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));success("Grading alerts")},
       error("Grading alerts")));
     state.unsubscribe.push(onSnapshot(
       query(collection(db,"student_submissions"),orderBy("submittedAt","desc"),limit(40)),
-      snap=>{state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));success("Student submissions")},
+      snap=>{if(!active())return;state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));success("Student submissions")},
       error("Student submissions")));
   }
 }
 async function refreshPushPrompt(){
+  const turn=++pushEpoch,uid=state.user?.uid;
+  const active=()=>turn===pushEpoch&&state.user?.uid===uid;
   const prompt=el("av-push-prompt"),button=el("av-enable-push-device"),message=el("av-push-prompt-text");
   if(!prompt||!state.user){if(prompt)prompt.classList.add("hidden");return;}
   try{
     const module=await import("./push-notifications.mjs?v=1.3.7");
-    const [device,prefs]=await Promise.all([module.getDevicePushState(),module.getPushPreferences(state.user.uid)]);
+    if(!active())return;
+    const [device,prefs]=await Promise.all([module.getDevicePushState(),module.getPushPreferences(uid)]);
+    if(!active())return;
     state.pushState={device,prefs};
     const show=prefs.enabled!==false&&device.supported&&device.configured&&device.permission!=="denied"&&!(device.permission==="granted"&&device.registered);
     prompt.classList.toggle("hidden",!show);
@@ -229,7 +242,7 @@ async function refreshPushPrompt(){
       ?(teaching?"Device permission is granted. Reconnect this device to receive teaching alerts.":"Device permission is granted. Reconnect this device to receive assessment, submission, grade, and report alerts.")
       :(teaching?"Important teaching alerts can reach this device outside Adminerva. Enable this device once.":"Important student alerts are ON by default. Enable this device once to receive them outside Adminerva.");
     button.textContent=device.permission==="granted"?"Reconnect device":"Enable device notifications";
-  }catch{prompt.classList.add("hidden");}
+  }catch{if(active())prompt.classList.add("hidden");}
 }
 async function refreshReleases(){
   const uid=state.user?.uid;if(!uid)return;
@@ -258,7 +271,7 @@ export function mountNotificationCenter(){
   const tabs=make("div","av-notification-tabs flex border-b");
   for(const [filter,label] of [["all","All"],["unread","Unread"],["saved","Saved"],["issues","Reports"]]){
     const tab=make("button","flex-1 min-w-[72px] py-2 text-xs text-slate-700 hover:bg-slate-50 font-semibold",label);
-    tab.type="button";tab.addEventListener("click",()=>{state.filter=filter;render()});tabs.append(tab);
+    tab.type="button";tab.dataset.avNotificationFilter=filter;tab.setAttribute("aria-pressed",String(state.filter===filter));tab.addEventListener("click",()=>{state.filter=filter;render()});tabs.append(tab);
   }
   panel.append(tabs);
   const search=make("input","w-full border-0 border-b border-slate-200 bg-white px-3 py-2 text-sm text-slate-900");
