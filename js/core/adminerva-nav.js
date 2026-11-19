@@ -58,8 +58,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const root = document.getElementById("adminerva-nav");
   if (!root) return;
-  let currentRole, disclosures = [], utilitiesMounted = false;
+  let currentRole, disclosures = [], utilitiesMounted = false, navigationEpoch=0;
   const renderNavigation = async userRole => {
+  const turn=++navigationEpoch;
   // Retain mounted account utilities and their listeners during a verified-role
   // refresh. Only links and menus are rebuilt; notifications subscribe once.
   const accountControls = root.querySelector("#av-account-controls");
@@ -76,6 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   const platformTestMode = root.dataset.platformTestMode === "true";
   const {buildNavigationIA}=await import("./navigation-ia.mjs?v=bc49c032bde0");
+  if(turn!==navigationEpoch)return;
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
     hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent,platformTestMode
@@ -315,7 +317,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const desktop=root.querySelector("#av-desktop-nav"),mobile=root.querySelector("#av-mobile-nav");
   if(desktop)desktop.replaceChildren(...groups.map(group=>makeGroup(group,false)));
   if(mobile){
-    mobile.replaceChildren();
+    mobile.replaceChildren();mobile.hidden=!groups.length;
     if(groups.length){
       const details=document.createElement("details");details.id="av-mobile-staff-menu";
       const summary=document.createElement("summary");
@@ -391,7 +393,8 @@ document.addEventListener("DOMContentLoaded", () => {
     )].filter(visibleOverlay);
     const overlay = overlays.at(-1);
     if (overlay) {
-      if (overlay.matches("dialog[open]") && typeof overlay.close === "function") overlay.close();
+      // Let native dialog cancel events enforce in-flight save/review safeguards.
+      if (overlay.matches("dialog[open]")) return;
       else {
         const preferred = overlay.querySelector(
           'button[data-close],button[data-dismiss],button[aria-label*="close" i],button[id*="close" i],button[id*="cancel" i],[data-modal-close]'
@@ -400,11 +403,8 @@ document.addEventListener("DOMContentLoaded", () => {
           ["×","✕","close","cancel","dismiss"].includes(button.textContent.trim().toLowerCase())
         );
         const control = preferred || textual;
-        if (control) control.click();
-        else {
-          overlay.classList.add("hidden");
-          overlay.hidden = true;
-        }
+        if (control&&!control.disabled) control.click();
+        // Custom dialogs without an explicit close control own their lifecycle.
       }
       event.preventDefault();
       return;

@@ -30,3 +30,8 @@
   .av-public-shell__brand small{display:none}
 }
 @media(max-width:380px){.av-public-shell__brand .av-public-shell__wordmark{display:none}}
+
+/* Keep public navigation usable on short mobile screens and at increased text size. */
+.av-public-shell__menu-panel{max-height:calc(100dvh - 5rem);overflow-y:auto;overscroll-behavior:contain}
+.av-public-shell__menu-panel [hidden],.av-public-shell__actions [hidden]{display:none!important}
+@media(max-width:380px){.av-public-shell__brand .av-public-shell__wordmark{display:inline;font-size:.78rem;letter-spacing:.02em}}

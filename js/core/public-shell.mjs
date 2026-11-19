@@ -36,10 +36,15 @@ if(root){
         </details>
       </div>
     </header>`;
+  const menu=root.querySelector(".av-public-shell__menu");
+  document.addEventListener("click",event=>{if(menu?.open&&!menu.contains(event.target))menu.open=false;});
+  document.addEventListener("keydown",event=>{if(event.key==="Escape"&&menu?.open&&!event.defaultPrevented){menu.open=false;menu.querySelector("summary")?.focus();event.preventDefault();}});
+  menu?.addEventListener("click",event=>{if(event.target.closest("a"))menu.open=false;});
   if(guestControls){
     const desktop=root.querySelector("#guest-signout"),mobile=root.querySelector("#guest-signout-mobile");
     if(desktop&&mobile){
       const observer=new MutationObserver(()=>{mobile.hidden=desktop.hidden;});
+      mobile.hidden=desktop.hidden;
       observer.observe(desktop,{attributes:true,attributeFilter:["hidden"]});
       mobile.addEventListener("click",()=>desktop.click());
     }

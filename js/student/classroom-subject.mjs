@@ -56,8 +56,11 @@ function resolveClass(classes){
   if(requestedSubjectId||requestedSubjectName)return null;
   return (classes||[]).find(item=>/computer\s*programming|programming/i.test(String(item.subject||"")))||(classes||[])[0]||null;
 }
-function courseLabel(item){return [item.section,item.term,item.year].filter(Boolean).join(" · ");}
+function courseLabel(item){return [item?.section,item?.term,item?.year].filter(Boolean).join(" · ");}
 function updateLinks(){
+  const controls=["subjectAssignmentsLink","subjectAllWorkLink","subjectQuickAssignments","subjectGradesLink","subjectQuickGrades","subjectProjectsLink","subjectQuickProjects","subjectQuickStudio"];
+  for(const id of controls){const link=el(id);if(!current){link.removeAttribute("href");link.setAttribute("aria-disabled","true");link.setAttribute("tabindex","-1");link.classList.add("opacity-50","pointer-events-none");}else{link.removeAttribute("aria-disabled");link.removeAttribute("tabindex");link.classList.remove("opacity-50","pointer-events-none");}}
+  if(!current)return;
   const q=subjectQuery(),assign="student-assessments.html"+q;
   const grades=legacyMode?assign:"school-student-grades.html"+q;
   const projects=legacyMode?"student-dashboard.html":"school-student-projects.html"+q;
@@ -70,12 +73,12 @@ function updateLinks(){
   studio.href=current?.offeringId&&!legacyMode?"student-playground.html?offeringId="+encodeURIComponent(current.offeringId):"student-playground.html";
 }
 function renderHeader(){
-  el("subjectClassroomTitle").textContent=current?.subject||"Subject";
-  el("subjectClassroomMeta").textContent=courseLabel(current)||"Active school classroom";
+  el("subjectClassroomTitle").textContent=current?.subject||requestedSubjectName||"Subject";
+  el("subjectClassroomMeta").textContent=current?(courseLabel(current)||"Active school classroom"):"No accessible class selected";
   el("subjectClassroomEyebrow").textContent=(current?.section||"Classroom")+" · Student stream";
   el("subjectLegacyNote").classList.toggle("hidden",!isProgramming());
   if(legacyMode)el("subjectLegacyNote").innerHTML="<strong>Existing Adminerva programming classroom</strong><p class='mt-1'>This stream is using your current legacy class records, assignments, submissions and published feedback. Teacher announcements will appear here automatically after your verified school enrollment is linked.</p>";
-  const same=(profile?.classes||[]).filter(item=>item.subjectId===current?.subjectId);
+  const same=current?(profile?.classes||[]).filter(item=>item.subjectId===current.subjectId):[];
   const wrap=el("subjectOfferingWrap"),select=el("subjectOfferingSelect");
   select.replaceChildren();
   for(const item of same)select.add(new Option(courseLabel(item)||item.subject,item.offeringId));
@@ -208,7 +211,8 @@ async function refreshLegacy(){
     const result=await loadLegacyProgrammingClassroom();if(turn!==epoch)return;
     profile={classes:result.classes||[]};current=resolveClass(profile.classes);
     if(!current){
-      setStatus("Your existing Adminerva student record is not linked to a programming section yet.",true);
+      renderHeader();
+      setStatus("Your existing Adminerva student record is not linked to this programming class. Return to All subjects to choose an available class.",true);
       renderSummary([],new Map(),new Map(),[]);renderUpcoming([],new Map(),new Map());renderStream([],[],new Map(),new Map());return;
     }
     renderHeader();
@@ -224,6 +228,7 @@ async function refreshLegacy(){
 async function refresh(){
   if(!picker?.scope.current||busy)return;
   const turn=++epoch;busy=true;legacyMode=false;el("subjectRefresh").disabled=true;setStatus("Loading your classroom stream…");
+  current=null;profile=null;renderHeader();renderSummary([],new Map(),new Map(),[]);renderUpcoming([],new Map(),new Map());renderStream([],[],new Map(),new Map());
   try{
     profile=await scoped(profileApi,"my_profile");if(turn!==epoch)return;
     current=resolveClass(profile.classes||[]);
@@ -251,6 +256,7 @@ async function refresh(){
 el("subjectOfferingSelect").addEventListener("change",event=>{
   const selected=(profile?.classes||[]).find(item=>item.offeringId===event.target.value);
   if(!selected)return;const q=new URLSearchParams();q.set("subjectId",selected.subjectId);q.set("subject",selected.subject);q.set("offeringId",selected.offeringId);
+  if(legacyMode)q.set("legacy","1");
   location.href="student-subject.html?"+q.toString();
 });
 el("subjectRefresh").addEventListener("click",()=>void (legacyMode?refreshLegacy():refresh()));

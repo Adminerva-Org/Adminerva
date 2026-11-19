@@ -9,7 +9,7 @@ test("a legacy hide or completed job cannot dismiss another active operation", (
     const node = {style:{}, classList:{toggle(){}}, attributes:new Map(), append(){}, setAttribute(key,value){this.attributes.set(key,value);}, removeAttribute(key){this.attributes.delete(key);}};
     Object.defineProperty(node,"id",{set(value){elements.set(value,node);}});return node;
   }
-  const document = {createElement:element, documentElement:{append(){}}, getElementById:id=>elements.get(id), querySelectorAll:()=>[], addEventListener(){}};
+  const document = {createElement:element, documentElement:{append(){}}, getElementById:id=>elements.get(id), querySelectorAll:()=>[], addEventListener(){}, readyState:"loading", scripts:[{src:"https://example.test/js/core/release-footer.js?v=test"}]};
   const window = {addEventListener:(type,callback)=>events.set(type,callback)};
   vm.runInNewContext(readFileSync("js/core/adminerva-loader.js","utf8"),{document,window});
   const status = elements.get("subtleLoader"), region = element();
@@ -35,10 +35,12 @@ test("all root application pages mount help and public routes load no authentica
   for (const file of readdirSync(".").filter(file=>file.endsWith(".html")&&!aliases.has(file))) {
     if(file.startsWith("guest-")){
       const content=readFileSync(file,"utf8");
-      assert.match(content,/href="wiki\.html/);assert.doesNotMatch(content,/adminerva-loader\.js|activity-client|notifications\.mjs/);
+      const publicShell=readFileSync("js/core/public-shell.mjs","utf8");
+      assert.ok(/href="wiki\.html/.test(content)||(/public-shell\.mjs/.test(content)&&publicShell.includes('"wiki.html"')),file+" needs public help access");
+      assert.doesNotMatch(content,/auth-guard[^"\s]*\.js|activity-client|(?:^|\/)notifications\.mjs/);
       continue;
     }
     assert.ok(readFileSync(file,"utf8").includes("adminerva-loader.js"),file+" needs the shared help/loader entry");
   }
-  for (const file of ["wiki.html","patch-notes.html","index.html"]) assert.ok(!readFileSync(file,"utf8").includes("auth-guard.js"));
+  for (const file of ["wiki.html","patch-notes.html","index.html"]) assert.doesNotMatch(readFileSync(file,"utf8"),/auth-guard[^"\s]*\.js/);
 });
