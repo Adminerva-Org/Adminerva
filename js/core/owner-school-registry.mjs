@@ -19,7 +19,7 @@ function resetSchoolForms(){
     form.reset();
     form.dataset.schoolId=selected?.schoolId||"";
     form.dataset.selectionEpoch=String(selectionEpoch);
-    setFormReady(form,!["owner-cutover-decisions","owner-governance-assign","owner-activate-standard"].includes(form.id));
+    setFormReady(form,!["owner-cutover-decisions","owner-governance-assign","owner-activate-standard","owner-resume"].includes(form.id));
   }
   byId("owner-governance-role-select")?.replaceChildren();
 }
@@ -111,7 +111,46 @@ function choose(id,afterWrite=false){
   }else{
     void loadStandardSetup(selected.schoolId);
   }
+  if(selected.state==="suspended")void loadRecoveryStatus(selected.schoolId);
   void loadGovernanceRoles(selected.schoolId);
+}
+async function loadRecoveryStatus(schoolId=selected?.schoolId){
+  const turn=selectionEpoch,form=byId("owner-resume"),host=byId("owner-resume-readiness"),
+    refreshButton=byId("owner-resume-refresh");
+  if(!form||!host||!schoolId)return null;
+  setFormReady(form,false);
+  if(refreshButton)refreshButton.disabled=busy;
+  host.textContent="Checking production authorization and active School Administrator coverage…";
+  try{
+    const result=await execute("get_recovery_status",{schoolId});
+    if(turn!==selectionEpoch||selected?.schoolId!==schoolId)return null;
+    host.replaceChildren();
+    const summary=document.createElement("p");summary.style.fontWeight="800";
+    summary.textContent=result.canResume
+      ?"Recovery checks passed. Institution-level access can be restored after recording a reason."
+      :"Recovery is blocked until the requirements below are resolved.";
+    host.append(summary);
+    const detail=document.createElement("p");detail.className="own-muted";
+    detail.textContent="Prior production authorization: "+(result.productionAuthorized?"yes":"no")+
+      " · Active School Administrators: "+result.activeAdminCount+
+      " · Suspended School Administrators: "+result.suspendedAdminCount;
+    host.append(detail);
+    if(result.blockers?.length){
+      const list=document.createElement("ul");list.style.cssText="margin:.55rem 0 0;padding-left:1.25rem";
+      for(const blocker of result.blockers){const item=document.createElement("li");item.textContent=blocker;list.append(item);}
+      host.append(list);
+    }
+    setFormReady(form,result.canResume&&result.state==="suspended"&&result.revision===selected.revision);
+    if(refreshButton)refreshButton.disabled=busy;
+    return result;
+  }catch(error){
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId){
+      host.textContent=(error?.message||"Recovery requirements could not be checked.")+" Refresh before restoring access.";
+      setFormReady(form,false);
+      if(refreshButton)refreshButton.disabled=busy;
+    }
+    return null;
+  }
 }
 async function loadStandardSetup(schoolId=selected?.schoolId){
   const turn=selectionEpoch;
@@ -529,6 +568,9 @@ byId("owner-suspend").addEventListener("submit",event=>{
   if(!confirm("Suspend "+selected.displayName+"? All verified v4 school access will be denied."))return;
   void submit(f,"suspend",{schoolId:selected.schoolId,expectedRevision:selected.revision,
     reason:String(d.get("reason")||"").trim()});
+});
+byId("owner-resume-refresh")?.addEventListener("click",()=>{
+  if(selected?.state==="suspended"&&!busy)void loadRecoveryStatus(selected.schoolId);
 });
 byId("owner-resume").addEventListener("submit",event=>{
   event.preventDefault();if(!selected||selected.state!=="suspended")return;
