@@ -88,6 +88,72 @@ function genericOrderingActivity(course,mission,language,seed,a,b){
   const items=rotate(ordered.map((text,id)=>({id,text})),seed+1).reverse();
   return {code:"",prompt,items:items.map(item=>item.text),solution:ordered.map((text,id)=>items.findIndex(item=>item.id===id)),why,workspace:workspace(language,full)};
 }
+function numericDebuggingActivity(course,mission,language,seed,a,b){
+  const moduleId=missionModule(course,mission)?.id||"",java=language==="java",semi=java?";":"",
+   out=value=>java?"System.out.println("+value+");":"print("+value+")";
+  let code=[],choices=[],prompt="",why="",fixed=[],focusLine=2,caseHint="";
+  if(/values/.test(moduleId)){
+    code=[java?"int points = "+a+";":"points = "+a,"points -= "+b+semi,out("points")];
+    choices=["points += "+b+semi,"points -= "+b+semi,"points *= "+b+semi,"points = "+b+semi];
+    prompt="points should increase by "+b+". Which replacement fixes line 2?";
+    why="Compound addition updates the existing value by adding the bonus.";
+    fixed=[code[0],choices[0],code[2]];caseHint="The update currently moves points in the opposite direction.";
+  }else if(/branches/.test(moduleId)){
+    code=java?["int score = "+b+";","if (score > "+b+") {",'  System.out.println("PASS");',"} else {",'  System.out.println("RETRY");',"}"]:
+      ["score = "+b,"if score > "+b+":",'    print("PASS")',"else:",'    print("RETRY")'];
+    choices=java?["if (score >= "+b+") {","if (score > "+b+") {","if (score < "+b+") {","if (score != "+b+") {"]:
+      ["if score >= "+b+":","if score > "+b+":","if score < "+b+":","if score != "+b+":"];
+    prompt="A score equal to the minimum "+b+" should PASS. Which replacement fixes line 2?";
+    why="An inclusive minimum uses >= so the exact boundary is accepted.";
+    fixed=[code[0],choices[0],...code.slice(2)];caseHint="Test the condition exactly at the required boundary.";
+  }else if(/loops/.test(moduleId)){
+    code=java?["int total = 0;","for (int i = 0; i <= "+b+"; i++) {","  total += i;","}",out("total")]:
+      ["total = 0","for i in range(0, "+(b+1)+"):", "    total += i",out("total")];
+    choices=java?["for (int i = 0; i < "+b+"; i++) {","for (int i = 0; i <= "+b+"; i++) {","for (int i = 1; i < "+b+"; i++) {","for (int i = 0; i > "+b+"; i++) {"]:
+      ["for i in range(0, "+b+"):","for i in range(0, "+(b+1)+"):","for i in range(1, "+b+"):","for i in range("+b+", 0):"];
+    prompt="The loop should process indexes 0 through "+(b-1)+" exactly once. Which replacement fixes line 2?";
+    why="The upper bound must be excluded so iteration stops before "+b+".";
+    fixed=[code[0],choices[0],...code.slice(2)];caseHint="The current loop includes one value beyond the intended final index.";
+  }else if(/collections/.test(moduleId)){
+    const values=a+", "+b+", "+(a+b);
+    code=java?["int[] values = {"+values+"};","System.out.println(values[values.length]);"]:
+      ["values = ["+values+"]","print(values[len(values)])"];
+    choices=java?[
+      "System.out.println(values[values.length - 1]);",
+      "System.out.println(values[values.length]);",
+      "System.out.println(values[0]);",
+      "System.out.println(values[1]);"
+    ]:[
+      "print(values[len(values) - 1])",
+      "print(values[len(values)])",
+      "print(values[0])",
+      "print(values[1])"
+    ];
+    prompt="The program should print the last element without going out of bounds. Which replacement fixes line 2?";
+    why="The last valid index is one less than the collection length.";
+    fixed=[code[0],choices[0]];caseHint="A collection with length 3 has valid indexes 0, 1, and 2.";
+  }else{
+    code=java?["int first = "+a+";","int second = "+b+";","int result = Math.min(first, second);",out("result")]:
+      ["first = "+a,"second = "+b,"result = min(first, second)",out("result")];
+    choices=java?[
+      "int result = Math.max(first, second);",
+      "int result = Math.min(first, second);",
+      "int result = first + second;",
+      "int result = Math.abs(first - second);"
+    ]:[
+      "result = max(first, second)",
+      "result = min(first, second)",
+      "result = first + second",
+      "result = abs(first - second)"
+    ];
+    prompt="The reusable operation should keep the larger value. Which replacement fixes line 3?";
+    why="max returns the larger of the two arguments.";
+    fixed=[code[0],code[1],choices[0],code[3]];focusLine=3;caseHint="The selected helper currently returns the smaller value.";
+  }
+  const shuffled=rotate(choices,seed);
+  return {code:code.join("\n"),prompt,choices:shuffled,solution:shuffled.indexOf(choices[0]),why,
+    workspace:workspace(language,fixed.join("\n")),focusLine,caseHint};
+}
 function webDebuggingActivity(course,mission,seed){
   const moduleId=missionModule(course,mission)?.id||"",cases={
     html:{code:'<main>\n  <div><h1>School update</h1><p>Independent story</p></div>\n</main>',prompt:"The story should be independently meaningful content. Which replacement fixes line 2?",choices:['  <article><h1>School update</h1><p>Independent story</p></article>','  <span><h1>School update</h1><p>Independent story</p></span>','  <br><h1>School update</h1><p>Independent story</p>','  <label><h1>School update</h1><p>Independent story</p></label>'],why:"article represents self-contained content.",fixed:'<main><article><h1>School update</h1><p>Independent story</p></article></main>',focusLine:2,caseHint:"The content is a complete story, not a generic grouping.",scenario:"Semantic structure"},
@@ -149,10 +215,7 @@ export function seasonActivity(course,mission,seed){
   if(meta.type==="debugging"){
     if(mission.oop===true)activity={...activity,...oopDebuggingActivity(mission,seed)};
     else if(language==="web")activity={...activity,...webDebuggingActivity(course,mission,seed)};
-    else{
-      const lines=language==="java"?["int total = "+a+" - "+b+";","System.out.println(total);"]:["total = "+a+" - "+b,"print(total)"],fixes=rotate(["+","−","×","÷"],seed);
-      activity={...activity,code:lines.join("\n"),prompt:"The program should print the sum "+(a+b)+". Which operator should replace the subtraction on the first line?",choices:fixes,solution:fixes.indexOf("+"),why:"Use addition to calculate the requested sum. Subtraction produces the difference.",workspace:workspace(language,lines.join("\n").replace(a+" - "+b,a+" + "+b)),focusLine:1,caseHint:"The highlighted operator does not match the requested calculation."};
-    }
+    else activity={...activity,...numericDebuggingActivity(course,mission,language,seed,a,b)};
   }
   return {...activity,difficulty:meta};
 }
