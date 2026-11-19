@@ -101,7 +101,7 @@ function createSchoolEnrollmentService({db}){
     }
 
     if(input.action==="catalog"){
-      const names=["academic_years","academic_programs","terms","sections","course_offerings"];
+      const names=["academic_years","academic_programs","terms","sections","subjects","course_offerings"];
       const snaps=await Promise.all(names.map(name=>db.collection(root+name).limit(250).get()));
       const by=Object.fromEntries(names.map((name,index)=>[name,snaps[index].docs
         .filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
@@ -112,6 +112,7 @@ function createSchoolEnrollmentService({db}){
         programs:by.academic_programs.map(row=>({id:row.id,name:row.name})),
         terms:by.terms.map(row=>({id:row.id,name:row.name,yearId:row.yearId,programId:row.programId,sequence:row.sequence||1})),
         sections:by.sections.map(row=>({id:row.id,name:row.name,programId:row.programId,gradeLevel:row.gradeLevel||null,pathway:row.pathway||null})),
+        subjects:by.subjects.map(row=>({id:row.id,name:row.name})),
         offerings:by.course_offerings.map(row=>({
           offeringId:row.id,programId:row.programId,yearId:row.yearId,
           termId:row.termId,sectionId:row.sectionId,subjectId:row.subjectId
