@@ -153,7 +153,7 @@ const picker=createTenantSchoolPicker({
 });
 async function performRosterSource(action,details={}){
   const lease=picker.scope.lease();
-  const result=(await rosterSourceApi({schoolId:lease.schoolId,action,...details})).data;
+  const result=(await rosterSourceApi({schoolId:lease.schoolId,action,...platformModePayload(),...details})).data;
   picker.scope.assertLease(lease);return result;
 }
 async function loadRosterSourceStatus(){
@@ -203,9 +203,12 @@ async function previewImportRows(rows,sourceLabel,token){
     "Preview ready. Committing creates people only; no access or enrollment will be granted.";
   return preview;
 }
+function platformModePayload(){
+  try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?{platformMode:"assist"}:{};}catch{return {};}
+}
 async function perform(action,details={}) {
   const lease=picker.scope.lease();
-  const result=await api({schoolId:lease.schoolId,action,...details});
+  const result=await api({schoolId:lease.schoolId,action,...platformModePayload(),...details});
   picker.scope.assertLease(lease);
   return result.data;
 }
@@ -591,7 +594,7 @@ get("pa-import-commit").addEventListener("click",()=>{
 
 async function performAcademic(action,details={}){
   const lease=picker.scope.lease();
-  const response=(await academicsApi({schoolId:lease.schoolId,action,...details})).data;
+  const response=(await academicsApi({schoolId:lease.schoolId,action,...platformModePayload(),...details})).data;
   picker.scope.assertLease(lease);
   return response;
 }
