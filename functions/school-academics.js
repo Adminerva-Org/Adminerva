@@ -393,6 +393,65 @@ function createSchoolAcademicsService({db}) {
    });
    return result;
   }
+  if(input.action==="assign_teacher_section"){
+   requireAdmin();
+   const teacherUid=checkId(input.teacherUid,"Teacher account UID",128),
+    sectionId=checkId(input.sectionId,"Section ID");
+   const offeringIds=Array.isArray(input.offeringIds)?[...new Set(input.offeringIds.map(value=>
+     checkId(value,"Course offering ID",330)))]:[];
+   if(!offeringIds.length||offeringIds.length>30)
+    deny("invalid-argument","Select between 1 and 30 classes in the section.");
+   const reason=checkName(input.reason,"Section teaching assignment reason");
+   if(reason.length<12)deny("invalid-argument","Explain the section teaching assignment in at least 12 characters.");
+   const sectionRef=schoolRoot.doc("sections/"+sectionId),
+    memberRef=schoolRoot.doc("memberships/"+teacherUid),
+    offeringRefs=offeringIds.map(offeringId=>schoolRoot.doc("course_offerings/"+offeringId)),
+    assignmentRefs=offeringIds.map(offeringId=>schoolRoot.doc("staff_assignments/"+rowKey(teacherUid,offeringId))),
+    auditRefs=offeringIds.map(()=>db.collection("schools/"+ctx.schoolId+"/directory_audit").doc());
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const records=await Promise.all([
+     tx.get(sectionRef),tx.get(memberRef),
+     ...offeringRefs.map(ref=>tx.get(ref)),
+     ...assignmentRefs.map(ref=>tx.get(ref))
+    ]);
+    const section=records[0],member=records[1],
+     offerings=records.slice(2,2+offeringIds.length),
+     existing=records.slice(2+offeringIds.length);
+    if(!section.exists||section.data().schoolId!==ctx.schoolId||section.data().status!=="active")
+     deny("failed-precondition","Select an active section in this school.");
+    if(!member.exists||member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
+       !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
+     deny("permission-denied","The selected account must be an active teacher in this school.");
+    if(offerings.some(offering=>!offering.exists||offering.data().schoolId!==ctx.schoolId||
+       offering.data().status!=="active"||offering.data().sectionId!==sectionId))
+     deny("failed-precondition","Every selected class must be an active course offering in the selected section.");
+    const now=FieldValue.serverTimestamp();let created=0,alreadyActive=0,historyExists=0;
+    offeringIds.forEach((offeringId,index)=>{
+     const prior=existing[index],offering=offerings[index];
+     if(prior.exists){
+      if(prior.data().schoolId!==ctx.schoolId||prior.data().teacherUid!==teacherUid||
+         prior.data().offeringId!==offeringId)
+       deny("failed-precondition","A teaching-assignment key collision requires manual review.");
+      if(prior.data().status==="active")alreadyActive++;
+      else historyExists++;
+      return;
+     }
+     created++;
+     tx.create(assignmentRefs[index],{schoolId:ctx.schoolId,teacherUid,offeringId,
+      yearId:offering.data().yearId,termId:offering.data().termId,
+      subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
+      status:"active",revision:1,createdByUid:uid,createdAt:now});
+     tx.create(auditRefs[index],audit("teacher_section_class_assigned",{
+      teacherUid,sectionId,offeringId,reason
+     }));
+    });
+    result={teacherUid,sectionId,selected:offeringIds.length,created,alreadyActive,historyExists};
+   });
+   return result;
+  }
+
   if(input.action==="bulk_assign_teachers"){
    requireAdmin();
    const offeringId=checkId(input.offeringId,"Course offering ID",330);
