@@ -62,7 +62,7 @@ async function requireLegacyMcsCompatibility(){
 }
 // 4.0 tenant API: requires server-verified active school membership for every call.
 // Legacy 3.0 APIs remain untouched until a separately approved pilot cutover.
-const {listVerifiedSchools,selectVerifiedSchool,platformAuthority}=require("./tenant-access.js");
+const {listVerifiedSchools,selectVerifiedSchool,platformAuthority,getSchoolContext}=require("./tenant-access.js");
 const {createTeacherBlueprintService}=require("./teacher-blueprints.js");
 const teacherBlueprints=createTeacherBlueprintService({db});
 exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
@@ -72,8 +72,29 @@ exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
   ]);
   const legacyCompatibilityAllowed=!legacySchool.exists||
     legacySchool.data().compatibilityMode!=="v4_only";
+  let practicePilot=null;
+  if(request.data?.includePracticePilot===true&&!authority.platformAdmin&&!schools.length&&
+     legacySchool.exists&&["active","pilot"].includes(legacySchool.data().state)){
+    // Recover the Games context from a canonical membership even if its discovery index is missing.
+    try{
+      const ctx=await getSchoolContext({db,request,schoolId:"mcs-manila",roles:["student"]});
+      practicePilot={schoolId:ctx.schoolId,name:legacySchool.data().displayName||"MCS pilot school",
+        roles:ctx.roles,schoolState:ctx.schoolState,platformOverride:false};
+    }catch(error){
+      if(error.code!=="permission-denied")throw error;
+      if(legacyCompatibilityAllowed){
+        try{
+          practicePilot=await practice.pilotSeason.pilotContext({
+            ...request,data:{schoolId:"mcs-manila"}
+          });
+        }catch(pilotError){
+          if(pilotError.code!=="permission-denied")throw pilotError;
+        }
+      }
+    }
+  }
   return {schools,selection:selectVerifiedSchool(schools,request.data?.preferredSchoolId),
-    platformAdmin:authority.platformAdmin,legacyCompatibilityAllowed};
+    platformAdmin:authority.platformAdmin,legacyCompatibilityAllowed,practicePilot};
 }));
 exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
 const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("./people-directory.js");
@@ -285,7 +306,13 @@ for(const [name,action] of Object.entries({
   schoolPracticePreferences:"preferences"
 }))
   exports[name]=onCall(practiceOptions,async request=>{
-    try{return await schoolPractice[action](request);}
+    try{
+      if(request.data?.practicePilot===true){
+        // Compatibility is scoped to the verified MCS roster, never a grant of school-wide access.
+        return await practice.pilotSeason[action](request);
+      }
+      return await schoolPractice[action](request);
+    }
     catch(error){
       if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
       if(["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","not-found"].includes(error.code))
