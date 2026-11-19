@@ -21,7 +21,7 @@ function fixture(filename){
     auth:{currentUser:{uid:"alice",email:"alice@example.edu"}},db:{},onAuthStateChanged(){},
     collection:(db,name)=>name,where:(...values)=>values,query:(...values)=>values,doc:(db,...values)=>values,
     getDocs:async query=>{reads.push(query);if(response instanceof Error)throw response;return response;},setDoc:async(...values)=>writes.push(values),
-    localStorage:{getItem:()=>null},assessmentStatus,assessmentTargetDetails,asDate,console,URL,URLSearchParams,cleanGradeFeedback:value=>value});
+    localStorage:{getItem:()=>null},location:{search:""},assessmentStatus,assessmentTargetDetails,asDate,console,URL,URLSearchParams,cleanGradeFeedback:value=>value});
   const source=readFileSync(filename,"utf8").replace(/^import[\s\S]*?from\s+["'][^"']+["'];?\r?$/gm,"");
   vm.runInContext(source,context);
   return {field,context,reads,writes,respond(value){response=value;}};
