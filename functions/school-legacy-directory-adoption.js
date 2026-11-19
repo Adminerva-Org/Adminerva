@@ -557,8 +557,11 @@ function createSchoolLegacyDirectoryAdoptionService({db,resolveUserByEmail}){
       const role=input.role;
       if(decision==="approved"&&!["student","teacher"].includes(role))
         deny("invalid-argument","Choose Student or Teacher access.");
-      const reason=clean(input.reason,500);
-      if(reason.length<12)deny("invalid-argument","Explain the access decision in at least 12 characters.");
+      const suppliedReason=clean(input.reason,500);
+      if(decision==="rejected"&&suppliedReason.length<12)
+        deny("invalid-argument","Explain the rejection in at least 12 characters.");
+      const reason=suppliedReason.length>=12?suppliedReason:
+        (decision==="approved"?"Approved verified "+role+" access request.":suppliedReason);
       const requestRef=db.doc("account_requests/"+targetUid);
       const initial=await requestRef.get();
       if(!initial.exists||initial.data().status!=="pending")
