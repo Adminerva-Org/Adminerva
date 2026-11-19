@@ -1,5 +1,6 @@
 /** Independent practice simulations. No authoritative XP or course credit is issued here. */
 import {expansionModes,expansionRenderers} from "./practice-arcade-expansion.mjs?v=1.0.0";
+import {moveItem,swapItems,enableArcadeDrag} from "./arcade-interactions.mjs?v=1.0.0";
 const make=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 const btn=(text,action,cls="arcade-button")=>{const e=make("button",text,cls);e.type="button";e.addEventListener("click",action);return e;};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -45,7 +46,10 @@ function mazeGame(root,level,ctx){
   let pos=l.start.slice(),collected=new Set(),running=false;
   const board=make("div",null,"arcade-maze"),commands=make("div",null,"arcade-command-list"),controls=make("div",null,"arcade-controls"),counter=make("strong"),status=make("p",null,"arcade-inline");
   board.style.setProperty("--n",l.n);board.setAttribute("role","img");
-  root.append(make("p","Collect every chip, avoid walls and reach the blue portal within "+l.budget+" commands."),board,counter,commands,controls,status);
+  root.append(make("p","Collect every chip, avoid walls and reach the blue portal within "+l.budget+" commands. Drag commands on desktop or use Move earlier/later on touch and keyboard."),board,counter,commands,controls,status);
+  enableArcadeDrag(commands,{isLocked:()=>running||!ctx.active(),onDrop:(from,to)=>{
+    if(moveItem(queue,from,to)){status.textContent="Command moved to step "+(to+1)+".";render();}
+  }});
   const render=()=>{
     board.replaceChildren();
     for(let y=0;y<l.n;y++)for(let x=0;x<l.n;x++){
@@ -54,7 +58,17 @@ function mazeGame(root,level,ctx){
     }
     board.setAttribute("aria-label","Robot at column "+(pos[0]+1)+", row "+(pos[1]+1)+". "+collected.size+" of "+chips.size+" chips collected.");
     counter.textContent=queue.length+" / "+l.budget+" commands";
-    commands.replaceChildren(...queue.map((d,i)=>{const b=btn(arrow[d],()=>{if(!running){queue.splice(i,1);render();}},"arcade-command");b.disabled=running;b.setAttribute("aria-label","Remove command "+(i+1)+", "+d);return b;}));
+    commands.replaceChildren(...queue.map((d,i)=>{
+      const tile=make("div",null,"arcade-command-tile");tile.dataset.arcadeItem=String(i);tile.draggable=!running;
+      tile.append(make("strong",arrow[d]+" "+(i+1),"arcade-command-symbol"));
+      const actions=make("div",null,"arcade-command-actions");
+      for(const [caption,to] of [["←",i-1],["→",i+1]]){
+        const b=btn(caption,()=>{if(!running&&moveItem(queue,i,to)){render();commands.querySelector('[data-arcade-item="'+to+'"] button')?.focus();}},"arcade-step-control");
+        b.disabled=running||to<0||to>=queue.length;b.setAttribute("aria-label","Move "+d+" command "+(i+1)+(to<i?" earlier":" later"));actions.append(b);
+      }
+      const remove=btn("×",()=>{if(!running){queue.splice(i,1);render();}},"arcade-step-control");
+      remove.disabled=running;remove.setAttribute("aria-label","Remove "+d+" command "+(i+1));actions.append(remove);tile.append(actions);return tile;
+    }));
     if(!queue.length)commands.append(make("small","Build your command sequence here."));
     for(const b of controls.querySelectorAll("button"))b.disabled=running||(b.dataset.move==="true"&&queue.length>=l.budget);
     run.disabled=running||!queue.length;undo.disabled=running||!queue.length;
@@ -76,36 +90,45 @@ function mazeGame(root,level,ctx){
 }
 function traceGame(root,level,ctx){
   const l=traces[level],state={...l.initial};let step=0,guess=0,misses=0,done=false;
-  const regs=make("div",null,"arcade-registers"),program=make("ol",null,"arcade-instructions"),panel=make("div",null,"arcade-controls"),status=make("p",null,"arcade-inline"),prediction=make("strong");
+  const regs=make("div",null,"arcade-registers"),program=make("ol",null,"arcade-instructions"),panel=make("div",null,"arcade-controls"),status=make("p",null,"arcade-inline"),prediction=make("strong"),direct=make("input",null,"arcade-number-entry");
+  direct.type="number";direct.step="1";direct.inputMode="numeric";direct.setAttribute("aria-label","Predicted register value");
   root.append(make("p","Update the highlighted register to the value it will contain after the next instruction. The machine only advances when your prediction is correct."),regs,program,panel,status);
   const adjust=delta=>{if(done)return;guess+=delta;render();};
-  panel.append(btn("−5",()=>adjust(-5)),btn("−1",()=>adjust(-1)),prediction,btn("+1",()=>adjust(1)),btn("+5",()=>adjust(5)),btn("Commit step",()=>{
-    if(done)return;const [instruction,name,value]=l.code[step];
+  const inputLabel=make("label","Predicted value","arcade-number-label");inputLabel.append(direct);
+  const commit=btn("Commit step",()=>{
+    if(done)return;
+    if(!direct.value.trim()||!Number.isSafeInteger(Number(direct.value))){status.textContent="Enter a whole number.";direct.focus();return;}
+    guess=Number(direct.value);const [instruction,name,value]=l.code[step];
     if(guess!==value){misses++;status.textContent="Register mismatch. Recheck "+instruction+" using the current values.";return;}
     state[name]=guess;step++;status.textContent="Instruction committed.";
     if(step===l.code.length){done=true;render();ctx.win("Program executed: "+l.code.length+" instructions, "+misses+" retries.");return;}
     guess=state[l.code[step][1]];render();
-  },"arcade-button primary"));
+  },"arcade-button primary");
+  direct.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();commit.click();}});
+  panel.append(btn("−5",()=>adjust(-5)),btn("−1",()=>adjust(-1)),prediction,inputLabel,btn("+1",()=>adjust(1)),btn("+5",()=>adjust(5)),commit);
   function render(){
     const current=l.code[step]?.[1];
     regs.replaceChildren(...Object.entries(state).map(([name,value])=>{const r=make("div",null,"arcade-register"+(current===name?" active":""));r.append(make("small",name),make("strong",String(value)));return r;}));
     program.replaceChildren(...l.code.map(([instruction],i)=>make("li",instruction+(i<step?"  ✓":""),i===step?"active":i<step?"finished":"")));
-    prediction.textContent=done?"Complete":current+" = "+guess;
+    prediction.textContent=done?"Complete":current+" = ?";direct.disabled=done;direct.value=String(guess);
     for(const b of panel.querySelectorAll("button"))b.disabled=done;
   }
   guess=state[l.code[0][1]];render();
 }
 function dataGame(root,level,ctx){
-  const l=arrays[level],a=l.values.slice();let selected=null,moves=0,done=false;
+  const l=arrays[level],a=l.values.slice();let selected=null,moves=0,done=false;const history=[];
   const cells=make("div",null,"arcade-array"),status=make("p",null,"arcade-inline"),controls=make("div",null,"arcade-controls");
-  root.append(make("p",l.rule+". Select two indexed cells to swap their contents. Check the array when ready."),cells,status,controls);
+  root.append(make("p",l.rule+". Drag bars to swap on desktop, or tap two indexed cells on touch. Check the array when ready."),cells,status,controls);
+  const swap=(from,to)=>{if(done||!swapItems(a,from,to))return;history.push([from,to]);moves++;selected=null;render();};
+  enableArcadeDrag(cells,{allowButtons:true,isLocked:()=>done||!ctx.active(),onDrop:swap});
   function render(){
     cells.replaceChildren(...a.map((value,i)=>{const b=btn(null,()=>{
-      if(done)return;if(selected===null)selected=i;else if(selected===i)selected=null;else{[a[selected],a[i]]=[a[i],a[selected]];moves++;selected=null;}render();
-    },"arcade-array-cell"+(selected===i?" active":""));b.append(make("small","["+i+"]"),make("span",null,"arcade-array-bar"),make("strong",String(value)));b.style.setProperty("--height",(value*11)+"%");b.setAttribute("aria-label","Index "+i+", value "+value);b.setAttribute("aria-pressed",String(selected===i));b.disabled=done;return b;}));
-    status.textContent=moves+" swaps · "+(selected===null?"Select a cell.":"Selected index "+selected+".");
+      if(done)return;if(selected===null){selected=i;render();}else if(selected===i){selected=null;render();}else swap(selected,i);
+    },"arcade-array-cell"+(selected===i?" active":""));b.append(make("small","["+i+"]"),make("span",null,"arcade-array-bar"),make("strong",String(value)));b.style.setProperty("--height",(value*11)+"%");b.setAttribute("aria-label","Index "+i+", value "+value+". Select or drag to swap.");b.setAttribute("aria-pressed",String(selected===i));b.disabled=done;b.draggable=!done;b.dataset.arcadeItem=String(i);return b;}));
+    status.textContent=moves+" swaps · "+(selected===null?"Select or drag a cell.":"Selected index "+selected+". Choose another cell to swap.");undo.disabled=done||!history.length;
   }
-  controls.append(btn("Check arrangement",()=>{if(done)return;if(l.accept(a)){done=true;render();ctx.win("Array satisfies the rule in "+moves+" swaps.");}else status.textContent="Not sorted yet. Inspect the order and swap again.";},"arcade-button primary"));render();
+  const undo=btn("Undo last swap",()=>{if(done||!history.length)return;const [from,to]=history.pop();swapItems(a,from,to);moves=Math.max(0,moves-1);selected=null;render();});
+  controls.append(undo,btn("Check arrangement",()=>{if(done)return;if(l.accept(a)){done=true;render();ctx.win("Array satisfies the rule in "+moves+" swaps.");}else status.textContent="Not sorted yet. Inspect the order and swap again.";},"arcade-button primary"));render();
 }
 function oopGame(root,level,ctx){
   const l=graphs[level],edges=[];let from=null,kind="extends",done=false;

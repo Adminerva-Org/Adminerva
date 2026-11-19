@@ -937,7 +937,7 @@ if(!guestPage){
     enhanceGamesHub();
     const arcadeHost=node("section",undefined,"arcade-hub");arcadeHost.id="gamesArcade";
     field("labGameCatalog").before(arcadeHost);
-    import("./practice-arcade.mjs?v=1.1.0").then(({mountPracticeArcade})=>{arcadeController=mountPracticeArcade(arcadeHost,user?.uid||null);}).catch(error=>{arcadeHost.hidden=true;console.warn("[Adminerva Games] Arcade unavailable.",error);});
+    import("./practice-arcade.mjs?v=1.2.0").then(({mountPracticeArcade})=>{arcadeController=mountPracticeArcade(arcadeHost,user?.uid||null);}).catch(error=>{arcadeHost.hidden=true;console.warn("[Adminerva Games] Arcade unavailable.",error);});
     window.__adminervaGamesReady.enhanced=true;
     bindControl("labHeroContinue","click",()=>{if(busy)return;const button=field("labHeroContinue"),targetCourse=COURSES.find(item=>item.id===button?.dataset.course),target=targetCourse?.missions.find(item=>item.id===button?.dataset.mission);if(target)void openMission(targetCourse,target);});
     renderSummary();
