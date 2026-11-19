@@ -35,23 +35,25 @@ function periodId(value){
   deny("invalid-argument","Choose a valid academic period.");
  return text;
 }
-async function assignedPairs(db,prefix,uid,{periodId:scopePeriodId=null}={}){
- const grants=await db.collection(prefix+"staff_assignments").where("teacherUid","==",uid).limit(101).get();
+async function assignedPairs(db,prefix,uid,{periodId:scopePeriodId=null,programId=null,transaction=null}={}){
+ const schoolId=prefix.split("/")[1],read=ref=>transaction?transaction.get(ref):ref.get();
+ const grants=await read(db.collection(prefix+"staff_assignments").where("teacherUid","==",uid).limit(101));
  if(grants.size===101)deny("resource-exhausted","Teaching assignments require pagination before schedule validation.");
  const active=grants.docs.filter(doc=>doc.data().status==="active"&&doc.data().schoolId===prefix.split("/")[1]);
  const offeringRefs=active.map(doc=>db.doc(prefix+"course_offerings/"+doc.data().offeringId));
- const offerings=await Promise.all(offeringRefs.map(ref=>ref.get()));
- const valid=offerings.filter(doc=>doc.exists&&doc.data().status==="active"&&
-   (!scopePeriodId||doc.data().termId===scopePeriodId));
+ const offerings=await Promise.all(offeringRefs.map(read));
+ const valid=offerings.filter((doc,index)=>doc.exists&&doc.data().schoolId===schoolId&&doc.data().status==="active"&&
+   (!scopePeriodId||doc.data().termId===scopePeriodId)&&(!programId||doc.data().programId===programId)&&
+   ["termId","yearId","sectionId","subjectId","programId"].every(key=>!active[index].data()[key]||active[index].data()[key]===doc.data()[key]));
  const sectionIds=[...new Set(valid.map(doc=>doc.data().sectionId))],
    subjectIds=[...new Set(valid.map(doc=>doc.data().subjectId))];
  const [sections,subjects]=await Promise.all([
-   Promise.all(sectionIds.map(id=>db.doc(prefix+"sections/"+id).get())),
-   Promise.all(subjectIds.map(id=>db.doc(prefix+"subjects/"+id).get()))
+   Promise.all(sectionIds.map(id=>read(db.doc(prefix+"sections/"+id)))),
+   Promise.all(subjectIds.map(id=>read(db.doc(prefix+"subjects/"+id))))
  ]);
- const sectionNames=new Map(sections.filter(doc=>doc.exists&&doc.data().status==="active")
+ const sectionNames=new Map(sections.filter(doc=>doc.exists&&doc.data().schoolId===schoolId&&doc.data().status==="active")
    .map(doc=>[doc.id,String(doc.data().name||"").trim()])),
-  subjectNames=new Map(subjects.filter(doc=>doc.exists&&doc.data().status==="active")
+  subjectNames=new Map(subjects.filter(doc=>doc.exists&&doc.data().schoolId===schoolId&&doc.data().status==="active")
    .map(doc=>[doc.id,String(doc.data().name||"").trim()]));
  const pairs=new Set();
  for(const offering of valid){
@@ -123,10 +125,8 @@ function createSchoolScheduleService({db}){
     deny("failed-precondition","The academic year for this period is not active.");
    year=schoolYear(yearDoc.data().name);periodName=String(period.data().name||canonicalPeriod).slice(0,140);
    periodType=period.data().periodType||"term";sequence=Number(period.data().sequence)||1;
-   const grants=await db.collection(prefix+"staff_assignments").where("teacherUid","==",ctx.uid).limit(101).get();
-   if(grants.size===101)deny("resource-exhausted","Teaching assignments require pagination before schedule access.");
-   if(!grants.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"&&
-      doc.data().termId===canonicalPeriod&&doc.data().programId===programId))
+   const pairs=await assignedPairs(db,prefix,ctx.uid,{periodId:canonicalPeriod,programId});
+   if(!pairs.size)
     deny("permission-denied","You have no active teaching assignment in this academic period.");
    id=scheduleId(ctx.uid,canonicalPeriod);
   }else{
@@ -147,17 +147,25 @@ function createSchoolScheduleService({db}){
     rawText:data.rawText||"",revision:data.revision||1,updatedAt:data.updatedAt?.toMillis?.()||null};
   }
   if(input.action!=="save")deny("invalid-argument","Unknown school schedule operation.");
-  const pairs=await assignedPairs(db,prefix,ctx.uid,{periodId:canonicalPeriod}),rows=normalizeRows(input.rows,pairs);
+  // Validate the live assignment and catalog inside the save transaction.
   const expected=input.expectedRevision;
   if(!Number.isInteger(expected)||expected<0)deny("invalid-argument","Current schedule revision is required.");
   let result;
   await db.runTransaction(async tx=>{
    const [school,member,current]=await Promise.all([tx.get(schoolRef),tx.get(memberRef),tx.get(ref)]);
-   if(!school.exists||school.data().state!=="active"||!member.exists||
+   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
       member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
       !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
     deny("permission-denied","Your teaching access changed before the schedule was saved.");
+   if(canonicalPeriod){
+     const [livePeriod,liveYear]=await Promise.all([tx.get(db.doc(prefix+"terms/"+canonicalPeriod)),tx.get(db.doc(prefix+"academic_years/"+yearId))]);
+     if(!livePeriod.exists||livePeriod.data().schoolId!==ctx.schoolId||livePeriod.data().status!=="active"||livePeriod.data().programId!==programId||livePeriod.data().yearId!==yearId||!liveYear.exists||liveYear.data().schoolId!==ctx.schoolId||liveYear.data().status!=="active")deny("failed-precondition","The academic period changed before saving.");
+   }
+   const pairs=await assignedPairs(db,prefix,ctx.uid,{periodId:canonicalPeriod,programId,transaction:tx});
+   if(canonicalPeriod&&!pairs.size)deny("permission-denied","No active teaching assignments remain in this period.");
+   const rows=normalizeRows(input.rows,pairs);
    const prior=current.exists?current.data():null,currentRevision=prior?.revision||0;
+   if(prior&&(prior.schoolId!==ctx.schoolId||prior.ownerUid!==ctx.uid))deny("permission-denied","Schedule ownership changed.");
    if(currentRevision!==expected)deny("failed-precondition","A newer school schedule exists. Reload before replacing it.");
    const rawText=rowsToText(rows),revision=currentRevision+1,now=FieldValue.serverTimestamp();
    if(current.exists){
