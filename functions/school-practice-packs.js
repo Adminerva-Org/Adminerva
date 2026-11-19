@@ -15,13 +15,14 @@ function checkedId(value,label="Identifier"){
   return value;
 }
 function packId(){return "pp_"+randomBytes(12).toString("hex");}
-function packView(doc){
+function packView(doc,{id=doc.id,sectionIds=null,legacy=false}={}){
   const data=doc.data();
   return {
-    id:doc.id,title:clean(data.title,120),sectionIds:Array.isArray(data.sectionIds)?data.sectionIds:[],
+    id,title:clean(data.title,120),sectionIds:sectionIds||(
+      Array.isArray(data.sectionIds)?data.sectionIds:[]),
     missionRefs:Array.isArray(data.missionRefs)?data.missionRefs:[],
     notes:clean(data.notes,1200),dueDate:clean(data.dueDate,10),
-    status:data.status==="archived"?"archived":"active"
+    status:data.status==="archived"?"archived":"active",legacy
   };
 }
 async function missionCatalog(){
@@ -73,14 +74,28 @@ function createSchoolPracticePackService({db,Timestamp}){
   }
   async function listPacks(ctx,sectionIds,{includeArchived=false}={}){
     if(!sectionIds.length)return [];
-    const snapshot=await db.collection(prefix(ctx.schoolId)+"practice_packs").limit(501).get();
-    if(snapshot.size===501)deny("resource-exhausted","Practice Pack list requires pagination.");
-    const allowed=new Set(sectionIds);
-    return snapshot.docs.filter(doc=>{
+    const base=prefix(ctx.schoolId),[snapshot,legacySnapshot,...sectionDocs]=await Promise.all([
+      db.collection(base+"practice_packs").limit(501).get(),
+      db.collection(base+"legacy_roots/practice_packs/documents").limit(501).get(),
+      ...sectionIds.map(sectionId=>db.doc(base+"sections/"+sectionId).get())
+    ]);
+    if(snapshot.size===501||legacySnapshot.size===501)
+      deny("resource-exhausted","Practice Pack list requires pagination.");
+    const allowed=new Set(sectionIds),sectionNameById=new Map(sectionIds.map((id,index)=>[
+      id,sectionDocs[index].exists?clean(sectionDocs[index].data().name||id,140):id
+    ]));
+    const canonical=snapshot.docs.filter(doc=>{
       const data=doc.data(),sections=Array.isArray(data.sectionIds)?data.sectionIds:[];
       return data.schoolId===ctx.schoolId&&sections.some(id=>allowed.has(id))&&
         (includeArchived||data.status==="active");
-    }).map(packView).sort((a,b)=>String(a.dueDate||"9999").localeCompare(String(b.dueDate||"9999"))||a.title.localeCompare(b.title));
+    }).map(doc=>packView(doc));
+    const legacy=legacySnapshot.docs.flatMap(doc=>{
+      const data=doc.data(),legacySections=Array.isArray(data.sectionIds)?data.sectionIds:[],
+       matched=sectionIds.filter(id=>legacySections.includes(id)||legacySections.includes(sectionNameById.get(id)));
+      if(!matched.length||(!includeArchived&&data.status!=="active"))return [];
+      return [packView(doc,{id:"legacy_"+doc.id,sectionIds:matched,legacy:true})];
+    });
+    return [...canonical,...legacy].sort((a,b)=>String(a.dueDate||"9999").localeCompare(String(b.dueDate||"9999"))||a.title.localeCompare(b.title));
   }
   return async request=>{
     const input=request.data||{},action=clean(input.action||"student",40);
