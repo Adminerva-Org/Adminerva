@@ -155,6 +155,15 @@
       <button type="submit" class="own-button">Record successful cutover package</button>
     </form>
    </section>
+   <details id="owner-audit-section" style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
+    <summary style="font-weight:750;cursor:pointer">Recent platform audit history</summary>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
+      <p class="own-muted">Recent System Admin lifecycle, access, governance and compatibility actions for this institution. School-private academic content is not included.</p>
+      <button id="owner-audit-refresh" type="button" class="own-button" style="min-height:38px;padding:.45rem .75rem">Refresh history</button>
+    </div>
+    <div id="owner-audit-list" style="display:grid;gap:.55rem;margin-top:.75rem"></div>
+    <p id="owner-audit-status" class="own-muted" role="status" aria-live="polite">Select a school to load platform audit history.</p>
+   </details>
    <details style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
     <summary style="font-weight:750;cursor:pointer">Platform governance roles</summary>
     <p class="own-muted">Governance roles document policy responsibility only. They do not grant teacher, School Admin, or Platform Admin permissions.</p>
@@ -274,6 +283,6 @@
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
 <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
-<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-recovery-readiness"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-audit-history"></script>
 </body>
 </html>
