@@ -3,7 +3,7 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=b8f52aa551d2";
+import {createProjectStudio} from "./project-studio.mjs?v=2097914291a3";
 import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
 import {currentV4StudioSchool,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.2.2";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
@@ -430,7 +430,7 @@ async function initializePlayground() {
       showRecoveredSnapshot:frozen=>{
         // This is an ephemeral review of server-frozen source. Never write it into
         // a locally stored project or silently overwrite a different device's work.
-        projectStudio?.showHome?.();
+        if(projectStudio?.showHome?.()===false)throw Error('Save the current device draft before recovering an execution.');
         createWorkspace('java',frozen.files,Object.keys(frozen.files),frozen.entry);
         document.getElementById('projectHome')?.classList.add('hidden');
         document.getElementById('studioShell')?.classList.remove('hidden');

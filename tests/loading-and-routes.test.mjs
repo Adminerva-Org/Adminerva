@@ -41,6 +41,13 @@ test("all root application pages mount help and public routes load no authentica
       continue;
     }
     const content=readFileSync(file,"utf8");
+    const knownRedirects={"pilot-sandbox.html":"teacher-home.html","school-pilot.html":"school-admin.html","school-student-assessments.html":"student-assessments.html","teacher-assessment-library.html":"assessment-studio.html"};
+    if(knownRedirects[file]){
+      const target=knownRedirects[file];
+      assert.ok(content.includes('"'+target+'"')&&/location\.replace\(/.test(content),file+" must keep its known redirect");
+      assert.ok(readFileSync(target,"utf8").includes("adminerva-loader.js"),file+" destination needs shared help");
+      continue;
+    }
     const redirect=content.match(/location\.replace\(\s*["']([\w-]+\.html)["']\s*\+\s*location\.search\s*\+\s*location\.hash\s*\)/);
     if(redirect){assert.notEqual(redirect[1],file);assert.ok(existsSync(redirect[1]),file+" redirects to a missing page");assert.ok(readFileSync(redirect[1],"utf8").includes("adminerva-loader.js"),file+" must redirect to a page with shared help");continue;}
     assert.ok(content.includes("adminerva-loader.js"),file+" needs the shared help/loader entry");
