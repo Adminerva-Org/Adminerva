@@ -5,13 +5,13 @@ import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com
 import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.0";
 import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches,gameDeviceLabel} from "./practice-games.mjs?v=1.3.0";
 import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.5.0";
-import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest} from "./practice-session.mjs?v=1.4.0";
+import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest,resolvePracticeContext} from "./practice-session.mjs?v=1.5.0";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
 const field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
 const typeNames=guestPage?{choice:"Choose the answer",output:"Write the output",ordering:"Build the sequence",matching:"Match the pairs",debugging:"Fix the bug"}:{choice:"Quick Pick",output:"Code Trace",ordering:"Code Builder",matching:"Logic Match",debugging:"Bug Hunt"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
 const initialGame=getProgrammingGame(new URLSearchParams(location.search).get("game"));
 const TOTAL_MISSIONS=COURSES.reduce((sum,entry)=>sum+entry.missions.length,0);
-let user=null,eligible=false,hub={},course=COURSES[0],activeGame=initialGame.external?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
+let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
 function localSet(key,value){try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
@@ -51,7 +51,7 @@ function renderSummary(){
   field("labPreviousProgress").textContent=hub.legacyCount?hub.legacyCount+" earlier missions are preserved.":"Practice XP stays separate from school grades.";
   field("labIdentity").textContent=user?user.displayName||hub.alias||"Signed-in learner":"Public visitor";
   field("labAccountLink").textContent=user?"My workspace":"Sign in";field("labAccountLink").href=user?(guestPage?"guest-home.html":"student-home.html"):"login.html";
-  field("labPreferences").hidden=!eligible;field("labPreferencesSignin").hidden=eligible;
+  field("labPreferences").hidden=!eligible;field("labPreferencesSignin").hidden=eligible||accountPreview;
   if(document.activeElement!==field("labAlias"))field("labAlias").value=hub.alias||"";
   field("labOptIn").checked=hub.optIn===true;
   const select=field("practiceClass"),selected=hub.classId||"";select.replaceChildren();
@@ -323,8 +323,23 @@ async function call(name,payload={}){return practiceSchoolRequest(name,payload);
 async function refreshHub(classId=field("practiceClass").value){
   const version=epoch,uid=user?.uid,reconnect=field("practiceReconnectBtn");
   if(reconnect)reconnect.hidden=true;
-  if(!user){eligible=false;hub={season:PRACTICE_SEASON,eligible:false,classes:[],courses:[],legacyCount:0};renderSummary();renderCourses();renderBoard();sync("Public preview");notice("");return;}
+  accountPreview=false;
+  if(!user){
+    eligible=false;hub={season:PRACTICE_SEASON,eligible:false,classes:[],courses:[],legacyCount:0};
+    renderSummary();renderCourses();renderBoard();sync("Public preview");notice("");return;
+  }
   try{
+    const context=await resolvePracticeContext();
+    if(version!==epoch||uid!==user?.uid)return;
+    if(context.mode==="preview"){
+      eligible=false;accountPreview=true;
+      hub={season:PRACTICE_SEASON,eligible:false,classes:[],courses:[],legacyCount:0,points:0,completedCount:0};
+      globalRows=[];publicBoardReady=true;publicBoardError=false;
+      renderSummary();renderCourses();renderBoard();renderChallenges();
+      sync("Staff preview");
+      notice("Preview mode · Games are interactive, but XP and scored submissions are disabled for staff/admin accounts.","info");
+      return;
+    }
     const result=await call("practiceHub",{classId:classId||""});
     if(version!==epoch||uid!==user?.uid)return;
     hub=result;eligible=result.eligible===true;
@@ -333,11 +348,12 @@ async function refreshHub(classId=field("practiceClass").value){
     if(!pending)notice("");
   }catch(error){
     if(version!==epoch)return;
-    eligible=false;sync("Connection needed","error");
+    eligible=false;accountPreview=false;sync("Connection needed","error");
     const reason=error.details?.reason||"";
     const message=reason==="practice-migration"?"Your Practice progress is being finalized for this school. Saved scores are protected while reconciliation completes.":
       reason==="school-selection"?"Choose your active school from the account menu, then reconnect Games.":
       reason==="enrollment"?"Your active school enrollment could not be verified. Ask your school administrator to check your student membership and enrollment.":
+      reason==="staff-preview"?"This account can preview Games, but scored Practice is reserved for enrolled students.":
       ["revoked-sign-in","recent-sign-in","verified-sign-in"].includes(reason)?"Your sign-in needs to be renewed before Practice can save scores.":
       error.message&&error.message!=="internal" ? error.message : "Practice could not connect to your school. The map remains available.";
     if(reconnect&&["revoked-sign-in","recent-sign-in","verified-sign-in","session-moved"].includes(reason)){reconnect.hidden=false;reconnect.textContent="Reconnect account";}
@@ -605,9 +621,9 @@ async function openMission(selectedCourse,selectedMission){
     if(version!==epoch||sequence!==loadSequence)return;
     if(pending?.missionId===mission.id){if(pending.attemptId===attempt.attemptId)answer=pending.answer;else{pending=null;localSet(pendingKey(),null);notice("The previous answer session ended. This mission shows your latest server score; no answer was submitted again.");}}
     field("practiceCode").textContent=attempt.question.code||"";field("practiceCode").hidden=!attempt.question.code;field("practicePrompt").textContent=attempt.question.prompt;renderMechanicAid(attempt.question);pointsText();renderAnswer();renderHintControl();
-    field("labSubmitSignin").hidden=eligible;field("practiceCheckBtn").hidden=!eligible;
+    field("labSubmitSignin").hidden=eligible||accountPreview;field("practiceCheckBtn").hidden=!eligible;
     field("labSubmitSignin").textContent=user?"Open my access request":"Sign in to submit";field("labSubmitSignin").href=user?"guest-home.html":"login.html";
-    if(!eligible)feedback(user?"Your account cannot submit yet. Finish your access request or verify your email, then refresh.":"Explore the mission freely. Sign in to submit answers and save season points.");
+    if(!eligible)feedback(accountPreview?"Staff preview · solve and explore freely. XP and scored submissions are intentionally disabled.":user?"Your account cannot submit yet. Check your active school enrollment, then refresh.":"Explore the mission freely. Sign in to submit answers and save season points.");
     if(attempt.completed){field("practiceMissionPanel").classList.add("is-complete");feedback("Mission complete · "+attempt.earnedPoints+" pts saved. "+(attempt.explanation||""),"success");field("labNextMission").hidden=false;prepareExperiment(attempt.workspace);}
     else if(attempt.previewWorkspace)prepareExperiment(attempt.previewWorkspace);
     if(pending&&pending.missionId!==mission.id){field("practiceCheckBtn").disabled=true;feedback("Confirm the earlier pending answer before submitting another mission. Use “Resume pending save” above.","warning");}
@@ -727,7 +743,7 @@ function connectBoard(){
 connectBoard();
 
 onAuthStateChanged(auth,async current=>{
-  epoch++;loadSequence++;user=current;eligible=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());
+  epoch++;loadSequence++;user=current;eligible=false;accountPreview=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());
   connectBoard();
   try{
     field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;field("practiceTransferBtn").hidden=true;
