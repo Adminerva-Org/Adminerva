@@ -28,8 +28,9 @@ function governanceRoleId(value){
 async function standardSetupStatus({db,schoolId,schoolData}){
   const prefix="schools/"+schoolId+"/";
   const firstAdminUid=schoolData.firstAdminUid||null;
-  const [admin,program,year,term,subject,section,offering]=await Promise.all([
+  const [admin,profile,program,year,term,subject,section,offering]=await Promise.all([
     firstAdminUid?db.doc(prefix+"memberships/"+firstAdminUid).get():Promise.resolve(null),
+    db.doc(prefix+"configuration/profile").get(),
     db.collection(prefix+"academic_programs").where("status","==","active").limit(1).get(),
     db.collection(prefix+"academic_years").where("status","==","active").limit(1).get(),
     db.collection(prefix+"terms").where("status","==","active").limit(1).get(),
@@ -44,6 +45,8 @@ async function standardSetupStatus({db,schoolId,schoolData}){
     {id:"school_registered",ok:true,label:"School registered",detail:"The institution tenant exists."},
     {id:"school_admin",ok:firstAdminActive,label:"School Administrator assigned",
       detail:firstAdminActive?"The first School Administrator is active.":"Assign a verified School Administrator."},
+    {id:"school_profile",ok:Boolean(profile?.exists&&profile.data().schoolId===schoolId&&Number(profile.data().revision)>=1),
+      label:"School profile saved",detail:profile?.exists?"Canonical institution profile is saved.":"Save the official school profile, contact details and timezone."},
     {id:"academic_year",ok:!year.empty,label:"School year configured",detail:year.empty?"Create the school year.":"School year is configured."},
     {id:"program",ok:!program.empty,label:"Division / program configured",detail:program.empty?"Create at least one division or program.":"Division / program is configured."},
     {id:"period",ok:!term.empty,label:"Academic period configured",detail:term.empty?"Create the current quarter, term or semester.":"Academic period is configured."},
