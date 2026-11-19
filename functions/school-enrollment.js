@@ -182,6 +182,115 @@ function createSchoolEnrollmentService({db}){
       }))};
     }
 
+    if(["end_registration","restore_registration"].includes(input.action)){
+      const registrationId=checkId(input.registrationId,"Registration ID",128);
+      const reason=text(input.reason,input.action==="end_registration"?"Registration end reason":"Registration restore reason",500);
+      if(reason.length<12)deny("invalid-argument","Explain the registration change in at least 12 characters.");
+      const registrationRef=db.doc(root+"student_registrations/"+registrationId);
+      const initial=await registrationRef.get();
+      if(!initial.exists||initial.data().schoolId!==ctx.schoolId)
+        deny("not-found","The student registration was not found.");
+      const initialData=initial.data();
+      const enrollmentSnap=await db.collection(root+"enrollments")
+        .where("personId","==",initialData.personId).limit(251).get();
+      if(enrollmentSnap.size===251)
+        deny("resource-exhausted","This student has too many enrollment records for a single registration change.");
+      const relevantEnrollmentRefs=enrollmentSnap.docs
+        .filter(doc=>{
+          const row=doc.data();
+          return row.schoolId===ctx.schoolId&&row.personId===initialData.personId&&
+            row.yearId===initialData.yearId&&row.termId===initialData.termId&&
+            row.sectionId===initialData.sectionId;
+        }).map(doc=>doc.ref);
+      const slotRef=db.doc(root+"student_registration_slots/"+
+        key(initialData.personId,initialData.yearId,initialData.termId));
+      const personRef=db.doc(root+"people/"+checkId(initialData.personId,"Person ID",128));
+      const restoring=input.action==="restore_registration";
+      const otherRegistrations=restoring
+        ?await db.collection(root+"student_registrations").where("personId","==",initialData.personId).limit(51).get()
+        :null;
+      if(otherRegistrations?.size===51)
+        deny("resource-exhausted","This student has too many registration records for safe restoration.");
+      if(restoring){
+        const conflict=otherRegistrations.docs.find(doc=>{
+          const row=doc.data();
+          return doc.id!==registrationId&&row.schoolId===ctx.schoolId&&row.status==="active"&&
+            row.yearId===initialData.yearId&&row.termId===initialData.termId;
+        });
+        if(conflict)deny("failed-precondition",
+          "This student already has another active official placement for the same academic period.");
+      }
+
+      let changedCourses=0;
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const registration=await tx.get(registrationRef);
+        if(!registration.exists||registration.data().schoolId!==ctx.schoolId)
+          deny("not-found","The student registration was not found.");
+        const data=registration.data();
+        if(restoring&&data.status!=="ended")
+          deny("failed-precondition","Only an ended registration can be restored.");
+        if(!restoring&&data.status!=="active")
+          deny("failed-precondition","Only an active registration can be ended.");
+
+        const [slot,person,...enrollments]=await Promise.all([
+          tx.get(slotRef),tx.get(personRef),...relevantEnrollmentRefs.map(ref=>tx.get(ref))
+        ]);
+        if(restoring){
+          if(!person.exists||person.data().schoolId!==ctx.schoolId||
+             person.data().kind!=="student"||person.data().status!=="active")
+            deny("failed-precondition","The student directory record must be active before restoring registration.");
+          if(slot.exists&&slot.data().status==="active"&&slot.data().registrationId!==registrationId)
+            deny("failed-precondition","Another official registration currently owns this academic-period placement.");
+
+          const restorable=enrollments.filter(doc=>doc.exists&&doc.data().status==="ended"&&
+            doc.data().endedByRegistrationId===registrationId);
+          if(!restorable.length)
+            deny("failed-precondition","No subject enrollments from this registration are available to restore.");
+          const offerings=await Promise.all(restorable.map(doc=>
+            tx.get(db.doc(root+"course_offerings/"+checkId(doc.data().offeringId,"Course offering ID",330)))));
+          if(offerings.some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active"))
+            deny("failed-precondition","One or more course offerings are no longer active. Create a new placement instead of restoring this registration.");
+          const now=FieldValue.serverTimestamp();
+          for(const doc of restorable){
+            tx.update(doc.ref,{status:"active",restoredByUid:ctx.uid,restoredAt:now,
+              restoreReason:reason,revision:(doc.data().revision||1)+1});
+          }
+          changedCourses=restorable.length;
+          tx.update(registrationRef,{status:"active",restoredByUid:ctx.uid,restoredAt:now,
+            restoreReason:reason,updatedByUid:ctx.uid,updatedAt:now,
+            revision:(data.revision||1)+1});
+          const slotData={schoolId:ctx.schoolId,personId:data.personId,yearId:data.yearId,
+            programId:data.programId,termId:data.termId,sectionId:data.sectionId,
+            registrationId,status:"active",updatedByUid:ctx.uid,updatedAt:now};
+          if(slot.exists)tx.set(slotRef,{...slotData,revision:(slot.data().revision||1)+1},{merge:true});
+          else tx.create(slotRef,{...slotData,revision:1,createdByUid:ctx.uid,createdAt:now});
+        }else{
+          const active=enrollments.filter(doc=>doc.exists&&doc.data().status==="active");
+          const now=FieldValue.serverTimestamp();
+          for(const doc of active){
+            tx.update(doc.ref,{status:"ended",endedByUid:ctx.uid,endedAt:now,endReason:reason,
+              endedByRegistrationId:registrationId,revision:(doc.data().revision||1)+1});
+          }
+          changedCourses=active.length;
+          tx.update(registrationRef,{status:"ended",endedByUid:ctx.uid,endedAt:now,
+            endReason:reason,updatedByUid:ctx.uid,updatedAt:now,
+            revision:(data.revision||1)+1});
+          const slotData={schoolId:ctx.schoolId,personId:data.personId,yearId:data.yearId,
+            programId:data.programId,termId:data.termId,sectionId:data.sectionId,
+            registrationId,status:"ended",updatedByUid:ctx.uid,updatedAt:now};
+          if(slot.exists)tx.set(slotRef,{...slotData,revision:(slot.data().revision||1)+1},{merge:true});
+          else tx.create(slotRef,{...slotData,revision:1,createdByUid:ctx.uid,createdAt:now});
+        }
+        const auditRef=db.collection(root+"directory_audit").doc();
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId:data.personId,
+          registrationId,action:restoring?"student_registration_restored":"student_registration_ended",
+          yearId:data.yearId,programId:data.programId,termId:data.termId,sectionId:data.sectionId,
+          courseCount:changedCourses,reason,createdAt:FieldValue.serverTimestamp()});
+      });
+      return {registrationId,status:restoring?"active":"ended",courseCount:changedCourses};
+    }
+
     if(input.action==="register_student"){
       const displayName=text(input.displayName,"Student name",140);
       const birthDate=academicDate(input.birthDate,"Birth date");
@@ -286,6 +395,19 @@ function createSchoolEnrollmentService({db}){
       const personId=personRef.id;
       const registrationId=key(personId,yearId,termId,sectionId);
       const registrationRef=db.doc(root+"student_registrations/"+registrationId);
+      const placementSlotRef=db.doc(root+"student_registration_slots/"+key(personId,yearId,termId));
+      const existingRegistrations=await db.collection(root+"student_registrations")
+        .where("personId","==",personId).limit(51).get();
+      if(existingRegistrations.size===51)
+        deny("resource-exhausted","This student has too many registration records for safe placement.");
+      const conflictingRegistration=existingRegistrations.docs.find(doc=>{
+        const row=doc.data();
+        return doc.id!==registrationId&&row.schoolId===ctx.schoolId&&row.status==="active"&&
+          row.yearId===yearId&&row.termId===termId;
+      });
+      if(conflictingRegistration)
+        deny("failed-precondition",
+          "This student already has an active official section placement for the selected academic period. End or correct that registration before creating another.");
       const enrollmentRefs=offerings.map(offering=>
         db.doc(root+"enrollments/"+key(personId,offering.id)));
       const auditRef=db.collection(root+"directory_audit").doc();
@@ -295,12 +417,16 @@ function createSchoolEnrollmentService({db}){
       let result;
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
-        const reads=[tx.get(personRef),tx.get(registrationRef),...enrollmentRefs.map(ref=>tx.get(ref))];
+        const reads=[tx.get(personRef),tx.get(registrationRef),tx.get(placementSlotRef),...enrollmentRefs.map(ref=>tx.get(ref))];
         if(applicationRef)reads.push(tx.get(applicationRef));
         const records=await Promise.all(reads);
-        const person=records[0],registration=records[1],
-          enrollments=records.slice(2,2+enrollmentRefs.length),
+        const person=records[0],registration=records[1],placementSlot=records[2],
+          enrollments=records.slice(3,3+enrollmentRefs.length),
           currentApplication=applicationRef?records.at(-1):null;
+        if(placementSlot.exists&&placementSlot.data().status==="active"&&
+           placementSlot.data().registrationId!==registrationId)
+          deny("failed-precondition",
+            "Another official registration currently owns this student's selected academic period.");
 
         if(currentApplication&&(!currentApplication.exists||currentApplication.data().schoolId!==ctx.schoolId||
           ["rejected","withdrawn","enrolled"].includes(currentApplication.data().status)))
@@ -382,6 +508,12 @@ function createSchoolEnrollmentService({db}){
         else
           tx.create(registrationRef,{...registrationData,revision:1,
             createdByUid:ctx.uid,createdAt:now});
+        const placementData={schoolId:ctx.schoolId,personId,yearId,programId,termId,sectionId,
+          registrationId,status:"active",updatedByUid:ctx.uid,updatedAt:now};
+        if(placementSlot.exists)
+          tx.set(placementSlotRef,{...placementData,revision:(placementSlot.data().revision||1)+1},{merge:true});
+        else
+          tx.create(placementSlotRef,{...placementData,revision:1,createdByUid:ctx.uid,createdAt:now});
 
         if(currentApplication){
           tx.update(applicationRef,{
