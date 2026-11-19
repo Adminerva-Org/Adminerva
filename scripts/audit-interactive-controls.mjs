@@ -115,7 +115,7 @@ for(const page of pages){
       findings.push({severity:"planned",kind:"static-disabled",page:pageRel,control:signature,detail:"Control is statically disabled and has no detectable runtime enablement"});
       continue;
     }
-    if(tag==="button"&&!disabled&&!onclick&&type!=="submit"&&type!=="reset"&&!referenced&&!delegated){
+    if(tag==="button"&&!disabled&&!onclick&&type!=="submit"&&type!=="reset"&&!(type===""&&a.value)&&!referenced&&!delegated){
       findings.push({severity:"review",kind:"unmatched-button",page:pageRel,control:signature,detail:"No direct ID/data reference found in this page's loaded scripts"});
     }
   }
