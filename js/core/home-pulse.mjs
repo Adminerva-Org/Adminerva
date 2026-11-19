@@ -1,6 +1,7 @@
 /** Optional, verified account-specific home insights. No new backend endpoints. */
-import {auth,db} from './firebase-core.js?v=1.3.0';
+import {app,auth,db} from './firebase-core.js?v=1.3.0';
 import {onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
+import {getFunctions,httpsCallable} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js';
 import {collection,getDocs,orderBy,query,limit} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 
 const home=document.querySelector('main[data-home-experience="student"],main[data-home-experience="teacher"]');
@@ -27,15 +28,21 @@ if(home&&nav){
     element.querySelector('strong').textContent=value;
     element.querySelector('p').textContent=description;
   };
-  let loading=false,readyUid='',generation=0;
+  const functions=getFunctions(app,'asia-southeast1'),schoolsApi=httpsCallable(functions,'tenantSchools'),assessmentApi=httpsCallable(functions,'schoolAssessments');
+  const links=document.createElement('div');links.className='flex flex-wrap gap-3 mt-3';summary.append(links);
+  function shortcuts(entries){links.replaceChildren();for(const [label,href] of entries){const a=document.createElement('a');a.className='av-primary-button text-sm';a.textContent=label;a.href=href;links.append(a);}}
+  let loading=false,readyUid='',generation=0,lastLoaded=0;
   const load=async(force=false)=>{
     const user=auth.currentUser;
     const actualRole=nav.dataset.verifiedRole;
     const correct=role==='student'?actualRole==='student':
       actualRole==='teacher'||actualRole==='superadmin';
-    if(!user?.uid||!correct||loading||(!force&&readyUid===user.uid))return;
+    if(!user?.uid||!correct){if(readyUid){generation++;loading=false;readyUid='';lastLoaded=0;summary.hidden=true;links.replaceChildren();}return;}
+    if(loading||(!force&&readyUid===user.uid&&Date.now()-lastLoaded<120000))return;
     readyUid=user.uid;loading=true;
     const token=++generation;
+    links.replaceChildren();
+    const current=()=>auth.currentUser?.uid===user.uid&&token===generation;
     summary.hidden=false;
     head.querySelector('h2').textContent=role==='student'?'Your verified practice progress':'Recent evidence snapshot';
     head.querySelector('p').textContent=role==='student'?
@@ -48,6 +55,39 @@ if(home&&nav){
     update(0,role==='student'?'Missions completed':'Awaiting inspection','—','Reading verified records…');
     update(1,role==='student'?'Completed courses':'Approved evidence','—','Reading verified records…');
     try{
+      let preferred=null;try{preferred=sessionStorage.getItem('Adminerva_last_verified_school_'+user.uid)||null;}catch{}
+      const schoolPayload=(await schoolsApi({preferredSchoolId:preferred})).data;
+      if(!current())return;
+      const choices=(schoolPayload.schools||[]).filter(s=>Array.isArray(s.roles)&&s.roles.includes(role));
+      const school=choices.find(s=>s.schoolId===preferred)|| (choices.length===1?choices[0]:null);
+      if(choices.length&&!school){
+        head.querySelector('h2').textContent='Your school workspace';
+        head.querySelector('p').textContent='Select an active school using your account menu.';
+        update(0,'Assignments','—','School selection required.');update(1,'Learning and teaching','—','Choose your verified school first.');
+        track.hidden=true;summary.querySelector('.av-pulse-status').textContent='No school results have been combined.';return;
+      }
+      if(school){
+        const result=(await assessmentApi({schoolId:school.schoolId,action:role==='student'?'list_student':'list_teacher'})).data;
+        if(!current())return;
+        head.querySelector('h2').textContent=role==='student'?'Your learning workspace':'Your teaching workspace';
+        head.querySelector('p').textContent=school.name||school.schoolId;
+        track.hidden=true;
+        if(role==='student'){
+          const tasks=result.assignments||[],open=tasks.filter(t=>t.windowStatus==='open'),upcoming=tasks.filter(t=>t.windowStatus==='upcoming');
+          update(0,'Open assignments',String(open.length),'Currently open, including any already submitted.');
+          update(1,'Upcoming assignments',String(upcoming.length),'Scheduled to open later.');
+          shortcuts([['Assignments','student-assessments.html'],['Classroom','student-classroom.html'],['My Grades','school-student-grades.html']]);
+          summary.querySelector('.av-pulse-status').textContent='School assignment windows loaded. Check Assignments for individual submission status and deadlines.';
+        }else{
+          const tasks=result.assessments||[],deployed=tasks.filter(t=>t.status==='deployed');
+          update(0,'Deployed assessments',String(deployed.length),'Your school assessments available for review.');
+          update(1,'Other assessments',String(tasks.length-deployed.length),'Not currently deployed.');
+          shortcuts([['Assessment Studio','assessment-studio.html'],['Review & Grade','school-gradebook.html'],['Class Record','class-record.html']]);
+          summary.querySelector('.av-pulse-status').textContent='Verified school assessment inventory loaded. Open Review & Grade for submission and publication status.';
+        }
+        return;
+      }
+      head.querySelector('p').textContent=role==='student'?'Existing account practice records (legacy storage).':'Recent legacy evidence records; not school-wide totals.';
       if(role==='student'){
         const [{COURSES},snapshot]=await Promise.all([
           import('../student/practice-courses.mjs?v=1.3.0'),
@@ -98,7 +138,7 @@ if(home&&nav){
       summary.querySelector('.av-pulse-status').textContent='Summary is unavailable. Your projects, assessments and existing data are unchanged.';
     }finally{
       if(token===generation){
-        loading=false;summary.removeAttribute('aria-busy');summary.querySelector('button').disabled=false;
+        loading=false;lastLoaded=Date.now();summary.removeAttribute('aria-busy');summary.querySelector('button').disabled=false;
       }
     }
   };
@@ -118,7 +158,7 @@ if(home&&nav){
   summary.querySelector('button').addEventListener('click',()=>scheduleLoad(true));
   document.addEventListener('adminerva:role-ready',()=>scheduleLoad());
   onAuthStateChanged(auth,user=>{
-    if(!user||readyUid&&readyUid!==user.uid){generation++;loading=false;readyUid='';summary.hidden=true;}
+    if(!user||readyUid&&readyUid!==user.uid){generation++;loading=false;readyUid='';lastLoaded=0;summary.hidden=true;links.replaceChildren();}
     scheduleLoad();
   });
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleLoad();});
