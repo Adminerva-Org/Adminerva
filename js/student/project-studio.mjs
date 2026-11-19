@@ -48,14 +48,20 @@ function assessmentProfileMeta(project){
     "java-console":"Java Console",
     "java-desktop":"Java Desktop",
     "java-database":"Java + Database",
+    "java-desktop-database":"Java Desktop + Database",
     "web":"Web",
     "python-console":"Python Console",
     "auto":"Auto"
   };
-  const resolved=project.lang==="java"
-    ?(project.config?.database?"Java + Database":project.config?.runMode==="desktop"?"Java Desktop":"Java Console")
+  const current=project.lang==="java"
+    ?(project.config?.database
+      ?(project.config?.runMode==="desktop"?"Java Desktop + Database":"Java + Database")
+      :(project.config?.runMode==="desktop"?"Java Desktop":"Java Console"))
     :project.lang==="web"?"Web":project.lang==="python"?"Python Console":labels[profile]||profile;
-  return "Assessment setup: "+resolved;
+  const configured=labels[profile]||profile;
+  return profile==="auto"
+    ?"Assessment setup: Auto · current run: "+current
+    :"Assessment setup: "+configured+(current!==configured?" · current run: "+current:"");
 }
 function projectTypeMeta(project){
   const template=CODE_PROJECT_TEMPLATES[project.template]||CODE_PROJECT_TEMPLATES["java-blank"];
@@ -555,6 +561,7 @@ export function createProjectStudio({
       attempt:Number.isInteger(Number(context.attempt))?Number(context.attempt):
         (Number.isInteger(Number(project?.assessment?.attempt))?Number(project.assessment.attempt):null),
       studioProjectProfile:String(context.studioProjectProfile||context.projectProfile||"auto").slice(0,40),
+      provisioningVersion:"runtime-profile-v2",
       provisionedBy:"assessment-launch"
     };
 
@@ -565,11 +572,21 @@ export function createProjectStudio({
       const priorTemplate=CODE_PROJECT_TEMPLATES[project.template];
       const untouchedStarter=project.assessment?.provisionedBy==="assessment-launch" &&
         project.template!==template.id && matchesTemplateStarter(project,priorTemplate);
+      const provisioningRefresh=
+        project.assessment?.provisioningVersion!==ownership.provisioningVersion||
+        project.assessment?.studioProjectProfile!==ownership.studioProjectProfile;
+      const nextConfig={...(project.config||{}),...desiredConfig};
+      // Correct older incorrectly inferred runtimes once. After the v2 migration,
+      // preserve a learner's console/desktop execution choice across reopen/reload.
+      if(!provisioningRefresh&&template.lang==="java"&&
+        ["console","desktop"].includes(project.config?.runMode)){
+        nextConfig.runMode=project.config.runMode;
+      }
       const next={
         ...project,
         template:template.id,
         lang:template.lang,
-        config:{...(project.config||{}),...desiredConfig},
+        config:nextConfig,
         assessment:ownership,
         ...(untouchedStarter?{
           state:clone(template.workspace),
@@ -819,9 +836,11 @@ export function createProjectStudio({
     el("projectSettingsRunMode").value=activeProject.config?.runMode||"console";
     el("projectSettingsDatabase").checked=Boolean(activeProject.config?.database);
     const assessmentLocked=activeProject.assessment?.provisionedBy==="assessment-launch";
-    el("projectSettingsRunMode").disabled=assessmentLocked;
+    el("projectSettingsRunMode").disabled=false;
     el("projectSettingsDatabase").disabled=assessmentLocked;
-    el("projectSettingsRunMode").title=assessmentLocked?"Runtime is set by this assessment.":"";
+    el("projectSettingsRunMode").title=assessmentLocked
+      ?"Execution mode can be changed for testing; the assessment requirements remain unchanged."
+      :"";
     el("projectSettingsDatabase").title=assessmentLocked?"Database access is set by this assessment.":"";
     el("projectSettingsJavaOptions")?.classList.toggle("hidden",activeProject.lang!=="java");
     el("projectSettingsModal")?.classList.remove("hidden");
@@ -830,10 +849,11 @@ export function createProjectStudio({
     if(!activeProject)return;
     const title=el("projectSettingsTitle").value.trim();
     if(!title)return alert("Project name cannot be empty.");
+    const assessmentLocked=activeProject.assessment?.provisionedBy==="assessment-launch";
     const next={...activeProject,title:title.slice(0,120),config:{...activeProject.config}};
     if(next.lang==="java"){
       next.config.runMode=el("projectSettingsRunMode").value==="desktop"?"desktop":"console";
-      next.config.database=Boolean(el("projectSettingsDatabase").checked);
+      if(!assessmentLocked)next.config.database=Boolean(el("projectSettingsDatabase").checked);
     }
     try{
       store(next,true);onConfigChange?.(activeProject.config);
@@ -844,7 +864,7 @@ export function createProjectStudio({
   function updateConfig(patch){
     if(!activeProject)return;
     if(activeProject.assessment?.provisionedBy==="assessment-launch"&&
-      ["runMode","database","design"].some(key=>Object.hasOwn(patch||{},key))){
+      ["database","design"].some(key=>Object.hasOwn(patch||{},key))){
       onConfigChange?.(activeProject.config||{});
       return;
     }
