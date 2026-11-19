@@ -5,7 +5,7 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0
 const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const status=el("as-status"),form=el("as-edit-form");
-let picker=null,currentKind="academic_years",selectedId="",busy=false,loading=false,loadSequence=0,calendarIncomplete=false,calendarLoaded=false;
+let picker=null,currentKind="academic_years",selectedId="",selectedRevision=null,busy=false,loading=false,loadSequence=0,calendarIncomplete=false,calendarLoaded=false;
 let years=[],programs=[],terms=[],subjects=[],sections=[];
 const LABELS={
   academic_years:"School Years",academic_programs:"Programs / Divisions",
@@ -150,7 +150,7 @@ function showFields(kind){
 function openEditor(id){
   if(loading)return;
   const item=items(currentKind).find(x=>x.id===id);if(!item)return;
-  selectedId=id;showFields(currentKind);
+  selectedId=id;selectedRevision=Number(item.revision)||1;showFields(currentKind);
   form.reset();form.elements.recordId.value=item.id;form.elements.name.value=item.name||"";
   fill(form.elements.yearId,years,item.yearId);
   fill(form.elements.programId,programs,item.programId);
@@ -195,7 +195,7 @@ async function load(){
   finally{if(run===loadSequence){loading=false;renderCalendar();}}
 }
 function payload(){
-  const data={kind:currentKind,recordId:selectedId,name:form.elements.name.value.trim()};
+  const data={kind:currentKind,recordId:selectedId,expectedRevision:selectedRevision,name:form.elements.name.value.trim()};
   if(currentKind==="academic_years"){
     data.startDate=form.elements.startDate.value||null;data.endDate=form.elements.endDate.value||null;
     if(data.startDate)data.startMonth=Number(data.startDate.slice(5,7));
@@ -211,7 +211,7 @@ function payload(){
   return data;
 }
 form.addEventListener("submit",event=>{
-  event.preventDefault();if(busy||loading||!calendarLoaded||!selectedId||!form.reportValidity())return;
+  event.preventDefault();if(busy||loading||!calendarLoaded||!selectedId||!Number.isSafeInteger(selectedRevision)||!form.reportValidity())return;
   const data=payload(),save=el("as-save"),notice=el("as-save-status");
   if(inPreview()){
     const item=items(currentKind).find(x=>x.id===selectedId);
@@ -222,6 +222,7 @@ form.addEventListener("submit",event=>{
   void scoped("update_catalog",data).then(async()=>{
     notice.textContent="Changes saved. System ID "+selectedId+" was preserved.";notice.hidden=false;
     const refreshed=await load();if(refreshed&&selectedId)openEditor(selectedId);
+    else{selectedId="";selectedRevision=null;el("as-editor-panel").hidden=true;}
     notice.textContent="Changes saved. System ID "+data.recordId+" was preserved."+(refreshed?"":" Refresh failed; reload before editing again.");notice.hidden=false;
   }).catch(error=>{
     notice.textContent=error?.message||"Changes could not be saved.";notice.hidden=false;
@@ -230,17 +231,17 @@ form.addEventListener("submit",event=>{
 form.elements.sectionProgramId.addEventListener("change",()=>{
   updateLevelPicker(form.elements.sectionProgramId.value,"");
 });
-el("as-close").addEventListener("click",()=>{if(busy)return;selectedId="";el("as-editor-panel").hidden=true;});
+el("as-close").addEventListener("click",()=>{if(busy)return;selectedId="";selectedRevision=null;el("as-editor-panel").hidden=true;});
 el("as-refresh").addEventListener("click",()=>{if(!busy)void load();});
 for(const id of ["as-calendar-year","as-calendar-program"])el(id).addEventListener("change",renderCalendar);
 for(const button of document.querySelectorAll("[data-kind]")){
   button.addEventListener("click",()=>{
-    if(busy||loading)return;currentKind=button.dataset.kind;selectedId="";el("as-editor-panel").hidden=true;renderList();
+    if(busy||loading)return;currentKind=button.dataset.kind;selectedId="";selectedRevision=null;el("as-editor-panel").hidden=true;renderList();
   });
 }
 picker=createTenantSchoolPicker({
   host:el("as-school-switcher"),status,
-  onBeforeChange:async()=>{if(busy)throw Error("Finish saving before switching schools.");++loadSequence;loading=false;calendarIncomplete=false;calendarLoaded=false;years=[];programs=[];terms=[];subjects=[];sections=[];selectedId="";el("as-editor-panel").hidden=true;el("as-list").replaceChildren();el("as-calendar-list").replaceChildren();el("as-calendar-count").textContent="Waiting for verified school access…";calendarOption(el("as-calendar-year"),[],"All school years");calendarOption(el("as-calendar-program"),[],"All programs");},
+  onBeforeChange:async()=>{if(busy)throw Error("Finish saving before switching schools.");++loadSequence;loading=false;calendarIncomplete=false;calendarLoaded=false;years=[];programs=[];terms=[];subjects=[];sections=[];selectedId="";selectedRevision=null;el("as-editor-panel").hidden=true;el("as-list").replaceChildren();el("as-calendar-list").replaceChildren();el("as-calendar-count").textContent="Waiting for verified school access…";calendarOption(el("as-calendar-year"),[],"All school years");calendarOption(el("as-calendar-program"),[],"All programs");},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){say("School administrator access is required.");return;}
     void load();
