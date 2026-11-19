@@ -308,7 +308,7 @@ async function checkAccess(user){
   dismissAccessRecovery();rememberWorkspace(user.uid);
   const pageBody = document.getElementById("pageBody");
   if (pageBody) pageBody.classList.remove("hidden");
-  if(platformTestMode){
+  if(platformSchoolView){
     const schoolName=access.v4Schools?.find(item=>item.schoolId===platformViewSchool)?.name||platformViewSchool;
     mountPlatformSchoolBanner({schoolName,role:activeRole,assist:platformAssistMode});
   }else document.getElementById("adminerva-platform-role-test")?.remove();
