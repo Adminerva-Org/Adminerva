@@ -99,28 +99,33 @@ async function loadLegacyRequests(){
       const role=document.createElement("select");role.className="pa-field";role.style.marginBottom="0";
       role.append(new Option("Student","student"),new Option("Teacher","teacher"));
       role.value=item.requestedRole==="teacher"?"teacher":"student";roleLabel.append(role);
-      const reasonLabel=document.createElement("label");reasonLabel.textContent="Decision reason";
-      const reason=document.createElement("input");reason.className="pa-field";reason.style.marginBottom="0";reason.minLength=12;reason.maxLength=500;
-      reason.placeholder="Explain this access decision";reason.required=true;reasonLabel.append(reason);
+      const reasonLabel=document.createElement("label");reasonLabel.textContent="Decision note";
+      const reason=document.createElement("input");reason.className="pa-field";reason.style.marginBottom="0";reason.maxLength=500;
+      reason.placeholder="Optional for approval; required for rejection";reasonLabel.append(reason);
       const approve=document.createElement("button");approve.type="button";approve.className="pa-action";approve.textContent="Approve";
       const reject=document.createElement("button");reject.type="button";reject.className="pa-action";reject.style.background="#9a3412";reject.textContent="Reject";
+      const rowState=document.createElement("p");rowState.className="pa-muted";rowState.style.cssText="grid-column:1/-1;margin:0";
+      rowState.setAttribute("role","status");rowState.setAttribute("aria-live","polite");
       async function decide(decision){
         const why=reason.value.trim();
-        if(why.length<12){state.textContent="Enter a decision reason of at least 12 characters.";reason.focus();return;}
+        if(decision==="rejected"&&why.length<12){
+          rowState.textContent="Enter a rejection reason of at least 12 characters.";reason.focus();return;
+        }
         if(!confirm((decision==="approved"?"Approve":"Reject")+" the previous access request for "+item.displayName+"?"))return;
-        approve.disabled=true;reject.disabled=true;state.textContent="Saving "+item.displayName+" access decision…";
+        approve.disabled=true;reject.disabled=true;role.disabled=true;reason.disabled=true;
+        rowState.textContent="Saving "+item.displayName+" access decision…";
         try{
           await api({schoolId,action:"decide_legacy_request",targetUid:item.targetUid,
             expectedRevision:item.revision,decision,role:role.value,reason:why});
           await loadLegacyRequestsAfterDecision();
         }catch(error){
-          state.textContent=error?.message||"The access request decision was not saved.";
-          approve.disabled=false;reject.disabled=false;
+          rowState.textContent=error?.message||"The access request decision was not saved.";
+          approve.disabled=false;reject.disabled=false;role.disabled=false;reason.disabled=false;
         }
       }
       approve.addEventListener("click",()=>void decide("approved"));
       reject.addEventListener("click",()=>void decide("rejected"));
-      controls.append(roleLabel,reasonLabel,approve,reject);
+      controls.append(roleLabel,reasonLabel,approve,reject,rowState);
       card.append(info,controls);host.append(card);
     }
     if(!(result.items||[]).length){
