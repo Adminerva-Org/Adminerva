@@ -60,7 +60,7 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
     getElementById: id => id === 'adminerva-nav' ? root : document.head.children.find(child => child.id === id) || null,
     addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback)
   };
-  const routeByPage={xml:'student-xml-lab.html',practice:'student-practice.html',
+  const routeByPage={xml:'student-xml-lab.html',practice:'student-practice.html',ide:'student-playground.html',
     'studio-submissions':'studio-submissions.html',home:role==='student'?'student-home.html':'teacher-home.html',dashboard:module==='student'?'student-home.html':'teacher-home.html'};
   const pathname='/'+(routeByPage[page]||page+'.html');
   const window = { location: { href: 'https://adminerva.example'+pathname, pathname, search:'' } };
