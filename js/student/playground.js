@@ -320,7 +320,7 @@ async function resolveAssessmentProjectContext(assessmentId,studioSchool){
       if(task){
         matchedCanonicalTask=true;
         if(task.submissionSource!=="studio")throw Error("This assessment is not configured for Adminerva Studio.");
-        if(task.windowStatus==="waiting_for_teacher")
+        if(task.manualOpenRequired===true&&task.manualAccessState!=="open")
           throw Error(task.manualAccessState==="held"
             ?"Your teacher has placed this section's Studio exam on hold. Refresh after it is reopened."
             :"Your teacher has not opened this section's Studio exam yet. Return to My Assessments.");
