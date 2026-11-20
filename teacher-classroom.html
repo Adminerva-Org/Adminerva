@@ -54,6 +54,27 @@
     </article>
   </section>
 
+  <section class="rounded-2xl border border-violet-200 bg-white shadow-sm p-4 sm:p-5">
+    <div class="grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,.7fr)] gap-4 lg:items-end">
+      <div>
+        <p class="text-xs uppercase tracking-wider font-bold text-violet-700">Classroom participation</p>
+        <h2 class="text-xl font-extrabold mt-1">Choose how students can join the stream</h2>
+        <p class="text-sm text-slate-600 mt-1">This changes classroom discussion only. Enrollment, submissions, grades and Class Record access are unaffected.</p>
+      </div>
+      <form id="teacherClassroomParticipationForm" class="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <label class="text-xs font-bold">Student participation
+          <select id="teacherClassroomParticipation" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+            <option value="teacher_only">Teacher only · students read</option>
+            <option value="comments_only">Students may comment</option>
+            <option value="posts_comments">Students may post and comment</option>
+          </select>
+        </label>
+        <button id="teacherClassroomParticipationSave" type="submit" class="self-end rounded-lg bg-violet-700 text-white px-4 py-2.5 text-sm font-extrabold">Save</button>
+      </form>
+    </div>
+    <p id="teacherClassroomParticipationStatus" class="text-xs text-slate-500 mt-3" role="status"></p>
+  </section>
+
   <div id="class-stream" class="grid lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)] gap-5 items-start scroll-mt-24">
     <section class="rounded-2xl border border-cyan-200 bg-white shadow-sm overflow-hidden lg:sticky lg:top-20">
       <div class="bg-cyan-50 border-b border-cyan-200 p-4 sm:p-5">
@@ -90,10 +111,10 @@
 
     <section class="space-y-4">
       <div class="flex items-end justify-between gap-3">
-        <div><p class="text-xs uppercase tracking-wider font-bold text-slate-500">Teacher posts</p><h2 class="text-2xl font-extrabold mt-1">Recent stream posts</h2></div>
+        <div><p class="text-xs uppercase tracking-wider font-bold text-slate-500">Class stream</p><h2 class="text-2xl font-extrabold mt-1">Recent posts &amp; discussion</h2></div>
         <a id="teacherClassroomClassworkLink" href="#class-classwork" class="text-sm font-bold text-indigo-700 underline">View classwork ↑</a>
       </div>
-      <div class="rounded-xl border border-slate-200 bg-white p-3 flex flex-wrap items-end gap-3"><label class="flex-1 min-w-[160px] text-xs font-bold">Search posts<input id="teacherClassroomSearch" type="search" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Title, message or teacher"></label><label class="text-xs font-bold">Type<select id="teacherClassroomFilter" class="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">All posts</option><option value="announcement">Announcements</option><option value="material">Materials</option><option value="post">Class updates</option></select></label><p id="teacherClassroomPostCount" class="w-full text-xs text-slate-500" role="status"></p><p class="w-full text-xs text-slate-500">Only the author may edit, pin or remove their posts. School permissions are checked when saving.</p></div>
+      <div class="rounded-xl border border-slate-200 bg-white p-3 flex flex-wrap items-end gap-3"><label class="flex-1 min-w-[160px] text-xs font-bold">Search posts<input id="teacherClassroomSearch" type="search" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Title, message or teacher"></label><label class="text-xs font-bold">Type<select id="teacherClassroomFilter" class="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">All posts</option><option value="announcement">Announcements</option><option value="material">Materials</option><option value="post">Class updates</option></select></label><p id="teacherClassroomPostCount" class="w-full text-xs text-slate-500" role="status"></p><p class="w-full text-xs text-slate-500">Teachers can moderate student posts and comments. Students may remove their own contributions when participation is enabled.</p></div>
       <div id="teacherClassroomPosts" class="space-y-3"></div>
     </section>
   </div>
@@ -102,6 +123,6 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-nav.js?v=21a534696b3d"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
-<script type="module" src="js/assessment/classroom-stream.mjs?v=20261120-shared-classroom1"></script>
+<script type="module" src="js/assessment/classroom-stream.mjs?v=20261120-shared-classroom2"></script>
 </body>
 </html>
