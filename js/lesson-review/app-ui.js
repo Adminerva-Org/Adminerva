@@ -53,7 +53,7 @@ function lessonDraftForm(){
   const value=id=>document.getElementById(id)?.value||"";
   return {schoolYear:value("lpSchoolYear"),academicTerm:value("lpAcademicTerm"),courseWeek:value("lpCourseWeek"),
     dateRange:value("lpDateRange"),program:value("lpProgram"),subject:value("lpSubject"),grade:value("lpGradeLevel"),
-    customInstructions:value("lpCustomInstructions")};
+    classOffering:value("lpClassOffering"),customInstructions:value("lpCustomInstructions")};
 }
 function persistLessonDraft(){
   if(!window.currentPlan?.length||!window.currentWeeklyOverview)return;
@@ -65,6 +65,9 @@ function persistLessonDraft(){
       lessonSettings:window.currentLessonSettings||null,referenceFolders:window.currentLessonReferenceFolders||[],
       loadedPersonalPlan:window.loadedPersonalPlan||null,legacySourcePlanId:window.legacySourcePlanId||null,
       loadedPersonalIdentity:window.loadedPersonalIdentity||null,
+      plannerSchoolId:window.currentPlannerSchoolId||"",
+      plannerOfferingId:window.currentPlannerOfferingId||"",
+      plannerClassContext:window.currentPlannerClassContext||null,
       instructionMap:window.cachedInstructionMap||null,
       lessonMeetings:window.currentLessonMeetings||[],
       requiredSessions:window.currentRequiredSessions||[],form:lessonDraftForm()
@@ -476,6 +479,15 @@ window.loadSpecificPlan = function (planData) {
   window.currentTargetGrade = planData.grade_level || document.getElementById("lpGradeLevel")?.value || "Grade 11";
   if(document.getElementById("lpSubject"))document.getElementById("lpSubject").value=window.currentPlanSubject;
   if(document.getElementById("lpProgram"))document.getElementById("lpProgram").value=planData.program_name||"";
+  window.currentPlannerSchoolId=String(planData.school_id||planData.class_context?.schoolId||"");
+  window.currentPlannerOfferingId=String(planData.offering_id||planData.class_context?.offeringId||"");
+  window.currentPlannerClassContext=planData.class_context&&typeof planData.class_context==="object"?{...planData.class_context}:null;
+  if(window.currentPlannerOfferingId){
+    if(typeof window.setPlannerOfferingContext==="function"){
+      if(!window.setPlannerOfferingContext(window.currentPlannerOfferingId))
+        window.pendingPlannerOfferingId=window.currentPlannerOfferingId;
+    }else window.pendingPlannerOfferingId=window.currentPlannerOfferingId;
+  }else if(typeof window.setPlannerOfferingContext==="function")window.setPlannerOfferingContext("");
   window.loadedPersonalIdentity=JSON.stringify([planData.school_year||"2026-2027",planData.grade_level||window.currentTargetGrade,window.currentPlanSubject,planData.safeTerm||planData.academic_term||"FIRST SEMESTER/FIRST QUARTER",planData.safeWeek||planData.course_week||"Week 1"]);
 
   document.getElementById("lpSchoolYear").value =
@@ -591,6 +603,14 @@ workspaceOnReady(()=>{
   set("lpSchoolYear",form.schoolYear);set("lpAcademicTerm",form.academicTerm);set("lpCourseWeek",form.courseWeek);
   set("lpDateRange",form.dateRange);set("lpProgram",form.program);set("lpSubject",form.subject);set("lpGradeLevel",form.grade);
   set("lpCustomInstructions",form.customInstructions);
+  window.currentPlannerSchoolId=String(draft.plannerSchoolId||"");
+  window.currentPlannerOfferingId=String(draft.plannerOfferingId||form.classOffering||"");
+  window.currentPlannerClassContext=draft.plannerClassContext&&typeof draft.plannerClassContext==="object"?{...draft.plannerClassContext}:null;
+  if(window.currentPlannerOfferingId){
+    if(typeof window.setPlannerOfferingContext==="function"){
+      if(!window.setPlannerOfferingContext(window.currentPlannerOfferingId))window.pendingPlannerOfferingId=window.currentPlannerOfferingId;
+    }else window.pendingPlannerOfferingId=window.currentPlannerOfferingId;
+  }
   window.currentPlan=draft.sessions;window.currentWeeklyOverview=draft.weeklyOverview;
   window.currentTargetGrade=draft.targetGrade||form.grade||"";window.currentPlanSubject=draft.planSubject||form.subject||"";
   window.currentPlanTeacher=draft.planTeacher||"";window.currentLessonSettings=draft.lessonSettings||window.currentLessonSettings;
