@@ -6,7 +6,7 @@ const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const params=new URLSearchParams(location.search);
 let picker=null,busy=false,epoch=0,view=["classes","teachers","sections"].includes(params.get("view"))?params.get("view"):"classes";
-let model={teachers:[],offerings:[]},selectedId=String(params.get("offeringId")||""),roster=null;
+let model={teachers:[],offerings:[],advisories:[]},selectedId=String(params.get("offeringId")||""),roster=null;
 
 function platformMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":undefined;}catch{return undefined;}
@@ -19,6 +19,10 @@ function teacherMap(){return new Map((model.teachers||[]).map(row=>[row.uid,row]
 function classLabel(item){return [item.subjectName,item.sectionName].filter(Boolean).join(" · ")||item.offeringId;}
 function classMeta(item){return [item.termName,item.yearName,item.programName].filter(Boolean).join(" · ");}
 function selected(){return (model.offerings||[]).find(row=>row.offeringId===selectedId)||null;}
+function currentAdviser(item=selected()){
+  if(!item)return null;
+  return (model.advisories||[]).find(row=>row.status==="active"&&row.sectionId===item.sectionId&&row.yearId===item.yearId)||null;
+}
 function enrollmentRoute(){
   const school=picker?.scope?.current;
   return school?.schoolId==="manila-cathedral-school"&&school?.compatibilityMode==="v4_only"?
@@ -139,7 +143,7 @@ function renderList(){
   const rows=filterOfferings();if(view==="teachers")renderTeachers(rows);else if(view==="sections")renderSections(rows);else renderClasses(rows);
 }
 function renderTeacherSelectors(){
-  const active=new Set((roster?.staff||[]).filter(row=>row.status==="active").map(row=>row.teacherUid));
+  const active=new Set((roster?.teachers||[]).filter(row=>row.status==="active").map(row=>row.teacherUid));
   const assign=el("csAssignTeacher");assign.replaceChildren(new Option("Choose teacher…",""));
   const handoverTo=el("csHandoverTo");handoverTo.replaceChildren(new Option("Choose replacement…",""));
   for(const row of model.teachers||[]){
@@ -147,14 +151,14 @@ function renderTeacherSelectors(){
     handoverTo.add(new Option(row.name,row.uid));
   }
   const from=el("csHandoverFrom");from.replaceChildren(new Option("Current teacher…",""));
-  for(const row of (roster?.staff||[]).filter(row=>row.status==="active"))from.add(new Option(row.name,row.teacherUid));
+  for(const row of (roster?.teachers||[]).filter(row=>row.status==="active"))from.add(new Option(row.name,row.teacherUid));
   el("csAssignForm").hidden=assign.options.length<=1;
   el("csHandoverForm").hidden=from.options.length<=1||handoverTo.options.length<=1;
 }
 function renderDetail(){
   const item=selected();if(!item){el("csDetail").hidden=true;el("csDetailEmpty").hidden=false;return;}
   el("csDetailEmpty").hidden=true;el("csDetail").hidden=false;el("csDetailTitle").textContent=classLabel(item);el("csDetailMeta").textContent=classMeta(item);
-  const staff=el("csStaffList");staff.replaceChildren();const active=(roster?.staff||[]).filter(row=>row.status==="active");
+  const staff=el("csStaffList");staff.replaceChildren();const active=(roster?.teachers||[]).filter(row=>row.status==="active");
   el("csStaffCount").textContent=active.length+" active";
   if(!active.length)staff.append(empty("No teacher is assigned to this class."));
   for(const row of active){
@@ -169,6 +173,16 @@ function renderDetail(){
     students.sort((a,b)=>String(a.name).localeCompare(String(b.name))).forEach((row,index)=>{const li=make("li","flex gap-3 px-3 py-2 text-sm");li.append(make("span","text-slate-400 w-6 text-right",index+1),make("span","font-medium",row.name));list.append(li);});rosterHost.append(list);
   }
   renderTeacherSelectors();
+  const adviser=currentAdviser(item),teacherById=teacherMap(),adviserSelect=el("csAdviserTeacher");
+  adviserSelect.replaceChildren(new Option("Choose adviser…",""));
+  for(const teacher of (model.teachers||[]).sort((a,b)=>a.name.localeCompare(b.name)))
+    adviserSelect.add(new Option(teacher.name,teacher.uid));
+  if(adviser&&[...adviserSelect.options].some(option=>option.value===adviser.teacherUid))
+    adviserSelect.value=adviser.teacherUid;
+  el("csAdviserCurrent").textContent=adviser?
+    "Current adviser: "+(teacherById.get(adviser.teacherUid)?.name||("Teacher "+adviser.teacherUid.slice(0,8)))+" · "+(item.yearName||"school year"):
+    "No adviser assigned for "+(item.yearName||"this school year")+".";
+  el("csAdviserRemove").disabled=!adviser||busy;
   el("csRecordLink").href="school-class-records.html?offeringId="+encodeURIComponent(item.offeringId);
   el("csEnrollmentClassLink").href=enrollmentRoute();
 }
@@ -197,13 +211,29 @@ async function loadOverview({preserveSelection=false,force=false}={}){
   if(!picker?.scope.current||(busy&&!force))return;const turn=++epoch;say("Loading classes and teaching assignments…");
   try{
     const result=await scoped("faculty_workload");if(turn!==epoch)return;
-    model={teachers:result.teachers||[],offerings:result.offerings||[]};renderSummary();fillFilters();renderList();
+    model={teachers:result.teachers||[],offerings:result.offerings||[],advisories:result.advisories||[]};renderSummary();fillFilters();renderList();
     const enroll=enrollmentRoute();el("csEnrollmentLink").href=enroll;el("csEnrollmentClassLink").href=enroll;
     const requested=preserveSelection?selectedId:(selectedId&&model.offerings.some(row=>row.offeringId===selectedId)?selectedId:"");
     selectedId=requested;roster=null;renderDetail();
     if(selectedId)await openClass(selectedId);else say(model.offerings.length?"Scheduling workspace ready.":"No active classes exist yet. Create course offerings in Academic Configuration.");
-  }catch(error){if(turn===epoch){model={teachers:[],offerings:[]};renderSummary();renderList();say(error?.message||"Classes & Scheduling could not load.",true);}}
+  }catch(error){if(turn===epoch){model={teachers:[],offerings:[],advisories:[]};renderSummary();renderList();say(error?.message||"Classes & Scheduling could not load.",true);}}
 }
+el("csAdviserForm").addEventListener("submit",event=>{
+  event.preventDefault();const item=selected(),teacherUid=el("csAdviserTeacher").value;if(!item||!teacherUid)return;
+  const existing=currentAdviser(item),name=teacherMap().get(teacherUid)?.name||"selected teacher";
+  const reason=prompt((existing?"Reason for changing":"Reason for assigning")+" the section adviser (at least 12 characters):",
+    existing?"Section adviser reassignment":"Official homeroom/advisory assignment");
+  if(reason===null)return;if(reason.trim().length<12){say("Explain the adviser assignment change in at least 12 characters.",true);return;}
+  void mutate("set_section_adviser",{teacherUid,sectionId:item.sectionId,yearId:item.yearId,reason:reason.trim()},
+    name+" is now the adviser for "+item.sectionName+" in "+item.yearName+".");
+});
+el("csAdviserRemove").addEventListener("click",()=>{
+  const item=selected(),adviser=currentAdviser(item);if(!item||!adviser||busy)return;
+  const reason=prompt("Reason for ending this adviser assignment (at least 12 characters):","Advisory responsibility ended");
+  if(reason===null)return;if(reason.trim().length<12){say("Explain the adviser assignment change in at least 12 characters.",true);return;}
+  void mutate("end_section_adviser",{sectionId:item.sectionId,yearId:item.yearId,reason:reason.trim()},
+    "Section adviser assignment ended. Subject teaching assignments were not changed.");
+});
 el("csAssignForm").addEventListener("submit",event=>{
   event.preventDefault();const teacherUid=el("csAssignTeacher").value;if(!teacherUid||!selectedId)return;
   void mutate("assign_teacher",{teacherUid,offeringId:selectedId},"Teacher assigned. Their teaching load now includes this class.");
@@ -222,7 +252,7 @@ window.addEventListener("popstate",()=>{const next=new URLSearchParams(location.
 
 picker=createTenantSchoolPicker({host:el("csSchoolSwitcher"),status:null,onBeforeChange:async()=>{
   if(busy)throw Error("Finish the current class assignment action before switching schools.");
-  ++epoch;model={teachers:[],offerings:[]};selectedId="";roster=null;renderSummary();renderList();renderDetail();
+  ++epoch;model={teachers:[],offerings:[],advisories:[]};selectedId="";roster=null;renderSummary();renderList();renderDetail();
 },onReady:scope=>{if(scope.current?.roles.includes("school_admin")||platformMode()==="assist")void loadOverview();else say("School Administrator access is required.",true);}});
 setView(view,{replace:true});renderSummary();renderDetail();
 await auth.authStateReady();
