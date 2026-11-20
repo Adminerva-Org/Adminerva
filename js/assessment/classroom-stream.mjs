@@ -86,7 +86,7 @@ function renderClasswork(){
     text.append(make("strong","block text-sm",item.title||"Assessment"));
     const state=item.lifecycle==="closed"?"Closed":item.published===true?"Visible to students":"Teacher draft";
     text.append(make("span","block text-xs text-slate-500 mt-1",[item.assessmentType,state,item.dueAt?"Due "+date(item.dueAt):""].filter(Boolean).join(" · ")));
-    const link=make("a","shrink-0 text-xs font-bold text-indigo-700 underline","Review");link.href="school-gradebook.html?view=review&offeringId="+encodeURIComponent(item.offeringId)+"&assessment="+encodeURIComponent(item.taskId);
+    const link=make("a","shrink-0 text-xs font-bold text-indigo-700 underline","Review");link.href="school-gradebook.html?view=review&offeringId="+encodeURIComponent(item.offeringId)+"&task="+encodeURIComponent(item.taskId);
     top.append(text,link);row.append(top);host.append(row);
   }
 }
