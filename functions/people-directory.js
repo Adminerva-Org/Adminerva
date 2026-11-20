@@ -614,13 +614,15 @@ function createPeopleDirectoryService({db}) {
           if(guardianEmail!==undefined)change.primaryGuardianEmail=guardianEmail||null;
           if(guardianMobile!==undefined)change.primaryGuardianMobile=guardianMobile||null;
         }
-        tx.update(ref,change);
+        // All transaction reads must happen before the first write.
+        let memberRef=null,member=null;
         if(person.data().authUid){
-          const memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+id(person.data().authUid));
-          const member=await tx.get(memberRef);
-          if(member.exists&&member.data().schoolId===ctx.schoolId)
-            tx.update(memberRef,{displayName,updatedAt:now});
+          memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+id(person.data().authUid));
+          member=await tx.get(memberRef);
         }
+        tx.update(ref,change);
+        if(member?.exists&&member.data().schoolId===ctx.schoolId)
+          tx.update(memberRef,{displayName,updatedAt:now});
         tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
           action:"person_profile_updated",revision,createdAt:now});
       });
