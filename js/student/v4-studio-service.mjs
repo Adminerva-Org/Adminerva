@@ -237,6 +237,9 @@ export async function archiveV4StudioProject(projectId){
   setRevision(auth.currentUser.uid,activeSchool.schoolId,projectId,result.revision);
   return result;
 }
+export async function getV4StudioExamSession(taskId){
+  return scopedCall(assessmentsApi,"exam_session",{taskId});
+}
 export async function listV4StudioAssignments(){
   const result=await scopedCall(assessmentsApi,"list_student");
   return result?result.assignments||[]:null;
