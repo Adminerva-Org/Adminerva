@@ -193,13 +193,18 @@ function createSchoolStudioProjectService({db}){
         contentDigest:digest,created:false,unchanged:true,examFinalized:true};return;
     }
     const now=FieldValue.serverTimestamp();
+    // Freeze the exact source files once per student/class session. The live
+    // project may be edited next week; this immutable receipt is the evidence
+    // for what the school actually received when the teacher closed this class.
+    const frozenReceipt=receiptRef?{
+      schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
+      projectId,title,language,files,sourceDigest:digestSource(files,language),
+      contentDigest:digest,closingEpoch,savedAt:now
+    }:null;
     if(!current.exists){
      tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,status:"active",
        contentDigest:digest,sourceDigest:digestSource(files,language),revision:1,createdAt:now,updatedAt:now});
-     if(receiptRef)tx.create(receiptRef,{
-       schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
-       projectId,projectRevision:1,contentDigest:digest,closingEpoch,savedAt:now
-     });
+     if(receiptRef)tx.create(receiptRef,{...frozenReceipt,projectRevision:1});
      result={projectId,revision:1,contentDigest:digest,created:true,examFinalized:Boolean(receiptRef)};return;
     }
     const data=current.data();
@@ -213,20 +218,14 @@ function createSchoolStudioProjectService({db}){
     if(data.revision!==expected)
      deny("failed-precondition","Project changed in school storage. Reload before overwriting it.");
     if(data.contentDigest===digest&&data.title===title&&data.language===language){
-     if(receiptRef)tx.create(receiptRef,{
-       schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
-       projectId,projectRevision:data.revision,contentDigest:digest,closingEpoch,savedAt:now
-     });
+     if(receiptRef)tx.create(receiptRef,{...frozenReceipt,projectRevision:data.revision});
      result={projectId,revision:data.revision,contentDigest:digest,created:false,unchanged:true,
        examFinalized:Boolean(receiptRef)};return;
     }
     const revision=data.revision+1;
     tx.update(ref,{title,language,files,artifacts,contentDigest:digest,
       sourceDigest:digestSource(files,language),revision,updatedAt:now});
-    if(receiptRef)tx.create(receiptRef,{
-      schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
-      projectId,projectRevision:revision,contentDigest:digest,closingEpoch,savedAt:now
-    });
+    if(receiptRef)tx.create(receiptRef,{...frozenReceipt,projectRevision:revision});
     result={projectId,revision,contentDigest:digest,created:false,unchanged:false,
       examFinalized:Boolean(receiptRef)};
    });
