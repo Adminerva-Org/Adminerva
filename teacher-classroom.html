@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Classroom Stream · Adminerva</title>
-  <meta name="description" content="Publish class announcements and manage the student subject stream.">
+  <title>Classroom · Adminerva</title>
+  <meta name="description" content="Shared teacher and student class workspace for communication, classwork, roster, grading and records.">
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -15,8 +15,8 @@
 <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
   <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
     <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Classroom</p>
-    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Classroom Stream</h1>
-    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Publish announcements and class updates to one verified subject/section. Deployed assessments automatically appear in the student stream without reposting them here.</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Classroom</h1>
+    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Open one assigned class and work in the same space your students use. Teachers control announcements, classwork, feedback and records; students receive the class stream, tasks, feedback and released results.</p>
     <div id="teacherClassroomSchoolSwitcher" hidden class="mt-4 max-w-sm"></div>
   </header>
 
@@ -30,7 +30,31 @@
     <p id="teacherClassroomStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Loading your assigned classrooms…</p>
   </section>
 
-  <div class="grid lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)] gap-5 items-start">
+  <nav class="rounded-2xl border border-slate-200 bg-white shadow-sm p-2 flex gap-2 overflow-x-auto" aria-label="Selected classroom">
+    <a href="#class-stream" class="shrink-0 rounded-lg bg-slate-900 text-white px-4 py-2.5 text-sm font-extrabold">Stream</a>
+    <a href="#class-classwork" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Classwork</a>
+    <a href="#class-people" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">People</a>
+    <a id="teacherClassroomSubmissionsLink" href="school-gradebook.html?view=submissions" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Submissions</a>
+    <a id="teacherClassroomGradesLink" href="school-gradebook.html?view=results" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Grades</a>
+    <a id="teacherClassroomRecordLink" href="class-record.html" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Class Record</a>
+  </nav>
+
+  <section class="grid lg:grid-cols-2 gap-5">
+    <article id="class-classwork" class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 scroll-mt-24">
+      <div class="flex items-start justify-between gap-3">
+        <div><p class="text-xs uppercase tracking-wider font-bold text-indigo-700">Classwork</p><h2 class="text-xl font-extrabold mt-1">Assigned work</h2><p class="text-sm text-slate-600 mt-1">Deployed assessments for this class appear here and in the student classroom automatically.</p></div>
+        <a id="teacherClassroomAssessmentLink" href="assessment-studio.html" class="shrink-0 rounded-lg border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700">Create / deploy</a>
+      </div>
+      <div id="teacherClassroomClasswork" class="mt-4 space-y-2"><p class="text-sm text-slate-500">Choose a classroom to load classwork.</p></div>
+    </article>
+    <article id="class-people" class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 scroll-mt-24">
+      <div><p class="text-xs uppercase tracking-wider font-bold text-emerald-700">People</p><h2 class="text-xl font-extrabold mt-1">Class roster</h2><p class="text-sm text-slate-600 mt-1">Roster membership comes from official school enrollment. Teachers can work with the class but do not change registrar placement here.</p></div>
+      <p id="teacherClassroomRosterCount" class="text-xs font-bold text-slate-500 mt-3"></p>
+      <div id="teacherClassroomRoster" class="mt-2 max-h-72 overflow-auto rounded-xl border border-slate-200"><p class="p-4 text-sm text-slate-500">Choose a classroom to load students.</p></div>
+    </article>
+  </section>
+
+  <div id="class-stream" class="grid lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)] gap-5 items-start scroll-mt-24">
     <section class="rounded-2xl border border-cyan-200 bg-white shadow-sm overflow-hidden lg:sticky lg:top-20">
       <div class="bg-cyan-50 border-b border-cyan-200 p-4 sm:p-5">
         <p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Post to class</p>
@@ -67,7 +91,7 @@
     <section class="space-y-4">
       <div class="flex items-end justify-between gap-3">
         <div><p class="text-xs uppercase tracking-wider font-bold text-slate-500">Teacher posts</p><h2 class="text-2xl font-extrabold mt-1">Recent stream posts</h2></div>
-        <a href="assessment-studio.html" class="text-sm font-bold text-indigo-700 underline">Manage assignments →</a>
+        <a id="teacherClassroomClassworkLink" href="#class-classwork" class="text-sm font-bold text-indigo-700 underline">View classwork ↑</a>
       </div>
       <div class="rounded-xl border border-slate-200 bg-white p-3 flex flex-wrap items-end gap-3"><label class="flex-1 min-w-[160px] text-xs font-bold">Search posts<input id="teacherClassroomSearch" type="search" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Title, message or teacher"></label><label class="text-xs font-bold">Type<select id="teacherClassroomFilter" class="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">All posts</option><option value="announcement">Announcements</option><option value="material">Materials</option><option value="post">Class updates</option></select></label><p id="teacherClassroomPostCount" class="w-full text-xs text-slate-500" role="status"></p><p class="w-full text-xs text-slate-500">Only the author may edit, pin or remove their posts. School permissions are checked when saving.</p></div>
       <div id="teacherClassroomPosts" class="space-y-3"></div>
@@ -78,6 +102,6 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-nav.js?v=21a534696b3d"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
-<script type="module" src="js/assessment/classroom-stream.mjs?v=a80e713d1f2e"></script>
+<script type="module" src="js/assessment/classroom-stream.mjs?v=20261120-shared-classroom1"></script>
 </body>
 </html>
