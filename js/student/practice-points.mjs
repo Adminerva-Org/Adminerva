@@ -1,8 +1,9 @@
 /** Student submissions, practice progress and isolated code workspaces: practice points. */
 import {COURSES} from "./practice-courses.mjs?v=1.3.0";
-export const MISSION_IDS=COURSES.flatMap(course=>course.missions.map(mission=>mission.id));
+export const MISSION_IDS=[...new Set(COURSES.flatMap(course=>course.missions.map(mission=>mission.id)))];
+const missionIdSet=new Set(MISSION_IDS);
 export function practicePoints(ids){
-  const missions=[...new Set(Array.isArray(ids)?ids:[])].filter(id=>MISSION_IDS.includes(id));
+  const missions=[...new Set(Array.isArray(ids)?ids:[])].filter(id=>missionIdSet.has(id));
   return {missions,completed:missions.length,points:missions.length*10,maximum:MISSION_IDS.length*10};
 }
 export function classStandings(profiles,scores,section){

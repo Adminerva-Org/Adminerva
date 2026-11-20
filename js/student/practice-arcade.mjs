@@ -1,5 +1,5 @@
 /** Independent practice simulations. No authoritative XP or course credit is issued here. */
-import {expansionModes,expansionRenderers} from "./practice-arcade-expansion.mjs?v=1.0.0";
+import {expansionModes,expansionRenderers} from "./practice-arcade-expansion.mjs?v=3295c0688d42";
 import {moveItem,swapItems,enableArcadeDrag} from "./arcade-interactions.mjs?v=1.0.0";
 const make=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 const btn=(text,action,cls="arcade-button")=>{const e=make("button",text,cls);e.type="button";e.addEventListener("click",action);return e;};
