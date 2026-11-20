@@ -1232,18 +1232,27 @@ export function createProjectStudio({
     }
   }
 
+  function evidenceSourceExcerpt(loc,state){
+    const snippet=evidenceSnippet(state,loc);
+    const excerpt=snippet.map(item=>
+      '<span class="evidence-code-line'+(item.focus?' is-target':'')+'"><span class="evidence-line-number">'+
+      item.line+'</span><span class="evidence-line-text">'+escapeHtml(item.code||" ")+'</span></span>'
+    ).join("");
+    return '<div class="evidence-source-reference">'+
+      (loc.note?'<p class="evidence-source-note">'+escapeHtml(loc.note)+'</p>':'')+
+      '<div class="evidence-proof-head"><strong>'+
+      escapeHtml(loc.file)+':'+loc.line+'</strong><button type="button" data-evidence-file="'+
+      escapeHtml(loc.file)+'" data-evidence-line="'+loc.line+'" data-evidence-column="'+loc.column+
+      '" data-evidence-length="'+loc.length+'">Open in editor</button></div>'+
+      '<pre class="evidence-code" aria-label="Source excerpt near '+escapeHtml(loc.file)+':'+loc.line+'"><code>'+
+      excerpt+'</code></pre></div>';
+  }
   function evidenceProof(row,loc,state){
     if(row.kind==="source"){
-      const snippet=evidenceSnippet(state,loc);
-      const excerpt=snippet.map(item=>
-        '<span class="evidence-code-line'+(item.focus?' is-target':'')+'"><span class="evidence-line-number">'+
-        item.line+'</span><span class="evidence-line-text">'+escapeHtml(item.code||" ")+'</span></span>'
-      ).join("");
-      return '<li class="evidence-proof"><div class="evidence-proof-head"><strong>'+
-        escapeHtml(loc.file)+':'+loc.line+'</strong><button type="button" data-evidence-file="'+
-        escapeHtml(loc.file)+'" data-evidence-line="'+loc.line+'" data-evidence-column="'+loc.column+'" data-evidence-length="'+loc.length+'">Open in editor</button></div>'+
-        '<pre class="evidence-code" aria-label="Source excerpt near '+escapeHtml(loc.file)+':'+loc.line+'"><code>'+
-        excerpt+'</code></pre></li>';
+      const linked=(Array.isArray(loc.related)?loc.related:[]).slice(0,4);
+      return '<li class="evidence-proof">'+evidenceSourceExcerpt(loc,state)+
+        (linked.length?'<div class="evidence-related-sources"><p class="evidence-detail-heading">Related source declarations</p>'+
+          linked.map(other=>evidenceSourceExcerpt(other,state)).join("")+'</div>':'')+'</li>';
     }
     if(row.kind==="activity"){
       return '<li class="evidence-proof"><strong>'+escapeHtml(loc.label||"Recorded operation")+'</strong>'+
@@ -1275,7 +1284,7 @@ export function createProjectStudio({
       const rows=visible.filter(row=>row.group===group);
       return '<section class="evidence-group" aria-label="'+escapeHtml(group)+'">'+
         '<h3>'+escapeHtml(group)+'</h3><div class="evidence-grid">'+rows.map(row=>{
-          const status=row.detected?"Pattern detected":"Not detected";
+          const status=row.detected?(row.strength==="linked"?"Related source declarations found":row.kind==="activity"?"Recorded activity found":"Pattern detected"):"Not detected";
           const details=row.locations.map(loc=>evidenceProof(row,loc,activeProject.state)).join("");
           const count=row.matchCount||0;
           const detailsLabel=row.kind==="source"?"View source evidence":row.kind==="activity"?"View SQL activity":"View saved design";

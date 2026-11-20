@@ -68,3 +68,36 @@ test("partial SQL history supplies inspectable activity without a false complete
   assert.equal(item.locations.find(x=>x.label==="SELECT").sql,"SELECT * FROM grades");
   assert.ok(item.feedback.length>15);
 });
+
+test("linked inheritance and unannotated overriding show the related parent source",()=>{
+  const project={state:{files:{
+    "Parent.java":"abstract class Parent {\n  public String label(){ return \"parent\"; }\n}",
+    "Child.java":"class Child extends Parent {\n  public String label(){ return \"child\"; }\n}"
+  }}};
+  const inheritance=get(project,"inheritance"),override=get(project,"overriding");
+  assert.equal(inheritance.detected,true);
+  assert.equal(inheritance.strength,"linked");
+  assert.equal(inheritance.locations[0].related[0].file,"Parent.java");
+  assert.equal(override.detected,true);
+  assert.equal(override.strength,"linked");
+  assert.equal(override.locations[0].related[0].line,2);
+  assert.equal(override.locations[0].file,"Child.java");
+});
+test("a local method call or return does not create fake overloads",()=>{
+  const project={state:{files:{"Main.java": [
+    "class Main {",
+    "  int render(int value){ return render(value + 1); }",
+    "  int read(){ return render(2); }",
+    "  void action(){ String text = new String(); }",
+    "}"
+  ].join("\n")}}};
+  assert.equal(get(project,"overloading").detected,false);
+});
+test("an external parent or annotated override is only a syntax candidate",()=>{
+  const project={state:{files:{"Example.java":
+    "class Example extends ExternalBase {\n  @Override public void run(){}\n}"}}};
+  assert.equal(get(project,"inheritance").strength,"pattern");
+  assert.equal(get(project,"inheritance").locations[0].related.length,0);
+  assert.equal(get(project,"overriding").detected,true);
+  assert.equal(get(project,"overriding").strength,"pattern");
+});
