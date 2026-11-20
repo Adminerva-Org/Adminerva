@@ -202,6 +202,12 @@ let examPolicyPending=Boolean(examLinkId),examPolicy=null;
 // disallow direct browser reads. Lock the editor before the final save begins.
 let watchedExamId="",examSessionTimer=null,examNotificationUnsub=null,examSessionChecking=false,examSessionClosing=false;
 let examLastContact=0,examSessionErrorCount=0,examMonitorPaused=false;
+function stopStudioExamWatcher(){
+  watchedExamId="";
+  clearInterval(examSessionTimer);examSessionTimer=null;
+  examNotificationUnsub?.();examNotificationUnsub=null;
+  examSessionErrorCount=0;examMonitorPaused=false;
+}
 function examCloseOverlay(){
   let host=document.getElementById("studioExamClosingOverlay");
   if(host)return host;
@@ -272,6 +278,9 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
 }
 async function checkStudioExamSession(taskId=watchedExamId){
   if(!taskId||examSessionClosing||examSessionChecking)return;
+  if(projectStudio?.getActiveProject?.()?.assessment?.taskId!==taskId){
+    stopStudioExamWatcher();return;
+  }
   examSessionChecking=true;
   try{
     const state=await getV4StudioExamSession(taskId);
@@ -316,6 +325,7 @@ async function checkStudioExamSession(taskId=watchedExamId){
 }
 async function watchStudioExam(taskId){
   if(!taskId||examSessionClosing||watchedExamId===taskId)return;
+  if(projectStudio?.getActiveProject?.()?.assessment?.taskId!==taskId)return;
   try{
     const assignments=await listV4StudioAssignments();
     const task=assignments?.find(item=>item.taskId===taskId&&
@@ -351,16 +361,16 @@ window.addEventListener("adminerva:assessment-project-ready",event=>
 window.addEventListener("adminerva:studio-ready",event=>{
   const project=projectStudio?.getActiveProject?.();
   const taskId=String(project?.assessment?.taskId||"");
-  if(taskId)void watchStudioExam(taskId);
+  if(taskId){
+    if(watchedExamId&&watchedExamId!==taskId)stopStudioExamWatcher();
+    void watchStudioExam(taskId);
+  }else if(watchedExamId)stopStudioExamWatcher();
 });
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible"&&watchedExamId&&!examSessionClosing)
     void checkStudioExamSession();
 });
-window.addEventListener("pagehide",()=>{
-  clearInterval(examSessionTimer);examSessionTimer=null;
-  examNotificationUnsub?.();examNotificationUnsub=null;
-});
+window.addEventListener("pagehide",()=>stopStudioExamWatcher());
 
 const examRestrictedActions=["importZipBtn","legacyImportBtn","undoRestoreBtn",
   "cloudLoadProjectBtn","loadProjectBtn","snapshotBtn","aiTutorBtn","resetBtn"];
