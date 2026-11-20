@@ -270,17 +270,21 @@ export function createProjectStudio({
     clearTimeout(cloudTimers.get(id));
     cloudTimers.set(id,setTimeout(()=>{void flushOne(id);},900));
   }
-  async function flushOne(id){
+  async function flushOne(id,closingSessionEpoch=0){
     clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
     if(!cloudEnabled||deletedProjects.has(id))return false;
     if(cloudWrites.has(id)){
       await cloudWrites.get(id);
-      return cloudPending.has(id)?flushOneAfterWrite(id):true;
+      return closingSessionEpoch?flushOneAfterWrite(id,closingSessionEpoch):
+        cloudPending.has(id)?flushOneAfterWrite(id):true;
     }
-    return flushOneAfterWrite(id);
+    return flushOneAfterWrite(id,closingSessionEpoch);
   }
-  async function flushOneAfterWrite(id){
-    if(cloudWrites.has(id))return cloudWrites.get(id);
+  async function flushOneAfterWrite(id,closingSessionEpoch=0){
+    if(cloudWrites.has(id)){
+      await cloudWrites.get(id);
+      return flushOneAfterWrite(id,closingSessionEpoch);
+    }
     const snapshot=cloudPending.get(id);if(!snapshot||deletedProjects.has(id))return true;
     const work=(async()=>{
       try{
@@ -290,8 +294,11 @@ export function createProjectStudio({
         let marker;
         if(school){
           const base=readMarker(id);
-          const result=await syncV4StudioProject(snapshot,snapshot.state,{quiet:true,expectedRevision:base.kind==="school"&&base.schoolId===school.schoolId?base.revision:null});
+          const result=await syncV4StudioProject(snapshot,snapshot.state,{quiet:true,expectedRevision:base.kind==="school"&&base.schoolId===school.schoolId?base.revision:null,
+            closingSaveSessionEpoch:closingSessionEpoch});
           if(!result)throw Error("School cloud storage is unavailable.");
+          if(closingSessionEpoch&&result.examFinalized!==true)
+            throw Error("The final exam checkpoint was not confirmed by the school server.");
           marker={kind:"school",schoolId:school.schoolId,revision:result.revision};
         }else{
           if(scopeToken)throw Error("Reconnect your verified school to save this project.");
@@ -326,11 +333,21 @@ export function createProjectStudio({
     cloudWrites.set(id,work);
     try{return await work;}finally{if(cloudWrites.get(id)===work)cloudWrites.delete(id);}
   }
-  async function flushCloudSaves(){
+  async function flushCloudSaves({closingSessionEpoch=0}={}){
     if(!cloudEnabled)return true;
+    if(closingSessionEpoch){
+      // Finalize only the active assessment project. Do not overwrite a
+      // different project or accidentally bless an earlier cloud revision.
+      if(!activeProject?.id||activeProject.assessment?.provisionedBy!=="assessment-launch")
+        return false;
+      const id=activeProject.id;
+      scheduleCloudSave(activeProject);
+      const saved=await flushOne(id,closingSessionEpoch);
+      return Boolean(saved)&&!cloudPending.has(id);
+    }
     const ids=[...cloudPending.keys()];
     if(!ids.length)return true;
-    const result=await Promise.all(ids.map(flushOne));
+    const result=await Promise.all(ids.map(id=>flushOne(id)));
     return result.every(Boolean)&&!cloudPending.size;
   }
   function recoverCopy(project){
