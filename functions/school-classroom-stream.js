@@ -68,7 +68,8 @@ function createSchoolClassroomStreamService({db}){
         postId:item.id,kind:item.kind||"announcement",title:item.title||"",
         body:item.body||"",linkUrl:item.linkUrl||"",pinned:item.pinned===true,
         authorName:item.authorName||"Teacher",createdAt:millis(item.createdAt),
-        updatedAt:millis(item.updatedAt),revision:Number(item.revision||1)
+        updatedAt:millis(item.updatedAt),revision:Number(item.revision||1),
+        canEdit:authority.canTeach&&(ctx.roles.includes("school_admin")||item.authorUid===ctx.uid)
       }));
     const grantSnap=await db.collection(prefix+"staff_assignments").where("offeringId","==",offeringId).limit(31).get();
     const activeTeachers=grantSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
@@ -111,29 +112,33 @@ function createSchoolClassroomStreamService({db}){
   }
 
   const postId=checkId(input.postId,"Classroom post ID",128),ref=posts.doc(postId);
+  // A teacher may have the same classroom open in multiple tabs. Revisions
+  // prevent an older editor from overwriting a newer saved post.
+  async function mutatePost(change){
+    return db.runTransaction(async tx=>{
+      const current=await tx.get(ref);
+      if(!current.exists||current.data().schoolId!==ctx.schoolId||
+         current.data().offeringId!==offeringId||current.data().status!=="active")
+        deny("not-found","Classroom post not found. Refresh the stream.");
+      const data=current.data();
+      if(!ctx.roles.includes("school_admin")&&data.authorUid!==ctx.uid)
+        deny("permission-denied","Only the author may change this classroom post.");
+      const revision=Number(data.revision||1),expected=Number(input.expectedRevision||0);
+      if(expected&&revision!==expected)
+        deny("failed-precondition","This classroom post changed in another tab. Refresh before editing it again.");
+      tx.update(ref,{...change,revision:revision+1,updatedAt:FieldValue.serverTimestamp()});
+      return revision+1;
+    });
+  }
   if(action==="update"){
-    const current=await ref.get();
-    if(!current.exists||current.data().schoolId!==ctx.schoolId||current.data().offeringId!==offeringId||
-      current.data().status!=="active")deny("not-found","Classroom post not found.");
-    const data=current.data();
-    if(!ctx.roles.includes("school_admin")&&data.authorUid!==ctx.uid)
-      deny("permission-denied","Only the author or a school administrator can edit this post.");
     const title=clean(input.title,160),body=clean(input.body,6000),linkUrl=safeUrl(input.linkUrl);
     if(!body&&!title)deny("invalid-argument","A classroom post cannot be empty.");
-    const revision=Number(data.revision||1)+1;
-    await ref.update({title,body,linkUrl,pinned:input.pinned===true,revision,updatedAt:FieldValue.serverTimestamp()});
+    const revision=await mutatePost({title,body,linkUrl,pinned:input.pinned===true});
     return {postId,revision,status:"active"};
   }
-
   if(action==="archive"){
-    const current=await ref.get();
-    if(!current.exists||current.data().schoolId!==ctx.schoolId||current.data().offeringId!==offeringId)
-      deny("not-found","Classroom post not found.");
-    if(!ctx.roles.includes("school_admin")&&current.data().authorUid!==ctx.uid)
-      deny("permission-denied","Only the author or a school administrator can remove this post.");
-    await ref.update({status:"archived",archivedAt:FieldValue.serverTimestamp(),archivedByUid:ctx.uid,
-      updatedAt:FieldValue.serverTimestamp(),revision:Number(current.data().revision||1)+1});
-    return {postId,status:"archived"};
+    const revision=await mutatePost({status:"archived",archivedAt:FieldValue.serverTimestamp(),archivedByUid:ctx.uid});
+    return {postId,revision,status:"archived"};
   }
 
   deny("invalid-argument","Unknown classroom stream operation.");

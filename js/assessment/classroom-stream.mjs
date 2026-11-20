@@ -51,7 +51,7 @@ function renderPosts(){
     const top=make("div","flex flex-wrap items-start justify-between gap-3"),identity=make("div","min-w-0 break-words");
     identity.append(make("p","text-xs uppercase tracking-wider font-bold "+(post.pinned?"text-cyan-800":"text-slate-500"),(post.pinned?"Pinned · ":"")+(post.kind||"post")),make("h3","text-lg font-extrabold mt-1",post.title||"Classroom update"),make("p","text-xs text-slate-500 mt-1",(post.authorName||"Teacher")+" · "+date(post.createdAt)+(Number(post.revision)>1?" · edited":"")));
     top.append(identity);
-    if(canPost&&post.canEdit!==false){
+    if(canPost&&post.canEdit===true){
       const actions=make("div","flex flex-wrap gap-2");
       for(const [caption,handler] of [["Edit",()=>beginEdit(post)],[post.pinned?"Unpin":"Pin",()=>void changePin(post)],["Remove",()=>void archivePost(post)]]){
         const control=make("button","rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold "+(caption==="Remove"?"text-rose-700":"text-slate-700"),caption);control.type="button";control.disabled=busy;control.addEventListener("click",handler);actions.append(control);
@@ -92,16 +92,16 @@ async function writePost(action,details,success){
   try{await scoped(streamApi,action,{offeringId:id,...details});
     if(action==="create"||action==="update"&&editing){if(action==="create")dropDraft(id);restoreDraft(id);}
     const refreshed=await loadPosts();say(success+(refreshed?"":" The change was saved, but the stream could not refresh. Select Refresh."),!refreshed);return true;
-  }catch(error){say(error?.message||"Classroom post could not be saved.",true);return false;}
+  }catch(error){say(error?.message||"Classroom post could not be saved. The unsaved composer was retained.",true);return false;}
   finally{setBusy(false);}
 }
-async function archivePost(post){if(busy||editing||!confirm("Remove this classroom post? It will no longer appear in the student stream."))return;await writePost("archive",{postId:post.postId},"Classroom post removed.");}
-async function changePin(post){if(busy||editing)return;await writePost("update",{postId:post.postId,title:post.title,body:post.body,linkUrl:post.linkUrl,pinned:!post.pinned},post.pinned?"Post unpinned.":"Post pinned.");}
+async function archivePost(post){if(busy||editing||post.canEdit!==true||!confirm("Remove this classroom post? It will no longer appear in the student stream."))return;await writePost("archive",{postId:post.postId,expectedRevision:post.revision},"Classroom post removed.");}
+async function changePin(post){if(busy||editing||post.canEdit!==true)return;await writePost("update",{postId:post.postId,expectedRevision:post.revision,title:post.title,body:post.body,linkUrl:post.linkUrl,pinned:!post.pinned},post.pinned?"Post unpinned.":"Post pinned.");}
 form.addEventListener("input",keepDraft);
 form.addEventListener("submit",event=>{
   event.preventDefault();if(busy||!canPost||!current())return;
   const data=readComposer(),title=data.title.trim(),body=data.body.trim();if(!title&&!body){say("Write a title or message before publishing.",true);el("teacherClassroomBody").focus();return;}
-  const action=editing?"update":"create",details={kind:data.kind,title,body,linkUrl:data.link.trim(),pinned:data.pinned,...(editing?{postId:editing.postId}:{})};
+  const action=editing?"update":"create",details={kind:data.kind,title,body,linkUrl:data.link.trim(),pinned:data.pinned,...(editing?{postId:editing.postId,expectedRevision:editing.revision}:{})};
   void writePost(action,details,editing?"Classroom post updated.":"Published to "+label(current())+". Students can now see it in their subject stream.");
 });
 el("teacherClassroomCancelEdit").addEventListener("click",()=>{if(!busy)restoreDraft(select.value);});

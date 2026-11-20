@@ -89,10 +89,12 @@ function renderHeader(){
 function stateFor(task,submission,grade){
   if(grade)return {label:"Graded",tone:"emerald",action:false};
   if(submission?.error)return {label:"Status unavailable",tone:"slate",action:false};
-  if(submission?.status==="reopened")return {label:"Revision requested",tone:"amber",action:true};
+  if(submission?.status==="reopened")return Number(submission.revisionDueAt||0)>Date.now()?
+    {label:"Revision requested",tone:"amber",action:true}:{label:"Revision expired",tone:"rose",action:false};
   if(submission?.submitted)return {label:submission.status==="approved"?"Approved":"Submitted",tone:"blue",action:false};
   if(task.windowStatus==="upcoming")return {label:"Upcoming",tone:"slate",action:false};
-  if(task.windowStatus==="closed")return {label:"Past due",tone:"rose",action:true};
+  if(task.windowStatus==="closed")return task.allowLateSubmissions===true?
+    {label:"Late submission",tone:"amber",action:true}:{label:"Past due",tone:"rose",action:false};
   return {label:"To do",tone:"indigo",action:true};
 }
 function badge(label,tone){
@@ -118,7 +120,7 @@ function renderSummary(tasks,statuses,grades,posts,availability={}){
   const host=el("subjectSummary");host.replaceChildren(
     summaryCard(!current||unknown||availability.assignments===false?"—":todo,"Needs my action",unknown?"Some statuses unavailable":!current||availability.assignments===false?"Not loaded":todo?"Check due dates":"You’re caught up"),
     summaryCard(!current||unknown||availability.assignments===false?"—":submitted,"Submitted","Waiting for review"),
-    summaryCard(!current||availability.grades===false?"—":grades.size,"Released results","Teacher-published"),
+    summaryCard(!current||availability.assignments===false||availability.grades===false?"—":grades.size,"Released results",availability.assignments===false?"Assignment list unavailable":"Teacher-published"),
     summaryCard(!current||availability.posts===false?"—":announcements,"Announcements","Teacher posts")
   );
 }
@@ -177,13 +179,13 @@ function renderUpcoming(tasks,statuses,grades,availability={}){
     host.append(row);
   }
 }
-function renderStream(posts,tasks,statuses,grades){
-  streamData={posts,tasks,statuses,grades};streamLimit=20;paintStream();
+function renderStream(posts,tasks,statuses,grades,availability={}){
+  streamData={posts,tasks,statuses,grades,availability};streamLimit=20;paintStream();
 }
 function paintStream(){
   const pinnedHost=el("subjectPinnedPosts"),host=el("subjectStream"),more=el("subjectStreamMore");pinnedHost.replaceChildren();host.replaceChildren();more.hidden=true;
   if(!streamData)return;
-  const {posts,tasks,statuses,grades}=streamData,filter=el("subjectStreamFilter").value,term=el("subjectStreamSearch").value.trim().toLowerCase();
+  const {posts,tasks,statuses,grades,availability}=streamData,filter=el("subjectStreamFilter").value,term=el("subjectStreamSearch").value.trim().toLowerCase();
   const matches=values=>!term||values.some(value=>String(value||"").toLowerCase().includes(term));
   const visiblePosts=posts.filter(post=>(filter==="all"||filter===post.kind)&&matches([post.title,post.body,post.authorName]));
   for(const post of visiblePosts.filter(item=>item.pinned))pinnedHost.append(postCard(post,true));
@@ -194,7 +196,7 @@ function paintStream(){
   items.sort((a,b)=>b.time-a.time);
   el("subjectStreamCount").textContent=current?(Math.min(items.length,streamLimit)+pinnedHost.children.length)+" of "+(items.length+pinnedHost.children.length)+" matching items shown.":"";
   if(!items.length&&!pinnedHost.children.length){
-    host.append(make("div","rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center",!current?"Classroom activity is not available.":filter!=="all"||term?"No activity matches these filters.":"Nothing has been posted in this classroom yet. New announcements, assignments and results will appear here."));
+    host.append(make("div","rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center",!current?"Classroom activity is not available.":filter!=="all"||term?"No activity matches these filters.":Object.values(availability).some(value=>value===false)?"Some classroom activity is unavailable. Refresh to try again.":"Nothing has been posted in this classroom yet. New announcements, assignments and results will appear here."));
     return;
   }
   for(const item of items.slice(0,streamLimit)){
@@ -262,7 +264,7 @@ async function refresh(){
     const teacherNames=(streamResult.teachers||[]).map(item=>item.name).filter(Boolean);
     el("subjectClassroomMeta").textContent=[courseLabel(current),teacherNames.length?"Teacher: "+teacherNames.join(", "):""].filter(Boolean).join(" · ")||"Active school classroom";
     const availability={assignments:!assignmentResult.error,grades:!gradeResult.error,posts:!streamResult.error};
-    renderSummary(tasks,statuses,grades,posts,availability);renderUpcoming(tasks,statuses,grades,availability);renderStream(posts,tasks,statuses,grades);
+    renderSummary(tasks,statuses,grades,posts,availability);renderUpcoming(tasks,statuses,grades,availability);renderStream(posts,tasks,statuses,grades,availability);
     const missing=[assignmentResult.error?"classwork":"",gradeResult.error?"grades":"",streamResult.error?"announcements":"",[...statuses.values()].some(row=>row.error)?"some submission statuses":""].filter(Boolean);
     setStatus(missing.length?"Partially loaded. Unavailable: "+missing.join(", ")+". Refresh to retry.":tasks.length||posts.length||grades.size?"Classroom is up to date.":"This classroom has no activity yet.",Boolean(missing.length));
   }catch(error){
