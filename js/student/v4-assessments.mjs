@@ -14,6 +14,7 @@ const assignmentParams=new URLSearchParams(location.search);
 const requestedSubjectId=assignmentParams.get("subjectId")||"";
 const requestedOfferingId=assignmentParams.get("offeringId")||"";
 const requestedSubjectName=assignmentParams.get("subject")||"";
+const requestedConversationTaskId=assignmentParams.get("conversation")||"";
 
 function node(tag,className,text){
   const item=document.createElement(tag);
@@ -55,6 +56,7 @@ if(panel&&list&&status&&schoolHost){
   const submissionsApi=httpsCallable(functions,"schoolStudioSubmissions");
   const generalSubmissionsApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const gradebookApi=httpsCallable(functions,"schoolGradebook");
+  const conversationApi=httpsCallable(functions,"schoolAssessmentConversation");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const reclaimsApi=httpsCallable(functions,"schoolReclaims");
   let renderGeneration=0,picker=null,githubTask=null,githubTaskStatus=null;
@@ -65,6 +67,58 @@ if(panel&&list&&status&&schoolHost){
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
     scope.assertLease(lease);
     return result;
+  }
+  function privateConversation(scope,task){
+    const details=node("details","mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3");
+    const summary=node("summary","font-bold text-cyan-950 cursor-pointer","Private conversation with teacher");
+    const statusNode=node("p","text-xs text-cyan-900 mt-2","Open to load learner-specific messages.");
+    const host=node("div","hidden mt-3 max-h-56 overflow-auto rounded-lg border border-cyan-200 bg-white p-3 space-y-2");
+    const form=node("form","hidden mt-3 flex flex-col sm:flex-row gap-2");
+    const input=node("textarea","min-w-0 flex-1 rounded-lg border border-cyan-300 bg-white p-3 text-sm");
+    input.rows=2;input.maxLength=4000;input.placeholder="Ask your teacher a private question about this assessment…";input.required=true;
+    const send=node("button","self-end rounded-lg bg-cyan-800 text-white font-bold px-4 py-2.5","Send privately");send.type="submit";
+    form.append(input,send);details.append(summary,statusNode,host,form);
+    let loaded=false,loading=false,conversation=null;
+    const paint=()=>{
+      host.replaceChildren();host.classList.remove("hidden");
+      const messages=conversation?.messages||[];
+      if(!messages.length)host.append(node("p","text-sm text-slate-500","No private messages yet."));
+      for(const message of messages){
+        const mine=message.authorUid===auth.currentUser?.uid,row=node("div","rounded-lg border p-3 "+(mine?"border-cyan-200 bg-cyan-50":"border-slate-200 bg-slate-50"));
+        row.append(node("p","text-xs font-bold "+(mine?"text-cyan-800":"text-slate-600"),(mine?"You":message.authorName||"Teacher")+" · "+date(message.createdAt)),
+          node("p","mt-1 text-sm text-slate-800 whitespace-pre-wrap break-words",message.body||""));
+        host.append(row);
+      }
+      host.scrollTop=host.scrollHeight;
+      form.classList.toggle("hidden",conversation?.canSend===false);
+      statusNode.textContent=conversation?.canSend===false?"This assessment conversation is closed.":"Only you and the currently responsible teacher can read this thread.";
+      input.disabled=loading||conversation?.canSend===false;send.disabled=loading||conversation?.canSend===false;
+    };
+    const load=async(force=false)=>{
+      if((loaded&&!force)||loading||!picker?.scope.current)return;
+      loading=true;statusNode.textContent="Loading private assessment messages…";input.disabled=true;send.disabled=true;
+      try{
+        conversation=await scoped(scope,conversationApi,"list",{taskId:task.taskId});loaded=true;paint();
+      }catch(error){
+        conversation=null;host.classList.add("hidden");form.classList.add("hidden");
+        statusNode.textContent=error?.message||"Private assessment messages are unavailable.";
+      }finally{loading=false;if(conversation)paint();}
+    };
+    details.addEventListener("toggle",()=>{if(details.open)void load();});
+    form.addEventListener("submit",event=>void (async()=>{
+      event.preventDefault();if(loading||conversation?.canSend===false)return;
+      const body=input.value.trim();if(!body){statusNode.textContent="Write a private message before sending.";return;}
+      loading=true;input.disabled=true;send.disabled=true;statusNode.textContent="Sending private message…";
+      try{
+        await scoped(scope,conversationApi,"create_message",{taskId:task.taskId,body});
+        input.value="";loaded=false;loading=false;await load(true);
+      }catch(error){statusNode.textContent=error?.message||"Private message could not be sent.";}
+      finally{loading=false;if(conversation)paint();}
+    })());
+    if(requestedConversationTaskId===task.taskId){
+      details.open=true;queueMicrotask(()=>void load());
+    }
+    return details;
   }
   function assignmentState(task,submission,grade){
     if(grade)return {label:"Graded",className:"bg-emerald-100 text-emerald-800"};
@@ -184,6 +238,7 @@ if(panel&&list&&status&&schoolHost){
           if(grade.feedback)result.append(node("p","mt-2 whitespace-pre-wrap",grade.feedback));
           article.append(result);
         }
+        article.append(privateConversation(scope,task));
         const actions=node("div","mt-4 flex flex-wrap gap-2");
         if(submission?.error)article.append(node("p","mt-3 text-sm text-amber-900","Submission status could not be confirmed. Refresh this page before starting a new submission."));
         const canSubmit=!submission?.error&&(submission?.status==="reopened"?Number(submission.revisionDueAt||0)>Date.now():!submission?.submitted&&!grade&&!["upcoming","closed"].includes(task.windowStatus));
