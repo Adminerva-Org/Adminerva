@@ -9,6 +9,7 @@ import {
 } from "./code-projects.mjs?v=2.1.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
+import {analyzeProjectEvidence} from "./project-competency-evidence.mjs?v=1.0.0";
 import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,loadV4StudioProject,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
@@ -1193,30 +1194,34 @@ export function createProjectStudio({
     }
   }
 
-  function competencyRows(){
-    if(!activeProject)return [];
-    const stats=sourceStats(activeProject.state),history=activeProject.database?.history||[],types=new Set(history.map(item=>item.type));
-    const designCount=Object.values(activeProject.design||{}).filter(value=>String(value||"").trim()).length;
-    const checks=[
-      ["Object-oriented structure",stats.classes>=2||stats.hasEncapsulation,"Classes / encapsulation"],
-      ["Inheritance / interfaces",stats.hasInheritance||stats.interfaces>0,"extends / implements / interface"],
-      ["Collections & generics",stats.hasCollections||stats.hasGenerics,"Collections / generics"],
-      ["Exception handling",stats.hasExceptions,"try/catch or throws"],
-      ["JDBC source usage",stats.hasJdbc,"java.sql / DriverManager / PreparedStatement"],
-      ["SQL CRUD lab",["INSERT","SELECT","UPDATE","DELETE"].every(type=>types.has(type)),"Adminerva DB CRUD activity"],
-      ["File I/O",stats.hasFileIo,"java.io / NIO.2"],
-      ["Multithreading",stats.hasThreads,"Thread / Runnable / executors"],
-      ["OO analysis & design",designCount>=3,designCount+" design artifact(s)"]
-    ];
-    return checks;
-  }
   function renderEvidence(){
     if(!activeProject)return;
     activeProject.state=captureState();
-    const target=el("evidenceChecklist");if(!target)return;
-    target.innerHTML=competencyRows().map(([name,met,evidence])=>'<article class="evidence-check" data-met="'+met+'"><span class="evidence-check-mark">'+(met?"✓":"○")+'</span><div><strong>'+escapeHtml(name)+'</strong><p>'+escapeHtml(evidence)+'</p></div></article>').join("");
+    const result=analyzeProjectEvidence(activeProject),target=el("evidenceChecklist");
+    if(!target)return;
+    const groups=[...new Set(result.checks.map(row=>row.group))];
+    target.innerHTML=groups.map(group=>{
+      const rows=result.checks.filter(row=>row.group===group);
+      return '<section class="evidence-group" aria-label="'+escapeHtml(group)+'">'+
+        '<h3>'+escapeHtml(group)+'</h3><div class="evidence-grid">'+rows.map(row=>{
+          const source=row.locations.map(loc=>loc.label||loc.file+":"+loc.line).join(" · ");
+          const status=row.detected?"Pattern detected":"Not detected";
+          return '<article class="evidence-check" data-met="'+row.detected+'"><span class="evidence-check-mark" aria-hidden="true">'+
+            (row.detected?"✓":"○")+'</span><div class="evidence-check-content"><strong>'+escapeHtml(row.label)+
+            '</strong><span class="evidence-check-status">'+status+'</span><p>'+escapeHtml(row.explanation)+
+            '</p>'+(source?'<small class="evidence-check-location" title="Source file or recorded project activity">'+
+            escapeHtml(source)+'</small>':'')+'</div></article>';
+        }).join("")+'</div></section>';
+    }).join("");
+    const found=result.checks.filter(row=>row.detected).length,summary=el("evidenceSummary");
+    if(summary)summary.textContent=found+" of "+result.checks.length+" preliminary indicators detected · "+
+      result.javaFiles+" Java source file(s) scanned. This is not a score.";
     const note=el("evidenceProjectNote");
-    if(note)note.textContent="This is learning evidence gathered from the project. It does not by itself constitute an official TESDA competency assessment.";
+    if(note)note.textContent="A check means a source pattern, saved design entry or recorded Adminerva DB activity was detected. "+
+      "It does not confirm compilation, correct execution, meaningful implementation, method use or mastery. "+
+      "Comments and Java string literals are excluded from source-pattern checks. "+
+      "Only a compiler/runtime result, separate evaluation or teacher review can verify competency. "+
+      "Not an official TESDA competency assessment.";
   }
   function canonicalSourceJson(value){
     const normalize=node=>{
