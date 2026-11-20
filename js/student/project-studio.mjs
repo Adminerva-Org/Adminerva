@@ -301,6 +301,7 @@ export function createProjectStudio({
             throw Error("The final exam checkpoint was not confirmed by the school server.");
           marker={kind:"school",schoolId:school.schoolId,revision:result.revision};
         }else{
+          if(closingSessionEpoch)throw Error("Verified school cloud storage is required to finalize this exam.");
           if(scopeToken)throw Error("Reconnect your verified school to save this project.");
           const ref=doc(db,"student_code_projects",uid,"projects",id);
           const base=readMarker(id);
