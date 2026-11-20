@@ -224,6 +224,36 @@ function createSchoolAssessmentService({db}){
    return result;
   }
 
+  if(input.action==="exam_close_report"){
+   if(!ctx.roles.includes("teacher"))deny("permission-denied","Teacher access is required.");
+   const taskId=checkId(input.taskId,"Assessment task",128),
+     task=await tasks.doc(taskId).get();
+   if(!task.exists||task.data().schoolId!==ctx.schoolId||
+      task.data().submissionSource!=="studio"||task.data().manualOpenRequired!==true||
+      (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid))
+    deny("permission-denied","This exam is not assigned to you.");
+   if(!ctx.platformOverride){
+     const grant=await db.doc(prefix+"staff_assignments/"+
+       rowKey(ctx.uid,task.data().offeringId)).get();
+     if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+        grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")
+      deny("permission-denied","Your teaching assignment is not active.");
+   }
+   const epoch=Number(task.data().manualSessionEpoch||0);
+   const snap=await db.collection(prefix+"studio_exam_close_receipts")
+     .where("taskId","==",taskId).limit(101).get();
+   if(snap.size===101)
+    deny("resource-exhausted","Close checkpoints require pagination for large cohorts.");
+   const receipts=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+     doc.data().closingEpoch===epoch).map(doc=>({
+       studentUid:doc.data().studentUid,projectId:doc.data().projectId,
+       projectRevision:doc.data().projectRevision,
+       contentDigest:doc.data().contentDigest,
+       savedAt:doc.data().savedAt?.toMillis?.()||null
+     }));
+   return {taskId,sessionEpoch:epoch,confirmed:receipts.length,receipts};
+  }
+
   if(input.action==="exam_session"){
    if(!ctx.roles.includes("student"))deny("permission-denied","Student access is required.");
    const taskId=checkId(input.taskId,"Assessment task",128);
@@ -364,6 +394,10 @@ function createSchoolAssessmentService({db}){
       deny("failed-precondition","Restore this assessment before editing its deployment settings.");
     if(manualOpenRequired&&data.submissionSource!=="studio")
       deny("invalid-argument","Teacher-controlled opening requires an Adminerva Studio deployment.");
+    if(data.manualOpenRequired===true&&!manualOpenRequired&&
+       ["open","closing"].includes(data.manualAccessState)&&
+       (data.manualAccessState==="open"||Date.now()<(data.manualCloseGraceUntil?.toMillis?.()||0)))
+      deny("failed-precondition","Close the current exam session and allow its final saves to finish before disabling manual opening.");
     const accessChanged=(data.manualOpenRequired===true)!==manualOpenRequired;
     const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
     tx.update(taskRef,{opensAt:start,dueAt:end,allowLateSubmissions,manualOpenRequired,
@@ -543,6 +577,7 @@ function createSchoolAssessmentService({db}){
       manualOpenRequired:doc.data().manualOpenRequired===true,
       manualAccessState:doc.data().manualOpenRequired===true?(doc.data().manualAccessState||"waiting"):"scheduled",
       manualSessionEpoch:Number(doc.data().manualSessionEpoch||0),
+      manualCloseGraceUntil:doc.data().manualCloseGraceUntil?.toMillis?.()||0,
       submissionSource:doc.data().submissionSource,
       studioProjectProfile:doc.data().studioProjectProfile||"auto",
       personalizedTask:doc.data().personalizedTask?.enabled===true?{
