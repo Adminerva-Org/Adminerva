@@ -98,6 +98,7 @@ function createSchoolStudioProjectService({db}){
     return {finalSave:false};
    }
    if(data.manualAccessState==="closing"&&closingEpoch>0&&
+      Number(binding.sessionEpoch||0)===closingEpoch&&
       Number(data.manualSessionEpoch||0)===closingEpoch&&
       Date.now()<=(data.manualCloseGraceUntil?.toMillis?.()||0)){
     const member=await tx.get(membershipRef),
