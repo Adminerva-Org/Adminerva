@@ -119,6 +119,12 @@ function createSchoolAcademicsService({db}) {
    return {
     schoolId:ctx.schoolId,
     sections:[...sectionNames.values()].sort((a,b)=>a.localeCompare(b)),
+    sectionRecords:sections.filter(doc=>doc.exists&&sectionNames.has(doc.id)).map(doc=>({
+      sectionId:doc.id,name:sectionNames.get(doc.id),
+      programId:doc.data().programId||null,
+      gradeLevel:typeof doc.data().gradeLevel==="string"?doc.data().gradeLevel:"",
+      pathway:typeof doc.data().pathway==="string"?doc.data().pathway:""
+    })).sort((a,b)=>a.name.localeCompare(b.name)),
     subjects:[...subjectNames.values()].sort((a,b)=>a.localeCompare(b)),
     schoolYears:[...yearNames.values()].sort((a,b)=>a.localeCompare(b)),
     terms:[...termNames.values()].sort((a,b)=>a.localeCompare(b)),
