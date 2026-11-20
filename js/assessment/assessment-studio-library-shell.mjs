@@ -306,5 +306,5 @@ if(host){
 
   `;
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=20261120-manual-exam");
+  await import("../repo-review/teacher-assessment-library.mjs?v=20261120-class-session-close");
 }
