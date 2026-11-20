@@ -8,7 +8,7 @@ import {isLegacyScheduleYear,legacyScheduleNotice} from "./legacy-schedule-compa
 const field=id=>document.getElementById(id);
 const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const requestedOfferingId=String(new URL(location.href).searchParams.get("offeringId")||"");
-let serial=0,picker=null,offerings=[],sectionRecords=[],pendingOfferingId=requestedOfferingId;
+let serial=0,picker=null,offerings=[],sectionRecords=[],pendingOfferingId=requestedOfferingId||String(window.pendingPlannerOfferingId||"");
 
 function classLabel(item){
   return [item.subjectName,item.sectionName,item.termName,item.yearName].filter(Boolean).join(" · ");
@@ -28,6 +28,7 @@ function applyOffering(id,{announce=true}={}){
   if(!id){
     window.currentPlannerOfferingId="";
     window.currentPlannerSchoolId=picker?.scope.current?.schoolId||"";
+    window.currentPlannerClassContext=null;
     if(select)select.value="";
     if(status)status.textContent="Reusable preparation mode. Choose an assigned class when you want verified class context.";
     return true;
@@ -36,6 +37,14 @@ function applyOffering(id,{announce=true}={}){
   pendingOfferingId="";
   window.currentPlannerOfferingId=item.offeringId;
   window.currentPlannerSchoolId=picker?.scope.current?.schoolId||"";
+  window.currentPlannerClassContext={
+    schoolId:window.currentPlannerSchoolId,offeringId:item.offeringId,
+    programId:item.programId||"",programName:item.programName||"",
+    sectionId:item.sectionId||"",sectionName:item.sectionName||"",
+    subjectId:item.subjectId||"",subjectName:item.subjectName||"",
+    yearId:item.yearId||"",yearName:item.yearName||"",
+    termId:item.termId||"",termName:item.termName||""
+  };
   if(select)select.value=item.offeringId;
   field("lpSubject").value=item.subjectName||field("lpSubject").value;
   field("lpProgram").value=item.programName||field("lpProgram").value;
@@ -85,7 +94,7 @@ async function legacyFallback(error){
   fillSchoolDatalist("plannerProgramChoices",[field("lpProgram").value,...choices.programs]);
   fillSchoolDatalist("plannerSchoolYears",[field("lpSchoolYear").value,...choices.schoolYears]);
   offerings=[];sectionRecords=[];field("lpClassOffering").replaceChildren(new Option("Legacy preparation · no canonical class context",""));
-  window.currentPlannerOfferingId="";window.currentPlannerSchoolId="";
+  window.currentPlannerOfferingId="";window.currentPlannerSchoolId="";window.currentPlannerClassContext=null;
   label.textContent="Canonical assigned classes are unavailable, so the planner is using legacy school choices for compatibility. "+
     (error?.message?"Reason: "+error.message+" ":"")+
     (choices.sections.length?"Legacy sections: "+choices.sections.join(", "):"No legacy sections found.")+
@@ -107,7 +116,7 @@ workspaceOnReady(async()=>{
     host:field("plannerSchoolSwitcher"),status:null,
     onBeforeChange:async()=>{
       ++serial;offerings=[];sectionRecords=[];pendingOfferingId="";
-      window.currentPlannerOfferingId="";window.currentPlannerSchoolId="";
+      window.currentPlannerOfferingId="";window.currentPlannerSchoolId="";window.currentPlannerClassContext=null;
       field("lpClassOffering").replaceChildren(new Option("Reusable preparation · no single class selected",""));
     },
     onReady:()=>void refresh()
@@ -116,5 +125,9 @@ workspaceOnReady(async()=>{
     const state=await picker.load();
     if(state?.state==="choose_school")field("plannerCatalogStatus").textContent="Choose a verified school to load your assigned classes.";
     if(!picker.scope.current)await legacyFallback();
+    else if(window.pendingPlannerOfferingId){
+      pendingOfferingId=String(window.pendingPlannerOfferingId);window.pendingPlannerOfferingId="";
+      if(offerings.some(item=>item.offeringId===pendingOfferingId))applyOffering(pendingOfferingId,{announce:false});
+    }
   }catch(error){await legacyFallback(error);}
 });
