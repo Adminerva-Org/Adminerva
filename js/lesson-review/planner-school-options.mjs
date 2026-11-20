@@ -23,6 +23,20 @@ function setIfOption(select,value){
   const option=[...select.options].find(row=>row.value===value||row.textContent.trim()===value);
   if(!option)return false;select.value=option.value;return true;
 }
+function openPlanContextCompatible(item){
+  if(!Array.isArray(window.currentPlan)||!window.currentPlan.length)return true;
+  const currentSubject=String(window.currentPlanSubject||field("lpSubject").value||"").trim().toLocaleLowerCase("en"),
+    nextSubject=String(item.subjectName||"").trim().toLocaleLowerCase("en"),
+    section=sectionRecords.find(row=>row.sectionId===item.sectionId),
+    currentGrade=String(window.currentTargetGrade||field("lpGradeLevel").value||"").trim().toLocaleLowerCase("en"),
+    nextGrade=String(section?.gradeLevel||"").trim().toLocaleLowerCase("en"),
+    currentYear=String(field("lpSchoolYear").value||"").trim(),
+    nextYear=String(item.yearName||"").trim();
+  if(currentSubject&&nextSubject&&currentSubject!==nextSubject)return false;
+  if(currentGrade&&nextGrade&&currentGrade!==nextGrade)return false;
+  if(currentYear&&nextYear&&currentYear!==nextYear)return false;
+  return true;
+}
 function applyOffering(id,{announce=true}={}){
   const select=field("lpClassOffering"),status=field("plannerClassContextStatus");
   if(!id){
@@ -34,6 +48,11 @@ function applyOffering(id,{announce=true}={}){
     return true;
   }
   const item=offerings.find(row=>row.offeringId===id);if(!item){pendingOfferingId=id;return false;}
+  if(!openPlanContextCompatible(item)){
+    if(select)select.value=window.currentPlannerOfferingId||"";
+    if(status)status.textContent="This open lesson has different subject, grade or school-year content. Start a new/copy lesson before attaching that class context; the current lesson was not relabeled.";
+    return false;
+  }
   pendingOfferingId="";
   window.currentPlannerOfferingId=item.offeringId;
   window.currentPlannerSchoolId=picker?.scope.current?.schoolId||"";
@@ -46,14 +65,17 @@ function applyOffering(id,{announce=true}={}){
     termId:item.termId||"",termName:item.termName||""
   };
   if(select)select.value=item.offeringId;
-  field("lpSubject").value=item.subjectName||field("lpSubject").value;
-  field("lpProgram").value=item.programName||field("lpProgram").value;
-  field("lpSchoolYear").value=item.yearName||field("lpSchoolYear").value;
+  const hasPlan=Array.isArray(window.currentPlan)&&window.currentPlan.length>0;
   const section=sectionRecords.find(row=>row.sectionId===item.sectionId);
-  if(section?.gradeLevel)setIfOption(field("lpGradeLevel"),section.gradeLevel);
-  setIfOption(field("lpAcademicTerm"),item.termName);
-  window.currentPlanSubject=field("lpSubject").value.trim()||window.currentPlanSubject;
-  window.currentTargetGrade=field("lpGradeLevel").value||window.currentTargetGrade;
+  if(!hasPlan){
+    field("lpSubject").value=item.subjectName||field("lpSubject").value;
+    field("lpProgram").value=item.programName||field("lpProgram").value;
+    field("lpSchoolYear").value=item.yearName||field("lpSchoolYear").value;
+    if(section?.gradeLevel)setIfOption(field("lpGradeLevel"),section.gradeLevel);
+    setIfOption(field("lpAcademicTerm"),item.termName);
+    window.currentPlanSubject=field("lpSubject").value.trim()||window.currentPlanSubject;
+    window.currentTargetGrade=field("lpGradeLevel").value||window.currentTargetGrade;
+  }
   if(status)status.textContent="Class context: "+classLabel(item)+
     ". Saving keeps this association for navigation, but the lesson remains reusable private preparation.";
   if(announce)document.dispatchEvent(new CustomEvent("adminerva:planner-class-context",{detail:{
