@@ -675,7 +675,7 @@ async function loadAcademics(){
   const [catalogs,offerings,people,teachers]=await Promise.all([
     Promise.all(kinds.map(kind=>performAcademic("list_catalog",{kind}))),
     performAcademic("planning_options"),
-    standardEnrollmentMode?Promise.resolve({students:[]}):performAcademic("list_students").catch(error=>({students:[],unavailable:error?.message||"Student picker unavailable."})),
+    Promise.resolve({students:[]}),
     performAcademic("list_teachers")
   ]);
   if(run!==academicRun||!schoolReady)return;
@@ -694,7 +694,8 @@ async function loadAcademics(){
   populateOptions("[data-assignment-section]",schoolSections.filter(item=>item.status==="active"),"id");
   populateOptions("#pa-section-enrollment-year",catalogs[1].items.filter(row=>row.status==="active"),"id");
   refreshStudentSectionPicker();
-  populateOptions("[data-student-person]",people.students||[],"personId");
+  // The large directory uses server-side student search, not a 100-record picker.
+  if(!get("pa-class-student-search")?.value.trim())populateOptions("[data-student-person]",[],"personId");
   populateOptions("[data-school-teacher]",teachers.teachers||[],"uid");
   populateMultiOptions("[data-student-person-bulk]",people.students||[],"personId");
   populateMultiOptions("[data-school-teacher-bulk]",teachers.teachers||[],"uid");
@@ -738,6 +739,25 @@ function refreshStudentSectionPreview(){
       :"No active subjects match this placement. Configure course offerings first.";
   form.querySelector('button[type="submit"]').disabled=!matches.length;
 }
+let classStudentSearchRun=0,classStudentSearchTimer=null;
+get("pa-class-student-search")?.addEventListener("input",event=>{
+  clearTimeout(classStudentSearchTimer);
+  const query=event.currentTarget.value.trim();
+  const select=get("pa-section-enrollment-form").elements.personId;
+  select.replaceChildren(new Option(query?"Searching…":"Search for a student above",""));
+  const run=++classStudentSearchRun;
+  if(query.length<2)return;
+  classStudentSearchTimer=setTimeout(()=>{
+    void perform("search_people",{query,kind:"student",status:"active"})
+      .then(result=>{
+        if(run!==classStudentSearchRun)return;
+        select.replaceChildren(new Option("Choose a matching student",""));
+        for(const row of result.items||[])
+          select.add(new Option(row.displayName+(row.studentNumber?" · "+row.studentNumber:""),row.personId));
+        if(!result.items?.length)select.options[0].textContent="No matching students";
+      }).catch(error=>{if(run===classStudentSearchRun)say(error.message||"Student search failed.");});
+  },250);
+});
 get("pa-section-enrollment-year")?.addEventListener("change",refreshStudentSectionPicker);
 get("pa-section-enrollment-term")?.addEventListener("change",refreshStudentSectionPicker);
 get("pa-section-enrollment-section")?.addEventListener("change",refreshStudentSectionPreview);
@@ -1075,6 +1095,12 @@ async function loadOverview(){
   get("pa-invite-count").textContent=response.counts.invitations;
   await loadReconciliation().catch(()=>{});
 }
+async function editPersonProfile(person){
+  try{
+    const record=await perform("get_person",{personId:person.personId});
+    openPersonDialog({...person,...record.person},"edit");
+  }catch(error){say(error.message||"Person profile could not be loaded.");}
+}
 function openPersonDialog(person,mode){
   personChange={person,mode};
   const form=get("pa-person-dialog-form"),nameField=get("pa-person-name-field"),
@@ -1084,14 +1110,18 @@ function openPersonDialog(person,mode){
   nameField.hidden=mode!=="edit";reasonField.hidden=mode==="edit";
   nameInput.required=mode==="edit";reasonInput.required=mode!=="edit";
   nameInput.value=person.displayName||"";
+  const studentFields=get("pa-student-profile-fields");
+  studentFields.hidden=mode!=="edit"||person.kind!=="student";
+  for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
+    form.elements[name].value=person[name]||"";
   get("pa-person-dialog-title").textContent=mode==="edit"?"Edit school person":
     mode==="archive"?"Archive school person":"Restore school person";
-  confirm.textContent=mode==="edit"?"Save name":mode==="archive"?"Archive person":"Restore person";
+  confirm.textContent=mode==="edit"?"Save profile":mode==="archive"?"Archive person":"Restore person";
   confirm.style.background=mode==="archive"?"#9a3412":mode==="restore"?"#166534":"#1d4ed8";
   get("pa-person-dialog-help").textContent=mode==="archive"?
     "Archiving is blocked until active school access, enrollments or teaching assignments are ended. Nothing is deleted.":
     mode==="restore"?"Restoring the person record does not automatically restore school access, enrollments or teaching assignments.":
-    "Updating the display name also updates the linked school membership label when one exists.";
+    "Edit school identity and student guardian details. For section membership use the student details placement panel.";
   get("pa-person-dialog").showModal();
 }
 get("pa-person-dialog-cancel").addEventListener("click",()=>{
@@ -1103,7 +1133,11 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   const form=event.currentTarget,{person,mode}=personChange,values=new FormData(form);
   const action=mode==="edit"?"update_person":mode==="archive"?"archive_person":"restore_person";
   const details={personId:person.personId};
-  if(mode==="edit")details.displayName=String(values.get("displayName")||"").trim();
+  if(mode==="edit"){
+    details.displayName=String(values.get("displayName")||"").trim();
+    if(person.kind==="student")for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
+      details[name]=String(values.get(name)||"").trim();
+  }
   else details.reason=String(values.get("reason")||"").trim();
   const warning=mode==="archive"?
     "Archive this school person record? Active access and academic assignments must already be ended.":
@@ -1149,6 +1183,17 @@ async function openPersonDetail(person){
     get("pa-person-detail-access").textContent=result.membership?
       result.membership.status+" · "+result.membership.roles.join(", "):"No school membership";
     get("pa-person-detail-relationships").textContent=String(result.relationships?.length||0);
+    const placementCard=get("pa-detail-placement-card");
+    placementCard.hidden=p.kind!=="student"||standardEnrollmentMode;
+    if(!placementCard.hidden){
+      await loadPlacementCatalog();
+      if(!dialog.open||run!==detailRun)return;
+      const placementForm=get("pa-detail-placement-form");
+      placementForm.elements.personId.value=p.personId;
+      get("pa-detail-placement-status").textContent="";
+      updateDetailPlacementPicker();
+    }
+
     renderDetailList(get("pa-person-detail-invites"),result.invitations,item=>
       detailRow(item.requestedRole||"Invitation",(item.status||"unknown")+
         (item.expiresAt?" · expires "+new Date(item.expiresAt).toLocaleString():"")),
@@ -1165,6 +1210,67 @@ async function openPersonDetail(person){
     if(dialog.open&&run===detailRun&&schoolReady)get("pa-person-detail-meta").textContent=error?.message||"Person details are unavailable.";
   }
 }
+
+let directoryPlacementCatalog=null;
+async function loadPlacementCatalog(){
+  if(directoryPlacementCatalog)return directoryPlacementCatalog;
+  const kinds=["academic_years","terms","sections"];
+  const [years,terms,sections,offers]=await Promise.all([
+    ...kinds.map(kind=>performAcademic("list_catalog",{kind})),
+    performAcademic("planning_options")
+  ]);
+  directoryPlacementCatalog={
+    years:(years.items||[]).filter(r=>r.status==="active"),
+    terms:(terms.items||[]).filter(r=>r.status==="active"),
+    sections:(sections.items||[]).filter(r=>r.status==="active"),
+    offerings:(offers.offerings||[]).filter(r=>r.status==="active")
+  };
+  return directoryPlacementCatalog;
+}
+function updateDetailPlacementPicker(stage="year"){
+  const catalog=directoryPlacementCatalog,form=get("pa-detail-placement-form");
+  if(!catalog)return;
+  const select=(control,rows,label)=>{
+    const previous=control.value;
+    control.replaceChildren(new Option(label,""));
+    for(const row of rows)control.add(new Option(row.name,row.id));
+    if(rows.some(row=>row.id===previous))control.value=previous;
+  };
+  if(stage==="year")select(form.elements.yearId,catalog.years,"Choose academic year");
+  if(stage!=="section"){
+    select(form.elements.termId,catalog.terms.filter(row=>row.yearId===form.elements.yearId.value),"Choose academic period");
+    const term=catalog.terms.find(row=>row.id===form.elements.termId.value);
+    select(form.elements.sectionId,catalog.sections.filter(row=>!term||row.programId===term.programId),"Choose section");
+  }
+  const {yearId,termId,sectionId}=form.elements;
+  const offerings=catalog.offerings.filter(row=>row.yearId===yearId.value&&row.termId===termId.value&&row.sectionId===sectionId.value);
+  get("pa-detail-placement-preview").textContent=offerings.length
+    ?offerings.length+" active subject offering(s) will be added to the student's class roster."
+    :"Choose a section with active subjects in the selected academic year and period.";
+  form.querySelector('button[type="submit"]').disabled=!offerings.length;
+}
+get("pa-detail-placement-form")?.elements.yearId.addEventListener("change",()=>updateDetailPlacementPicker("term"));
+get("pa-detail-placement-form")?.elements.termId.addEventListener("change",()=>updateDetailPlacementPicker("term"));
+get("pa-detail-placement-form")?.elements.sectionId.addEventListener("change",()=>updateDetailPlacementPicker("section"));
+get("pa-detail-placement-form")?.addEventListener("submit",event=>{
+  event.preventDefault();
+  const form=event.currentTarget,d=new FormData(form);
+  const data=Object.fromEntries(["personId","yearId","termId","sectionId","reason"].map(name=>[name,String(d.get(name)||"").trim()]));
+  if(!form.reportValidity()||pendingWrite)return;
+  if(!confirm("Assign this existing student to the selected section and enroll the matching active subjects?"))return;
+  const button=form.querySelector('button[type="submit"]');
+  pendingWrite=true;button.disabled=true;
+  get("pa-detail-placement-status").textContent="Saving section and subject enrollments…";
+  void performAcademic("enroll_student_section",data).then(async result=>{
+    get("pa-detail-placement-status").textContent="Saved · "+result.created+" subjects added; "+result.alreadyActive+" already enrolled.";
+    ++detailRun;
+    get("pa-person-detail-dialog").close();
+    await Promise.allSettled([loadPeople(false),loadOverview()]);
+    directoryPlacementCatalog=null;
+  }).catch(error=>{
+    get("pa-detail-placement-status").textContent=error?.message||"Section assignment failed.";
+  }).finally(()=>{pendingWrite=false;button.disabled=false;});
+});
 get("pa-person-detail-close").addEventListener("click",()=>get("pa-person-detail-dialog").close());
 
 function directoryFilters(){
@@ -1201,7 +1307,7 @@ async function loadPeople(append) {
       view.addEventListener("click",()=>void openPersonDetail(person));
       actions.append(view);
       const edit=document.createElement("button");edit.type="button";edit.className="pa-action";edit.textContent="Edit";
-      edit.addEventListener("click",()=>openPersonDialog(person,"edit"));
+      edit.addEventListener("click",()=>void editPersonProfile(person));
       actions.append(edit);
       if(["active","archived"].includes(person.status)){
         const lifecycle=document.createElement("button");lifecycle.type="button";lifecycle.className="pa-action";
