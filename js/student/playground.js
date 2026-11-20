@@ -17,6 +17,9 @@ import {
   addDoc,
   getDoc,
   doc,
+  query,
+  where,
+  onSnapshot,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 // ==========================================
@@ -197,7 +200,7 @@ let examPolicyPending=Boolean(examLinkId),examPolicy=null;
 // A teacher closes a school Studio exam session, not just its submission form.
 // Poll the verified school callable because tenant Firestore documents deliberately
 // disallow direct browser reads. Lock the editor before the final save begins.
-let watchedExamId="",examSessionTimer=null,examSessionChecking=false,examSessionClosing=false;
+let watchedExamId="",examSessionTimer=null,examNotificationUnsub=null,examSessionChecking=false,examSessionClosing=false;
 let examLastContact=0,examSessionErrorCount=0,examMonitorPaused=false;
 function examCloseOverlay(){
   let host=document.getElementById("studioExamClosingOverlay");
@@ -319,7 +322,26 @@ async function watchStudioExam(taskId){
     if(!task||examSessionClosing)return;
     watchedExamId=taskId;examLastContact=Date.now();
     clearInterval(examSessionTimer);
-    examSessionTimer=setInterval(()=>void checkStudioExamSession(),1500);
+    examNotificationUnsub?.();examNotificationUnsub=null;
+    const uid=auth.currentUser?.uid;
+    if(uid){
+      const feed=query(collection(db,"notifications",uid,"items"),where("sourceId","==",taskId));
+      examNotificationUnsub=onSnapshot(feed,snapshot=>{
+        if(examSessionClosing||watchedExamId!==taskId)return;
+        for(const change of snapshot.docChanges()){
+          if(change.type!=="added")continue;
+          const data=change.doc.data();
+          if(data.title!=="Studio exam session closed")continue;
+          const epoch=Number(String(data.body||"").match(/^Exam session (\d+) has ended\./)?.[1]||0);
+          const openedEpoch=Number(projectStudio?.getActiveProject?.()?.assessment?.sessionEpoch||0);
+          if(epoch>0&&openedEpoch===epoch){
+            void lockAndCloseStudioExam(taskId,epoch);
+            break;
+          }
+        }
+      },error=>console.warn("Realtime exam close signal unavailable; using server checks:",error));
+    }
+    examSessionTimer=setInterval(()=>void checkStudioExamSession(),5000);
     void checkStudioExamSession(taskId);
   }catch(error){console.warn("Studio exam session monitoring unavailable:",error);}
 }
@@ -334,7 +356,10 @@ document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible"&&watchedExamId&&!examSessionClosing)
     void checkStudioExamSession();
 });
-window.addEventListener("pagehide",()=>{clearInterval(examSessionTimer);examSessionTimer=null;});
+window.addEventListener("pagehide",()=>{
+  clearInterval(examSessionTimer);examSessionTimer=null;
+  examNotificationUnsub?.();examNotificationUnsub=null;
+});
 
 const examRestrictedActions=["importZipBtn","legacyImportBtn","undoRestoreBtn",
   "cloudLoadProjectBtn","loadProjectBtn","snapshotBtn","aiTutorBtn","resetBtn"];
