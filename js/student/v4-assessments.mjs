@@ -25,13 +25,6 @@ function date(value){return value?new Date(value).toLocaleString():"—";}
 function sourceLabel(source,task={}){
   return ({text:"Written response",link:"Submission link",studio:task.personalizedTask?.enabled===true?"Personalized Adminerva Studio":"Adminerva Studio",github:"GitHub / repository evidence"})[source]||"Assessment response";
 }
-if(panel&&assignmentParams.has("examClosed")){
-  const receipt=document.createElement("div");
-  receipt.setAttribute("role","status");
-  receipt.className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-950";
-  receipt.textContent="Your teacher has closed this practical-exam class session. Your final Studio project checkpoint was confirmed by school cloud storage. You may continue in the next teacher-opened session. This checkpoint is not a formal submission or grade.";
-  panel.prepend(receipt);
-}
 function submissionReceipt(submission,grade){
   if(!submission?.submitted||submission.status==="reopened")return null;
   const revision=String(submission.revisionSha||submission.checkpointSha||"").trim();
@@ -73,6 +66,36 @@ if(panel&&list&&status&&schoolHost){
     scope.assertLease(lease);
     return result;
   }
+  async function displayExamCloseReceipt(scope){
+    const taskId=assignmentParams.get("examClosed")||"";
+    if(!taskId)return;
+    let banner=document.getElementById("v4ExamCloseReceipt");
+    if(!banner){
+      banner=node("div","mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950");
+      banner.id="v4ExamCloseReceipt";banner.setAttribute("role","status");
+      panel.prepend(banner);
+    }
+    const sessionEpoch=Number(assignmentParams.get("examSession"));
+    if(!Number.isSafeInteger(sessionEpoch)||sessionEpoch<1){
+      banner.textContent="Your teacher closed the Studio exam. The cloud checkpoint has not been independently verified.";
+      return;
+    }
+    banner.textContent="Verifying your final practical-exam save with school cloud storage…";
+    try{
+      const receipt=await scoped(scope,assessmentsApi,"exam_close_status",{taskId,sessionEpoch});
+      if(receipt?.confirmed===true){
+        banner.className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-950";
+        banner.textContent="Exam session "+sessionEpoch+" closed · Final project revision "+
+          receipt.projectRevision+" confirmed in school cloud"+
+          (receipt.savedAt?" at "+date(receipt.savedAt):"")+
+          ". You may resume during the next teacher-opened session. This is not a formal submission or grade.";
+      }else{
+        banner.textContent="Exam session "+sessionEpoch+" closed · No final cloud checkpoint confirmation is recorded for this account. Earlier cloud saves may still be present. Contact your teacher if the latest changes are missing.";
+      }
+    }catch(error){
+      banner.textContent="Exam session "+sessionEpoch+" closed · Cloud checkpoint verification is unavailable. Your school-saved revision has not been independently confirmed on this page.";
+    }
+  }
   function assignmentState(task,submission,grade){
     if(grade)return {label:"Graded",className:"bg-emerald-100 text-emerald-800"};
     if(submission?.error)return {label:"Status unavailable",className:"bg-slate-100 text-slate-700"};
@@ -113,6 +136,8 @@ if(panel&&list&&status&&schoolHost){
         scoped(scope,gradebookApi,"my_published").catch(error=>({grades:[],error:error?.message||"Grades unavailable"})),
         scoped(scope,profileApi,"my_profile")
       ]);
+      if(generation!==renderGeneration)return;
+      await displayExamCloseReceipt(scope);
       if(generation!==renderGeneration)return;
       const profile=results[2]||{},classes=profile.classes||[];
       let subjectId=requestedSubjectId,subjectName=requestedSubjectName,offeringId=requestedOfferingId;
