@@ -329,7 +329,7 @@
           <summary style="font-weight:750;cursor:pointer">Assign existing student to section</summary>
           <form id="pa-section-enrollment-form" style="display:grid;gap:.65rem;padding-top:1rem">
             <p class="pa-muted">For an accepted student with No Section. Uses the existing account and enrolls the student in every active subject offering for the selected section and academic period. Does not register or invite the student again.</p>
-            <label>Existing student<select class="pa-field" name="personId" data-student-person required></select></label>
+            <label>Find an existing student<input id="pa-class-student-search" type="search" class="pa-field" placeholder="Search student name or student number" autocomplete="off"></label><label>Matching student<select class="pa-field" name="personId" data-student-person required></select></label>
             <label>Academic year<select class="pa-field" name="yearId" id="pa-section-enrollment-year" required></select></label>
             <label>Academic period<select class="pa-field" name="termId" id="pa-section-enrollment-term" required></select></label>
             <label>Existing section<select class="pa-field" name="sectionId" id="pa-section-enrollment-section" required></select></label>
@@ -430,6 +430,6 @@
 <script defer src="js/core/adminerva-nav.js?v=863a1686ff81"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=863a1686ff81"></script>
 <script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=1.0.4"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=863a1686ff81"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=20261120-directory-placement"></script>
 </body>
 </html>
