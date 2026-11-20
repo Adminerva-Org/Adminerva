@@ -21,6 +21,7 @@ class Element {
     this.children = []; this.dataset = {}; this.attributes = {}; this.events = {};
     this.className = ''; this.textContent = ''; this.open = false;
   }
+  get childNodes(){return this.children;}
   append(...items) { for (const item of items) { item.parentNode = this; this.children.push(item); } }
   replaceChildren(...items) { this.children = []; this.append(...items); }
   setAttribute(key, value) { this.attributes[key] = value; }
@@ -83,7 +84,7 @@ const groupNames = element => element.children.map(group => group.children[0].te
 
 test('navigation installs analytics, the manifest and brand icons once before rendering', () => {
   const view = mount();
-  assert.equal(view.document.head.children.length, 6);
+  assert.equal(view.document.head.children.length, 7);
   const analytics = view.document.getElementById('adminerva-analytics-script');
   assert.equal(analytics.tagName, 'script');
   assert.match(analytics.src, /^js\/core\/adminerva-analytics\.js\?v=/);
@@ -100,7 +101,7 @@ test('navigation installs analytics, the manifest and brand icons once before re
   assert.equal(view.document.querySelector('link[rel="icon"]').href, 'assets/adminerva-favicon-32.png');
   assert.equal(view.document.querySelector('link[rel="icon"]').sizes, '32x32');
   view.roleReady('superadmin');
-  assert.equal(view.document.head.children.length, 6);
+  assert.equal(view.document.head.children.length, 7);
 });
 
 test('home is a direct link and switching workspaces is an explicit disclosure', () => {
