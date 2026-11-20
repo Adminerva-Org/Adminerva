@@ -95,7 +95,7 @@ async function load(user){
       item.taskId===assessmentId&&item.submissionSource==="studio"):null;
     if(task){
       matchedSchoolAssessment=true;
-      if(task.windowStatus==="waiting_for_teacher"){
+      if(task.manualOpenRequired===true&&task.manualAccessState!=="open"){
         reportContext({status:"waiting_for_teacher",personalized:false,readOnly:true});
         if(loadingNote)loadingNote.textContent=task.manualAccessState==="held"
           ?"This section's exam is on hold. Your existing project is preserved. Refresh after your teacher reopens the exam."
