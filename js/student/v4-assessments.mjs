@@ -80,7 +80,7 @@ if(panel&&list&&status&&schoolHost){
       className:"bg-blue-100 text-blue-800"
     };
     if(task.windowStatus==="waiting_for_teacher")return {
-      label:task.manualAccessState==="held"?"On hold by teacher":"Waiting for teacher",
+      label:["closing","held"].includes(task.manualAccessState)?"Closed by teacher":"Waiting for teacher",
       className:"bg-amber-100 text-amber-900"
     };
     if(task.windowStatus==="upcoming")return {label:"Upcoming",className:"bg-slate-100 text-slate-700"};
@@ -193,8 +193,8 @@ if(panel&&list&&status&&schoolHost){
         const canSubmit=!submission?.error&&(submission?.status==="reopened"?Number(submission.revisionDueAt||0)>Date.now():!submission?.submitted&&!grade&&!["upcoming","closed","waiting_for_teacher"].includes(task.windowStatus));
         if(task.submissionSource==="studio"&&task.manualOpenRequired===true&&task.manualAccessState!=="open"){
           article.append(node("p","mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-950",
-            task.manualAccessState==="held"
-              ?"Your teacher has temporarily held this section's Studio examination. Previously synchronized school projects are preserved. Refresh after your teacher reopens it."
+            ["closing","held"].includes(task.manualAccessState)
+              ?"Your teacher has closed this class session. Editing is locked; previously confirmed cloud saves remain available when the teacher opens the next session."
               :"Your teacher has not opened this section's Studio examination. The task instructions and personalized scenario are locked until opening."));
           const check=node("button","rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-bold text-white","Check opening status");
           check.type="button";
