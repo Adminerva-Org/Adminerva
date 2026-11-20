@@ -409,7 +409,7 @@ sectionForm?.addEventListener("submit",event=>{
   const student=sectionAssignmentStudent,section=String(document.getElementById("student-section-choice").value||"");
   const status=document.getElementById("student-section-status");
   if(!section){status.textContent="Choose a configured school section.";return;}
-  if(student.section&&student.section.trim()&&student.section!==section){
+  if(student.section&&student.section.trim()&&!["No Section","Unassigned"].includes(student.section.trim())&&student.section!==section){
     status.textContent="This student already has a section. Reassignment requires a separate academic transfer workflow to preserve history.";
     return;
   }
@@ -430,7 +430,7 @@ sectionForm?.addEventListener("submit",event=>{
         const row=current.data();
         if(String(row.email||"").trim().toLowerCase()!==student.email.trim().toLowerCase())
           throw Error("The student identity changed. Refresh the directory.");
-        if(String(row.section||"").trim()&&row.section!==section)
+        if(String(row.section||"").trim()&&!["No Section","Unassigned"].includes(String(row.section).trim())&&row.section!==section)
           throw Error("The student already has an assigned section. Refresh before continuing.");
         tx.update(ref,{section,updatedAt:new Date().toISOString(),sectionUpdatedByUid:auth.currentUser.uid});
       });
@@ -503,7 +503,7 @@ function applyFiltersAndRender() {
       const safeStatusClass = escapeHTML(data.ghStatusClass);
       const safeStatusText = escapeHTML(data.ghStatusText);
       const safeName = escapeHTML(data.name);
-      const safeSection = escapeHTML(data.section||"No Section");
+      const safeSection = escapeHTML(data.section&&data.section.trim()&&!["Unassigned"].includes(data.section.trim())?data.section:"No Section");
       const safeEmail = escapeHTML(data.email);
       const safeId = escapeHTML(data.id);
 
@@ -536,7 +536,7 @@ function applyFiltersAndRender() {
                       ${repoLinkHtml}
                     </td>
                     <td class="px-6 py-4 text-right align-top whitespace-nowrap space-x-1">
-                        <button type="button" data-student-action="section" class="text-teal-700 hover:bg-teal-700 hover:text-white border border-teal-200 bg-teal-50 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded transition shadow-sm">${data.section&&data.section.trim()?"View section":"Assign section"}</button>
+                        <button type="button" data-student-action="section" class="text-teal-700 hover:bg-teal-700 hover:text-white border border-teal-200 bg-teal-50 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded transition shadow-sm">${data.section&&data.section.trim()&&!["No Section","Unassigned"].includes(data.section.trim())?"View section":"Assign section"}</button>
                         <button type="button" data-student-action="view" class="text-blue-600 hover:text-white border border-blue-200 bg-blue-50 hover:bg-blue-600 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded transition shadow-sm">View As</button>
                         <button type="button" data-student-action="revoke" class="text-red-500 hover:text-white font-bold text-[10px] uppercase tracking-wider border border-red-100 bg-red-50 hover:bg-red-500 px-3 py-1.5 rounded transition shadow-sm">${accessSuspended?"Restore":"Suspend"}</button>
                     </td>
