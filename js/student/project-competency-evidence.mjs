@@ -25,8 +25,27 @@ export function maskJava(source){
   }
   return out;
 }
-const javaDocs=state=>Object.entries(state?.files||{}).filter(([path,content])=>/\.java$/i.test(path)&&typeof content==="string").map(([path,content])=>({path,code:maskJava(content)}));
-const location=(doc,index)=>({file:doc.path,line:doc.code.slice(0,index).split("\n").length});
+const javaDocs=state=>Object.entries(state?.files||{}).filter(([path,content])=>/\.java$/i.test(path)&&typeof content==="string").map(([path,content])=>({path,source:content,code:maskJava(content)}));
+const location=(doc,index)=>{
+  const before=doc.code.slice(0,index),last=before.lastIndexOf("\n");
+  return {file:doc.path,line:before.split("\n").length,column:index-last};
+};
+/** A bounded excerpt from the student's current working source, never a stored grade or server proof. */
+export function evidenceSnippet(state,loc,{context=1,maxChars=240}={}){
+  const source=state?.files?.[loc?.file];
+  if(typeof source!=="string"||!Number.isInteger(loc?.line)||loc.line<1)return [];
+  const lines=source.split(/\r?\n/),at=loc.line-1;
+  if(at>=lines.length)return [];
+  const around=Math.max(0,Math.min(2,Math.trunc(context)||0)),limit=Math.max(80,Math.min(480,Math.trunc(maxChars)||240));
+  const result=[];
+  for(let i=Math.max(0,at-around);i<=Math.min(lines.length-1,at+around);i++){
+    const raw=lines[i],offset=i===at?Math.max(0,Math.min(raw.length,(loc.column||1)-1)):0;
+    const start=raw.length>limit?Math.max(0,Math.min(raw.length-limit,offset-55)):0;
+    const end=Math.min(raw.length,start+limit);
+    result.push({line:i+1,focus:i===at,code:(start?"…":"")+raw.slice(start,end)+(end<raw.length?"…":"")});
+  }
+  return result;
+}
 function scan(docs,re){const found=[];for(const doc of docs)for(const hit of doc.code.matchAll(re))found.push(location(doc,hit.index));return found;}
 function declarations(docs){
   const out=[];
@@ -75,11 +94,32 @@ function overloadLocations(types){
   for(const list of groups.values())if(new Set(list.map(x=>x.sig)).size>1)locations.push(...list.map(x=>x.at));
   return locations;
 }
+const REVIEW_GUIDANCE={
+  classes:["Locate the class definition and explain where it is instantiated and used.","Try declaring a Java class for an object in your program."],
+  encapsulation:["Check that private fields have appropriate controlled access and validation.","Review field visibility; private fields alone do not establish effective encapsulation."],
+  inheritance:["Verify the parent/subclass relationship makes sense and inherited behavior is exercised.","Check whether any class extends a meaningful parent class."],
+  abstraction:["Confirm abstract methods or behavior are used through concrete subclasses.","For an abstraction requirement, review whether an abstract parent class is appropriate."],
+  interfaces:["Check that implementing classes fulfill and use the interface contract.","Look for an interface declaration and a class implementing it when required."],
+  overriding:["Confirm the method actually overrides an inherited/interface method and is called.","Look for subclass methods that override a parent method; @Override makes the intent explicit."],
+  overloading:["Find calls that exercise each different parameter signature.","Check whether one class declares multiple meaningful methods with the same name but different parameter lists."],
+  references:["Check that the parent-typed variable calls a method overridden by the subclass.","Try referencing a subclass through its parent/interface type and exercising overridden behavior."],
+  collections:["Verify collection elements are added, retrieved or processed correctly.","If the task needs a collection, consider List, Set, Map or another suitable API."],
+  generics:["Check the element or key/value types and type-safe operations.","Review whether typed collections or other generic declarations would help the task."],
+  exceptions:["Run a safe failure case and verify a useful error path.","Review expected failures and decide where try/catch, validation or throws is appropriate."],
+  jdbc:["Check that JDBC connections, SQL statements and resources work correctly.","If required, connect Java to a database through JDBC; the built-in Adminerva DB lab is separate."],
+  fileio:["Try a read/write scenario and check resource handling.","Review whether your task needs persistent file reading or writing."],
+  threads:["Verify ordering and shared-state safety; keywords alone do not prove concurrency.","If required, implement and test concurrent behavior rather than adding unused threading APIs."],
+  crud:["Review each recorded INSERT, SELECT, UPDATE and DELETE operation in Adminerva DB.","Use the Adminerva DB lab to perform and inspect any missing CRUD operations."],
+  design:["Compare saved diagrams with the actual class relationships and runtime behavior.","Save a relevant design diagram, then check that it matches your implemented project."]
+};
 export function analyzeProjectEvidence(project){
   const docs=javaDocs(project?.state),types=declarations(docs),classes=types.filter(x=>x.kind==="class"),checks=[];
-  const add=(group,id,label,locations,explanation,kind="source")=>checks.push({
-    group,id,label,detected:locations.length>0,locations:locations.slice(0,3),explanation,kind
-  });
+  const add=(group,id,label,locations,explanation,kind="source",met=null)=>{
+    const detected=met===null?locations.length>0:Boolean(met);
+    checks.push({group,id,label,detected,locations:locations.slice(0,12),
+      matchCount:locations.length,explanation,kind,
+      feedback:REVIEW_GUIDANCE[id]?.[detected?0:1]||"Review the original source and test the relevant behavior."});
+  };
   const at=list=>list.map(x=>x.at);
   const fields=scan(docs,/\bprivate\s+(?:(?:final|static|volatile|transient)\s+)*[\w.$<>\[\],?]+\s+[A-Za-z_$][\w$]*\s*(?:=|;)/g);
   const accessors=scan(docs,/\b(?:public|protected)\s+[\w.$<>\[\],?]+\s+(?:get|set|is)[A-Z]\w*\s*\(/g);
@@ -124,14 +164,18 @@ export function analyzeProjectEvidence(project){
   add("Java concepts","threads","Concurrency",scan(docs,
     /\b(?:Thread|Runnable|ExecutorService|CompletableFuture|synchronized)\b/g),
     "Concurrency APIs appear; correct multithreading is unverified.");
-  const operations=new Set((project?.database?.history||[]).map(x=>String(x?.type||"").toUpperCase()));
-  const completed=["INSERT","SELECT","UPDATE","DELETE"].filter(x=>operations.has(x));
-  add("Project activities","crud","Adminerva DB CRUD history",
-    completed.length===4?[{label:"INSERT, SELECT, UPDATE, DELETE"}]:[],
-    "Recorded Adminerva DB operations: "+(completed.join(", ")||"none")+". Separate from Java/JDBC source.",
-    "activity");
+  const history=Array.isArray(project?.database?.history)?project.database.history:[];
+  const latestActions=["INSERT","SELECT","UPDATE","DELETE"].map(type=>{
+    const row=history.find(item=>String(item?.type||"").toUpperCase()===type);
+    return row?{label:type,sql:String(row.sql||"").slice(0,260),at:String(row.at||"").slice(0,40)}:null;
+  }).filter(Boolean);
+  const completed=latestActions.map(item=>item.label);
+  add("Project activities","crud","Adminerva DB CRUD history",latestActions,
+    "Recorded operations: "+(completed.join(", ")||"none")+". All four actions are required for the indicator. This is separate from JDBC and Java source.",
+    "activity",completed.length===4);
   const diagrams=Object.entries(project?.design||{}).filter(([key,value])=>String(value||"").trim());
-  add("Project activities","design","Saved design artifacts",diagrams.map(([name])=>({label:name})),
-    "Nonempty saved design entries: "+diagrams.length+". Diagram quality is not reviewed.","artifact");
+  add("Project activities","design","Saved design artifacts",diagrams.map(([name,value])=>({
+    label:name,preview:String(value).slice(0,360)
+  })),"Nonempty saved design entries: "+diagrams.length+". Diagram quality is not reviewed.","artifact");
   return {javaFiles:docs.length,checks};
 }
