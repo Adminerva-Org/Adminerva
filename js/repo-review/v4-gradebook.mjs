@@ -33,7 +33,9 @@ function localIso(value){
   return Number.isFinite(date.getTime())?date.toISOString():null;
 }
 if(panel&&taskSelect&&inbox&&status&&dialog){
-  const view=new URL(location.href).searchParams.get("view")||"review";
+  const pageParams=new URL(location.href).searchParams;
+  const view=pageParams.get("view")||"review";
+  const requestedOfferingId=String(pageParams.get("offeringId")||"");
   const viewCopy={
     submissions:["Submissions","Inspect frozen learner responses and open the exact submitted version when review is needed."],
     review:["Review & Grade","Review immutable assessment evidence, save grade drafts, and publish deliberately."],
@@ -43,7 +45,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   if(pageTitle)pageTitle.textContent=viewCopy[0];
   if(pageDescription)pageDescription.textContent=viewCopy[1];
   document.querySelectorAll('nav[aria-label="Assessment workflow views"] a').forEach(link=>{
-    const active=new URL(link.href,location.href).searchParams.get("view")===view;
+    const target=new URL(link.href,location.href);
+    const active=target.searchParams.get("view")===view;
+    if(requestedOfferingId)target.searchParams.set("offeringId",requestedOfferingId);
+    link.href=target.pathname+target.search+target.hash;
     link.classList.toggle("bg-cyan-900",active);
     if(active)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");
   });
@@ -101,8 +106,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       scoped(migrationApi,"list_legacy_deployments").catch(()=>({items:[]}))
     ]);
     if(token!==generation)return;
-    const v4Items=(result.assessments||[]).filter(item=>["studio","github","text","link"].includes(item.submissionSource)&&item.status==="deployed");
-    const legacyItems=(legacyResult.items||[]).map(item=>({
+    const v4Items=(result.assessments||[]).filter(item=>
+      ["studio","github","text","link"].includes(item.submissionSource)&&item.status==="deployed"&&
+      (!requestedOfferingId||item.offeringId===requestedOfferingId));
+    const legacyItems=requestedOfferingId?[]:(legacyResult.items||[]).map(item=>({
       taskId:"legacy:"+item.legacyAssessmentId,
       legacyAssessmentId:item.legacyAssessmentId,
       legacyCompatibility:true,
@@ -133,9 +140,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       (v4Count+" V4 deployment"+(v4Count===1?"":"s")+" · "+legacyCount+" historical deployment"+(legacyCount===1?"":"s")+" available."):
       "No deployed school assessments owned by this teacher in the active school." ;
     taskSelect.disabled=busy;
-    const requested=previous||new URL(location.href).searchParams.get("task");
+    const requested=previous||pageParams.get("task");
     if(requested&&tasks.has(requested)){
       taskSelect.value=requested;
+      await loadInbox();
+    }else if(requestedOfferingId&&v4Items.length===1){
+      taskSelect.value=v4Items[0].taskId;
       await loadInbox();
     }
   }
