@@ -292,7 +292,8 @@ function createSchoolAssessmentService({db}){
     taskRef=tasks.doc(taskId),expectedRevision=Number(input.expectedRevision),
     reason=String(input.reason||"").trim(),
     start=timestamp(input.opensAt,"Opening time"),end=timestamp(input.dueAt,"Deadline"),
-    allowLateSubmissions=input.allowLateSubmissions===true;
+    allowLateSubmissions=input.allowLateSubmissions===true,
+    manualOpenRequired=input.manualOpenRequired===true;
    if(!Number.isInteger(expectedRevision)||expectedRevision<1)
     deny("invalid-argument","The current assessment revision is required.");
    if(reason.length<12||reason.length>1000)
@@ -323,15 +324,23 @@ function createSchoolAssessmentService({db}){
       deny("failed-precondition","This assessment changed. Reload it before saving deployment settings.");
     if(["archived","cancelled"].includes(lifecycle))
       deny("failed-precondition","Restore this assessment before editing its deployment settings.");
+    if(manualOpenRequired&&data.submissionSource!=="studio")
+      deny("invalid-argument","Teacher-controlled opening requires an Adminerva Studio deployment.");
+    const accessChanged=(data.manualOpenRequired===true)!==manualOpenRequired;
     const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
-    tx.update(taskRef,{opensAt:start,dueAt:end,allowLateSubmissions,revision:nextRevision,updatedAt:now,
+    tx.update(taskRef,{opensAt:start,dueAt:end,allowLateSubmissions,manualOpenRequired,
+      ...(accessChanged?{manualAccessState:manualOpenRequired?"waiting":"scheduled"}:{}),
+      revision:nextRevision,updatedAt:now,
       lastSettingsReason:reason,lastSettingsByUid:ctx.uid});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:"assessment_settings_updated",beforeRevision:revision,afterRevision:nextRevision,reason,
-      before:{opensAt:data.opensAt,dueAt:data.dueAt,allowLateSubmissions:data.allowLateSubmissions===true},
-      after:{opensAt:start,dueAt:end,allowLateSubmissions},createdAt:now});
+      before:{opensAt:data.opensAt,dueAt:data.dueAt,allowLateSubmissions:data.allowLateSubmissions===true,
+        manualOpenRequired:data.manualOpenRequired===true,manualAccessState:data.manualAccessState||"scheduled"},
+      after:{opensAt:start,dueAt:end,allowLateSubmissions,manualOpenRequired,
+        manualAccessState:accessChanged?(manualOpenRequired?"waiting":"scheduled"):(data.manualAccessState||"scheduled")},
+      createdAt:now});
     result={taskId,revision:nextRevision,opensAt:start.toMillis(),dueAt:end.toMillis(),
-      allowLateSubmissions,lifecycle,title:data.title||"Assessment"};
+      allowLateSubmissions,manualOpenRequired,lifecycle,title:data.title||"Assessment"};
    });
    return result;
   }
