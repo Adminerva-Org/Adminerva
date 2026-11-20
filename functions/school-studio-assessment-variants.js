@@ -84,7 +84,7 @@ function createSchoolStudioAssessmentVariantService({db}){
   if(attempt>30)deny("failed-precondition","The Studio revision limit was reached.");
 
   if(task.manualOpenRequired===true&&task.manualAccessState!=="open")
-  deny("failed-precondition","Your teacher has not opened this section's Studio exam, or has temporarily held it.");
+  deny("failed-precondition","Your teacher has not opened this Studio exam session, or has already closed it.");
  const lifecycle=task.lifecycle||"active",now=Date.now(),
     revisionOpen=head.exists&&headData.status==="reopened",
     revisionDeadline=revisionOpen?headData.revisionDueAt?.toMillis?.()||0:0;
