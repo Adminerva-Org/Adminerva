@@ -5,9 +5,12 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0
 const functions=getFunctions(app,"asia-southeast1");
 const analyticsApi=httpsCallable(functions,"schoolTeacherAnalytics");
 const streamApi=httpsCallable(functions,"schoolClassroomStream");
+const assessmentApi=httpsCallable(functions,"schoolAssessments");
+const academicsApi=httpsCallable(functions,"schoolAcademics");
+const initialOfferingId=String(new URLSearchParams(location.search).get("offeringId")||"");
 const el=id=>document.getElementById(id);
 const form=el("teacherClassroomForm"),select=el("teacherClassroomOffering");
-let picker=null,offerings=[],posts=[],busy=false,epoch=0,loadedOffering="",editing=null,composerOffering="",canPost=false;
+let picker=null,offerings=[],posts=[],classwork=[],rosterStudents=[],busy=false,epoch=0,loadedOffering="",editing=null,composerOffering="",canPost=false,classworkError="",rosterError="";
 const fields=["Kind","Title","Body","Link","Pinned"];
 function make(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;}
 function date(value){return value?new Date(value).toLocaleString():"";}
@@ -64,13 +67,65 @@ function renderPosts(){
     host.append(card);
   }
 }
+function updateClassLinks(){
+  const item=current(),offeringId=item?.offeringId||"";
+  const query=offeringId?"&offeringId="+encodeURIComponent(offeringId):"";
+  el("teacherClassroomSubmissionsLink").href="school-gradebook.html?view=submissions"+query;
+  el("teacherClassroomGradesLink").href="school-gradebook.html?view=results"+query;
+  el("teacherClassroomRecordLink").href=offeringId?"class-record.html?offering="+encodeURIComponent(offeringId):"class-record.html";
+  el("teacherClassroomAssessmentLink").href=offeringId?"assessment-studio.html?offeringId="+encodeURIComponent(offeringId):"assessment-studio.html";
+}
+function renderClasswork(){
+  const host=el("teacherClassroomClasswork");host.replaceChildren();
+  if(classworkError){host.append(make("p","rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900",classworkError));return;}
+  if(!loadedOffering){host.append(make("p","text-sm text-slate-500","Choose a classroom to load classwork."));return;}
+  if(!classwork.length){host.append(make("p","rounded-lg bg-slate-50 border border-dashed border-slate-300 p-4 text-sm text-slate-600","No assessments have been deployed to this class yet."));return;}
+  for(const item of classwork){
+    const row=make("article","rounded-xl border border-slate-200 p-3");
+    const top=make("div","flex items-start justify-between gap-3"),text=make("div","min-w-0");
+    text.append(make("strong","block text-sm",item.title||"Assessment"));
+    const state=item.lifecycle==="closed"?"Closed":item.published===true?"Visible to students":"Teacher draft";
+    text.append(make("span","block text-xs text-slate-500 mt-1",[item.assessmentType,state,item.dueAt?"Due "+date(item.dueAt):""].filter(Boolean).join(" · ")));
+    const link=make("a","shrink-0 text-xs font-bold text-indigo-700 underline","Review");link.href="school-gradebook.html?view=review&offeringId="+encodeURIComponent(item.offeringId)+"&assessment="+encodeURIComponent(item.taskId);
+    top.append(text,link);row.append(top);host.append(row);
+  }
+}
+function renderRoster(){
+  const host=el("teacherClassroomRoster");host.replaceChildren();
+  if(rosterError){host.append(make("p","p-4 text-sm text-amber-900 bg-amber-50",rosterError));el("teacherClassroomRosterCount").textContent="";return;}
+  if(!loadedOffering){host.append(make("p","p-4 text-sm text-slate-500","Choose a classroom to load students."));el("teacherClassroomRosterCount").textContent="";return;}
+  const students=rosterStudents.filter(row=>row.status==="active").sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  el("teacherClassroomRosterCount").textContent=students.length+" active student"+(students.length===1?"":"s");
+  if(!students.length){host.append(make("p","p-4 text-sm text-slate-500","No active students are enrolled in this class."));return;}
+  const list=make("ol","divide-y divide-slate-100");
+  students.forEach((row,index)=>{const li=make("li","flex items-center gap-3 px-3 py-2 text-sm");li.append(make("span","w-6 text-right text-slate-400",index+1),make("span","font-medium",row.name||"Student"));list.append(li);});
+  host.append(list);
+}
 function beginEdit(post){if(busy||!canPost||editing)return;keepDraft();editing=post;fillComposer({kind:post.kind,title:post.title,body:post.body,link:post.linkUrl,pinned:post.pinned});syncControls();el("teacherClassroomTitle").focus();form.scrollIntoView({block:"nearest",behavior:"smooth"});}
 async function loadPosts(){
-  const item=current(),turn=++epoch;loadedOffering="";canPost=false;posts=[];renderPosts();syncControls();
+  const item=current(),turn=++epoch;loadedOffering="";canPost=false;posts=[];classwork=[];rosterStudents=[];classworkError="";rosterError="";
+  renderPosts();renderClasswork();renderRoster();updateClassLinks();syncControls();
   if(!item)return false;
-  try{const result=await scoped(streamApi,"list",{offeringId:item.offeringId});if(turn!==epoch||current()?.offeringId!==item.offeringId)return false;
-    posts=result.posts||[];canPost=result.canPost===true;loadedOffering=item.offeringId;renderPosts();syncControls();return true;
-  }catch(error){if(turn===epoch){say(error?.message||"Classroom posts could not load.",true);renderPosts();}return false;}
+  try{
+    const results=await Promise.allSettled([
+      scoped(streamApi,"list",{offeringId:item.offeringId}),
+      scoped(assessmentApi,"list_teacher"),
+      scoped(academicsApi,"class_roster",{offeringId:item.offeringId})
+    ]);
+    if(turn!==epoch||current()?.offeringId!==item.offeringId)return false;
+    const streamResult=results[0];
+    if(streamResult.status!=="fulfilled")throw streamResult.reason;
+    posts=streamResult.value.posts||[];canPost=streamResult.value.canPost===true;loadedOffering=item.offeringId;
+    if(results[1].status==="fulfilled"){
+      classwork=(results[1].value.assessments||[]).filter(task=>task.offeringId===item.offeringId&&!["archived","cancelled"].includes(task.lifecycle)).sort((a,b)=>(a.dueAt||0)-(b.dueAt||0));
+    }else classworkError="Classwork could not load. The classroom stream is still available.";
+    if(results[2].status==="fulfilled")rosterStudents=results[2].value.students||[];
+    else rosterError="Roster could not load. Official enrollment was not changed.";
+    renderPosts();renderClasswork();renderRoster();updateClassLinks();syncControls();return true;
+  }catch(error){
+    if(turn===epoch){say(error?.message||"Classroom could not load.",true);renderPosts();renderClasswork();renderRoster();}
+    return false;
+  }
 }
 async function refresh(){
   if(!picker?.scope.current||busy)return;
@@ -81,9 +136,10 @@ async function refresh(){
     offerings=result.offerings||[];const previous=select.value;select.replaceChildren();
     for(const item of offerings)select.add(new Option(label(item),item.offeringId));
     if(offerings.some(item=>item.offeringId===previous))select.value=previous;
-    if(!offerings.length){loadedOffering="";canPost=false;posts=[];renderPosts();say("No active course offering is assigned to this teacher account.",true);return;}
-    restoreDraft(select.value);if(await loadPosts())say("Classroom stream ready for "+label(current())+".");
-  }catch(error){loadedOffering="";canPost=false;posts=[];renderPosts();say(error?.message||"Classroom stream could not load.",true);}
+    else if(initialOfferingId&&offerings.some(item=>item.offeringId===initialOfferingId))select.value=initialOfferingId;
+    if(!offerings.length){loadedOffering="";canPost=false;posts=[];classwork=[];rosterStudents=[];renderPosts();renderClasswork();renderRoster();say("No active class is assigned to this teacher account.",true);return;}
+    restoreDraft(select.value);if(await loadPosts())say("Classroom ready for "+label(current())+".");
+  }catch(error){loadedOffering="";canPost=false;posts=[];classwork=[];rosterStudents=[];renderPosts();renderClasswork();renderRoster();say(error?.message||"Classroom could not load.",true);}
   finally{setBusy(false);}
 }
 async function writePost(action,details,success){
@@ -108,16 +164,16 @@ el("teacherClassroomCancelEdit").addEventListener("click",()=>{if(!busy)restoreD
 select.addEventListener("change",async()=>{
   if(busy){select.value=composerOffering;return;}
   if(editing&&!confirm("Discard unsaved changes to this post?")){select.value=composerOffering;return;}
-  keepDraft();restoreDraft(select.value);setBusy(true);say("Loading classroom posts…");
-  try{if(await loadPosts())say("Classroom stream ready for "+label(current())+".");}finally{setBusy(false);}
+  keepDraft();restoreDraft(select.value);setBusy(true);say("Loading classroom…");
+  try{if(await loadPosts())say("Classroom ready for "+label(current())+".");}finally{setBusy(false);}
 });
 el("teacherClassroomRefresh").addEventListener("click",()=>void refresh());
 el("teacherClassroomFilter").addEventListener("change",renderPosts);
 el("teacherClassroomSearch").addEventListener("input",renderPosts);
 picker=createTenantSchoolPicker({host:el("teacherClassroomSchoolSwitcher"),status:null,onBeforeChange:async()=>{
   if(busy||editing)throw Error("Finish or cancel the current classroom action before switching schools.");
-  keepDraft();++epoch;offerings=[];posts=[];loadedOffering="";canPost=false;composerOffering="";select.replaceChildren();fillComposer();renderPosts();syncControls();
+  keepDraft();++epoch;offerings=[];posts=[];classwork=[];rosterStudents=[];loadedOffering="";canPost=false;composerOffering="";classworkError="";rosterError="";select.replaceChildren();fillComposer();renderPosts();renderClasswork();renderRoster();updateClassLinks();syncControls();
 },onReady:scope=>{if(scope.current?.roles.includes("teacher"))void refresh();else say("Teacher access is required.",true);}});
-syncControls();
+renderClasswork();renderRoster();updateClassLinks();syncControls();
 await auth.authStateReady();
 try{const state=await picker.load();if(!auth.currentUser)say("Sign in with a verified teacher account.",true);else if(state?.state==="choose_school")say("Choose the school whose classroom stream you want to manage.");}catch(error){say(error?.message||"Verified school access is unavailable.",true);}
