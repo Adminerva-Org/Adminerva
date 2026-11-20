@@ -270,18 +270,25 @@ function createSchoolClassroomStreamService({db}){
       authorName:name,authorRole:student?"student":"teacher",body,status:"active",revision:1,createdAt:now,updatedAt:now
     });
     const recipient=post.data().authorUid;
-    if(recipient&&recipient!==ctx.uid){
-      await notifyUids([recipient],{
-        id:"classroom_comment_"+commentRef.id,title:"New classroom comment",
-        body:name+": "+body.slice(0,220),type:"classroom",sourceId:commentRef.id,
-        target:(post.data().authorRole==="student"?"student-subject.html":"teacher-classroom.html")+
-          "?offeringId="+encodeURIComponent(offeringId)+"#class-stream"
-      });
-    }else if(student){
-      await notifyUids(await teacherRecipients(),{
-        id:"classroom_comment_"+commentRef.id,title:"New student classroom comment",
+    if(student){
+      const teachers=await teacherRecipients();
+      await notifyUids(teachers,{
+        id:"classroom_comment_teacher_"+commentRef.id,title:"New student classroom comment",
         body:name+": "+body.slice(0,220),type:"classroom",sourceId:commentRef.id,
         target:"teacher-classroom.html?offeringId="+encodeURIComponent(offeringId)+"#class-stream"
+      });
+      if(recipient&&recipient!==ctx.uid&&!teachers.includes(recipient)){
+        await notifyUids([recipient],{
+          id:"classroom_comment_author_"+commentRef.id,title:"New comment on your classroom post",
+          body:name+": "+body.slice(0,220),type:"classroom",sourceId:commentRef.id,
+          target:"student-subject.html?offeringId="+encodeURIComponent(offeringId)+"#class-stream"
+        });
+      }
+    }else if(recipient&&recipient!==ctx.uid){
+      await notifyUids([recipient],{
+        id:"classroom_comment_"+commentRef.id,title:"New teacher classroom comment",
+        body:name+": "+body.slice(0,220),type:"classroom",sourceId:commentRef.id,
+        target:"student-subject.html?offeringId="+encodeURIComponent(offeringId)+"#class-stream"
       });
     }
     return {commentId:commentRef.id,status:"active"};
