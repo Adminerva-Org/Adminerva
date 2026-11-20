@@ -12,7 +12,7 @@ import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
 import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,loadV4StudioProject,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
-} from "./v4-studio-service.mjs?v=4.2.2";
+} from "./v4-studio-service.mjs?v=4.2.4";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
