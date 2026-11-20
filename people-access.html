@@ -53,12 +53,12 @@
       <button id="pa-tab-people" type="button" data-tab="people" aria-controls="pa-people" aria-selected="false" role="tab" tabindex="-1">Students &amp; staff</button>
       <button id="pa-tab-import" type="button" data-tab="import" aria-controls="pa-import" aria-selected="false" role="tab" tabindex="-1">Roster import</button>
       <button id="pa-tab-invites" type="button" data-tab="invites" aria-controls="pa-invites" aria-selected="false" role="tab" tabindex="-1">Invitations</button>
-      <button id="pa-tab-classes" type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Teaching &amp; classes</button>
+      <button id="pa-tab-classes" type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Legacy class relationships</button>
       <button id="pa-tab-access" type="button" data-tab="access" aria-controls="pa-access" aria-selected="false" role="tab" tabindex="-1">Roles &amp; access</button>
     </div>
     <section id="pa-overview" class="pa-card" role="tabpanel" aria-labelledby="pa-tab-overview" tabindex="0">
       <h2 style="font-size:1.2rem;font-weight:750;margin-bottom:.35rem">School overview</h2>
-      <p class="pa-muted" style="margin-bottom:1rem">People &amp; Access owns identity, account access and staff-role relationships. Student enrollment is now a separate school workflow.</p>
+      <p class="pa-muted" style="margin-bottom:1rem">People &amp; Access owns identity, account access, invitations and school roles. Teaching assignments belong in Classes &amp; Scheduling; student enrollment is a separate school workflow.</p>
       <section style="margin-bottom:1rem;padding:1rem;border:1px solid #bae6fd;border-radius:12px;background:#f0f9ff">
         <h3 style="font-size:1.05rem;font-weight:800;color:#0c4a6e">Adding a new student?</h3>
         <p class="pa-muted" style="margin:.35rem 0 .8rem;color:#155e75">Use Enrollment &amp; Registration to register the learner, assign the official section/academic period, prepare verified sign-in activation and create subject enrollments together.</p>
@@ -282,7 +282,12 @@
       </dialog>
     </section>
     <section id="pa-classes" role="tabpanel" aria-labelledby="pa-tab-classes" tabindex="0" hidden>
-      <p id="pa-classes-help" class="pa-muted">School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.</p>
+      <section class="pa-card" style="margin-bottom:1rem;border-color:#bae6fd;background:#f0f9ff">
+        <h2 style="font-weight:800;font-size:1.1rem;color:#0c4a6e">Teaching assignments moved to Classes &amp; Scheduling</h2>
+        <p class="pa-muted" style="margin-top:.35rem;color:#155e75">Use the class-centered workspace for teacher assignments, teacher load, section coverage and roster inspection. The relationship tools below remain available for legacy enrollment models and migration exceptions.</p>
+        <a class="pa-action" href="school-classes.html" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:.75rem">Open Classes &amp; Scheduling</a>
+      </section>
+      <p id="pa-classes-help" class="pa-muted">Legacy class-relationship tools. Changes preserve earlier grades and term history.</p>
       <section class="pa-card" id="pa-workload" style="margin:1rem 0">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div><h2 style="font-weight:800;font-size:1.15rem">Faculty workload &amp; staffing</h2><p class="pa-muted">Review active teaching assignments and classes without a verified active teacher. Counts are course offerings, not teaching hours.</p></div>
