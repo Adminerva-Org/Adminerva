@@ -519,6 +519,66 @@ async function setPublication(task,publish){
   }catch(error){say(error?.message||"Assessment publication could not be changed.");}
   finally{pendingWrite=false;}
 }
+async function showExamCloseSnapshot(task,epoch,student){
+  const holder=document.getElementById("schoolAssessmentStudioHost")||document.body;
+  let dialog=document.getElementById("tl-closed-exam-source");
+  if(!dialog){
+    dialog=document.createElement("dialog");dialog.id="tl-closed-exam-source";
+    dialog.className="tl-dialog";
+    dialog.style.cssText="width:min(880px,calc(100vw - 20px));max-height:92dvh;overflow:auto;border:0;border-radius:16px;padding:0;box-shadow:0 24px 90px #02061788;";
+    const root=document.createElement("section");root.className="bg-white p-4 sm:p-6";
+    const header=document.createElement("div");header.className="flex items-center justify-between gap-3";
+    const heading=document.createElement("h2");heading.id="tl-close-source-title";
+    heading.className="text-lg font-extrabold text-slate-900";
+    const close=document.createElement("button");close.textContent="Close";close.className="tl-action alt";
+    close.type="button";close.addEventListener("click",()=>dialog.close());
+    header.append(heading,close);
+    const meta=document.createElement("p");meta.id="tl-close-source-meta";
+    meta.className="mt-2 text-xs text-slate-600";
+    const label=document.createElement("label");label.className="mt-4 block text-sm font-bold text-slate-700";
+    label.textContent="Saved source file";
+    const fileSelect=document.createElement("select");fileSelect.id="tl-close-source-file";
+    fileSelect.className="tl-input";label.append(fileSelect);
+    const pre=document.createElement("pre");pre.id="tl-close-source-code";
+    pre.className="mt-3 max-h-[60dvh] overflow-auto rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-100";
+    pre.style.tabSize="4";
+    root.append(header,meta,label,pre);
+    root.insertBefore(label,pre);dialog.append(root);holder.append(dialog);
+  }
+  const title=dialog.querySelector("#tl-close-source-title"),
+    meta=dialog.querySelector("#tl-close-source-meta"),
+    fileSelect=dialog.querySelector("#tl-close-source-file"),
+    pre=dialog.querySelector("#tl-close-source-code");
+  title.textContent=student.displayName+" · Session "+epoch;
+  meta.textContent="Loading the immutable school-received source snapshot…";
+  fileSelect.replaceChildren();fileSelect.disabled=true;pre.textContent="";
+  if(!dialog.open)dialog.showModal();
+  try{
+    const frozen=await performScoped(scopedAssessmentApi,"exam_close_project",{
+      taskId:task.taskId,sessionEpoch:epoch,studentUid:student.studentUid
+    });
+    if(!dialog.open)return;
+    meta.textContent="School received project revision "+frozen.projectRevision+
+      (frozen.savedAt?" · "+new Date(frozen.savedAt).toLocaleString():"")+
+      " · Immutable source digest "+String(frozen.sourceDigest||"").slice(0,20)+
+      "… · Not a graded submission.";
+    const files=Array.isArray(frozen.files)?frozen.files:[];
+    fileSelect.replaceChildren();
+    for(let i=0;i<files.length;i++){
+      const option=document.createElement("option");
+      option.value=String(i);option.textContent=files[i].path||"Source file "+(i+1);fileSelect.append(option);
+    }
+    const renderFile=()=>{pre.textContent=files[Number(fileSelect.value)||0]?.content||"";};
+    fileSelect.onchange=renderFile;fileSelect.disabled=!files.length;
+    pre.textContent=files.length?"": "The captured project contained no source files.";
+    if(files.length)renderFile();
+  }catch(error){
+    if(dialog.open){
+      meta.textContent=error?.message||"The saved exam source could not be opened.";
+      pre.textContent="No source content was returned.";
+    }
+  }
+}
 async function showExamCloseReport(task){
   if(pendingWrite)return;
   const holder=document.getElementById("schoolAssessmentStudioHost")||document.body;
@@ -581,7 +641,7 @@ async function showExamCloseReport(task){
       const table=document.createElement("table");table.className="min-w-full text-left text-sm";
       const thead=document.createElement("thead");thead.className="bg-slate-100";
       const headings=document.createElement("tr");
-      for(const label of ["Student","Final checkpoint","Project revision","Confirmed at"]){
+      for(const label of ["Student","Final checkpoint","Project revision","Confirmed at","Saved code"]){
         const th=document.createElement("th");th.className="px-3 py-2 font-bold";th.textContent=label;
         headings.append(th);
       }
@@ -601,6 +661,14 @@ async function showExamCloseReport(task){
             (student.checkpointConfirmed?"text-emerald-700":"text-amber-800");
           td.textContent=value;tr.append(td);
         });
+        const codeCell=document.createElement("td");codeCell.className="px-3 py-2";
+        if(student.checkpointConfirmed&&student.studentUid){
+          const inspect=document.createElement("button");inspect.type="button";
+          inspect.className="tl-action alt";inspect.textContent="View code";
+          inspect.addEventListener("click",()=>void showExamCloseSnapshot(task,epoch,student));
+          codeCell.append(inspect);
+        }else codeCell.textContent="—";
+        tr.append(codeCell);
         tbody.append(tr);
       }
       table.append(tbody);tableWrap.replaceChildren(table);
