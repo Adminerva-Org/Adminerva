@@ -61,11 +61,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const generalSubmissionApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const gradeApi=httpsCallable(functions,"schoolGradebook");
+  const classRecordApi=httpsCallable(functions,"schoolClassRecord");
   const verificationApi=httpsCallable(functions,"studioSubmissionVerification");
   const conversationApi=httpsCallable(functions,"schoolAssessmentConversation");
-  let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null,currentConversation=null;
+  let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null,currentConversation=null,currentClassRecordStatus=null;
   let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher",reviewNeedsRefresh=false,pendingStudentDeepLink=requestedStudentUid;
-  function clearTaskContext(){currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
+  function clearTaskContext(){currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentClassRecordStatus=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();renderClassRecordHandoff();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
 
   async function scoped(api,action,details={}){
     if(!picker?.scope.current)throw Error("Choose a verified school first.");
@@ -73,6 +74,33 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
     picker.scope.assertLease(lease);
     return result;
+  }
+  function renderClassRecordHandoff(){
+    const panel=document.getElementById("gbV4ClassRecordHandoff"),
+      copy=document.getElementById("gbV4ClassRecordStatus"),
+      link=document.getElementById("gbV4ClassRecordLink");
+    if(!panel||!copy||!link)return;
+    if(!currentTask||currentTask.legacyCompatibility){panel.hidden=true;return;}
+    panel.hidden=false;
+    link.href="class-record.html?"+new URLSearchParams({
+      offering:currentTask.offeringId,assessment:currentTask.taskId,source:"school"
+    }).toString();
+    const state=currentClassRecordStatus?.status;
+    if(state==="linked"){
+      const column=currentClassRecordStatus.column;
+      copy.textContent=(column?.label||currentTask.title)+" is already linked"+
+        (column?.category?" under "+column.category:"")+". Published Gradebook results project into that Class Record column.";
+      link.textContent="Open linked Class Record";
+    }else if(state==="archived"){
+      copy.textContent="This assessment has an archived Class Record column. Review the record before creating another grading column.";
+      link.textContent="Review Class Record";
+    }else if(state==="unlinked"){
+      copy.textContent="This assessment is not yet part of the official Class Record. Add it once, choose its grading category, and published results will project automatically.";
+      link.textContent="Add to Class Record";
+    }else{
+      copy.textContent="Checking whether this assessment is linked to the official Class Record…";
+      link.textContent="Open Class Record";
+    }
   }
   function renderConversation(){
     const host=document.getElementById("gbV4Conversation"),form=document.getElementById("gbV4ConversationForm"),
@@ -187,7 +215,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   async function loadInbox(){
     const token=++generation;
     const task=tasks.get(taskSelect.value);
-    currentTask=task||null;inbox.replaceChildren();
+    currentTask=task||null;currentClassRecordStatus=null;inbox.replaceChildren();renderClassRecordHandoff();
     if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
     if(!task){status.textContent="Choose an assessment to load submissions.";return;}
     if(task.legacyCompatibility){
@@ -214,11 +242,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const evidenceApi=sourceApi(task.submissionSource,{
         studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
       });
-      const [result,resultData]=await Promise.all([
+      const [result,resultData,classRecordStatus]=await Promise.all([
         scoped(evidenceApi,"inbox",{taskId:task.taskId}),
-        scoped(gradeApi,"list_task_results",{taskId:task.taskId})
+        scoped(gradeApi,"list_task_results",{taskId:task.taskId}),
+        scoped(classRecordApi,"assessment_link_status",{offeringId:task.offeringId,taskId:task.taskId})
+          .catch(error=>({status:"unavailable",error:error?.message||"Class Record status unavailable"}))
       ]);
       if(token!==generation)return;
+      currentClassRecordStatus=classRecordStatus;renderClassRecordHandoff();
       let rows=task.submissionSource==="github"?(result.evidence||[]):(result.submissions||[]);
       const gradeMap=new Map((resultData.results||[]).map(item=>[item.studentUid,item]));
       if(view==="results")rows=[...rows].sort((a,b)=>{
