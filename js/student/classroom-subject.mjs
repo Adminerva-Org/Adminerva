@@ -93,8 +93,9 @@ function stateFor(task,submission,grade){
     {label:"Revision requested",tone:"amber",action:true}:{label:"Revision expired",tone:"rose",action:false};
   if(submission?.submitted)return {label:submission.status==="approved"?"Approved":"Submitted",tone:"blue",action:false};
   if(task.windowStatus==="upcoming")return {label:"Upcoming",tone:"slate",action:false};
-  if(task.windowStatus==="closed")return task.allowLateSubmissions===true?
-    {label:"Late submission",tone:"amber",action:true}:{label:"Past due",tone:"rose",action:false};
+  if(task.windowStatus==="closed")return {label:"Past due",tone:"rose",action:false};
+  if(task.windowStatus==="open"&&task.allowLateSubmissions===true&&Number(task.dueAt||0)<Date.now())
+    return {label:"Late submission allowed",tone:"amber",action:true};
   return {label:"To do",tone:"indigo",action:true};
 }
 function badge(label,tone){
