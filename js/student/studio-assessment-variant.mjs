@@ -95,6 +95,13 @@ async function load(user){
       item.taskId===assessmentId&&item.submissionSource==="studio"):null;
     if(task){
       matchedSchoolAssessment=true;
+      if(task.windowStatus==="waiting_for_teacher"){
+        reportContext({status:"waiting_for_teacher",personalized:false,readOnly:true});
+        if(loadingNote)loadingNote.textContent=task.manualAccessState==="held"
+          ?"This section's exam is on hold. Your existing project is preserved. Refresh after your teacher reopens the exam."
+          :"Waiting for your teacher to open this section's Studio examination.";
+        return;
+      }
       showOverview(task,{school:true});
       if(task.personalizedTask?.enabled!==true){
         reportContext({status:"not-personalized",personalized:false,readOnly:false});
