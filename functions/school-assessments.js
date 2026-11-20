@@ -242,7 +242,10 @@ function createSchoolAssessmentService({db}){
         grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")
       deny("permission-denied","Your teaching assignment is not active.");
    }
-   const epoch=Number(task.data().manualSessionEpoch||0);
+   const currentEpoch=Number(task.data().manualSessionEpoch||0),
+     epoch=input.sessionEpoch===undefined?currentEpoch:Number(input.sessionEpoch);
+   if(!Number.isSafeInteger(epoch)||epoch<1||epoch>currentEpoch)
+     deny("invalid-argument","Choose a valid practical-exam class session.");
    const snap=await db.collection(prefix+"studio_exam_close_receipts/"+taskId+
      "/sessions/"+epoch+"/students").limit(101).get();
    if(snap.size===101)
@@ -262,16 +265,17 @@ function createSchoolAssessmentService({db}){
      doc.data().status==="active"&&typeof doc.data().personId==="string");
    const people=await Promise.all(active.map(doc=>
      db.doc(prefix+"people/"+doc.data().personId).get()));
-   const confirmedUids=new Set(receipts.map(row=>row.studentUid));
+   const byUid=new Map(receipts.map(row=>[row.studentUid,row]));
    const students=people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
      person.data().status==="active"&&person.data().kind==="student")
-     .map(person=>({
-       displayName:String(person.data().displayName||"Student").slice(0,140),
-       studentUid:person.data().authUid||null,
-       checkpointConfirmed:Boolean(person.data().authUid&&confirmedUids.has(person.data().authUid))
-     })).sort((a,b)=>a.displayName.localeCompare(b.displayName));
-   return {taskId,sessionEpoch:epoch,confirmed:receipts.length,
-     enrolledStudents:students.length,students,receipts};
+     .map(person=>{
+       const uid=person.data().authUid||null,receipt=uid?byUid.get(uid):null;
+       return {displayName:String(person.data().displayName||"Student").slice(0,140),
+         studentUid:uid,checkpointConfirmed:Boolean(receipt),
+         projectRevision:receipt?.projectRevision||null,savedAt:receipt?.savedAt||null};
+     }).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+   return {taskId,sessionEpoch:epoch,currentSessionEpoch:currentEpoch,
+     confirmed:receipts.length,enrolledStudents:students.length,students};
   }
 
   if(["exam_session","exam_close_status"].includes(input.action)){
