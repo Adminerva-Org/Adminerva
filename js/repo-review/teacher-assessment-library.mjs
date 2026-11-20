@@ -114,6 +114,13 @@ function toggleStudioProjectProfile(){
   if(wrap)wrap.hidden=!active;
   if(form.elements.studioProjectProfile)form.elements.studioProjectProfile.disabled=!active;
 }
+function toggleManualOpening(){
+  const deployForm=el("tl-deploy-form"),control=deployForm.elements.manualOpenRequired;
+  const isStudio=deployForm.elements.submissionSource.value==="studio";
+  el("tl-manual-exam-option").hidden=!isStudio;
+  control.disabled=!isStudio;
+  if(!isStudio)control.checked=false;
+}
 function togglePersonalizationFields(){
   const active=form.elements.personalizationMode?.value==="personalized";
   el("tl-personalization-fields").hidden=!active;
@@ -233,6 +240,7 @@ function render(){
       meta.className="tl-muted";
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
       meta.textContent=(task.published?"Published":"Private deployment")+" · "+sourceLabel(task.submissionSource)+
+        (task.manualOpenRequired?" · Teacher-controlled: "+(task.manualAccessState==="open"?"OPEN":task.manualAccessState==="held"?"ON HOLD":"WAITING"):"")+
         (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
@@ -257,6 +265,11 @@ function render(){
       }
       if(["active","closed"].includes(lifecycle)){
         controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
+      }
+      if(lifecycle==="active"&&task.published&&task.manualOpenRequired&&task.submissionSource==="studio"){
+        const isOpen=task.manualAccessState==="open";
+        controls.append(actionButton(isOpen?"Hold exam":"Open exam",
+          ()=>void setExamOpening(task,!isOpen),isOpen));
       }
       if(lifecycle==="active"){
         controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
@@ -493,6 +506,21 @@ async function setPublication(task,publish){
   }catch(error){say(error?.message||"Assessment publication could not be changed.");}
   finally{pendingWrite=false;}
 }
+async function setExamOpening(task,opening){
+  if(pendingWrite)return;
+  if(!confirm(opening?
+    "Open this Studio examination for the assigned section now? Students will be able to see their tasks and create or resume their assessment project.":
+    "Place this section's Studio examination on hold? New personalized task requests and submissions will be blocked until you reopen it."))return;
+  pendingWrite=true;
+  try{
+    say(opening?"Opening this section's Studio exam…":"Holding this section's Studio exam…");
+    await performScoped(scopedAssessmentApi,opening?"open_exam":"hold_exam",{
+      taskId:task.taskId,expectedRevision:task.revision||1
+    });
+    await refreshAfterWrite(task.title+(opening?" is open for this section.":" is on hold for this section."));
+  }catch(error){say(error?.message||"Exam access could not be changed.");}
+  finally{pendingWrite=false;}
+}
 async function prepareDeployment(item){
   if(pendingWrite)return;
   const turn=++deployEpoch;deployReady=false;
@@ -513,6 +541,7 @@ async function prepareDeployment(item){
   form.reset();
   form.elements.submissionSource.disabled=personalized(item);
   form.elements.submissionSource.value=personalized(item)?"studio":(item.defaultSubmissionSource||"text");
+  toggleManualOpening();
   const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   form.elements.opensAt.value=localDateInput(now);
   form.elements.dueAt.value=localDateInput(tomorrow);
@@ -605,6 +634,7 @@ el("tl-cancel-deploy").addEventListener("click",()=>{
 });
 el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
 el("tl-deploy-dialog").addEventListener("close",()=>{++deployEpoch;deployReady=false;deploying=null;deployRequestKey=null;});
+el("tl-deploy-form").elements.submissionSource.addEventListener("change",toggleManualOpening);
 el("tl-deploy-form").addEventListener("input",()=>{if(!pendingWrite)deployRequestKey=crypto.randomUUID();});
 el("tl-deploy-form").addEventListener("submit",event=>{
   event.preventDefault();if(!deploying||pendingWrite||!deployReady)return;
@@ -628,7 +658,8 @@ el("tl-deploy-form").addEventListener("submit",event=>{
         blueprintId:resource.id,offeringId:String(fields.get("offeringId")||""),
         submissionSource:personalized(resource)?"studio":String(fields.get("submissionSource")||""),
         opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
-        allowLateSubmissions:fields.get("allowLateSubmissions")==="on",requestKey:key
+        allowLateSubmissions:fields.get("allowLateSubmissions")==="on",
+        manualOpenRequired:fields.get("manualOpenRequired")==="on",requestKey:key
       });
       const message=task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
         "Assessment prepared privately for this class. Publish it when you are ready for students to see it.";
