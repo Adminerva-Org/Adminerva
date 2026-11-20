@@ -291,6 +291,12 @@ function createSchoolStudioProjectService({db}){
      deny("failed-precondition","Restore this archived school project before saving.");
     if(doc.data().revision!==revision)
      deny("failed-precondition","Project changed elsewhere. Load the latest version before saving.");
+    const incoming=artifacts.assessment,previous=doc.data().artifacts?.assessment;
+    if(previous?.provisionedBy==="assessment-launch"&&
+       (incoming?.provisionedBy!=="assessment-launch"||
+        (incoming.taskId||incoming.assessmentId)!==(previous.taskId||previous.assessmentId)))
+     deny("permission-denied","An assessment project cannot be detached from or reassigned to another exam.");
+    await authorizeAssessmentProject(tx,artifacts);
     tx.update(ref,{title,files,artifacts,contentDigest:digest,
       sourceDigest:digestSource(files,doc.data().language),revision:revision+1,
       updatedAt:FieldValue.serverTimestamp()});
