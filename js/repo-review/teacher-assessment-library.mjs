@@ -514,7 +514,7 @@ async function setExamOpening(task,opening){
   if(pendingWrite)return;
   if(!confirm(opening?
     "Open this Studio examination for the assigned section now? Students will be able to see their tasks and create or resume their assessment project.":
-    "Place this section's Studio examination on hold? New personalized task requests and submissions will be blocked until you reopen it."))return;
+    "Put this section's Studio exam on hold? New project access, school saves, personalized task requests and submissions will be blocked. Ask students to save first; unsynced edits may remain only on their current device."))return;
   pendingWrite=true;
   try{
     say(opening?"Opening this section's Studio exam…":"Holding this section's Studio exam…");
