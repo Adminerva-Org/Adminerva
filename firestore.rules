@@ -448,6 +448,18 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
     match /students/{studentId} {
+      // School administrators can place an accepted, previously unassigned
+      // legacy student without replacing their account or academic history.
+      allow read: if isAdmin();
+      allow update: if legacyMcsAllowed() && isAdmin() &&
+        resource.data.get("section","") in ["", "No Section", "Unassigned"] &&
+        request.resource.data.get("section","") is string &&
+        request.resource.data.section.size() > 0 &&
+        request.resource.data.section.size() <= 120 &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["section", "updatedAt", "sectionUpdatedByUid"]) &&
+        request.resource.data.get("sectionUpdatedByUid","") == request.auth.uid;
       allow read: if legacyMcsAllowed() && hasVerifiedEmail() && resource.data.email is string &&
         verifiedEmailMatches(resource.data.email);
       // Do not permit students to change identity, section, or role information.
