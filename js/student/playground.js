@@ -198,7 +198,7 @@ let examPolicyPending=Boolean(examLinkId),examPolicy=null;
 // Poll the verified school callable because tenant Firestore documents deliberately
 // disallow direct browser reads. Lock the editor before the final save begins.
 let watchedExamId="",examSessionTimer=null,examSessionChecking=false,examSessionClosing=false;
-let examLastContact=0,examSessionErrorCount=0;
+let examLastContact=0,examSessionErrorCount=0,examMonitorPaused=false;
 function examCloseOverlay(){
   let host=document.getElementById("studioExamClosingOverlay");
   if(host)return host;
@@ -274,6 +274,27 @@ async function checkStudioExamSession(taskId=watchedExamId){
     const state=await getV4StudioExamSession(taskId);
     if(watchedExamId!==taskId||examSessionClosing)return;
     examLastContact=Date.now();examSessionErrorCount=0;
+    if(examMonitorPaused){
+      examMonitorPaused=false;
+      editorInstance?.updateOptions({readOnly:Boolean(studioRuntimeIntegration?.locked?.())});
+    }
+    const openedEpoch=Number(projectStudio?.getActiveProject?.()?.assessment?.sessionEpoch||0);
+    if(openedEpoch>0&&Number(state.sessionEpoch||0)>openedEpoch){
+      // A tab that missed the end of an earlier class must never join the
+      // next class merely because the teacher reopened the same assessment.
+      examSessionClosing=true;clearInterval(examSessionTimer);examSessionTimer=null;
+      editorInstance?.updateOptions({readOnly:true});
+      document.getElementById("studioShell")?.setAttribute("inert","");
+      const captured=persistWorkspace(),overlay=examCloseOverlay();
+      overlay.querySelector("#studioExamClosingMessage").textContent=
+        "This editor belongs to an earlier class session. The teacher has already opened a newer session.";
+      overlay.querySelector("#studioExamClosingNotice").textContent=captured?
+        "Your old draft was preserved on this device. Reopen the assessment from My Assessments for the current session.":
+        "The old draft could not be preserved. Keep this browser and contact your teacher.";
+      overlay.querySelector("#studioExamClosingActions").hidden=false;
+      overlay.querySelector("#studioExamRetryFinalSave").hidden=true;
+      return;
+    }
     if(state?.manualAccessState!=="open"||state.published!==true||state.lifecycle!=="active")
       await lockAndCloseStudioExam(taskId,Number(state.sessionEpoch||0));
   }catch(error){
@@ -282,6 +303,7 @@ async function checkStudioExamSession(taskId=watchedExamId){
     // An interrupted network cannot verify that the exam is still open.
     // Freeze input rather than allowing a disconnected student to keep editing.
     if(Date.now()-examLastContact>10000&&examSessionErrorCount>=3){
+      examMonitorPaused=true;
       editorInstance?.updateOptions({readOnly:true});
       const badge=document.getElementById("autoSaveIndicator");
       if(badge)badge.textContent="Exam connection lost · editing paused until reconnected";
