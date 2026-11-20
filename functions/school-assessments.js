@@ -255,7 +255,9 @@ function createSchoolAssessmentService({db}){
     const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
     tx.update(taskRef,{published:publish,revision:nextRevision,updatedAt:now,
       ...(publish?{publishedAt:now,publishedByUid:ctx.uid}:
-        {unpublishedAt:now,unpublishedByUid:ctx.uid})});
+        {unpublishedAt:now,unpublishedByUid:ctx.uid}),
+      ...(!publish&&data.manualOpenRequired===true&&data.manualAccessState==="open"?
+        {manualAccessState:"held",manualHeldAt:now,manualHeldByUid:ctx.uid}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:publish?"assessment_published":"assessment_unpublished",
       beforeRevision:revision,afterRevision:nextRevision,createdAt:now});
@@ -405,7 +407,10 @@ function createSchoolAssessmentService({db}){
     }
     const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
     tx.update(taskRef,{lifecycle:next,revision:nextRevision,updatedAt:now,
-      lastLifecycleReason:reason,lastLifecycleByUid:ctx.uid,...extra});
+      lastLifecycleReason:reason,lastLifecycleByUid:ctx.uid,...extra,
+      ...(data.manualOpenRequired===true&&data.manualAccessState==="open"&&
+         ["close","archive","cancel"].includes(input.action)?
+        {manualAccessState:"held",manualHeldAt:now,manualHeldByUid:ctx.uid}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:"assessment_"+input.action,beforeLifecycle:lifecycle,afterLifecycle:next,
       beforeRevision:revision,afterRevision:nextRevision,reason,
