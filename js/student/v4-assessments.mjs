@@ -79,6 +79,10 @@ if(panel&&list&&status&&schoolHost){
         submission.status==="approved"?"Evidence approved":"Submitted",
       className:"bg-blue-100 text-blue-800"
     };
+    if(task.windowStatus==="waiting_for_teacher")return {
+      label:task.manualAccessState==="held"?"On hold by teacher":"Waiting for teacher",
+      className:"bg-amber-100 text-amber-900"
+    };
     if(task.windowStatus==="upcoming")return {label:"Upcoming",className:"bg-slate-100 text-slate-700"};
     if(task.windowStatus==="closed")return {label:"Past due",className:"bg-rose-100 text-rose-800"};
     if(task.late===true)return {label:"Late submission allowed",className:"bg-amber-100 text-amber-900"};
@@ -186,8 +190,13 @@ if(panel&&list&&status&&schoolHost){
         }
         const actions=node("div","mt-4 flex flex-wrap gap-2");
         if(submission?.error)article.append(node("p","mt-3 text-sm text-amber-900","Submission status could not be confirmed. Refresh this page before starting a new submission."));
-        const canSubmit=!submission?.error&&(submission?.status==="reopened"?Number(submission.revisionDueAt||0)>Date.now():!submission?.submitted&&!grade&&!["upcoming","closed"].includes(task.windowStatus));
-        if(task.submissionSource==="studio"){
+        const canSubmit=!submission?.error&&(submission?.status==="reopened"?Number(submission.revisionDueAt||0)>Date.now():!submission?.submitted&&!grade&&!["upcoming","closed","waiting_for_teacher"].includes(task.windowStatus));
+        if(task.submissionSource==="studio"&&task.windowStatus==="waiting_for_teacher"){
+          article.append(node("p","mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-950",
+            task.manualAccessState==="held"
+              ?"Your teacher has temporarily held this section's Studio examination. Your saved work is preserved. Refresh after your teacher reopens it."
+              :"Your teacher has not opened this section's Studio examination. The task instructions and personalized scenario are locked until opening."));
+        }else if(task.submissionSource==="studio"){
           const studioSubmitted=submission?.submitted&&submission.status!=="reopened";
           const link=node("a","rounded-lg px-4 py-2.5 text-sm font-bold "+(studioSubmitted?"border border-emerald-200 bg-emerald-50 text-emerald-800":"bg-indigo-700 text-white"),
             submission?.status==="reopened"?"Open Studio to revise":
