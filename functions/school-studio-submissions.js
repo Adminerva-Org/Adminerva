@@ -93,7 +93,7 @@ function createSchoolStudioSubmissionService({db}){
     if(["archived","cancelled"].includes(lifecycle))
      deny("failed-precondition","This assessment is no longer accepting student submissions.");
     if(assessment.manualOpenRequired===true&&assessment.manualAccessState!=="open")
-    deny("failed-precondition","Your teacher has not opened this section's Studio exam, or has temporarily held it.");
+    deny("failed-precondition","Your teacher has not opened this Studio exam session, or has already closed it.");
    if(lifecycle==="closed"&&!revisionOpen)
      deny("failed-precondition","This assessment is closed to new submissions.");
     const now=Date.now();
