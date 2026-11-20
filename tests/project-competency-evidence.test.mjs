@@ -40,6 +40,8 @@ test("source evidence includes a direct, bounded excerpt and correct original li
   const project={state:{files:{"src/Student.java":source}}};
   const item=analyzeProjectEvidence(project).checks.find(row=>row.id==="inheritance");
   assert.equal(item.matchCount,1);
+  assert.ok(item.locations[0].column>0);
+  assert.ok(item.locations[0].length>4);
   assert.deepEqual(item.locations.map(loc=>({file:loc.file,line:loc.line})),
     [{file:"src/Student.java",line:3}]);
   assert.match(item.feedback,/Verify/);

@@ -522,14 +522,18 @@ async function initializePlayground() {
         openProject:openNamedProject,
         captureState:currentState,
         onConfigChange:applyNamedProjectConfig,
-        onRevealEvidence:({file,line})=>{
+        onRevealEvidence:({file,line,column,length})=>{
           const model=workspaceFiles[file]?.model;
           if(!model||!editorInstance)return false;
           const validLine=Math.max(1,Math.min(model.getLineCount(),Math.trunc(Number(line)||1)));
           switchTab(file);
-          editorInstance.setPosition({lineNumber:validLine,column:1});
+          const endColumn=model.getLineMaxColumn(validLine);
+          const startColumn=Math.max(1,Math.min(endColumn,Math.trunc(Number(column)||1)));
+          const targetEnd=Math.max(startColumn,Math.min(endColumn,startColumn+Math.min(80,Math.max(1,Math.trunc(Number(length)||1)))));
+          editorInstance.setSelection({startLineNumber:validLine,startColumn,endLineNumber:validLine,endColumn:targetEnd});
           editorInstance.revealLineInCenter(validLine);
-          editorInstance.focus();
+          // On phones, show highlighted evidence without forcing the soft keyboard open.
+          if(!window.matchMedia("(max-width:767px)").matches)editorInstance.focus();
           return true;
         },
         legacyDraftAvailable:legacyAvailable,

@@ -26,9 +26,9 @@ export function maskJava(source){
   return out;
 }
 const javaDocs=state=>Object.entries(state?.files||{}).filter(([path,content])=>/\.java$/i.test(path)&&typeof content==="string").map(([path,content])=>({path,source:content,code:maskJava(content)}));
-const location=(doc,index)=>{
+const location=(doc,index,length=1)=>{
   const before=doc.code.slice(0,index),last=before.lastIndexOf("\n");
-  return {file:doc.path,line:before.split("\n").length,column:index-last};
+  return {file:doc.path,line:before.split("\n").length,column:index-last,length:Math.max(1,Math.min(80,length))};
 };
 /** A bounded excerpt from the student's current working source, never a stored grade or server proof. */
 export function evidenceSnippet(state,loc,{context=1,maxChars=240}={}){
@@ -46,7 +46,7 @@ export function evidenceSnippet(state,loc,{context=1,maxChars=240}={}){
   }
   return result;
 }
-function scan(docs,re){const found=[];for(const doc of docs)for(const hit of doc.code.matchAll(re))found.push(location(doc,hit.index));return found;}
+function scan(docs,re){const found=[];for(const doc of docs)for(const hit of doc.code.matchAll(re))found.push(location(doc,hit.index,hit[0].length));return found;}
 function declarations(docs){
   const out=[];
   for(const doc of docs){
@@ -58,7 +58,7 @@ function declarations(docs){
         if(doc.code[k]==="}"&&--depth===0){end=k;break;}
       }
       const extendsName=/\bextends\s+([A-Za-z_$][\w$]*)/.exec(m[3])?.[1]||"";
-      out.push({doc,kind:m[1],name:m[2],header:m[3],open,end,start:m.index,extendsName,at:location(doc,m.index)});
+      out.push({doc,kind:m[1],name:m[2],header:m[3],open,end,start:m.index,extendsName,at:location(doc,m.index,m[0].length)});
     }
   }
   return out;
@@ -87,7 +87,7 @@ function overloadLocations(types){
       if(owner!==type)continue;
       const key=type.doc.path+":"+type.start+":"+name;
       if(!groups.has(key))groups.set(key,[]);
-      groups.get(key).push({sig:signature(match[2]),at:location(type.doc,at)});
+      groups.get(key).push({sig:signature(match[2]),at:location(type.doc,at,match[0].length)});
     }
   }
   const locations=[];

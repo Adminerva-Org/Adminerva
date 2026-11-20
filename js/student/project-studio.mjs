@@ -532,13 +532,13 @@ export function createProjectStudio({
         }
         return;
       }
-      const file=button.dataset.evidenceFile,number=Number(button.dataset.evidenceLine);
+      const file=button.dataset.evidenceFile,number=Number(button.dataset.evidenceLine),column=Number(button.dataset.evidenceColumn),length=Number(button.dataset.evidenceLength);
       const state=captureState();
       if(!file||!Object.hasOwn(state?.files||{},file)||!Number.isInteger(number)||number<1)return;
       if(typeof onRevealEvidence!=="function")return;
       switchStudioView("code");
       try{
-        const ok=onRevealEvidence({file,line:number});
+        const ok=onRevealEvidence({file,line:number,column,length});
         if(ok===false)throw Error("This file is no longer available in the editor.");
       }catch(error){
         const note=el("evidenceProjectNote");
@@ -1241,7 +1241,7 @@ export function createProjectStudio({
       ).join("");
       return '<li class="evidence-proof"><div class="evidence-proof-head"><strong>'+
         escapeHtml(loc.file)+':'+loc.line+'</strong><button type="button" data-evidence-file="'+
-        escapeHtml(loc.file)+'" data-evidence-line="'+loc.line+'">Open in editor</button></div>'+
+        escapeHtml(loc.file)+'" data-evidence-line="'+loc.line+'" data-evidence-column="'+loc.column+'" data-evidence-length="'+loc.length+'">Open in editor</button></div>'+
         '<pre class="evidence-code" aria-label="Source excerpt near '+escapeHtml(loc.file)+':'+loc.line+'"><code>'+
         excerpt+'</code></pre></li>';
     }
