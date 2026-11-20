@@ -524,13 +524,12 @@ async function showExamCloseReport(task){
   try{
     say("Loading server-confirmed final exam checkpoints…");
     const report=await performScoped(scopedAssessmentApi,"exam_close_report",{taskId:task.taskId});
-    const rows=(report.receipts||[]).map(row=>
-      "Student "+String(row.studentUid||"").slice(0,12)+"… · project revision "+row.projectRevision+
-      " · "+(row.savedAt?new Date(row.savedAt).toLocaleTimeString():"time unavailable"));
+    const rows=(report.students||[]).map(student=>
+      (student.checkpointConfirmed?"SAVED · ":"UNCONFIRMED · ")+student.displayName);
     const message=task.title+" · Session "+report.sessionEpoch+"\n"+
-      report.confirmed+" final project checkpoint"+(report.confirmed===1?"":"s")+" confirmed by the school cloud."+
-      (rows.length?"\n\n"+rows.join("\n"):"\nNo final close checkpoints have been confirmed yet.")+
-      "\n\nStudents without a final close checkpoint may still have earlier autosaved revisions.";
+      report.confirmed+" of "+report.enrolledStudents+" enrolled student checkpoints confirmed by the school cloud."+
+      (rows.length?"\n\n"+rows.join("\n"):"\nNo active enrolled students were found.")+
+      "\n\nUNCONFIRMED does not mean the student's code was deleted. Earlier cloud autosaves or device drafts may still exist. Refresh the report after the closing save window.";
     alert(message);
     say("Final exam checkpoint report loaded. "+report.confirmed+" confirmed for the current session.");
   }catch(error){say(error?.message||"Could not load exam close receipts.");}
