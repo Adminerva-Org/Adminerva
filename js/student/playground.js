@@ -193,6 +193,127 @@ let desktopRunSequence=0;
 // proctoring, identity verification or prevention of all cheating methods.
 const examLinkId=new URLSearchParams(location.search).get("assessment");
 let examPolicyPending=Boolean(examLinkId),examPolicy=null;
+
+// A teacher closes a school Studio exam session, not just its submission form.
+// Poll the verified school callable because tenant Firestore documents deliberately
+// disallow direct browser reads. Lock the editor before the final save begins.
+let watchedExamId="",examSessionTimer=null,examSessionChecking=false,examSessionClosing=false;
+let examLastContact=0,examSessionErrorCount=0;
+function examCloseOverlay(){
+  let host=document.getElementById("studioExamClosingOverlay");
+  if(host)return host;
+  host=document.createElement("div");
+  host.id="studioExamClosingOverlay";
+  host.setAttribute("role","alertdialog");
+  host.setAttribute("aria-modal","true");
+  host.setAttribute("aria-labelledby","studioExamClosingHeading");
+  host.style.cssText="position:fixed;inset:0;z-index:100000;background:#020617;"+
+    "color:#f8fafc;display:flex;align-items:center;justify-content:center;padding:1.25rem;";
+  host.innerHTML='<section style="max-width:490px;width:100%;background:#0f172a;border:1px solid #475569;border-radius:18px;padding:1.5rem;box-shadow:0 24px 90px #0008">'+
+    '<p style="font-size:.72rem;font-weight:800;letter-spacing:.15em;color:#67e8f9">ADMINERVA PRACTICAL EXAM</p>'+
+    '<h2 id="studioExamClosingHeading" style="font-size:1.5rem;font-weight:800;margin:.65rem 0">Exam closed by your teacher</h2>'+
+    '<p id="studioExamClosingMessage" role="status" aria-live="polite" style="line-height:1.65;margin:.5rem 0">Editing has stopped. Saving your last code revision…</p>'+
+    '<p id="studioExamClosingNotice" style="font-size:.8rem;color:#cbd5e1;line-height:1.6">Do not close this tab until Adminerva confirms your save.</p>'+
+    '<div id="studioExamClosingActions" style="display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.25rem" hidden>'+
+    '<button type="button" id="studioExamRetryFinalSave" style="background:#1d4ed8;border-radius:8px;padding:.65rem 1rem;font-weight:700">Retry final save</button>'+
+    '<a href="student-assessments.html" style="background:#334155;border-radius:8px;padding:.65rem 1rem;font-weight:700">Return to assessments</a></div>'+
+    '</section>';
+  document.body.append(host);
+  return host;
+}
+async function lockAndCloseStudioExam(taskId,sessionEpoch){
+  if(examSessionClosing)return;
+  examSessionClosing=true;
+  clearInterval(examSessionTimer);examSessionTimer=null;
+  editorInstance?.updateOptions({readOnly:true});
+  const shell=document.getElementById("studioShell");
+  shell?.setAttribute("inert","");
+  executionSequence++;
+  executionController?.abort();
+  if(cheerpjClient)stopLiveBrowserJava(true);
+  const overlay=examCloseOverlay(),message=overlay.querySelector("#studioExamClosingMessage"),
+    notice=overlay.querySelector("#studioExamClosingNotice"),
+    actions=overlay.querySelector("#studioExamClosingActions"),
+    retry=overlay.querySelector("#studioExamRetryFinalSave");
+  const captured=persistWorkspace();
+  const project=projectStudio?.getActiveProject?.();
+  if(!project||project.assessment?.taskId!==taskId){
+    message.textContent="The exam is closed. No active assessment project was found to finalize.";
+    notice.textContent="Return to My Assessments to review the next session.";
+    location.replace("student-assessments.html#"+encodeURIComponent(taskId));return;
+  }
+  const finalize=async()=>{
+    retry.disabled=true;actions.hidden=true;
+    message.textContent="Editing is locked. Recording your final project revision in school cloud storage…";
+    if(!captured){
+      message.textContent="Could not preserve the current editor content on this device.";
+      notice.textContent="Your cloud checkpoint cannot be confirmed. Keep this tab and ask your teacher for assistance.";
+      actions.hidden=false;retry.hidden=true;return;
+    }
+    try{
+      const result=await projectStudio.flushCloudSaves({closingSessionEpoch:sessionEpoch});
+      if(!result)throw Error("The school did not confirm the final cloud checkpoint.");
+      message.textContent="Your final code revision was saved to the school cloud. Leaving the exam workspace…";
+      notice.textContent="Your teacher can review the saved progress. This does not submit or grade the project.";
+      location.replace("student-assessments.html?examClosed="+encodeURIComponent(taskId)+"#"+
+        encodeURIComponent(taskId));
+    }catch(error){
+      console.warn("Final Studio exam checkpoint failed:",error);
+      message.textContent="The exam is closed. A final cloud save could not be confirmed.";
+      notice.textContent="Your device draft is retained, but your teacher may not yet see the latest changes. Do not clear this browser. Retry while the closing checkpoint is available.";
+      actions.hidden=false;retry.hidden=false;retry.disabled=false;
+    }
+  };
+  retry.addEventListener("click",()=>void finalize());
+  await finalize();
+}
+async function checkStudioExamSession(taskId=watchedExamId){
+  if(!taskId||examSessionClosing||examSessionChecking)return;
+  examSessionChecking=true;
+  try{
+    const state=await getV4StudioExamSession(taskId);
+    if(watchedExamId!==taskId||examSessionClosing)return;
+    examLastContact=Date.now();examSessionErrorCount=0;
+    if(state?.manualAccessState!=="open"||state.published!==true||state.lifecycle!=="active")
+      await lockAndCloseStudioExam(taskId,Number(state.sessionEpoch||0));
+  }catch(error){
+    if(watchedExamId!==taskId||examSessionClosing)return;
+    examSessionErrorCount++;
+    // An interrupted network cannot verify that the exam is still open.
+    // Freeze input rather than allowing a disconnected student to keep editing.
+    if(Date.now()-examLastContact>10000&&examSessionErrorCount>=3){
+      editorInstance?.updateOptions({readOnly:true});
+      const badge=document.getElementById("autoSaveIndicator");
+      if(badge)badge.textContent="Exam connection lost · editing paused until reconnected";
+    }
+  }finally{examSessionChecking=false;}
+}
+async function watchStudioExam(taskId){
+  if(!taskId||examSessionClosing||watchedExamId===taskId)return;
+  try{
+    const assignments=await listV4StudioAssignments();
+    const task=assignments?.find(item=>item.taskId===taskId&&
+      item.submissionSource==="studio"&&item.manualOpenRequired===true);
+    if(!task||examSessionClosing)return;
+    watchedExamId=taskId;examLastContact=Date.now();
+    clearInterval(examSessionTimer);
+    examSessionTimer=setInterval(()=>void checkStudioExamSession(),1500);
+    void checkStudioExamSession(taskId);
+  }catch(error){console.warn("Studio exam session monitoring unavailable:",error);}
+}
+window.addEventListener("adminerva:assessment-project-ready",event=>
+  void watchStudioExam(String(event.detail?.assessmentId||"")));
+window.addEventListener("adminerva:studio-ready",event=>{
+  const project=projectStudio?.getActiveProject?.();
+  const taskId=String(project?.assessment?.taskId||"");
+  if(taskId)void watchStudioExam(taskId);
+});
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"&&watchedExamId&&!examSessionClosing)
+    void checkStudioExamSession();
+});
+window.addEventListener("pagehide",()=>{clearInterval(examSessionTimer);examSessionTimer=null;});
+
 const examRestrictedActions=["importZipBtn","legacyImportBtn","undoRestoreBtn",
   "cloudLoadProjectBtn","loadProjectBtn","snapshotBtn","aiTutorBtn","resetBtn"];
 function examRestrictionsActive(){return !guestMode&&(examPolicyPending||examPolicy?.practicalExam===true);}
