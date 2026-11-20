@@ -577,7 +577,13 @@ export function createProjectStudio({
         card.className="code-project-card";
         const size=Math.max(1,Math.ceil(projectSize(project)/1024));
         card.innerHTML='<div class="code-project-icon">'+escapeHtml(meta.template.icon)+'</div><div class="code-project-card-body"><div class="code-project-card-top"><h3>'+escapeHtml(project.title)+'</h3><span>'+escapeHtml(prettyDate(project.lastOpenedAt))+'</span></div><p>'+escapeHtml(meta.detail)+' · '+Object.keys(project.state?.files||{}).length+' files · '+size+' KB</p><div class="code-project-card-actions"><button type="button" data-open>Open project</button><button type="button" data-copy>Duplicate</button><button type="button" data-delete class="danger-subtle">Delete</button></div></div>';
-        card.querySelector("[data-copy]").addEventListener("click",()=>{
+        if(project.assessment?.provisionedBy==="assessment-launch"&&project.assessment.offeringId){
+          // Do not offer destructive local/cloud deletion or an editable
+          // duplicate of a teacher-assigned examination project.
+          card.querySelector("[data-copy]")?.remove();
+          card.querySelector("[data-delete]")?.remove();
+        }
+        card.querySelector("[data-copy]")?.addEventListener("click",()=>{
           try{
             validateProject(project,{creating:true});
             const copy=createCodeProject(projectStorage,uid,{title:project.title+" Copy",templateId:project.template,config:project.config});
@@ -593,7 +599,7 @@ export function createProjectStudio({
             location.assign("student-assessments.html#"+encodeURIComponent(project.assessment.taskId||project.assessment.assessmentId));
           });
         }else openButton.addEventListener("click",()=>openProjectById(project.id));
-        card.querySelector("[data-delete]").addEventListener("click",async()=>{
+        card.querySelector("[data-delete]")?.addEventListener("click",async()=>{
           const warning=guest?'Delete "'+project.title+'"? Guest projects exist only on this browser. Export a ZIP first if you need a copy.':'Delete "'+project.title+'"? This removes the project from this device and its project cloud record. Export a ZIP first if you need a copy.';
           if(!confirm(warning))return;
           deletedProjects.add(project.id);
