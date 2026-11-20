@@ -254,7 +254,7 @@ export async function submitV4StudioProject({taskId,project,state}){
   const tasks=await listV4StudioAssignments();
   const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===taskId):null;
   if(!task)throw Error("This verified-school assessment is unavailable.");
-  if(task.windowStatus==="waiting_for_teacher")
+  if(task.manualOpenRequired===true&&task.manualAccessState!=="open")
     throw Error("Your teacher has not opened this section's Studio exam, or has temporarily held it.");
   let variantId="",variantAttempt=null;
   if(task.personalizedTask?.enabled===true){
