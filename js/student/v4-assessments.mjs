@@ -191,11 +191,15 @@ if(panel&&list&&status&&schoolHost){
         const actions=node("div","mt-4 flex flex-wrap gap-2");
         if(submission?.error)article.append(node("p","mt-3 text-sm text-amber-900","Submission status could not be confirmed. Refresh this page before starting a new submission."));
         const canSubmit=!submission?.error&&(submission?.status==="reopened"?Number(submission.revisionDueAt||0)>Date.now():!submission?.submitted&&!grade&&!["upcoming","closed","waiting_for_teacher"].includes(task.windowStatus));
-        if(task.submissionSource==="studio"&&task.windowStatus==="waiting_for_teacher"){
+        if(task.submissionSource==="studio"&&task.manualOpenRequired===true&&task.manualAccessState!=="open"){
           article.append(node("p","mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-950",
             task.manualAccessState==="held"
               ?"Your teacher has temporarily held this section's Studio examination. Your saved work is preserved. Refresh after your teacher reopens it."
               :"Your teacher has not opened this section's Studio examination. The task instructions and personalized scenario are locked until opening."));
+          const check=node("button","rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-bold text-white","Check opening status");
+          check.type="button";
+          check.addEventListener("click",()=>void render(scope));
+          actions.append(check);
         }else if(task.submissionSource==="studio"){
           const studioSubmitted=submission?.submitted&&submission.status!=="reopened";
           const link=node("a","rounded-lg px-4 py-2.5 text-sm font-bold "+(studioSubmitted?"border border-emerald-200 bg-emerald-50 text-emerald-800":"bg-indigo-700 text-white"),
