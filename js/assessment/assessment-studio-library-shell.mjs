@@ -280,6 +280,10 @@ if(host){
               <input name="allowLateSubmissions" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
               <span><strong>Allow late submissions</strong><span class="mt-1 block text-xs">When enabled, new submissions remain accepted after the deadline until the assessment is closed, archived or cancelled.</span></span>
             </label>
+            <label id="tl-settings-manual-exam-option" class="mt-3 flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-950" hidden>
+              <input name="manualOpenRequired" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
+              <span><strong>Teacher-controlled opening</strong><span class="mt-1 block text-xs">Available for Studio deployments. Enabling this on an existing deployment places it in Waiting until the responsible teacher opens it. Disabling it returns to scheduled availability.</span></span>
+            </label>
             <label class="mt-3 block text-sm font-bold">Reason for change
               <textarea name="reason" class="tl-input" minlength="12" maxlength="1000" rows="3" required placeholder="Explain the schedule or submission-policy change."></textarea>
             </label>
