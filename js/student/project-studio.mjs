@@ -10,7 +10,7 @@ import {
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
 import {
-  archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,loadV4StudioProject,
+  archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,listV4StudioAssignments,loadV4StudioProject,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
 } from "./v4-studio-service.mjs?v=4.2.4";
 
@@ -585,7 +585,14 @@ export function createProjectStudio({
             const saved=saveCodeProject(projectStorage,uid,copy);if(cloudEnabled)scheduleCloudSave(saved);renderProjectHome();
           }catch(error){alert(error.message);}
         });
-        card.querySelector("[data-open]").addEventListener("click",()=>openProjectById(project.id));
+        const openButton=card.querySelector("[data-open]");
+        if(project.assessment?.provisionedBy==="assessment-launch"&&project.assessment.offeringId){
+          openButton.textContent="Open from My Assessments";
+          openButton.title="Assessment workspaces must be opened through the current teacher-controlled exam session.";
+          openButton.addEventListener("click",()=>{
+            location.assign("student-assessments.html#"+encodeURIComponent(project.assessment.taskId||project.assessment.assessmentId));
+          });
+        }else openButton.addEventListener("click",()=>openProjectById(project.id));
         card.querySelector("[data-delete]").addEventListener("click",async()=>{
           const warning=guest?'Delete "'+project.title+'"? Guest projects exist only on this browser. Export a ZIP first if you need a copy.':'Delete "'+project.title+'"? This removes the project from this device and its project cloud record. Export a ZIP first if you need a copy.';
           if(!confirm(warning))return;
@@ -742,25 +749,50 @@ export function createProjectStudio({
     }
   }
 
+  async function verifyAssessmentProjectOpen(project){
+    const binding=project?.assessment;
+    if(binding?.provisionedBy!=="assessment-launch"||!binding.offeringId)return;
+    const tasks=await listV4StudioAssignments();
+    if(!Array.isArray(tasks))
+      throw Error("Your school exam access could not be checked. Reconnect and open the assessment from My Assessments.");
+    const task=tasks.find(item=>item.taskId===(binding.taskId||binding.assessmentId));
+    if(!task||task.submissionSource!=="studio")
+      throw Error("This school assessment is unavailable. Open it from My Assessments.");
+    if(task.manualOpenRequired===true){
+      if(task.manualAccessState!=="open"||task.lifecycle!=="active"||task.windowStatus==="closed")
+        throw Error("Your teacher has closed this exam session. The project can be resumed after the next teacher opening.");
+      if(Number(binding.sessionEpoch||0)!==Number(task.manualSessionEpoch||0))
+        throw Error("This project belongs to an earlier class session. Reenter through My Assessments to resume its current session.");
+    }
+  }
   async function openProjectById(id){
     const turn=++openEpoch;
     const isCurrent=()=>turn===openEpoch&&!deletedProjects.has(id)&&(!cloudEnabled||auth.currentUser?.uid===uid);
     if(!isCurrent())return;
     let project=findCodeProject(projectStorage,uid,id);
+    try{
+      if(project)await verifyAssessmentProjectOpen(project);
+    }catch(error){return alert(error?.message||"Exam access unavailable.");}
     if(cloudEnabled){
       try{
         if(cloudWrites.has(id))await cloudWrites.get(id);
         if(cloudPending.has(id))await flushOne(id);
         if(!isCurrent())return;
         project=await resolveCloudProject(id,{local:findCodeProject(projectStorage,uid,id)||project,shouldApply:isCurrent});
+        if(project)await verifyAssessmentProjectOpen(project);
       }catch(error){
         if(!isCurrent())return;
+        if(project?.assessment?.provisionedBy==="assessment-launch"&&project.assessment.offeringId)
+          return alert("School exam project could not be opened: "+String(error?.message||error)+
+            "\\nOpen the assessment through My Assessments.");
         if(!project||/archiv|not active|account changed|sign in with your project account/i.test(String(error?.message||""))||/permission-denied|unauthenticated/.test(String(error?.code||"")))return alert("Cloud project could not be opened: "+String(error?.message||error));
         activateProject(project);setCloudStatus("Cloud unavailable · device draft retained","error",id);return;
       }
     }
     if(!isCurrent())return;
     if(!project)return alert("This project is not available in your device or cloud account.");
+    try{await verifyAssessmentProjectOpen(project);}
+    catch(error){return alert(error?.message||"Exam access unavailable.");}
     activateProject(project);
   }
 
