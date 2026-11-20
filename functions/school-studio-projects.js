@@ -173,8 +173,7 @@ function createSchoolStudioProjectService({db}){
         !newBinding||(newBinding.taskId||newBinding.assessmentId)!==access.taskId))
       deny("permission-denied","The closing checkpoint must belong to the same assigned Studio project.");
      if(!access.finalSave)await authorizeAssessmentProject(tx,current.data().artifacts);
-    }else if(access.finalSave)
-     deny("failed-precondition","This exam project must already exist before its final checkpoint.");
+    }
     const receiptRef=access.finalSave?
       db.doc(prefix+"studio_exam_close_receipts/"+access.taskId+"_"+ctx.uid+"_"+closingEpoch):null;
     const priorReceipt=receiptRef?await tx.get(receiptRef):null;
@@ -188,7 +187,11 @@ function createSchoolStudioProjectService({db}){
     if(!current.exists){
      tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,status:"active",
        contentDigest:digest,sourceDigest:digestSource(files,language),revision:1,createdAt:now,updatedAt:now});
-     result={projectId,revision:1,contentDigest:digest,created:true};return;
+     if(receiptRef)tx.create(receiptRef,{
+       schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
+       projectId,projectRevision:1,contentDigest:digest,closingEpoch,savedAt:now
+     });
+     result={projectId,revision:1,contentDigest:digest,created:true,examFinalized:Boolean(receiptRef)};return;
     }
     const data=current.data();
     if(data.schoolId!==ctx.schoolId||data.ownerUid!==ctx.uid)
