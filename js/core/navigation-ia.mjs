@@ -117,9 +117,10 @@ export function buildNavigationIA(ctx){
     ws("school-admin","School Administration","school-admin.html","School operations, access, academic configuration and policy",[
       group("Operations",[
         live("school-operations","Operations Dashboard","school-admin.html"),
-        live("people-access","People & Access","people-access.html"),
-        live("academic-config","Academic Configuration","school-academic-configuration.html","Initial setup and new-year academic configuration"),
-        live("academic-structure","Manage Academic Structure","school-academic-structure.html","Edit existing years, programs, periods, subjects and sections without changing their stable IDs")
+        live("people-access","People & Access","people-access.html","Identity, account access, invitations and school roles. Teaching load is managed in Classes & Scheduling."),
+        live("classes-scheduling","Classes & Scheduling","school-classes.html","Canonical workspace for class offerings, teacher assignments, derived teacher load, section coverage and class rosters."),
+        live("academic-config","Academic Setup","school-academic-configuration.html","Create school years, programs, periods, subjects, sections and class offerings."),
+        live("academic-structure","Academic Structure","school-academic-structure.html","Edit existing years, programs, periods, subjects and sections without changing stable IDs.")
       ]),
       group("Academic Policy",[
         live("grading-policies","Grading Policies","school-grading-schemes.html","School-controlled weights, transmutation and program/subject/section applicability"),
@@ -174,7 +175,7 @@ export function buildNavigationIA(ctx){
       ]),
       group("Time & Performance",[
         future("staff-dtr","Attendance / DTR"),future("leave-admin","Leave Management"),
-        future("faculty-load","Faculty Workload"),future("performance-admin","Performance Appraisal"),
+        live("faculty-load","Teaching Load","school-classes.html?view=teachers","Derived from active class assignments; do not maintain a separate workload record."),future("performance-admin","Performance Appraisal"),
         future("training-admin","Training & Development")
       ]),
       group("Recruitment",[
@@ -235,60 +236,42 @@ export function buildNavigationIA(ctx){
 
   const teacher=scope=>{
     const out=[
-      ws("analytics","Analytics","teacher-analytics.html","Teaching, class and learning analytics",[
-        group("Analytics Dashboard",[
-          needs("analytics","Analytics Dashboard","teacher-analytics.html","Active analytics dashboard; broader school analytics and drill-downs still need development."),
-          future("class-standing","Class Standing"),
-          future("games-analytics","Adminerva Games Analytics"),future("lab-analytics","Adminerva Laboratory Analytics")
+      ws("classroom","Classroom","teacher-classroom.html","Shared class spaces for communication, classwork, learners, grading and records",[
+        group("My Classes",[
+          needs("classroom-stream","Classroom","teacher-classroom.html","Open an assigned class and manage its shared stream, classwork and roster."),
+          needs("assessment-submissions","Submissions","school-gradebook.html?view=submissions","Submission inbox for the classes you teach."),
+          needs("assessment-review","Review & Grade","school-gradebook.html?view=review","Review student work, provide feedback and publish results."),
+          needs("class-record","Class Record","class-record.html","Official teacher class record for assessment results and manual scores.")
         ]),
-        group("General Analytics",[
-          future("general-analytics","General Analytics"),
-          ...(scope.isSchoolAdmin?[future("staff-analytics","Staff Analytics","Admin role · Future development")]:[])
+        group("Class Insights",[
+          needs("assessment-results","Results","school-gradebook.html?view=results","Per-assessment outcomes and published results."),
+          needs("class-analytics","Class Analytics","teacher-analytics.html","Teaching and learning analytics across assigned classes.")
         ])
       ]),
-      ws("assessment","Assessment","assessment-studio.html","General assessment authoring, submissions, grading and results",[
-        group("Assessment",[
-          needs("classroom-stream","Classroom Stream","teacher-classroom.html","Post announcements and class updates to verified subject/section streams."),
-          needs("assessment-library","Assessment Studio","assessment-studio.html","Canonical school assessment authoring, sharing, personalization and deployment workspace."),
-          needs("assessment-submissions","Submissions","school-gradebook.html?view=submissions","Unified submission inbox for written responses, links, Adminerva Studio projects and GitHub evidence."),
-          needs("assessment-review","Review & Grade","school-gradebook.html?view=review","Unified rubric review workflow with private drafts, revision requests and deliberate publication."),
-          needs("assessment-results","Assessment Results","school-gradebook.html?view=results","Per-assessment results and published outcomes that can feed the Class Record.")
+      ws("preparation","Preparation","lesson-planner.html","Reusable teaching plans, learning materials and assessment design before deployment to a class",[
+        group("Plan & Prepare",[
+          needs("learning-plan","Curriculum / Lesson Planner","lesson-planner.html","Plan curriculum and lessons before attaching or using them in a class."),
+          needs("slides","Slides Editor","presentation.html","Prepare reusable presentation materials."),
+          needs("library","Reference Library","library.html","Store reusable teaching references and materials."),
+          future("scope-sequence","Scope and Sequence")
         ]),
-        ...(scope.platformTestMode?[]:[group("Technology / Repository Tools",[
-          old("repo-submissions","GitHub Submission Inbox","submissions.html","Specialized repository evidence inbox retained for existing GitHub-based assessments."),
-          old("repo-review","GitHub Evidence Review","repofetch.html","Specialized commit and repository evidence inspection for GitHub-based assessments."),
-          old("repo-reclaims","Commit Attribution","reclaim-inbox.html","Resolve individual contribution attribution for GitHub evidence."),
-          old("repo-investigation","Repository Investigation","repobank.html","Investigate repository history and evidence when needed."),
-          old("repo-gradebook","Legacy Repository Gradebook","gradebook.html","Historical repository grading surface retained for existing records."),
-          old("activity-grader","Activity Grader","activity-grader.html","Specialized repository activity grading utility."),
-          old("auto-grader","AutoGrader","grading.html","Legacy automated repository grading utility."),
-          old("learning-follow-up","Learning Follow-up","learning-follow-up.html","Legacy repository learning follow-up records.")
-        ])])
+        group("Assessment Design",[
+          needs("assessment-library","Assessment Studio","assessment-studio.html","Create and reuse assessment blueprints, then deploy them into an assigned class."),
+          ...(scope.platformTestMode?[]:[
+            old("repo-investigation","Repository Investigation","repobank.html","Specialized repository evidence utility retained for programming assessments."),
+            old("repo-reclaims","Commit Attribution","reclaim-inbox.html","Resolve programming contribution attribution when required.")
+          ])
+        ]),
+        group("Schedule",[
+          needs("schedule","Teaching Timetable","schedule.html","Weekly schedule derived from verified teaching assignments."),
+          future("department-files","Department Files"),future("letters","Letters")
+        ])
       ]),
-      ws("grading","Grading","class-record.html","Class records, advisory records and grade administration",[
-        group("Grades",[
-          needs("class-record","Class Record","class-record.html","Active Class Record; school policy ownership, approval and grade-release workflows are still being expanded."),
-          ...(scope.isSchoolAdmin?[
-            live("grading-policy","Grading Policies","school-grading-schemes.html","School-controlled weights, transmutation and applicability"),
-            live("record-oversight","Class Record Oversight","school-class-records.html")
-          ]:[])
-        ]),
-        group("Advisory",[
-          future("attendance","Attendance"),future("conduct","Conduct"),future("advisory-summary","Summary of Grades")
-        ]),
-        ...(scope.isSchoolAdmin?[group("School Approval",[
-          future("grade-approval","Grade Approval","Admin role · Future development"),
-          future("school-summary","Summary of Grades","All levels and sections · Admin role · Future development")
-        ])]:[])
-      ]),
-      ws("preparation","Preparation","lesson-planner.html","Teaching plans, materials, schedules and faculty preparation",[
-        group("Teaching Preparation",[
-          needs("learning-plan","C-map / Learning Plan","lesson-planner.html","Active planning workflow; generation and curriculum alignment continue to be refined."),
-          needs("slides","Slides Editor","presentation.html","Active slide workflow; editing and presentation UX still need enhancement."),
-          needs("library","Reference Library","library.html","Active reference library; ingestion and organization continue to be improved."),
-          needs("schedule","Teaching Timetable","schedule.html","Manage weekly schedules using verified school teaching assignments; legacy schedules remain available where permitted."),future("scope-sequence","Scope and Sequence"),
-          future("department-files","Department Files"),future("letters","Letters"),
-          ...(scope.isSchoolAdmin?[future("faculty-scheduling","Faculty Scheduling","Admin role · Future development")]:[])
+      ws("analytics","Analytics","teacher-analytics.html","Teaching, class and learning analytics",[
+        group("Analytics Dashboard",[
+          needs("analytics","Analytics Dashboard","teacher-analytics.html","Active analytics dashboard; broader drill-downs still need development."),
+          future("class-standing","Class Standing"),
+          future("games-analytics","Adminerva Games Analytics"),future("lab-analytics","Adminerva Laboratory Analytics")
         ])
       ]),
       personnelWorkspace(scope),
