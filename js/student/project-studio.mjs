@@ -672,6 +672,7 @@ export function createProjectStudio({
     const ownership={
       assessmentId,
       taskId:String(context.taskId||assessmentId),
+      sessionEpoch:Number(context.manualSessionEpoch||0),
       title:String(context.title||"Studio assessment").slice(0,180),
       assessmentType:String(context.assessmentType||"Assessment").slice(0,80),
       submissionSource:"studio",
