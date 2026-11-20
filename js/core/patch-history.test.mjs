@@ -61,8 +61,8 @@ test('shipped patch manifest contains only curated public fields and system labe
         }
       }
     }
-    for(const item of item.development||[]){
-      assert.deepEqual(Object.keys(item).sort(),['title','summary',...(item.audience?['audience']:[])].sort());
+    for(const development of item.development||[]){
+      assert.deepEqual(Object.keys(development).sort(),['title','summary',...(development.audience?['audience']:[])].sort());
     }
   }
 });
