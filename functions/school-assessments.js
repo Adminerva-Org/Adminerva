@@ -126,7 +126,7 @@ function createSchoolAssessmentService({db}){
      offeringId,yearId:offering.data().yearId,termId:offering.data().termId,
      subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
      submissionSource:source,personalizedTask,opensAt:start,dueAt:end,allowLateSubmissions,
-     manualOpenRequired,manualAccessState:manualOpenRequired?"waiting":"scheduled",
+     manualOpenRequired,manualAccessState:manualOpenRequired?"waiting":"scheduled",manualSessionEpoch:0,
      requestKey:key,status:"deployed",published:false,lifecycle:"active",revision:1,
      createdAt:now,updatedAt:now
     });
@@ -142,7 +142,7 @@ function createSchoolAssessmentService({db}){
    return result;
   }
 
-  if(["open_exam","hold_exam"].includes(input.action)){
+  if(["open_exam","close_exam","hold_exam"].includes(input.action)){
    if(!ctx.roles.includes("teacher"))
     deny("permission-denied","Only the responsible teacher may control this Studio examination.");
    const taskId=checkId(input.taskId,"Assessment task",128),
@@ -178,22 +178,30 @@ function createSchoolAssessmentService({db}){
       deny("failed-precondition","Restore or reopen this assessment before opening its Studio exam.");
     if(opening&&(data.published!==true||data.dueAt.toMillis()<=Date.now()))
       deny("failed-precondition","Publish this assessment and ensure its deadline is in the future before opening the exam.");
-    const before=data.manualAccessState||"waiting",next=opening?"open":"held";
+    const before=data.manualAccessState||"waiting",
+      closeGraceUntil=data.manualCloseGraceUntil?.toMillis?.()||0;
+    if(opening&&before==="closing"&&Date.now()<closeGraceUntil)
+      deny("failed-precondition","The previous session is still saving. Open the next class session after the closing grace period.");
+    const next=opening?"open":"closing",epoch=Number(data.manualSessionEpoch||0);
     if(before===next){
-      result={taskId,manualAccessState:next,revision,alreadyCurrent:true,
+      result={taskId,manualAccessState:next,sessionEpoch:epoch,revision,alreadyCurrent:true,
         offeringId:data.offeringId,title:data.title||"Practical exam"};return;
     }
     if(!opening&&before!=="open")
-      deny("failed-precondition","This examination is not currently open.");
-    const now=FieldValue.serverTimestamp();
-    tx.update(taskRef,{manualAccessState:next,revision:revision+1,updatedAt:now,
-      ...(opening?{manualOpenedAt:now,manualOpenedByUid:ctx.uid}:
-        {manualHeldAt:now,manualHeldByUid:ctx.uid})});
+      deny("failed-precondition","This examination session is not currently open.");
+    const now=FieldValue.serverTimestamp(),
+      graceUntil=Timestamp.fromMillis(Date.now()+20000),
+      sessionEpoch=opening?epoch+1:epoch;
+    tx.update(taskRef,{manualAccessState:next,manualSessionEpoch:sessionEpoch,
+      revision:revision+1,updatedAt:now,
+      ...(opening?{manualOpenedAt:now,manualOpenedByUid:ctx.uid,manualCloseGraceUntil:FieldValue.delete()}:
+        {manualClosedAt:now,manualClosedByUid:ctx.uid,manualCloseGraceUntil:graceUntil})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
-      action:opening?"assessment_exam_opened":"assessment_exam_held",
-      beforeState:before,afterState:next,beforeRevision:revision,
+      action:opening?"assessment_exam_opened":"assessment_exam_closed",
+      beforeState:before,afterState:next,sessionEpoch,beforeRevision:revision,
       afterRevision:revision+1,createdAt:now});
-    result={taskId,manualAccessState:next,revision:revision+1,alreadyCurrent:false,
+    result={taskId,manualAccessState:next,sessionEpoch,
+      revision:revision+1,alreadyCurrent:false,
       offeringId:data.offeringId,title:data.title||"Practical exam"};
    });
    if(opening&&!result.alreadyCurrent){
@@ -214,6 +222,35 @@ function createSchoolAssessmentService({db}){
     }
    }
    return result;
+  }
+
+  if(input.action==="exam_session"){
+   if(!ctx.roles.includes("student"))deny("permission-denied","Student access is required.");
+   const taskId=checkId(input.taskId,"Assessment task",128);
+   const [member,task]=await Promise.all([
+     membershipRef.get(),tasks.doc(taskId).get()
+   ]);
+   if(!member.exists||member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
+      !member.data().roles?.includes("student")||!member.data().personId)
+    deny("permission-denied","Active student membership is required.");
+   if(!task.exists||task.data().schoolId!==ctx.schoolId||task.data().submissionSource!=="studio"||
+      task.data().manualOpenRequired!==true)
+    deny("not-found","This teacher-controlled Studio examination is unavailable.");
+   const personId=checkId(member.data().personId,"Student person",128),
+     personRef=db.doc(prefix+"people/"+personId),
+     enrollmentRef=db.doc(prefix+"enrollments/"+rowKey(personId,task.data().offeringId));
+   const [person,enrollment]=await Promise.all([personRef.get(),enrollmentRef.get()]);
+   if(!person.exists||person.data().schoolId!==ctx.schoolId||
+      person.data().authUid!==ctx.uid||person.data().kind!=="student"||
+      !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
+      enrollment.data().status!=="active"||enrollment.data().offeringId!==task.data().offeringId)
+    deny("permission-denied","This examination is not assigned to your active enrollment.");
+   const data=task.data();
+   return {taskId,manualAccessState:data.manualAccessState||"waiting",
+     sessionEpoch:Number(data.manualSessionEpoch||0),
+     manualCloseGraceUntil:data.manualCloseGraceUntil?.toMillis?.()||0,
+     published:data.published===true,lifecycle:data.lifecycle||"active",
+     serverNow:Date.now()};
   }
 
   if(["publish","unpublish"].includes(input.action)){
@@ -257,7 +294,8 @@ function createSchoolAssessmentService({db}){
       ...(publish?{publishedAt:now,publishedByUid:ctx.uid}:
         {unpublishedAt:now,unpublishedByUid:ctx.uid}),
       ...(!publish&&data.manualOpenRequired===true&&data.manualAccessState==="open"?
-        {manualAccessState:"held",manualHeldAt:now,manualHeldByUid:ctx.uid}:{})});
+        {manualAccessState:"closing",manualClosedAt:now,manualClosedByUid:ctx.uid,
+         manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+20000)}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:publish?"assessment_published":"assessment_unpublished",
       beforeRevision:revision,afterRevision:nextRevision,createdAt:now});
@@ -419,7 +457,8 @@ function createSchoolAssessmentService({db}){
       lastLifecycleReason:reason,lastLifecycleByUid:ctx.uid,...extra,
       ...(data.manualOpenRequired===true&&data.manualAccessState==="open"&&
          ["close","archive","cancel"].includes(input.action)?
-        {manualAccessState:"held",manualHeldAt:now,manualHeldByUid:ctx.uid}:{})});
+        {manualAccessState:"closing",manualClosedAt:now,manualClosedByUid:ctx.uid,
+         manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+20000)}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:"assessment_"+input.action,beforeLifecycle:lifecycle,afterLifecycle:next,
       beforeRevision:revision,afterRevision:nextRevision,reason,
@@ -503,6 +542,7 @@ function createSchoolAssessmentService({db}){
       allowLateSubmissions:doc.data().allowLateSubmissions===true,
       manualOpenRequired:doc.data().manualOpenRequired===true,
       manualAccessState:doc.data().manualOpenRequired===true?(doc.data().manualAccessState||"waiting"):"scheduled",
+      manualSessionEpoch:Number(doc.data().manualSessionEpoch||0),
       submissionSource:doc.data().submissionSource,
       studioProjectProfile:doc.data().studioProjectProfile||"auto",
       personalizedTask:doc.data().personalizedTask?.enabled===true?{
@@ -558,6 +598,7 @@ function createSchoolAssessmentService({db}){
       }:{enabled:false,mode:"standard"},
       opensAt:open,dueAt:due,postedAt:task.createdAt?.toMillis?.()||open,
       manualOpenRequired:manualExam,manualAccessState:manualExam?(task.manualAccessState||"waiting"):"scheduled",
+      manualSessionEpoch:manualExam?Number(task.manualSessionEpoch||0):0,
       allowLateSubmissions:task.allowLateSubmissions===true,
       late:task.allowLateSubmissions===true&&now>due,
       lifecycle,windowStatus:lifecycle==="closed"?"closed":
