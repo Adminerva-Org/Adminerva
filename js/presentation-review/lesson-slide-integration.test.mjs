@@ -11,7 +11,7 @@ function fixture(){
     add(node){this.children.push(node);},
     classList:{add(){},remove(){},replace(){},toggle(){}}
   });
-  for(const id of ['presentationPlanSelect','presentationSessionSelect','btnGenerateSlides','btnDeletePresentation','presentationSourceStatus'])nodes.set(id,element());
+  for(const id of ['presentationPlanSelect','presentationSessionSelect','btnGenerateSlides','btnDeletePresentation','btnSavePresentation','btnRetryPresentationSource','presentationSourceStatus'])nodes.set(id,element());
   const window={renderSlideBlocks(){},selectSlide(){},addEventListener(){},sanitizePresentationHtml:value=>String(value||'')};
   const storage=new Map();
   const context={window,db:{},AbortSignal,document:{hidden:false,addEventListener(){},getElementById:id=>nodes.get(id),createElement:element},
@@ -47,6 +47,23 @@ test('a late saved-session response cannot replace the newly selected session de
   pending.get('staff_workspaces/teacher-fixture/presentations/saved_session0')(snapshot('Stale first session'));await first;
   assert.equal(page.window.currentPresentationDeck[0].content,'Second session');assert.equal(page.window.selectedSessionIndex,'1');assert.equal(page.window.presentationSourceLessonVersion,2);
 });
+test('failed cloud reads block presentation saves until an explicit session retry',async()=>{
+  const page=fixture();
+  page.window.selectedPlanData={id:'saved',version:1,sessions:[{session_name:'One'}]};
+  page.nodes.get('presentationPlanSelect').value='saved';
+  page.nodes.get('presentationSessionSelect').value='0';
+  page.context.getDoc=async()=>{throw Error('Cloud temporarily unavailable');};
+  await page.window.handleSessionSelection();
+  assert.match(page.nodes.get('presentationSourceStatus').textContent,/could not be checked/);
+  assert.equal(page.nodes.get('btnSavePresentation').disabled,true);
+  assert.equal(page.nodes.get('btnRetryPresentationSource').hidden,false);
+  await page.window.savePresentationToCloud();
+  page.context.getDoc=async()=>({exists:()=>false});
+  await page.window.handleSessionSelection(true);
+  assert.equal(page.nodes.get('btnRetryPresentationSource').hidden,true);
+  assert.equal(page.nodes.get('btnSavePresentation').disabled,false);
+});
+
 test('a late system-generated deck does not overwrite edits made while waiting',async()=>{
   const page=fixture();let resolveResponse;
   page.context.localStorage={getItem:key=>key==='Adminerva_ai_model'?'fixture-model':'fixture-provider-key'};
