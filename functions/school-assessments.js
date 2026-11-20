@@ -204,7 +204,7 @@ function createSchoolAssessmentService({db}){
       revision:revision+1,alreadyCurrent:false,
       offeringId:data.offeringId,title:data.title||"Practical exam"};
    });
-   if(opening&&!result.alreadyCurrent){
+   if(!result.alreadyCurrent){
     const enrolled=await db.collection(prefix+"enrollments")
       .where("offeringId","==",result.offeringId).limit(101).get().catch(()=>null);
     if(enrolled&&enrolled.size<=100){
@@ -214,8 +214,11 @@ function createSchoolAssessmentService({db}){
         const uid=person.exists&&person.data().schoolId===ctx.schoolId&&person.data().status==="active"?
           person.data().authUid:null;
         return uid?writeSchoolNotification({
-          db,schoolId:ctx.schoolId,uid,id:"studio_exam_opened_"+taskId+"_"+result.revision,
-          title:"Studio practical exam is open",body:result.title+" · your teacher opened your section's exam.",
+          db,schoolId:ctx.schoolId,uid,
+          id:(opening?"studio_exam_opened_":"studio_exam_closed_")+taskId+"_"+result.sessionEpoch,
+          title:opening?"Studio practical exam is open":"Studio exam session closed",
+          body:opening?result.title+" · your teacher opened your section's exam.":
+            "Exam session "+result.sessionEpoch+" has ended. Your editor is locked and the final project save is starting.",
           type:"assessment",sourceId:taskId,target:"student-assessments.html"
         }):Promise.resolve();
       }));
