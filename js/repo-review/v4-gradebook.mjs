@@ -36,6 +36,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const pageParams=new URL(location.href).searchParams;
   const view=pageParams.get("view")||"review";
   const requestedOfferingId=String(pageParams.get("offeringId")||"");
+  const requestedStudentUid=String(pageParams.get("studentUid")||"");
   const viewCopy={
     submissions:["Submissions","Inspect frozen learner responses and open the exact submitted version when review is needed."],
     review:["Review & Grade","Review immutable assessment evidence, save grade drafts, and publish deliberately."],
@@ -61,9 +62,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const gradeApi=httpsCallable(functions,"schoolGradebook");
   const verificationApi=httpsCallable(functions,"studioSubmissionVerification");
-  let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null;
-  let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher",reviewNeedsRefresh=false;
-  function clearTaskContext(){currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
+  const conversationApi=httpsCallable(functions,"schoolAssessmentConversation");
+  let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null,currentConversation=null;
+  let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher",reviewNeedsRefresh=false,pendingStudentDeepLink=requestedStudentUid;
+  function clearTaskContext(){currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
 
   async function scoped(api,action,details={}){
     if(!picker?.scope.current)throw Error("Choose a verified school first.");
@@ -71,6 +73,38 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
     picker.scope.assertLease(lease);
     return result;
+  }
+  function renderConversation(){
+    const host=document.getElementById("gbV4Conversation"),form=document.getElementById("gbV4ConversationForm"),
+      statusNode=document.getElementById("gbV4ConversationStatus");
+    host.replaceChildren();
+    const messages=currentConversation?.messages||[];
+    if(!currentConversation){
+      host.append(make("p","text-sm text-slate-500","Private messages are unavailable until the learner review loads."));
+      statusNode.textContent="";form.hidden=true;return;
+    }
+    form.hidden=false;
+    if(!messages.length)host.append(make("p","text-sm text-slate-500","No private messages yet. Start a learner-specific conversation here."));
+    for(const message of messages){
+      const mine=message.authorUid===auth.currentUser?.uid,row=make("div","rounded-lg border p-3 "+(mine?"border-cyan-200 bg-cyan-50":"border-slate-200 bg-slate-50"));
+      row.append(make("p","text-xs font-bold "+(mine?"text-cyan-800":"text-slate-600"),(mine?"You":message.authorName||"Learner")+" · "+(message.createdAt?new Date(message.createdAt).toLocaleString():"")),
+        make("p","mt-1 text-sm text-slate-800 whitespace-pre-wrap break-words",message.body||""));
+      host.append(row);
+    }
+    host.scrollTop=host.scrollHeight;
+    statusNode.textContent=currentConversation.canSend===false?"This assessment conversation is closed.":"Messages are private to this learner and the currently responsible teacher.";
+    const body=document.getElementById("gbV4ConversationBody"),send=document.getElementById("gbV4ConversationSend");
+    body.disabled=busy||currentConversation.canSend===false;send.disabled=busy||currentConversation.canSend===false;
+  }
+  async function reloadConversation(){
+    if(!currentTask||!currentRow)return;
+    try{
+      currentConversation=await scoped(conversationApi,"list",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
+    }catch(error){
+      currentConversation={messages:[],canSend:false,error:error?.message||"Private messages unavailable"};
+      document.getElementById("gbV4ConversationStatus").textContent=currentConversation.error;
+    }
+    renderConversation();
   }
   function refreshReviewControls(){
     const published=currentGrade?.status==="published";
@@ -92,6 +126,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar);
     document.getElementById("gbV4Refresh").disabled=busy;
     if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
+    if(document.getElementById("gbV4ConversationForm"))renderConversation();
   }
   function setBusy(value,message=""){
     busy=value;taskSelect.disabled=value;document.getElementById("gbV4Close").disabled=value;refreshReviewControls();
@@ -212,6 +247,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           "Students will appear here after a verified assessment evidence version is submitted."));
         return;
       }
+      let deepLinkRow=null;
       for(const row of rows){
         const grade=gradeMap.get(row.studentUid)||null;
         const card=make("article","rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
@@ -232,8 +268,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         button.type="button";
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
+        if(pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
         button.addEventListener("click",()=>void openReview(normalized));
         card.append(details,button);inbox.append(card);
+      }
+      if(deepLinkRow&&!dialog.open){
+        pendingStudentDeepLink="";
+        await openReview(deepLinkRow);
       }
     }catch(error){
       if(token!==generation)return;
@@ -445,11 +486,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   async function openReview(row){
     if(busy||!currentTask||dialog.open)return;
     reviewNeedsRefresh=false;
-    currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentDraftSource="teacher";
+    currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentDraftSource="teacher";
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
       currentTask.title+" · version "+row.version+" · "+row.status;
-    document.getElementById("gbV4ReviewStatus").textContent="Loading frozen evidence and private grade draft…";
+    document.getElementById("gbV4ReviewStatus").textContent="Loading frozen evidence, private grade draft and learner conversation…";
+    document.getElementById("gbV4ConversationBody").value="";
+    document.getElementById("gbV4Conversation").replaceChildren(make("p","text-sm text-slate-500","Loading private messages…"));
+    document.getElementById("gbV4ConversationStatus").textContent="";
     document.getElementById("gbV4Code").textContent="Loading…";
     document.getElementById("gbV4File").replaceChildren();
     document.getElementById("gbV4Rubric").replaceChildren();
@@ -481,9 +525,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const result=await Promise.all([
         scoped(evidenceApi,"inspect",evidenceDetails),
         scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:row.studentUid}),
-        scoped(assessmentApi,"get_private",{taskId:currentTask.taskId})
+        scoped(assessmentApi,"get_private",{taskId:currentTask.taskId}),
+        scoped(conversationApi,"list",{taskId:currentTask.taskId,studentUid:row.studentUid}).catch(error=>({messages:[],canSend:false,error:error?.message||"Private messages unavailable"}))
       ]);
-      currentSnapshot=result[0];currentGrade=result[1].grade;currentPrivateConfig=result[2]||{};
+      currentSnapshot=result[0];currentGrade=result[1].grade;currentPrivateConfig=result[2]||{};currentConversation=result[3]||null;renderConversation();
       currentDraftSource=currentGrade?.draftSource||"teacher";
       if(currentTask.submissionSource==="studio"&&!currentSnapshot?.automaticVerification){
         document.getElementById("gbV4ReviewStatus").textContent=
@@ -543,10 +588,23 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
-      currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;
+      currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;renderConversation();
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Review data unavailable.";
     }finally{setBusy(false);}
   }
+  document.getElementById("gbV4ConversationForm").addEventListener("submit",event=>void (async()=>{
+    event.preventDefault();
+    if(busy||!currentTask||!currentRow||currentConversation?.canSend===false)return;
+    const body=document.getElementById("gbV4ConversationBody").value.trim();
+    if(!body){document.getElementById("gbV4ConversationStatus").textContent="Write a private message before sending.";return;}
+    const send=document.getElementById("gbV4ConversationSend"),field=document.getElementById("gbV4ConversationBody");
+    send.disabled=true;field.disabled=true;document.getElementById("gbV4ConversationStatus").textContent="Sending private message…";
+    try{
+      await scoped(conversationApi,"create_message",{taskId:currentTask.taskId,studentUid:currentRow.studentUid,body});
+      field.value="";await reloadConversation();
+    }catch(error){document.getElementById("gbV4ConversationStatus").textContent=error?.message||"Private message could not be sent.";}
+    finally{field.disabled=false;send.disabled=currentConversation?.canSend===false||busy;}
+  })());
   document.getElementById("gbV4GithubVerify").addEventListener("click",()=>
     void verifyGithubEvidence());
   document.getElementById("gbV4GithubApprove").addEventListener("click",()=>void (async()=>{
