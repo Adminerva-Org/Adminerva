@@ -70,7 +70,7 @@ function renderRecommendation({final=false}={}){
   else if(Number.isFinite(assignments)&&assignments===0&&Number.isFinite(enrollments)&&enrollments>0)action={
     title:"Assign teachers to active classes",
     detail:"Student enrollment exists, but no active teaching assignments are loaded. Assign verified teachers before classroom and review workflows depend on these classes.",
-    href:"people-access.html#classes",label:"Assign teaching load",tone:"amber"
+    href:"school-classes.html",label:"Assign teaching load",tone:"amber"
   };
   else if(Number.isFinite(enrollments)&&enrollments===0&&Number.isFinite(people)&&people>0)action={
     title:"Complete student enrollment",
@@ -114,7 +114,7 @@ function renderActivity(){
   }).join("");
 }
 function issueHref(item){
-  if(item.source==="record")return item.targetTab==="classes"?"people-access.html#classes":"school-class-records.html";
+  if(item.source==="record")return item.targetTab==="classes"?"school-classes.html":"school-class-records.html";
   const identityIssue=Boolean(item.personId)&&["access","invites","people"].includes(item.targetTab);
   if(identityIssue)return "people-access.html?personId="+encodeURIComponent(item.personId)+"#people";
   if(item.type==="student_no_enrollment"&&picker?.scope.current?.schoolId==="manila-cathedral-school"&&
