@@ -3,7 +3,7 @@
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
-const {checkId}=require("./school-academics.js");
+const {checkId,rowKey}=require("./school-academics.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function safeTitle(value){
  if(typeof value!=="string"||!value.trim()||value.trim().length>120)
@@ -83,14 +83,33 @@ function createSchoolStudioProjectService({db}){
   const projectCollection=db.collection(prefix+"student_code_projects/"+ctx.uid+"/projects");
   const membershipRef=db.doc(prefix+"memberships/"+ctx.uid);
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
-  async function authorizeAssessmentProject(tx,artifacts){
+  async function authorizeAssessmentProject(tx,artifacts,{closingEpoch=0}={}){
    const binding=artifacts?.assessment;
-   if(binding?.provisionedBy!=="assessment-launch")return;
+   if(binding?.provisionedBy!=="assessment-launch")return {finalSave:false};
    const taskId=checkId(binding.taskId||binding.assessmentId,"Assessment task",128);
    const task=await tx.get(db.doc(prefix+"assessments/"+taskId));
-   if(task.exists&&task.data().schoolId===ctx.schoolId&&
-      task.data().manualOpenRequired===true&&task.data().manualAccessState!=="open")
-    deny("failed-precondition","Your teacher has not opened this section's Studio exam, or has temporarily held it.");
+   if(!task.exists||task.data().schoolId!==ctx.schoolId||
+      task.data().submissionSource!=="studio")
+    deny("failed-precondition","This Studio assessment is no longer available.");
+   const data=task.data();
+   if(data.manualOpenRequired!==true)return {finalSave:false};
+   if(data.manualAccessState==="open") {
+    if(closingEpoch)deny("failed-precondition","Exam closing state changed. Reload the assessment.");
+    return {finalSave:false};
+   }
+   if(data.manualAccessState==="closing"&&closingEpoch>0&&
+      Number(data.manualSessionEpoch||0)===closingEpoch&&
+      Date.now()<=(data.manualCloseGraceUntil?.toMillis?.()||0)){
+    const member=await tx.get(membershipRef),
+      personId=checkId(member.data()?.personId,"Student person",128);
+    const enrollment=await tx.get(db.doc(prefix+"enrollments/"+rowKey(personId,data.offeringId)));
+    if(!enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
+       enrollment.data().personId!==personId||enrollment.data().offeringId!==data.offeringId||
+       enrollment.data().status!=="active")
+      deny("permission-denied","Your school enrollment is no longer active for this exam.");
+    return {finalSave:true,taskId,closingEpoch};
+   }
+   deny("failed-precondition","This section's Studio examination is closed. New project changes are locked.");
   }
   async function authorizeTransaction(tx) {
    const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
@@ -137,13 +156,34 @@ function createSchoolStudioProjectService({db}){
    const artifacts=validateArtifacts(input.artifacts),language=input.language;
    if(!["java","web","python","csharp","cpp","dart","text"].includes(language))
     deny("invalid-argument","Choose a supported Studio project language.");
-   const ref=projectCollection.doc(projectId),digest=digestProject(files,artifacts);
+   const ref=projectCollection.doc(projectId),digest=digestProject(files,artifacts),
+     closingEpoch=Number(input.closingSaveSessionEpoch||0);
+   if(closingEpoch&&(!Number.isSafeInteger(closingEpoch)||closingEpoch<1))
+    deny("invalid-argument","The closing exam session number is invalid.");
    let result;
    await db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
     const current=await tx.get(ref);
-    await authorizeAssessmentProject(tx,artifacts);
-    if(current.exists)await authorizeAssessmentProject(tx,current.data().artifacts);
+    const access=await authorizeAssessmentProject(tx,artifacts,{closingEpoch});
+    if(current.exists){
+     const oldBinding=current.data().artifacts?.assessment,
+       newBinding=artifacts.assessment;
+     if(access.finalSave&&(!oldBinding||oldBinding.provisionedBy!=="assessment-launch"||
+        (oldBinding.taskId||oldBinding.assessmentId)!==access.taskId||
+        !newBinding||(newBinding.taskId||newBinding.assessmentId)!==access.taskId))
+      deny("permission-denied","The closing checkpoint must belong to the same assigned Studio project.");
+     if(!access.finalSave)await authorizeAssessmentProject(tx,current.data().artifacts);
+    }else if(access.finalSave)
+     deny("failed-precondition","This exam project must already exist before its final checkpoint.");
+    const receiptRef=access.finalSave?
+      db.doc(prefix+"studio_exam_close_receipts/"+access.taskId+"_"+ctx.uid+"_"+closingEpoch):null;
+    const priorReceipt=receiptRef?await tx.get(receiptRef):null;
+    if(priorReceipt?.exists){
+      if(priorReceipt.data().projectId!==projectId||priorReceipt.data().contentDigest!==digest)
+       deny("failed-precondition","This exam session already has a final saved checkpoint.");
+      result={projectId,revision:priorReceipt.data().projectRevision,
+        contentDigest:digest,created:false,unchanged:true,examFinalized:true};return;
+    }
     const now=FieldValue.serverTimestamp();
     if(!current.exists){
      tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,status:"active",
@@ -161,12 +201,22 @@ function createSchoolStudioProjectService({db}){
     if(data.revision!==expected)
      deny("failed-precondition","Project changed in school storage. Reload before overwriting it.");
     if(data.contentDigest===digest&&data.title===title&&data.language===language){
-     result={projectId,revision:data.revision,contentDigest:digest,created:false,unchanged:true};return;
+     if(receiptRef)tx.create(receiptRef,{
+       schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
+       projectId,projectRevision:data.revision,contentDigest:digest,closingEpoch,savedAt:now
+     });
+     result={projectId,revision:data.revision,contentDigest:digest,created:false,unchanged:true,
+       examFinalized:Boolean(receiptRef)};return;
     }
     const revision=data.revision+1;
     tx.update(ref,{title,language,files,artifacts,contentDigest:digest,
       sourceDigest:digestSource(files,language),revision,updatedAt:now});
-    result={projectId,revision,contentDigest:digest,created:false,unchanged:false};
+    if(receiptRef)tx.create(receiptRef,{
+      schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
+      projectId,projectRevision:revision,contentDigest:digest,closingEpoch,savedAt:now
+    });
+    result={projectId,revision,contentDigest:digest,created:false,unchanged:false,
+      examFinalized:Boolean(receiptRef)};
    });
    return result;
   }
