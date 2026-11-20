@@ -274,7 +274,7 @@ function createSchoolAssessmentService({db}){
      enrolledStudents:students.length,students,receipts};
   }
 
-  if(input.action==="exam_session"){
+  if(["exam_session","exam_close_status"].includes(input.action)){
    if(!ctx.roles.includes("student"))deny("permission-denied","Student access is required.");
    const taskId=checkId(input.taskId,"Assessment task",128);
    const [member,task]=await Promise.all([
@@ -295,6 +295,18 @@ function createSchoolAssessmentService({db}){
       !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
       enrollment.data().status!=="active"||enrollment.data().offeringId!==task.data().offeringId)
     deny("permission-denied","This examination is not assigned to your active enrollment.");
+   if(input.action==="exam_close_status"){
+    const epoch=Number(input.sessionEpoch);
+    if(!Number.isSafeInteger(epoch)||epoch<1||epoch>Number(task.data().manualSessionEpoch||0))
+     deny("invalid-argument","Choose a valid class session for the exam save receipt.");
+    const receipt=await db.doc(prefix+"studio_exam_close_receipts/"+taskId+
+      "/sessions/"+epoch+"/students/"+ctx.uid).get();
+    const row=receipt.exists?receipt.data():null;
+    return {taskId,sessionEpoch:epoch,confirmed:Boolean(row&&row.schoolId===ctx.schoolId&&
+      row.taskId===taskId&&row.studentUid===ctx.uid&&row.closingEpoch===epoch),
+      projectRevision:row?.projectRevision||null,
+      savedAt:row?.savedAt?.toMillis?.()||null};
+   }
    const data=task.data();
    return {taskId,manualAccessState:data.manualAccessState||"waiting",
      sessionEpoch:Number(data.manualSessionEpoch||0),
