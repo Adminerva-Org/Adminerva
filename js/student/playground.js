@@ -232,6 +232,9 @@ function examCloseOverlay(){
 }
 async function lockAndCloseStudioExam(taskId,sessionEpoch){
   if(examSessionClosing)return;
+  if(projectStudio?.getActiveProject?.()?.assessment?.taskId!==taskId){
+    stopStudioExamWatcher();return;
+  }
   examSessionClosing=true;
   clearInterval(examSessionTimer);examSessionTimer=null;
   editorInstance?.updateOptions({readOnly:true});
@@ -330,7 +333,8 @@ async function watchStudioExam(taskId){
     const assignments=await listV4StudioAssignments();
     const task=assignments?.find(item=>item.taskId===taskId&&
       item.submissionSource==="studio"&&item.manualOpenRequired===true);
-    if(!task||examSessionClosing)return;
+    if(!task||examSessionClosing||
+       projectStudio?.getActiveProject?.()?.assessment?.taskId!==taskId)return;
     watchedExamId=taskId;examLastContact=Date.now();
     clearInterval(examSessionTimer);
     examNotificationUnsub?.();examNotificationUnsub=null;
