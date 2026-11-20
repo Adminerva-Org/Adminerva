@@ -92,12 +92,14 @@ function createSchoolStudioSubmissionService({db}){
       revisionOpen=submission.exists&&submission.data().status==="reopened";
     if(["archived","cancelled"].includes(lifecycle))
      deny("failed-precondition","This assessment is no longer accepting student submissions.");
-    if(lifecycle==="closed"&&!revisionOpen)
+    if(assessment.manualOpenRequired===true&&assessment.manualAccessState!=="open")
+    deny("failed-precondition","Your teacher has not opened this section's Studio exam, or has temporarily held it.");
+   if(lifecycle==="closed"&&!revisionOpen)
      deny("failed-precondition","This assessment is closed to new submissions.");
     const now=Date.now();
     const revisionDeadline=revisionOpen?
       submission.data().revisionDueAt?.toMillis?.()||0:0;
-    if(now<assessment.opensAt.toMillis()||
+    if((assessment.manualOpenRequired!==true&&now<assessment.opensAt.toMillis())||
        (assessment.allowLateSubmissions!==true&&now>assessment.dueAt.toMillis()&&now>revisionDeadline))
      deny("failed-precondition","The Studio submission deadline has passed. Ask your teacher for an explicit revision extension.");
     if(!project.exists||project.data().schoolId!==ctx.schoolId||
