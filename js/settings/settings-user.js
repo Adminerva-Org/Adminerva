@@ -436,7 +436,7 @@ sectionForm?.addEventListener("submit",event=>{
       });
       status.textContent="Section saved. The student's account was preserved.";
       sectionDialog.close();
-      await loadDirectory();
+      await window.loadDirectory();
     }catch(error){status.textContent=error.message||"Unable to assign the section.";}
     finally{sectionAssignmentBusy=false;save.disabled=false;}
   })();
