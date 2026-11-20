@@ -129,7 +129,7 @@ function createSchoolAssessmentConversationService({db}){
     });
     const recipientUid=viewerRole==="teacher"?studentUid:teacherUid,
       target=viewerRole==="teacher"?
-        "student-assessments.html?offeringId="+encodeURIComponent(offeringId)+"#"+encodeURIComponent(taskId):
+        "student-assessments.html?offeringId="+encodeURIComponent(offeringId)+"&conversation="+encodeURIComponent(taskId)+"#"+encodeURIComponent(taskId):
         "school-gradebook.html?view=review&offeringId="+encodeURIComponent(offeringId)+"&task="+encodeURIComponent(taskId)+"&studentUid="+encodeURIComponent(studentUid);
     await writeSchoolNotification({
       db,schoolId:ctx.schoolId,uid:recipientUid,id:"assessment_message_"+messageRef.id,
