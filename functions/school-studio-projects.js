@@ -83,6 +83,15 @@ function createSchoolStudioProjectService({db}){
   const projectCollection=db.collection(prefix+"student_code_projects/"+ctx.uid+"/projects");
   const membershipRef=db.doc(prefix+"memberships/"+ctx.uid);
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
+  async function authorizeAssessmentProject(tx,artifacts){
+   const binding=artifacts?.assessment;
+   if(binding?.provisionedBy!=="assessment-launch")return;
+   const taskId=checkId(binding.taskId||binding.assessmentId,"Assessment task",128);
+   const task=await tx.get(db.doc(prefix+"assessments/"+taskId));
+   if(task.exists&&task.data().schoolId===ctx.schoolId&&
+      task.data().manualOpenRequired===true&&task.data().manualAccessState!=="open")
+    deny("failed-precondition","Your teacher has not opened this section's Studio exam, or has temporarily held it.");
+  }
   async function authorizeTransaction(tx) {
    const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
    if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
@@ -115,6 +124,7 @@ function createSchoolStudioProjectService({db}){
    const ref=projectCollection.doc(),now=FieldValue.serverTimestamp();
    await db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
+    await authorizeAssessmentProject(tx,artifacts);
     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,
       language,files,artifacts,contentDigest:digestProject(files,artifacts),sourceDigest:digestSource(files,language),status:"active",revision:1,
       createdAt:now,updatedAt:now});
@@ -131,7 +141,10 @@ function createSchoolStudioProjectService({db}){
    let result;
    await db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
-    const current=await tx.get(ref),now=FieldValue.serverTimestamp();
+    const current=await tx.get(ref);
+    await authorizeAssessmentProject(tx,artifacts);
+    if(current.exists)await authorizeAssessmentProject(tx,current.data().artifacts);
+    const now=FieldValue.serverTimestamp();
     if(!current.exists){
      tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,status:"active",
        contentDigest:digest,sourceDigest:digestSource(files,language),revision:1,createdAt:now,updatedAt:now});
@@ -164,6 +177,14 @@ function createSchoolStudioProjectService({db}){
    if(!doc.exists||doc.data().ownerUid!==ctx.uid||doc.data().schoolId!==ctx.schoolId)
     deny("not-found","Project is unavailable.");
    const data=doc.data();
+   const binding=data.artifacts?.assessment;
+   if(binding?.provisionedBy==="assessment-launch"){
+    const taskId=checkId(binding.taskId||binding.assessmentId,"Assessment task",128);
+    const task=await db.doc(prefix+"assessments/"+taskId).get();
+    if(task.exists&&task.data().schoolId===ctx.schoolId&&
+       task.data().manualOpenRequired===true&&task.data().manualAccessState!=="open")
+      deny("failed-precondition","Your teacher has not opened this section's Studio exam, or has temporarily held it.");
+   }
    if(data.status==="archived")deny("failed-precondition","This school project is archived. Restore it before opening.");
    return {projectId,title:data.title,language:data.language,status:data.status||"active",
     revision:data.revision,files:data.files,artifacts:data.artifacts||{},contentDigest:data.contentDigest,
