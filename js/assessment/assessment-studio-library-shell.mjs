@@ -242,6 +242,7 @@ if(host){
                 <option value="github">GitHub / repository evidence</option>
               </select>
             </label>
+            <p class="text-xs text-slate-600">For a previously assigned assessment, you may use the original date it was assigned in class. The deadline must be later than the opening date. Students cannot submit before you publish the deployment.</p>
             <div class="grid sm:grid-cols-2 gap-3">
               <label class="text-sm font-bold">Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
               <label class="text-sm font-bold">Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>

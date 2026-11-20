@@ -25,7 +25,9 @@ test("each introductory mission produces an isolated runnable sample",()=>{
     if(course.id==="java"){
       assert.equal(sandbox.lang,"java");
       assert.ok(code.includes("public static void main"));
-      assert.ok(code.includes("System.out.println"));
+      // Expanded Java tasks include class diagrams and algorithms with no console output.
+    // A valid main entry point is required; a print statement is not.
+    if(/^j[1-9]$/.test(mission.id))assert.ok(code.includes("System.out.println"));
     }
     if(course.id==="python"){
       assert.equal(sandbox.lang,"python");

@@ -1121,7 +1121,7 @@ function persistWorkspace(){
     }
     workspaceDirty=false;
     localSaveFailed=false;
-    if(!projectStudio?.getActiveProject()||guestMode)showSaveStatus("Saved on this device");
+    if(typeof projectStudio==="undefined"||!projectStudio?.getActiveProject()||guestMode)showSaveStatus("Saved on this device");
     return true;
   }catch(error){
     console.error("Workspace save failed:",error);
