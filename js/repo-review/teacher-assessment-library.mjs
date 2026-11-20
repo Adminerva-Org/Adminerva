@@ -199,6 +199,10 @@ function openDeploymentSettings(task){
   if(task.opensAt)form.elements.opensAt.value=localDateInput(new Date(task.opensAt));
   if(task.dueAt)form.elements.dueAt.value=localDateInput(new Date(task.dueAt));
   form.elements.allowLateSubmissions.checked=task.allowLateSubmissions===true;
+  const manual=el("tl-settings-manual-exam-option");
+  manual.hidden=task.submissionSource!=="studio";
+  form.elements.manualOpenRequired.disabled=task.submissionSource!=="studio";
+  form.elements.manualOpenRequired.checked=task.manualOpenRequired===true;
   dialog.showModal();
 }
 function showPreview(item){
@@ -583,6 +587,7 @@ el("tl-deployment-settings-form").addEventListener("submit",event=>{
     taskId:task.taskId,expectedRevision:task.revision||1,
     opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
     allowLateSubmissions:form.elements.allowLateSubmissions.checked===true,
+    manualOpenRequired:form.elements.manualOpenRequired.checked===true,
     reason:String(form.elements.reason.value||"")
   };
   void (async()=>{
