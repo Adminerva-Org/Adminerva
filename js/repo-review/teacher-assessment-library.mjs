@@ -521,19 +521,101 @@ async function setPublication(task,publish){
 }
 async function showExamCloseReport(task){
   if(pendingWrite)return;
-  try{
-    say("Loading server-confirmed final exam checkpoints…");
-    const report=await performScoped(scopedAssessmentApi,"exam_close_report",{taskId:task.taskId});
-    const rows=(report.students||[]).map(student=>
-      (student.checkpointConfirmed?"SAVED · ":"UNCONFIRMED · ")+student.displayName);
-    const message=task.title+" · Session "+report.sessionEpoch+"\n"+
-      report.confirmed+" of "+report.enrolledStudents+" enrolled student checkpoints confirmed by the school cloud."+
-      (rows.length?"\n\n"+rows.join("\n"):"\nNo active enrolled students were found.")+
-      "\n\nUNCONFIRMED does not mean the student's code was deleted. Earlier cloud autosaves or device drafts may still exist. Refresh the report after the closing save window.";
-    alert(message);
-    say("Final exam checkpoint report loaded. "+report.confirmed+" confirmed for the current session.");
-  }catch(error){say(error?.message||"Could not load exam close receipts.");}
+  const holder=document.getElementById("schoolAssessmentStudioHost")||document.body;
+  let dialog=document.getElementById("tl-close-checkpoint-report");
+  if(!dialog){
+    dialog=document.createElement("dialog");
+    dialog.id="tl-close-checkpoint-report";
+    dialog.className="tl-dialog";
+    dialog.style.cssText="width:min(760px,calc(100vw - 20px));max-height:90dvh;overflow:auto;border:0;border-radius:16px;padding:0;box-shadow:0 24px 90px #02061766;";
+    const body=document.createElement("div");
+    body.className="p-4 sm:p-6 bg-white text-slate-900";
+    const header=document.createElement("div");header.className="flex items-start justify-between gap-3";
+    const heading=document.createElement("h2");heading.id="tl-close-report-title";heading.className="text-xl font-extrabold";
+    heading.textContent="Practical exam · Final save checkpoints";
+    const close=document.createElement("button");close.type="button";close.className="tl-action alt";
+    close.textContent="Close";close.addEventListener("click",()=>dialog.close());
+    header.append(heading,close);
+    const help=document.createElement("p");help.className="mt-2 text-sm text-slate-600";
+    help.textContent="This is a cloud-confirmed progress checkpoint, not a formal submission or grade. Students with no final checkpoint may still have an earlier autosaved school revision.";
+    const controls=document.createElement("div");controls.className="mt-4 flex flex-wrap items-end gap-3";
+    const label=document.createElement("label");label.className="text-sm font-semibold";
+    label.textContent="Class session";
+    const select=document.createElement("select");select.id="tl-close-report-session";
+    select.className="tl-input";select.style.minWidth="150px";
+    label.append(select);
+    const refresh=document.createElement("button");refresh.id="tl-close-report-refresh";refresh.type="button";
+    refresh.className="tl-action";refresh.textContent="Refresh confirmations";
+    controls.append(label,refresh);
+    const summary=document.createElement("p");summary.id="tl-close-report-summary";
+    summary.className="mt-3 text-sm font-bold text-slate-700";summary.setAttribute("role","status");
+    const tableWrap=document.createElement("div");tableWrap.id="tl-close-report-table";
+    tableWrap.className="mt-3 overflow-x-auto rounded-lg border border-slate-200";
+    body.append(header,help,controls,summary,tableWrap);dialog.append(body);holder.append(dialog);
+  }
+  const title=dialog.querySelector("#tl-close-report-title"),
+    select=dialog.querySelector("#tl-close-report-session"),
+    refresh=dialog.querySelector("#tl-close-report-refresh"),
+    summary=dialog.querySelector("#tl-close-report-summary"),
+    tableWrap=dialog.querySelector("#tl-close-report-table");
+  title.textContent=task.title+" · Final cloud save checkpoints";
+  select.replaceChildren();
+  const current=Number(task.manualSessionEpoch||0);
+  for(let epoch=current;epoch>=Math.max(1,current-19);epoch--){
+    const option=document.createElement("option");option.value=String(epoch);
+    option.textContent="Class session "+epoch;select.append(option);
+  }
+  let generation=0;
+  const load=async()=>{
+    const epoch=Number(select.value),turn=++generation;
+    if(!epoch)return;
+    refresh.disabled=true;summary.textContent="Loading school-confirmed checkpoints…";
+    tableWrap.replaceChildren();
+    try{
+      const report=await performScoped(scopedAssessmentApi,"exam_close_report",{
+        taskId:task.taskId,sessionEpoch:epoch
+      });
+      if(turn!==generation||!dialog.open)return;
+      summary.textContent=report.confirmed+" of "+report.enrolledStudents+
+        " enrolled students have a confirmed final cloud save for session "+report.sessionEpoch+".";
+      const table=document.createElement("table");table.className="min-w-full text-left text-sm";
+      const thead=document.createElement("thead");thead.className="bg-slate-100";
+      const headings=document.createElement("tr");
+      for(const label of ["Student","Final checkpoint","Project revision","Confirmed at"]){
+        const th=document.createElement("th");th.className="px-3 py-2 font-bold";th.textContent=label;
+        headings.append(th);
+      }
+      thead.append(headings);table.append(thead);
+      const tbody=document.createElement("tbody");
+      for(const student of report.students||[]){
+        const tr=document.createElement("tr");tr.className="border-t border-slate-200";
+        const cells=[
+          student.displayName||"Student",
+          student.checkpointConfirmed?"Saved to school cloud":"Unconfirmed",
+          student.projectRevision?"Revision "+student.projectRevision:"—",
+          student.savedAt?new Date(student.savedAt).toLocaleString():"—"
+        ];
+        cells.forEach((value,index)=>{
+          const td=document.createElement("td");td.className="px-3 py-2 align-top";
+          if(index===1)td.className+=" font-bold "+
+            (student.checkpointConfirmed?"text-emerald-700":"text-amber-800");
+          td.textContent=value;tr.append(td);
+        });
+        tbody.append(tr);
+      }
+      table.append(tbody);tableWrap.replaceChildren(table);
+      if(!tbody.children.length)
+        summary.textContent+=" There are no active enrolled students on the current roster.";
+    }catch(error){
+      if(turn===generation)summary.textContent=error?.message||"Could not load final exam save confirmations.";
+    }finally{if(turn===generation)refresh.disabled=false;}
+  };
+  select.onchange=()=>void load();
+  refresh.onclick=()=>void load();
+  if(!dialog.open)dialog.showModal();
+  void load();
 }
+
 async function setExamOpening(task,opening){
   if(pendingWrite)return;
   if(!confirm(opening?
