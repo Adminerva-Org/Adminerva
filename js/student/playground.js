@@ -258,8 +258,8 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
       if(!result)throw Error("The school did not confirm the final cloud checkpoint.");
       message.textContent="Your final code revision was saved to the school cloud. Leaving the exam workspace…";
       notice.textContent="Your teacher can review the saved progress. This does not submit or grade the project.";
-      location.replace("student-assessments.html?examClosed="+encodeURIComponent(taskId)+"#"+
-        encodeURIComponent(taskId));
+      location.replace("student-assessments.html?examClosed="+encodeURIComponent(taskId)+
+        "&examSession="+encodeURIComponent(sessionEpoch)+"#"+encodeURIComponent(taskId));
     }catch(error){
       console.warn("Final Studio exam checkpoint failed:",error);
       message.textContent="The exam is closed. A final cloud save could not be confirmed.";
