@@ -750,7 +750,13 @@ el("tl-cancel-deploy").addEventListener("click",()=>{
 });
 el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
 el("tl-deploy-dialog").addEventListener("close",()=>{++deployEpoch;deployReady=false;deploying=null;deployRequestKey=null;});
-el("tl-deploy-form").elements.submissionSource.addEventListener("change",toggleManualOpening);
+el("tl-deploy-form").elements.submissionSource.addEventListener("change",()=>{
+  toggleManualOpening();
+  const form=el("tl-deploy-form");
+  if(form.elements.submissionSource.value==="studio"&&
+     /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(deploying?.assessmentType||"")))
+    form.elements.manualOpenRequired.checked=true;
+});
 el("tl-deploy-form").addEventListener("input",()=>{if(!pendingWrite)deployRequestKey=crypto.randomUUID();});
 el("tl-deploy-form").addEventListener("submit",event=>{
   event.preventDefault();if(!deploying||pendingWrite||!deployReady)return;
