@@ -304,6 +304,19 @@
           <p class="pa-muted">Academic years, programs/divisions, periods, subjects, sections and course offerings are managed in the dedicated Academic Configuration workspace.</p>
           <a class="pa-action" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:.75rem" href="school-academic-configuration.html">Open Academic Configuration</a>
         </section>
+        <details id="pa-section-enrollment-card" class="pa-card" open>
+          <summary style="font-weight:750;cursor:pointer">Assign existing student to section</summary>
+          <form id="pa-section-enrollment-form" style="display:grid;gap:.65rem;padding-top:1rem">
+            <p class="pa-muted">For an accepted student with No Section. Uses the existing account and enrolls the student in every active subject offering for the selected section and academic period. Does not register or invite the student again.</p>
+            <label>Existing student<select class="pa-field" name="personId" data-student-person required></select></label>
+            <label>Academic year<select class="pa-field" name="yearId" id="pa-section-enrollment-year" required></select></label>
+            <label>Academic period<select class="pa-field" name="termId" id="pa-section-enrollment-term" required></select></label>
+            <label>Existing section<select class="pa-field" name="sectionId" id="pa-section-enrollment-section" required></select></label>
+            <p id="pa-section-enrollment-preview" class="pa-muted" role="status">Choose an academic year, period and section to preview the subjects.</p>
+            <label>Placement reason<input class="pa-field" name="reason" minlength="12" maxlength="140" required placeholder="Newly accepted student assigned to existing section"></label>
+            <button class="pa-action" type="submit">Assign section and enroll subjects</button>
+          </form>
+        </details>
         <details id="pa-student-enrollment-card" class="pa-card">
           <summary style="font-weight:750;cursor:pointer">Enroll student in offering</summary>
           <form id="pa-enrollment-form" style="padding-top:1rem">
