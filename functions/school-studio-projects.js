@@ -109,7 +109,7 @@ function createSchoolStudioProjectService({db}){
       deny("permission-denied","Your school enrollment is no longer active for this exam.");
     return {finalSave:true,taskId,closingEpoch};
    }
-   deny("failed-precondition","This section's Studio examination is closed. New project changes are locked.");
+   deny("failed-precondition","The Studio exam is closed to edits. Only an authorized final closing checkpoint may be saved.");
   }
   async function authorizeTransaction(tx) {
    const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
