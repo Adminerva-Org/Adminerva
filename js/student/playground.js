@@ -282,9 +282,10 @@ async function checkStudioExamSession(taskId=watchedExamId){
       editorInstance?.updateOptions({readOnly:Boolean(studioRuntimeIntegration?.locked?.())});
     }
     const openedEpoch=Number(projectStudio?.getActiveProject?.()?.assessment?.sessionEpoch||0);
-    if(openedEpoch>0&&Number(state.sessionEpoch||0)>openedEpoch){
-      // A tab that missed the end of an earlier class must never join the
-      // next class merely because the teacher reopened the same assessment.
+    if(Number(state.sessionEpoch||0)!==openedEpoch){
+      // Every editor belongs to exactly one teacher-opened class session.
+      // An old tab (including older drafts without an epoch) must never
+      // join the next session without reentering through My Assessments.
       examSessionClosing=true;clearInterval(examSessionTimer);examSessionTimer=null;
       editorInstance?.updateOptions({readOnly:true});
       document.getElementById("studioShell")?.setAttribute("inert","");
