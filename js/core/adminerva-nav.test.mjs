@@ -9,11 +9,11 @@ import { roleHome } from './session-destination.mjs';
 // fixture. The browser loads it as an async ESM chunk; the fixture supplies the
 // already-resolved module so legacy synchronous DOM assertions remain meaningful.
 const navigationIA = readFileSync('js/core/navigation-ia.mjs','utf8').replace(
-  /^export function buildNavigationIA/m, 'function buildNavigationIA');
+  /^export function buildNavigationIA/m, 'function fixtureNavigationIA');
 const source = readFileSync('js/core/adminerva-nav.js', 'utf8');
 const forFixture = code => navigationIA + '\n' +
   code.replace(/await import\("\.\/navigation-ia\.mjs\?v=[^"]+"\)/,
-    '({buildNavigationIA})')
+    '({buildNavigationIA:fixtureNavigationIA})')
     .replace(/\bimport\(/g,'fixtureImport(');
 class Element {
   constructor(tag = 'div') {
