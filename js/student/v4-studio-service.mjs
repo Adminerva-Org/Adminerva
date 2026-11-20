@@ -260,7 +260,7 @@ export async function submitV4StudioProject({taskId,project,state}){
   const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===taskId):null;
   if(!task)throw Error("This verified-school assessment is unavailable.");
   if(task.manualOpenRequired===true&&task.manualAccessState!=="open")
-    throw Error("Your teacher has not opened this section's Studio exam, or has temporarily held it.");
+    throw Error("This section's Studio exam session is not open. Ask your teacher when the next class session begins.");
   let variantId="",variantAttempt=null;
   if(task.personalizedTask?.enabled===true){
     const assigned=window.adminervaStudioAssessmentVariant;
