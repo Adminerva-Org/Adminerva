@@ -574,7 +574,7 @@ async function prepareDeployment(item){
   // ordinary Studio assignments keep their original scheduled behavior.
   form.elements.manualOpenRequired.checked=
     form.elements.submissionSource.value==="studio"&&
-    /\\b(?:practical\\s+)?exam(?:ination)?\\b/i.test(String(item.assessmentType||""));
+    /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(item.assessmentType||""));
   const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   form.elements.opensAt.value=localDateInput(now);
   form.elements.dueAt.value=localDateInput(tomorrow);
