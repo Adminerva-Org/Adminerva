@@ -242,7 +242,11 @@ if(host){
                 <option value="github">GitHub / repository evidence</option>
               </select>
             </label>
-            <p class="text-xs text-slate-600">For a previously assigned assessment, you may use the original date it was assigned in class. The deadline must be later than the opening date. Students cannot submit before you publish the deployment.</p>
+            <label id="tl-manual-exam-option" class="mt-3 flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-950" hidden>
+              <input name="manualOpenRequired" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
+              <span><strong>Teacher-controlled opening</strong><span class="mt-1 block text-xs">Publish the Studio exam in advance, but keep its instructions, personalized task and project launch locked until the responsible teacher selects Open exam for this section. Opening and holding are controlled separately for each deployment.</span></span>
+            </label>
+            <p class="text-xs text-slate-600">Set a deadline later than the opening reference time. For scheduled assessments, the opening time controls availability; for teacher-controlled Studio exams, the teacher's Open exam action controls the start. Deadline enforcement continues in both modes. Students cannot submit before publication.</p>
             <div class="grid sm:grid-cols-2 gap-3">
               <label class="text-sm font-bold">Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
               <label class="text-sm font-bold">Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
