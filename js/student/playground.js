@@ -522,6 +522,16 @@ async function initializePlayground() {
         openProject:openNamedProject,
         captureState:currentState,
         onConfigChange:applyNamedProjectConfig,
+        onRevealEvidence:({file,line})=>{
+          const model=workspaceFiles[file]?.model;
+          if(!model||!editorInstance)return false;
+          const validLine=Math.max(1,Math.min(model.getLineCount(),Math.trunc(Number(line)||1)));
+          switchTab(file);
+          editorInstance.setPosition({lineNumber:validLine,column:1});
+          editorInstance.revealLineInCenter(validLine);
+          editorInstance.focus();
+          return true;
+        },
         legacyDraftAvailable:legacyAvailable,
         importLegacyDraft:importLegacyDraftAsProject,
         cloudEnabled:!guestMode,

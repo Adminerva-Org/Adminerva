@@ -150,7 +150,7 @@
 
   <section id="studioPanelEvidence" class="hidden studio-surface" aria-labelledby="evidenceHeading">
     <div class="studio-surface-head"><div><p class="studio-eyebrow">PROJECT EVIDENCE</p><h2 id="evidenceHeading">Competency evidence</h2><p>Preliminary code patterns and project activity—not proof that Java concepts work correctly. Open the listed file and line to inspect each detected pattern.</p></div></div>
-    <p id="evidenceSummary" role="status"></p><div id="evidenceChecklist" class="evidence-groups"></div><p id="evidenceProjectNote" class="studio-notice"></p>
+    <p id="evidenceSummary" role="status"></p><div class="evidence-toolbar" role="group" aria-label="Evidence review controls"><label for="evidenceFilter">Show <select id="evidenceFilter"><option value="all">All indicators</option><option value="detected">Detected patterns</option><option value="missing">Not detected</option></select></label><button id="evidenceRefresh" type="button">Refresh evidence</button><button id="evidenceExpandAll" type="button">Expand all details</button></div><div id="evidenceChecklist" class="evidence-groups"></div><p id="evidenceProjectNote" class="studio-notice"></p>
   </section>
 
   <section id="studioPanelMonitor" class="hidden studio-surface" aria-labelledby="monitorHeading">
