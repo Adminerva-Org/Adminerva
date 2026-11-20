@@ -146,13 +146,14 @@ function createSchoolAcademicsService({db}) {
    const prefix="schools/"+ctx.schoolId+"/";
    // One bounded school-wide read. Only active course grants are used;
    // suspended accounts cannot make a course appear staffed.
-   const [members,offerings,grants]=await Promise.all([
+   const [members,offerings,grants,adviserGrants]=await Promise.all([
     db.collection(prefix+"memberships").where("roles","array-contains","teacher").limit(501).get(),
     db.collection(prefix+"course_offerings").where("status","==","active").limit(1001).get(),
-    db.collection(prefix+"staff_assignments").where("status","==","active").limit(2001).get()
+    db.collection(prefix+"staff_assignments").where("status","==","active").limit(2001).get(),
+    db.collection(prefix+"section_advisers").where("status","==","active").limit(1001).get()
    ]);
-   if(members.size===501||offerings.size===1001||grants.size===2001)
-    deny("resource-exhausted","Faculty workload exceeds its current review limit. No partial staffing counts are displayed.");
+   if(members.size===501||offerings.size===1001||grants.size===2001||adviserGrants.size===1001)
+    deny("resource-exhausted","Faculty workload exceeds its current review limit. No partial staffing or advisory counts are displayed.");
    const teachers=members.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
     .map(doc=>({uid:doc.id,name:typeof doc.data().displayName==="string"?doc.data().displayName:"Teacher "+doc.id.slice(0,8)}));
    const teacherIds=new Set(teachers.map(row=>row.uid));
@@ -187,8 +188,84 @@ function createSchoolAcademicsService({db}) {
     });
    }
    for(const row of classes)for(const [collection,field,label] of catalogFields)row[label]=labels.get(collection+"/"+row[field])||row[field]||"Unspecified";
-   return {schoolId:ctx.schoolId,teachers,offerings:classes,unmatchedGrants};
+   const advisories=adviserGrants.docs.filter(doc=>{
+    const row=doc.data();
+    return row.schoolId===ctx.schoolId&&teacherIds.has(row.teacherUid)&&row.sectionId&&row.yearId;
+   }).map(doc=>({
+    advisoryId:doc.id,teacherUid:doc.data().teacherUid,sectionId:doc.data().sectionId,
+    yearId:doc.data().yearId,status:"active",revision:Number(doc.data().revision)||1
+   }));
+   return {schoolId:ctx.schoolId,teachers,offerings:classes,advisories,unmatchedGrants};
   }
+
+  if(["set_section_adviser","end_section_adviser"].includes(input.action)){
+   requireAdmin();
+   const sectionId=checkId(input.sectionId,"Section ID"),
+    yearId=checkId(input.yearId,"Academic year ID"),
+    reason=checkName(input.reason,input.action==="set_section_adviser"?"Adviser assignment reason":"Adviser end reason");
+   if(reason.length<12)deny("invalid-argument","Explain the advisory assignment change in at least 12 characters.");
+   const sectionRef=schoolRoot.doc("sections/"+sectionId),
+    yearRef=schoolRoot.doc("academic_years/"+yearId),
+    query=db.collection("schools/"+ctx.schoolId+"/section_advisers").where("sectionId","==",sectionId).limit(101),
+    auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   const setting=input.action==="set_section_adviser";
+   const teacherUid=setting?checkId(input.teacherUid,"Adviser teacher UID",128):null;
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const reads=[tx.get(sectionRef),tx.get(yearRef),tx.get(query)];
+    if(setting)reads.push(tx.get(schoolRoot.doc("memberships/"+teacherUid)));
+    const records=await Promise.all(reads),section=records[0],year=records[1],assignments=records[2],teacherMember=setting?records[3]:null;
+    if(!section.exists||section.data().schoolId!==ctx.schoolId||section.data().status!=="active")
+     deny("failed-precondition","Choose an active section in this school.");
+    if(!year.exists||year.data().schoolId!==ctx.schoolId||year.data().status!=="active")
+     deny("failed-precondition","Choose an active academic year in this school.");
+    if(assignments.size===101)
+     deny("resource-exhausted","This section has too much adviser history for the current workflow.");
+    if(setting&&(!teacherMember.exists||teacherMember.data().schoolId!==ctx.schoolId||
+       teacherMember.data().status!=="active"||!Array.isArray(teacherMember.data().roles)||
+       !teacherMember.data().roles.includes("teacher")))
+     deny("permission-denied","The adviser must be an active teacher in this school.");
+    const sameYear=assignments.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().yearId===yearId);
+    const active=sameYear.find(doc=>doc.data().status==="active")||null;
+    const now=FieldValue.serverTimestamp();
+    if(!setting){
+     if(!active)deny("failed-precondition","This section has no active adviser for the selected school year.");
+     tx.update(active.ref,{status:"ended",endedByUid:uid,endedAt:now,endReason:reason,
+       revision:(Number(active.data().revision)||1)+1});
+     tx.create(auditRef,audit("section_adviser_ended",{
+      sectionId,yearId,teacherUid:active.data().teacherUid,reason
+     }));
+     result={sectionId,yearId,teacherUid:active.data().teacherUid,status:"ended"};
+     return;
+    }
+    if(active?.data().teacherUid===teacherUid){
+     result={sectionId,yearId,teacherUid,status:"active",alreadyCurrent:true};return;
+    }
+    const targetId=rowKey(yearId,sectionId,teacherUid),target=sameYear.find(doc=>doc.id===targetId)||null;
+    if(active){
+     tx.update(active.ref,{status:"ended",endedByUid:uid,endedAt:now,
+       endReason:reason,revision:(Number(active.data().revision)||1)+1});
+    }
+    if(target){
+     if(target.data().status!=="ended")
+      deny("failed-precondition","The selected adviser history is in an unsupported state.");
+     tx.update(target.ref,{status:"active",restoredByUid:uid,restoredAt:now,restoreReason:reason,
+       revision:(Number(target.data().revision)||1)+1});
+    }else{
+     tx.create(db.doc("schools/"+ctx.schoolId+"/section_advisers/"+targetId),{
+      schoolId:ctx.schoolId,sectionId,yearId,teacherUid,status:"active",revision:1,
+      createdByUid:uid,createdAt:now
+     });
+    }
+    tx.create(auditRef,audit(active?"section_adviser_changed":"section_adviser_assigned",{
+     sectionId,yearId,fromTeacherUid:active?.data().teacherUid||null,toTeacherUid:teacherUid,reason
+    }));
+    result={sectionId,yearId,teacherUid,status:"active",replacedTeacherUid:active?.data().teacherUid||null};
+   });
+   return result;
+  }
+
   if(input.action==="list_teachers"){
    requireAdmin();
    const snap=await db.collection("schools/"+ctx.schoolId+"/memberships")
