@@ -313,10 +313,12 @@ function inferAssessmentProjectSetup(task={}){
 async function resolveAssessmentProjectContext(assessmentId,studioSchool){
   if(!assessmentId)return null;
   if(studioSchool){
+    let matchedCanonicalTask=false;
     try{
       const tasks=await listV4StudioAssignments();
       const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===assessmentId):null;
       if(task){
+        matchedCanonicalTask=true;
         if(task.submissionSource!=="studio")throw Error("This assessment is not configured for Adminerva Studio.");
         if(task.windowStatus==="waiting_for_teacher")
           throw Error(task.manualAccessState==="held"
@@ -325,7 +327,7 @@ async function resolveAssessmentProjectContext(assessmentId,studioSchool){
         return {...task,assessmentId:task.taskId,taskId:task.taskId,schoolId:studioSchool.schoolId,canonicalV4:true};
       }
     }catch(error){
-      if(document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true")throw error;
+      if(matchedCanonicalTask||document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true")throw error;
     }
   }
   const snapshot=await getDoc(doc(db,"assessments",assessmentId));
