@@ -251,7 +251,24 @@ function createSchoolAssessmentService({db}){
        contentDigest:doc.data().contentDigest,
        savedAt:doc.data().savedAt?.toMillis?.()||null
      }));
-   return {taskId,sessionEpoch:epoch,confirmed:receipts.length,receipts};
+   const enrolled=await db.collection(prefix+"enrollments")
+     .where("offeringId","==",task.data().offeringId).limit(101).get();
+   if(enrolled.size===101)
+     deny("resource-exhausted","The class roster requires pagination for close confirmation.");
+   const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+     doc.data().status==="active"&&typeof doc.data().personId==="string");
+   const people=await Promise.all(active.map(doc=>
+     db.doc(prefix+"people/"+doc.data().personId).get()));
+   const confirmedUids=new Set(receipts.map(row=>row.studentUid));
+   const students=people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
+     person.data().status==="active"&&person.data().kind==="student")
+     .map(person=>({
+       displayName:String(person.data().displayName||"Student").slice(0,140),
+       studentUid:person.data().authUid||null,
+       checkpointConfirmed:Boolean(person.data().authUid&&confirmedUids.has(person.data().authUid))
+     })).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+   return {taskId,sessionEpoch:epoch,confirmed:receipts.length,
+     enrolledStudents:students.length,students,receipts};
   }
 
   if(input.action==="exam_session"){
