@@ -194,7 +194,7 @@ if(panel&&list&&status&&schoolHost){
         if(task.submissionSource==="studio"&&task.manualOpenRequired===true&&task.manualAccessState!=="open"){
           article.append(node("p","mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-950",
             task.manualAccessState==="held"
-              ?"Your teacher has temporarily held this section's Studio examination. Your saved work is preserved. Refresh after your teacher reopens it."
+              ?"Your teacher has temporarily held this section's Studio examination. Previously synchronized school projects are preserved. Refresh after your teacher reopens it."
               :"Your teacher has not opened this section's Studio examination. The task instructions and personalized scenario are locked until opening."));
           const check=node("button","rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-bold text-white","Check opening status");
           check.type="button";
