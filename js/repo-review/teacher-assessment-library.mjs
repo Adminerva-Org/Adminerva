@@ -9,7 +9,9 @@ const migrationApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAsse
 const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl-workspace");
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
-const requestedFilter=new URL(location.href).searchParams.get("view");
+const pageParams=new URL(location.href).searchParams;
+const requestedFilter=pageParams.get("view");
+const requestedOfferingId=String(pageParams.get("offeringId")||"");
 let items=[],deployments=[],filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
   lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
 const say=message=>status.textContent=message;
@@ -535,6 +537,8 @@ async function prepareDeployment(item){
       option.textContent=[offering.subjectName||offering.subjectId,offering.sectionName||offering.sectionId,offering.yearName||offering.yearId,offering.termName||offering.termId].filter(Boolean).join(" · ");
       select.append(option);
     }
+    if(requestedOfferingId&&offerings.some(offering=>offering.offeringId===requestedOfferingId))
+      select.value=requestedOfferingId;
     deployReady=select.options.length>1;select.disabled=!deployReady;form.querySelector('button[type="submit"]').disabled=!deployReady;
     if(!deployReady)say("No active teaching assignments are available for deployment.");
   }catch(error){say(error.message||"Could not load assigned classes.");}
