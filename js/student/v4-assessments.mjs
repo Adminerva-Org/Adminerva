@@ -25,6 +25,13 @@ function date(value){return value?new Date(value).toLocaleString():"—";}
 function sourceLabel(source,task={}){
   return ({text:"Written response",link:"Submission link",studio:task.personalizedTask?.enabled===true?"Personalized Adminerva Studio":"Adminerva Studio",github:"GitHub / repository evidence"})[source]||"Assessment response";
 }
+if(panel&&assignmentParams.has("examClosed")){
+  const receipt=document.createElement("div");
+  receipt.setAttribute("role","status");
+  receipt.className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-950";
+  receipt.textContent="Your teacher has closed this practical-exam class session. Your final Studio project checkpoint was confirmed by school cloud storage. You may continue in the next teacher-opened session. This checkpoint is not a formal submission or grade.";
+  panel.prepend(receipt);
+}
 function submissionReceipt(submission,grade){
   if(!submission?.submitted||submission.status==="reopened")return null;
   const revision=String(submission.revisionSha||submission.checkpointSha||"").trim();
