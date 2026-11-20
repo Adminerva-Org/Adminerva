@@ -362,6 +362,9 @@ async function watchStudioExam(taskId){
 }
 window.addEventListener("adminerva:assessment-project-ready",event=>
   void watchStudioExam(String(event.detail?.assessmentId||"")));
+window.addEventListener("adminerva:studio-home",()=>{
+  if(!examSessionClosing)stopStudioExamWatcher();
+});
 window.addEventListener("adminerva:studio-ready",event=>{
   const project=projectStudio?.getActiveProject?.();
   const taskId=String(project?.assessment?.taskId||"");
