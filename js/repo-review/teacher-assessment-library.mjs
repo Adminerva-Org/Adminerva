@@ -244,7 +244,8 @@ function render(){
       meta.className="tl-muted";
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
       meta.textContent=(task.published?"Published":"Private deployment")+" · "+sourceLabel(task.submissionSource)+
-        (task.manualOpenRequired?" · Teacher-controlled: "+(task.manualAccessState==="open"?"OPEN":task.manualAccessState==="held"?"ON HOLD":"WAITING"):"")+
+        (task.manualOpenRequired?" · Teacher session: "+(task.manualAccessState==="open"?"OPEN":
+          ["closing","held"].includes(task.manualAccessState)?"CLOSED":"WAITING"):"")+
         (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
@@ -271,9 +272,17 @@ function render(){
         controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
       }
       if(lifecycle==="active"&&task.published&&task.manualOpenRequired&&task.submissionSource==="studio"){
-        const isOpen=task.manualAccessState==="open";
-        controls.append(actionButton(isOpen?"Hold exam":"Open exam",
-          ()=>void setExamOpening(task,!isOpen),isOpen));
+        const isOpen=task.manualAccessState==="open",
+          finalSaving=task.manualAccessState==="closing"&&Number(task.manualCloseGraceUntil||0)>Date.now();
+        const button=actionButton(isOpen?"Close exam":finalSaving?"Finalizing saves…":"Open exam",
+          ()=>void setExamOpening(task,!isOpen),isOpen);
+        button.disabled=finalSaving;
+        if(finalSaving)button.title="Previous session's final cloud checkpoints are still being accepted.";
+        controls.append(button);
+        if(task.manualSessionEpoch>0){
+          controls.append(actionButton("Close save receipts",
+            ()=>void showExamCloseReport(task),true));
+        }
       }
       if(lifecycle==="active"){
         controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
@@ -510,18 +519,34 @@ async function setPublication(task,publish){
   }catch(error){say(error?.message||"Assessment publication could not be changed.");}
   finally{pendingWrite=false;}
 }
+async function showExamCloseReport(task){
+  if(pendingWrite)return;
+  try{
+    say("Loading server-confirmed final exam checkpoints…");
+    const report=await performScoped(scopedAssessmentApi,"exam_close_report",{taskId:task.taskId});
+    const rows=(report.receipts||[]).map(row=>
+      "Student "+String(row.studentUid||"").slice(0,12)+"… · project revision "+row.projectRevision+
+      " · "+(row.savedAt?new Date(row.savedAt).toLocaleTimeString():"time unavailable"));
+    const message=task.title+" · Session "+report.sessionEpoch+"\n"+
+      report.confirmed+" final project checkpoint"+(report.confirmed===1?"":"s")+" confirmed by the school cloud."+
+      (rows.length?"\n\n"+rows.join("\n"):"\nNo final close checkpoints have been confirmed yet.")+
+      "\n\nStudents without a final close checkpoint may still have earlier autosaved revisions.";
+    alert(message);
+    say("Final exam checkpoint report loaded. "+report.confirmed+" confirmed for the current session.");
+  }catch(error){say(error?.message||"Could not load exam close receipts.");}
+}
 async function setExamOpening(task,opening){
   if(pendingWrite)return;
   if(!confirm(opening?
     "Open this Studio examination for the assigned section now? Students will be able to see their tasks and create or resume their assessment project.":
-    "Put this section's Studio exam on hold? New project access, school saves, personalized task requests and submissions will be blocked. Ask students to save first; unsynced edits may remain only on their current device."))return;
+    "Close this section's Studio exam now? All connected student editors will lock on their next session check, final school cloud saves will be requested, and students will automatically leave once their save is confirmed."))return;
   pendingWrite=true;
   try{
-    say(opening?"Opening this section's Studio exam…":"Holding this section's Studio exam…");
-    await performScoped(scopedAssessmentApi,opening?"open_exam":"hold_exam",{
+    say(opening?"Opening this section's Studio exam…":"Closing this section's Studio exam and locking student sessions…");
+    await performScoped(scopedAssessmentApi,opening?"open_exam":"close_exam",{
       taskId:task.taskId,expectedRevision:task.revision||1
     });
-    await refreshAfterWrite(task.title+(opening?" is open for this section.":" is on hold for this section."));
+    await refreshAfterWrite(task.title+(opening?" is open for this section.":" is closed for this class session. Student sessions are finalizing their cloud checkpoints."));
   }catch(error){say(error?.message||"Exam access could not be changed.");}
   finally{pendingWrite=false;}
 }
