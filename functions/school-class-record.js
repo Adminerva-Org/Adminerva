@@ -783,6 +783,32 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       };
     }
 
+    if(input.action==="assessment_link_status"){
+      await verifyOffering();
+      const taskId=checkId(String(input.taskId||""),"Assessment task",128);
+      const task=await db.doc(prefix+"assessments/"+taskId).get();
+      if(!task.exists||task.data().schoolId!==ctx.schoolId||task.data().offeringId!==offeringId)
+        deny("not-found","This assessment does not belong to the selected class.");
+      const sheet=await sheetRef.get(),columns=sheet.exists&&sheet.data().schoolId===ctx.schoolId&&
+        Array.isArray(sheet.data().columns)?sheet.data().columns:[];
+      const matches=columns.filter(column=>column.kind==="assessment"&&
+        (column.assessmentSource||SCHOOL_SOURCE)===SCHOOL_SOURCE&&column.taskId===taskId);
+      const active=matches.find(column=>column.archived!==true)||null,
+        archived=!active?matches.find(column=>column.archived===true)||null:null,
+        column=active||archived;
+      return {
+        offeringId,taskId,
+        status:active?"linked":archived?"archived":"unlinked",
+        linked:Boolean(active),archived:Boolean(archived),
+        column:column?{
+          columnId:column.columnId,label:String(column.label||task.data().title||"Assessment"),
+          category:String(column.category||""),maxPoints:Number(column.maxPoints)||rubricTotal(task.data()),
+          studentVisibility:cleanStudentVisibility(column.studentVisibility)
+        }:null,
+        sheetRevision:sheet.exists&&sheet.data().schoolId===ctx.schoolId?Number(sheet.data().revision)||0:0
+      };
+    }
+
     if(input.action==="workspace"){
       const data=await buildWorkspaceData();
       return {
