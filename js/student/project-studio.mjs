@@ -784,7 +784,7 @@ export function createProjectStudio({
         if(!isCurrent())return;
         if(project?.assessment?.provisionedBy==="assessment-launch"&&project.assessment.offeringId)
           return alert("School exam project could not be opened: "+String(error?.message||error)+
-            "\\nOpen the assessment through My Assessments.");
+            "\nOpen the assessment through My Assessments.");
         if(!project||/archiv|not active|account changed|sign in with your project account/i.test(String(error?.message||""))||/permission-denied|unauthenticated/.test(String(error?.code||"")))return alert("Cloud project could not be opened: "+String(error?.message||error));
         activateProject(project);setCloudStatus("Cloud unavailable · device draft retained","error",id);return;
       }
