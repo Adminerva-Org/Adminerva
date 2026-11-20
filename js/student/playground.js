@@ -318,6 +318,10 @@ async function resolveAssessmentProjectContext(assessmentId,studioSchool){
       const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===assessmentId):null;
       if(task){
         if(task.submissionSource!=="studio")throw Error("This assessment is not configured for Adminerva Studio.");
+        if(task.windowStatus==="waiting_for_teacher")
+          throw Error(task.manualAccessState==="held"
+            ?"Your teacher has placed this section's Studio exam on hold. Refresh after it is reopened."
+            :"Your teacher has not opened this section's Studio exam yet. Return to My Assessments.");
         return {...task,assessmentId:task.taskId,taskId:task.taskId,schoolId:studioSchool.schoolId,canonicalV4:true};
       }
     }catch(error){
