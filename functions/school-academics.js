@@ -393,6 +393,85 @@ function createSchoolAcademicsService({db}) {
       yearId:doc.data().yearId,termId:doc.data().termId,
       subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,status:doc.data().status}))};
   }
+  if(input.action==="enroll_student_section"){
+   requireAdmin();
+   const personId=checkId(input.personId,"Student ID",128);
+   const sectionId=checkId(input.sectionId,"Section ID");
+   const yearId=checkId(input.yearId,"Academic year ID");
+   const termId=checkId(input.termId,"Academic period ID");
+   const reason=checkName(input.reason,"Section assignment reason");
+   if(reason.length<12)deny("invalid-argument","Explain the placement in at least 12 characters.");
+   const base="schools/"+ctx.schoolId+"/";
+   const [offeringsSnap,currentSnap]=await Promise.all([
+     db.collection(base+"course_offerings").limit(251).get(),
+     db.collection(base+"enrollments").where("personId","==",personId).limit(251).get()
+   ]);
+   if(offeringsSnap.size===251||currentSnap.size===251)
+     deny("resource-exhausted","Section enrollment requires a smaller academic roster.");
+   const offerings=offeringsSnap.docs.filter(doc=>{
+     const row=doc.data();
+     return row.schoolId===ctx.schoolId&&row.status==="active"&&
+       row.sectionId===sectionId&&row.yearId===yearId&&row.termId===termId;
+   });
+   if(!offerings.length)deny("failed-precondition","This section has no active classes in the selected academic period.");
+   if(offerings.length>60)deny("resource-exhausted","Too many classes for one section assignment.");
+   const conflict=currentSnap.docs.find(doc=>{
+     const row=doc.data();
+     return row.schoolId===ctx.schoolId&&row.status==="active"&&
+       row.yearId===yearId&&row.termId===termId&&row.sectionId!==sectionId;
+   });
+   if(conflict)deny("failed-precondition",
+     "The student already has an active class in another section for this period. Review the existing placement first.");
+   const refs=offerings.map(doc=>schoolRoot.doc("enrollments/"+rowKey(personId,doc.id)));
+   const auditRef=db.collection(base+"directory_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+     await checkWriteAuthority(tx);
+     const [person,section,year,term,...existing]=await Promise.all([
+       tx.get(schoolRoot.doc("people/"+personId)),
+       tx.get(schoolRoot.doc("sections/"+sectionId)),
+       tx.get(schoolRoot.doc("academic_years/"+yearId)),
+       tx.get(schoolRoot.doc("terms/"+termId)),
+       ...refs.map(ref=>tx.get(ref))
+     ]);
+     if(!person.exists||person.data().schoolId!==ctx.schoolId||
+        person.data().kind!=="student"||person.data().status!=="active")
+       deny("failed-precondition","Choose an existing active student.");
+     for(const item of [section,year,term])
+       if(!item.exists||item.data().schoolId!==ctx.schoolId||item.data().status!=="active")
+         deny("failed-precondition","The selected academic placement is no longer active.");
+     if(section.data().programId!==term.data().programId||
+        yearId!==term.data().yearId)
+       deny("failed-precondition","The section and academic period do not match.");
+     if(offerings.some(doc=>doc.data().programId!==section.data().programId))
+       deny("failed-precondition","The section has an inconsistent course configuration.");
+     const historical=existing.find(doc=>doc.exists&&doc.data().status!=="active");
+     if(historical)deny("failed-precondition",
+       "This student has ended enrollment history in the section. Review that history before restoring.");
+     const now=FieldValue.serverTimestamp();let created=0,alreadyActive=0;
+     offerings.forEach((offering,index)=>{
+       const prior=existing[index];
+       if(prior.exists){
+         if(prior.data().schoolId!==ctx.schoolId||
+            prior.data().personId!==personId||prior.data().offeringId!==offering.id)
+           deny("failed-precondition","An enrollment key collision requires review.");
+         alreadyActive++;return;
+       }
+       const row=offering.data();created++;
+       tx.create(refs[index],{
+         schoolId:ctx.schoolId,personId,offeringId:offering.id,
+         programId:row.programId,yearId:row.yearId,termId:row.termId,
+         sectionId:row.sectionId,subjectId:row.subjectId,
+         status:"active",revision:1,createdByUid:uid,createdAt:now
+       });
+     });
+     tx.create(auditRef,audit("student_section_enrolled",{
+       personId,sectionId,yearId,termId,created,alreadyActive,reason
+     }));
+     result={personId,sectionId,yearId,termId,created,alreadyActive};
+   });
+   return result;
+  }
   if(input.action==="bulk_enroll_students"){
    requireAdmin();
    const offeringId=checkId(input.offeringId,"Course offering ID",330);
