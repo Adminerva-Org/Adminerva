@@ -227,7 +227,7 @@ function createSchoolAssessmentService({db}){
    return result;
   }
 
-  if(input.action==="exam_close_report"){
+  if(["exam_close_report","exam_close_project"].includes(input.action)){
    if(!ctx.roles.includes("teacher"))deny("permission-denied","Teacher access is required.");
    const taskId=checkId(input.taskId,"Assessment task",128),
      task=await tasks.doc(taskId).get();
@@ -246,6 +246,23 @@ function createSchoolAssessmentService({db}){
      epoch=input.sessionEpoch===undefined?currentEpoch:Number(input.sessionEpoch);
    if(!Number.isSafeInteger(epoch)||epoch<1||epoch>currentEpoch)
      deny("invalid-argument","Choose a valid practical-exam class session.");
+   if(input.action==="exam_close_project"){
+    const studentUid=checkId(input.studentUid,"Student account",128),
+      receipt=await db.doc(prefix+"studio_exam_close_receipts/"+taskId+
+        "/sessions/"+epoch+"/students/"+studentUid).get();
+    if(!receipt.exists||receipt.data().schoolId!==ctx.schoolId||
+       receipt.data().taskId!==taskId||receipt.data().studentUid!==studentUid||
+       receipt.data().closingEpoch!==epoch)
+     deny("not-found","No verified final save exists for this student and class session.");
+    const frozen=receipt.data();
+    if(!Array.isArray(frozen.files))
+     deny("failed-precondition","This historical checkpoint contains a digest but predates source snapshot capture.");
+    return {taskId,sessionEpoch:epoch,studentUid,
+      projectId:frozen.projectId,projectRevision:frozen.projectRevision,
+      title:frozen.title||"Saved Studio project",language:frozen.language||"text",
+      files:frozen.files,sourceDigest:frozen.sourceDigest||"",
+      savedAt:frozen.savedAt?.toMillis?.()||null};
+   }
    const snap=await db.collection(prefix+"studio_exam_close_receipts/"+taskId+
      "/sessions/"+epoch+"/students").limit(101).get();
    if(snap.size===101)
