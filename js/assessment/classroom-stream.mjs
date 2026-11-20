@@ -128,6 +128,7 @@ function updateClassLinks(){
   el("teacherClassroomGradesLink").href="school-gradebook.html?view=results"+query;
   el("teacherClassroomRecordLink").href=offeringId?"class-record.html?offering="+encodeURIComponent(offeringId):"class-record.html";
   el("teacherClassroomAssessmentLink").href=offeringId?"assessment-studio.html?offeringId="+encodeURIComponent(offeringId):"assessment-studio.html";
+  el("teacherClassroomPlanLink").href=offeringId?"lesson-planner.html?offeringId="+encodeURIComponent(offeringId):"lesson-planner.html";
 }
 function renderClasswork(){
   const host=el("teacherClassroomClasswork");host.replaceChildren();
