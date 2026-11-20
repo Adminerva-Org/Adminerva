@@ -476,6 +476,7 @@ async function provisionAssessmentProject(assessmentId,studioSchool){
     assessmentId:context.assessmentId,taskId:context.taskId,title:context.title,
     projectTitle:context.title,description:context.description,instructions:context.instructions,
     assessmentType:context.assessmentType,subject:context.subject,offeringId:context.offeringId||"",
+    manualSessionEpoch:Number(context.manualSessionEpoch||0),
     personalized:context.personalizedTask?.enabled===true||context.assessmentMode==="personalized",
     studioProjectProfile:context.studioProjectProfile||"auto",
     variantId:variant?.assessmentId===context.assessmentId?variant.variantId:"",
@@ -688,6 +689,7 @@ window.addEventListener("adminerva:studio-variant-ready",event=>{
     assessmentType:active.assessment.assessmentType||"Assessment",
     subject:active.assessment.subject||"Computer Programming",
     offeringId:active.assessment.offeringId||"",personalized:true,
+    manualSessionEpoch:Number(active.assessment.sessionEpoch||0),
     studioProjectProfile:active.assessment.studioProjectProfile||"auto",
     variantId:event.detail.variantId||"",attempt:event.detail.attempt,
     templateId:active.template,config:active.config
