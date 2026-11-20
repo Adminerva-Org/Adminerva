@@ -93,7 +93,7 @@ function createSchoolStudioAssessmentVariantService({db}){
   if(lifecycle==="closed"&&!revisionOpen)
     deny("failed-precondition","This assessment is closed to new submissions.");
   if((task.manualOpenRequired!==true&&now<task.opensAt.toMillis())||
-    (now>task.dueAt.toMillis()&&now>revisionDeadline))
+    (task.allowLateSubmissions!==true&&now>task.dueAt.toMillis()&&now>revisionDeadline))
     deny("failed-precondition","This personalized task cannot start outside its submission window.");
 
   const assignmentRef=db.doc(prefix+"studio_variant_assignments/"+submissionId+"/attempts/"+attempt),
