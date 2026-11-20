@@ -143,7 +143,7 @@ async function scopedCall(api,action,details={}){
   picker.scope.assertLease(lease);
   return result;
 }
-export async function syncV4StudioProject(project,state,{quiet=false,expectedRevision:baseRevision=undefined}={}){
+export async function syncV4StudioProject(project,state,{quiet=false,expectedRevision:baseRevision=undefined,closingSaveSessionEpoch=0}={}){
   await init();
   if(!activeSchool||!auth.currentUser)return null;
   const payload=projectPayload(project,state);
@@ -152,7 +152,7 @@ export async function syncV4StudioProject(project,state,{quiet=false,expectedRev
   try{
     let result;
     try{
-      result=await scopedCall(projectsApi,"sync",{...payload,expectedRevision});
+      result=await scopedCall(projectsApi,"sync",{...payload,expectedRevision,closingSaveSessionEpoch});
     }catch(error){
       // A fresh browser may not know a project already exists. Adopt its
       // server revision only if the complete checksum matches; never overwrite.
@@ -168,6 +168,8 @@ export async function syncV4StudioProject(project,state,{quiet=false,expectedRev
       result={projectId:payload.projectId,revision:existing.revision,
         contentDigest:existing.contentDigest,created:false,unchanged:true};
     }
+    if(closingSaveSessionEpoch&&!result.examFinalized)
+      throw Error("The final exam checkpoint did not receive a server confirmation.");
     setRevision(uid,schoolId,payload.projectId,result.revision);
     if(!quiet)setStatus("Saved to "+schoolId+" · revision "+result.revision);
     document.dispatchEvent(new CustomEvent("adminerva:v4-project-synced",{detail:{
