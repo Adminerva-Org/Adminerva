@@ -190,7 +190,7 @@ function createSchoolAssessmentService({db}){
     if(!opening&&before!=="open")
       deny("failed-precondition","This examination session is not currently open.");
     const now=FieldValue.serverTimestamp(),
-      graceUntil=Timestamp.fromMillis(Date.now()+20000),
+      graceUntil=Timestamp.fromMillis(Date.now()+60000),
       sessionEpoch=opening?epoch+1:epoch;
     tx.update(taskRef,{manualAccessState:next,manualSessionEpoch:sessionEpoch,
       revision:revision+1,updatedAt:now,
@@ -240,8 +240,8 @@ function createSchoolAssessmentService({db}){
       deny("permission-denied","Your teaching assignment is not active.");
    }
    const epoch=Number(task.data().manualSessionEpoch||0);
-   const snap=await db.collection(prefix+"studio_exam_close_receipts")
-     .where("taskId","==",taskId).limit(101).get();
+   const snap=await db.collection(prefix+"studio_exam_close_receipts/"+taskId+
+     "/sessions/"+epoch+"/students").limit(101).get();
    if(snap.size===101)
     deny("resource-exhausted","Close checkpoints require pagination for large cohorts.");
    const receipts=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
@@ -342,7 +342,7 @@ function createSchoolAssessmentService({db}){
         {unpublishedAt:now,unpublishedByUid:ctx.uid}),
       ...(!publish&&data.manualOpenRequired===true&&data.manualAccessState==="open"?
         {manualAccessState:"closing",manualClosedAt:now,manualClosedByUid:ctx.uid,
-         manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+20000)}:{})});
+         manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+60000)}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:publish?"assessment_published":"assessment_unpublished",
       beforeRevision:revision,afterRevision:nextRevision,createdAt:now});
@@ -509,7 +509,7 @@ function createSchoolAssessmentService({db}){
       ...(data.manualOpenRequired===true&&data.manualAccessState==="open"&&
          ["close","archive","cancel"].includes(input.action)?
         {manualAccessState:"closing",manualClosedAt:now,manualClosedByUid:ctx.uid,
-         manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+20000)}:{})});
+         manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+60000)}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:"assessment_"+input.action,beforeLifecycle:lifecycle,afterLifecycle:next,
       beforeRevision:revision,afterRevision:nextRevision,reason,
