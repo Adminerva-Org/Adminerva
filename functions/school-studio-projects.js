@@ -93,21 +93,25 @@ function createSchoolStudioProjectService({db}){
     deny("failed-precondition","This Studio assessment is no longer available.");
    const data=task.data();
    if(data.manualOpenRequired!==true)return {finalSave:false};
+   // Verify the student belongs to this exact section on every protected save,
+   // including when a new class session reuses a previously saved project.
+   const member=await tx.get(membershipRef),
+     personId=checkId(member.data()?.personId,"Student person",128);
+   const enrollment=await tx.get(db.doc(prefix+"enrollments/"+rowKey(personId,data.offeringId)));
+   if(!enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
+      enrollment.data().personId!==personId||enrollment.data().offeringId!==data.offeringId||
+      enrollment.data().status!=="active")
+    deny("permission-denied","Your school enrollment is no longer active for this exam.");
+   const epoch=Number(data.manualSessionEpoch||0);
    if(data.manualAccessState==="open") {
     if(closingEpoch)deny("failed-precondition","Exam closing state changed. Reload the assessment.");
-    return {finalSave:false};
+    if(epoch<1||Number(binding.sessionEpoch||0)!==epoch)
+      deny("failed-precondition","This project belongs to an earlier exam session. Reopen the assessment from My Assessments.");
+    return {finalSave:false,taskId};
    }
    if(data.manualAccessState==="closing"&&closingEpoch>0&&
-      Number(binding.sessionEpoch||0)===closingEpoch&&
-      Number(data.manualSessionEpoch||0)===closingEpoch&&
+      Number(binding.sessionEpoch||0)===closingEpoch&&epoch===closingEpoch&&
       Date.now()<=(data.manualCloseGraceUntil?.toMillis?.()||0)){
-    const member=await tx.get(membershipRef),
-      personId=checkId(member.data()?.personId,"Student person",128);
-    const enrollment=await tx.get(db.doc(prefix+"enrollments/"+rowKey(personId,data.offeringId)));
-    if(!enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
-       enrollment.data().personId!==personId||enrollment.data().offeringId!==data.offeringId||
-       enrollment.data().status!=="active")
-      deny("permission-denied","Your school enrollment is no longer active for this exam.");
     return {finalSave:true,taskId,closingEpoch};
    }
    deny("failed-precondition","The Studio exam is closed to edits. Only an authorized final closing checkpoint may be saved.");
@@ -169,11 +173,14 @@ function createSchoolStudioProjectService({db}){
     if(current.exists){
      const oldBinding=current.data().artifacts?.assessment,
        newBinding=artifacts.assessment;
-     if(access.finalSave&&(!oldBinding||oldBinding.provisionedBy!=="assessment-launch"||
-        (oldBinding.taskId||oldBinding.assessmentId)!==access.taskId||
-        !newBinding||(newBinding.taskId||newBinding.assessmentId)!==access.taskId))
-      deny("permission-denied","The closing checkpoint must belong to the same assigned Studio project.");
-     if(!access.finalSave)await authorizeAssessmentProject(tx,current.data().artifacts);
+     if(oldBinding?.provisionedBy==="assessment-launch"){
+      if(newBinding?.provisionedBy!=="assessment-launch"||
+         (oldBinding.taskId||oldBinding.assessmentId)!==(newBinding.taskId||newBinding.assessmentId))
+       deny("permission-denied","An assessment project cannot be detached from, or reassigned to, another exam.");
+      // The prior cloud project may be bound to the previous class epoch.
+      // Authorize the current incoming epoch without rejecting valid resumes.
+     }else if(closingEpoch)
+      deny("failed-precondition","A final exam checkpoint must belong to an existing assessment project.");
     }
     const receiptRef=access.finalSave?
       db.doc(prefix+"studio_exam_close_receipts/"+access.taskId+
