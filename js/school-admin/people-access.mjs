@@ -694,7 +694,8 @@ async function loadAcademics(){
   populateOptions("[data-assignment-section]",schoolSections.filter(item=>item.status==="active"),"id");
   populateOptions("#pa-section-enrollment-year",catalogs[1].items.filter(row=>row.status==="active"),"id");
   refreshStudentSectionPicker();
-  populateOptions("[data-student-person]",people.students||[],"personId");
+  // The large directory uses server-side student search, not a 100-record picker.
+  if(!get("pa-class-student-search")?.value.trim())populateOptions("[data-student-person]",[],"personId");
   populateOptions("[data-school-teacher]",teachers.teachers||[],"uid");
   populateMultiOptions("[data-student-person-bulk]",people.students||[],"personId");
   populateMultiOptions("[data-school-teacher-bulk]",teachers.teachers||[],"uid");
@@ -738,6 +739,25 @@ function refreshStudentSectionPreview(){
       :"No active subjects match this placement. Configure course offerings first.";
   form.querySelector('button[type="submit"]').disabled=!matches.length;
 }
+let classStudentSearchRun=0,classStudentSearchTimer=null;
+get("pa-class-student-search")?.addEventListener("input",event=>{
+  clearTimeout(classStudentSearchTimer);
+  const query=event.currentTarget.value.trim();
+  const select=get("pa-section-enrollment-form").elements.personId;
+  select.replaceChildren(new Option(query?"Searching…":"Search for a student above",""));
+  const run=++classStudentSearchRun;
+  if(query.length<2)return;
+  classStudentSearchTimer=setTimeout(()=>{
+    void perform("search_people",{query,kind:"student",status:"active"})
+      .then(result=>{
+        if(run!==classStudentSearchRun)return;
+        select.replaceChildren(new Option("Choose a matching student",""));
+        for(const row of result.items||[])
+          select.add(new Option(row.displayName+(row.studentNumber?" · "+row.studentNumber:""),row.personId));
+        if(!result.items?.length)select.options[0].textContent="No matching students";
+      }).catch(error=>{if(run===classStudentSearchRun)say(error.message||"Student search failed.");});
+  },250);
+});
 get("pa-section-enrollment-year")?.addEventListener("change",refreshStudentSectionPicker);
 get("pa-section-enrollment-term")?.addEventListener("change",refreshStudentSectionPicker);
 get("pa-section-enrollment-section")?.addEventListener("change",refreshStudentSectionPreview);
