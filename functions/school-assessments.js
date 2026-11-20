@@ -33,6 +33,9 @@ function createSchoolAssessmentService({db}){
    const source=input.submissionSource;
    if(!["studio","github","text","link"].includes(source))
     deny("invalid-argument","Choose a supported assessment submission method.");
+   const manualOpenRequired=input.manualOpenRequired===true;
+   if(manualOpenRequired&&source!=="studio")
+    deny("invalid-argument","Teacher-controlled opening is available only for Adminerva Studio assessments.");
    const start=timestamp(input.opensAt,"Opening time");
    const end=timestamp(input.dueAt,"Deadline");
    const allowLateSubmissions=input.allowLateSubmissions===true;
@@ -74,7 +77,8 @@ function createSchoolAssessmentService({db}){
         prior.blueprintId===blueprintId&&prior.offeringId===offeringId&&
         prior.requestKey===key&&prior.submissionSource===source&&
         prior.opensAt.toMillis()===start.toMillis()&&prior.dueAt.toMillis()===end.toMillis()&&
-        Boolean(prior.allowLateSubmissions)===allowLateSubmissions)
+        Boolean(prior.allowLateSubmissions)===allowLateSubmissions&&
+        Boolean(prior.manualOpenRequired)===manualOpenRequired)
        {result={taskId,status:"deployed",published:prior.published===true,alreadyExisted:true};return;}
       deny("already-exists","This deployment request was already used with different details.");
     }
@@ -122,6 +126,7 @@ function createSchoolAssessmentService({db}){
      offeringId,yearId:offering.data().yearId,termId:offering.data().termId,
      subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
      submissionSource:source,personalizedTask,opensAt:start,dueAt:end,allowLateSubmissions,
+     manualOpenRequired,manualAccessState:manualOpenRequired?"waiting":"scheduled",
      requestKey:key,status:"deployed",published:false,lifecycle:"active",revision:1,
      createdAt:now,updatedAt:now
     });
@@ -131,9 +136,83 @@ function createSchoolAssessmentService({db}){
      blueprintRevision:original.contentRevision,createdAt:now,updatedAt:now
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
-     action:"assessment_deployed",offeringId,source,allowLateSubmissions,createdAt:now});
+     action:"assessment_deployed",offeringId,source,allowLateSubmissions,manualOpenRequired,createdAt:now});
     result={taskId,status:"deployed",published:false,alreadyExisted:false};
    });
+   return result;
+  }
+
+  if(["open_exam","hold_exam"].includes(input.action)){
+   if(!ctx.roles.includes("teacher"))
+    deny("permission-denied","Only the responsible teacher may control this Studio examination.");
+   const taskId=checkId(input.taskId,"Assessment task",128),
+    expectedRevision=Number(input.expectedRevision),taskRef=tasks.doc(taskId),
+    opening=input.action==="open_exam";
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","The current assessment revision is required.");
+   const auditRef=db.collection(prefix+"assessment_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    const [school,membership,task]=await Promise.all([
+      tx.get(schoolRef),tx.get(membershipRef),tx.get(taskRef)
+    ]);
+    if(!ctx.platformOverride&&(!school.exists||!["active","pilot"].includes(school.data().state)||
+       !membership.exists||membership.data().schoolId!==ctx.schoolId||
+       membership.data().status!=="active"||
+       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher")))
+      deny("permission-denied","Your school teaching access changed.");
+    if(!task.exists||task.data().schoolId!==ctx.schoolId||
+       (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid))
+      deny("permission-denied","Only this deployment's responsible teacher may open or hold its exam.");
+    const data=task.data(),revision=data.revision||1,
+      grant=await tx.get(db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,data.offeringId)));
+    if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+       grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==data.offeringId||
+       grant.data().status!=="active"))
+      deny("permission-denied","You must still be assigned to this course offering.");
+    if(revision!==expectedRevision)
+      deny("failed-precondition","This assessment changed. Refresh before controlling exam access.");
+    if(data.submissionSource!=="studio"||data.manualOpenRequired!==true)
+      deny("failed-precondition","This deployment is not configured for teacher-controlled Studio opening.");
+    if((data.lifecycle||"active")!=="active")
+      deny("failed-precondition","Restore or reopen this assessment before opening its Studio exam.");
+    if(opening&&(data.published!==true||data.dueAt.toMillis()<=Date.now()))
+      deny("failed-precondition","Publish this assessment and ensure its deadline is in the future before opening the exam.");
+    const before=data.manualAccessState||"waiting",next=opening?"open":"held";
+    if(before===next){
+      result={taskId,manualAccessState:next,revision,alreadyCurrent:true,
+        offeringId:data.offeringId,title:data.title||"Practical exam"};return;
+    }
+    if(!opening&&before!=="open")
+      deny("failed-precondition","This examination is not currently open.");
+    const now=FieldValue.serverTimestamp();
+    tx.update(taskRef,{manualAccessState:next,revision:revision+1,updatedAt:now,
+      ...(opening?{manualOpenedAt:now,manualOpenedByUid:ctx.uid}:
+        {manualHeldAt:now,manualHeldByUid:ctx.uid})});
+    tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
+      action:opening?"assessment_exam_opened":"assessment_exam_held",
+      beforeState:before,afterState:next,beforeRevision:revision,
+      afterRevision:revision+1,createdAt:now});
+    result={taskId,manualAccessState:next,revision:revision+1,alreadyCurrent:false,
+      offeringId:data.offeringId,title:data.title||"Practical exam"};
+   });
+   if(opening&&!result.alreadyCurrent){
+    const enrolled=await db.collection(prefix+"enrollments")
+      .where("offeringId","==",result.offeringId).limit(101).get().catch(()=>null);
+    if(enrolled&&enrolled.size<=100){
+      const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"),
+        people=await Promise.all(active.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
+      await Promise.allSettled(people.map(person=>{
+        const uid=person.exists&&person.data().schoolId===ctx.schoolId&&person.data().status==="active"?
+          person.data().authUid:null;
+        return uid?writeSchoolNotification({
+          db,schoolId:ctx.schoolId,uid,id:"studio_exam_opened_"+taskId+"_"+result.revision,
+          title:"Studio practical exam is open",body:result.title+" · your teacher opened your section's exam.",
+          type:"assessment",sourceId:taskId,target:"student-assessments.html"
+        }):Promise.resolve();
+      }));
+    }
+   }
    return result;
   }
 
@@ -408,6 +487,8 @@ function createSchoolAssessmentService({db}){
       ownerUid:doc.data().ownerUid,reviewerUid:doc.data().reviewerUid||doc.data().ownerUid,
       opensAt:doc.data().opensAt?.toMillis(),dueAt:doc.data().dueAt?.toMillis(),
       allowLateSubmissions:doc.data().allowLateSubmissions===true,
+      manualOpenRequired:doc.data().manualOpenRequired===true,
+      manualAccessState:doc.data().manualOpenRequired===true?(doc.data().manualAccessState||"waiting"):"scheduled",
       submissionSource:doc.data().submissionSource,
       studioProjectProfile:doc.data().studioProjectProfile||"auto",
       personalizedTask:doc.data().personalizedTask?.enabled===true?{
@@ -449,10 +530,12 @@ function createSchoolAssessmentService({db}){
      if(task.schoolId!==ctx.schoolId||task.status!=="deployed"||task.published!==true||
         ["archived","cancelled"].includes(lifecycle)||!offered.includes(task.offeringId))continue;
      const now=Date.now(),open=task.opensAt.toMillis(),due=task.dueAt.toMillis();
-     results.push({taskId:doc.id,title:task.title,description:task.description||"",
-      instructions:task.instructions||"",subject:task.subject||task.subjectId||"General",
-      assessmentType:task.assessmentType||"Assessment",rubric:task.rubric||[],
-      rubricMax:task.rubricMax,offeringId:task.offeringId,
+     const manualExam=task.submissionSource==="studio"&&task.manualOpenRequired===true;
+     const waiting=manualExam&&task.manualAccessState!=="open";
+     results.push({taskId:doc.id,title:task.title,description:waiting?"":task.description||"",
+      instructions:waiting?"":task.instructions||"",subject:task.subject||task.subjectId||"General",
+      assessmentType:task.assessmentType||"Assessment",rubric:waiting?[]:task.rubric||[],
+      rubricMax:waiting?0:task.rubricMax,offeringId:task.offeringId,
       submissionSource:task.submissionSource,
       studioProjectProfile:task.studioProjectProfile||"auto",
       personalizedTask:task.personalizedTask?.enabled===true?{
@@ -460,10 +543,12 @@ function createSchoolAssessmentService({db}){
         poolSize:Number(task.personalizedTask.poolSize||0)
       }:{enabled:false,mode:"standard"},
       opensAt:open,dueAt:due,postedAt:task.createdAt?.toMillis?.()||open,
+      manualOpenRequired:manualExam,manualAccessState:manualExam?(task.manualAccessState||"waiting"):"scheduled",
       allowLateSubmissions:task.allowLateSubmissions===true,
       late:task.allowLateSubmissions===true&&now>due,
       lifecycle,windowStatus:lifecycle==="closed"?"closed":
-       now<open?"upcoming":now>due&&task.allowLateSubmissions!==true?"closed":"open"});
+       waiting?"waiting_for_teacher":(!manualExam&&now<open)?"upcoming":
+       now>due&&task.allowLateSubmissions!==true?"closed":"open"});
     }
    }
    return {assignments:results.sort((a,b)=>a.dueAt-b.dueAt)};
