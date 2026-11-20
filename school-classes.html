@@ -72,8 +72,19 @@
       </div>
       <div id="csDetailEmpty" class="p-5 text-sm text-slate-600">Teaching load and section handling are derived from active class assignments. There is no separate load record to maintain.</div>
       <div id="csDetail" hidden class="p-4 sm:p-5 space-y-5">
+        <section class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-emerald-800">Section responsibility</p><h3 class="font-extrabold text-emerald-950 mt-1">Adviser / Homeroom</h3><p class="text-xs text-emerald-900 mt-1">Separate from subject teaching. This assignment applies to the selected section for the school year, not to every subject taught in it.</p></div>
+          <p id="csAdviserCurrent" class="text-sm font-bold text-emerald-950 mt-3">No adviser assigned.</p>
+          <form id="csAdviserForm" class="grid gap-2 mt-3">
+            <select id="csAdviserTeacher" class="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2.5 text-sm" required></select>
+            <div class="grid sm:grid-cols-2 gap-2">
+              <button type="submit" class="rounded-lg bg-emerald-700 text-white px-3 py-2.5 text-sm font-extrabold">Set adviser</button>
+              <button id="csAdviserRemove" type="button" class="rounded-lg border border-emerald-300 bg-white text-emerald-900 px-3 py-2.5 text-sm font-bold">Remove adviser</button>
+            </div>
+          </form>
+        </section>
         <section>
-          <div class="flex items-center justify-between gap-3"><h3 class="font-extrabold">Teachers</h3><span id="csStaffCount" class="text-xs text-slate-500"></span></div>
+          <div class="flex items-center justify-between gap-3"><h3 class="font-extrabold">Subject teachers</h3><span id="csStaffCount" class="text-xs text-slate-500"></span></div>
           <div id="csStaffList" class="mt-2 space-y-2"></div>
         </section>
         <form id="csAssignForm" class="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
@@ -105,6 +116,6 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261120-admin-classes"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
-<script type="module" src="js/school-admin/classes-scheduling.mjs?v=20261120-classes1"></script>
+<script type="module" src="js/school-admin/classes-scheduling.mjs?v=20261120-classes2"></script>
 </body>
 </html>
