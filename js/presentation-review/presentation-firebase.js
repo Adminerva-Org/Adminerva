@@ -22,7 +22,7 @@ window.selectedPlanData = null;
 window.selectedSessionData = null;
 window.selectedSessionIndex = null;
 window.db = db;
-let sessionLoadSequence=0,presentationHistorySequence=0,presentationWriteBusy=false,plansLoadSequence=0,sessionChecking=false,draftFingerprint="";
+let sessionLoadSequence=0,presentationHistorySequence=0,presentationWriteBusy=false,plansLoadSequence=0,sessionChecking=false,sessionLoadBlocked=false,draftFingerprint="";
 const draftKey=(id,index)=>"Adminerva_presentation_draft_v1:"+id+":"+index;
 function sourceStatus(message){document.getElementById("presentationSourceStatus").textContent=message;}
 function persistPresentationDraft(){
@@ -40,7 +40,7 @@ function resetDeck(label="Choose a lesson session"){
   window.resetPresentationDeckHistory?.();window.selectSlide?.(0);
 }
 function syncSourceControls(){
-  const ready=Boolean(window.selectedPlanData&&window.selectedSessionData)&&!sessionChecking;
+  const ready=Boolean(window.selectedPlanData&&window.selectedSessionData)&&!sessionChecking&&!sessionLoadBlocked;
   const generate=document.getElementById("btnGenerateSlides");if(generate){generate.disabled=!ready||presentationWriteBusy;generate.classList.toggle("opacity-50",!ready);generate.classList.toggle("cursor-not-allowed",!ready);}
   const starter=document.getElementById("btnLessonStarter");if(starter)starter.disabled=!ready||presentationWriteBusy;
   const save=document.getElementById("btnSavePresentation");if(save)save.disabled=!ready||presentationWriteBusy;
@@ -157,7 +157,7 @@ window.handlePlanSelection = function () {
   if(presentationWriteBusy){select.value=previous;return;}
   if(planId===previous)return;
   if(window.adminervaPresentationDirty&&(!persistPresentationDraft()||!confirm("Switch lessons? Your current unsaved deck is retained on this device."))){select.value=previous;return;}
-  ++sessionLoadSequence;sessionChecking=false;window.selectedPlanData=window.availablePlans.find(p=>p.id===planId)||null;
+  ++sessionLoadSequence;sessionChecking=false;sessionLoadBlocked=false;window.selectedPlanData=window.availablePlans.find(p=>p.id===planId)||null;
   window.selectedSessionIndex=null;window.selectedSessionData=null;resetDeck();
   document.getElementById("btnDeletePresentation")?.classList.add("hidden");
   const sessionSelect=document.getElementById("presentationSessionSelect");
@@ -170,7 +170,7 @@ window.handleSessionSelection = async function () {
   if(presentationWriteBusy){select.value=previous;return;}
   if(idx===String(previous))return;
   if(window.adminervaPresentationDirty&&(!persistPresentationDraft()||!confirm("Switch sessions? Your current unsaved deck is retained on this device."))){select.value=previous;return;}
-  const sequence=++sessionLoadSequence,plan=window.selectedPlanData;
+  const sequence=++sessionLoadSequence,plan=window.selectedPlanData;sessionLoadBlocked=false;
   window.selectedSessionIndex=idx===""?null:idx;window.selectedSessionData=idx===""?null:plan?.sessions?.[idx]||null;
   resetDeck(idx===""?"Choose a lesson session":"New session draft");
   const remove=document.getElementById("btnDeletePresentation");remove?.classList.add("hidden");
@@ -181,8 +181,8 @@ window.handleSessionSelection = async function () {
     const snap=await getDoc(ownedDoc(window.db,"presentations",id));
     assertWorkspaceAccount(uid);if(sequence!==sessionLoadSequence)return;
     const data=snap.exists()?snap.data():null;
-    if(window.adminervaPresentationDirty){persistPresentationDraft();sourceStatus("You began editing during loading. Reselect this session before saving.");return;}
-    if(data?.is_archived){sourceStatus("This presentation is archived. Restore it from Archive before editing.");return;}
+    if(window.adminervaPresentationDirty){persistPresentationDraft();sessionLoadBlocked=true;sourceStatus("You began editing during loading. Reselect this session before saving.");return;}
+    if(data?.is_archived){sessionLoadBlocked=true;sourceStatus("This presentation is archived. Restore it from Archive before editing.");return;}
     if(data){
       window.loadedPersonalDeck={id,version:Number(data.version||1)};
       window.presentationSourceLessonVersion=data.source_lesson_version||null;
@@ -197,12 +197,13 @@ window.handleSessionSelection = async function () {
       sourceStatus(data&&lessonSourceChanged(data,plan)?"Saved deck uses an older lesson version. Review before rebuilding.":data?"Saved presentation loaded.":"No saved presentation yet. Build or edit your slides.");
     }
     window.resetPresentationDeckHistory?.();window.selectSlide?.(0);
-  }catch(error){if(sequence===sessionLoadSequence)sourceStatus("Saved presentation could not be checked: "+(error.message||"connection unavailable"));}
+  }catch(error){if(sequence===sessionLoadSequence){sessionLoadBlocked=true;
+    sourceStatus("Saved presentation could not be checked: "+(error.message||"connection unavailable")+". Reselect the session before saving.");}}
   finally{if(sequence===sessionLoadSequence){sessionChecking=false;syncSourceControls();}}
 };
 
 window.savePresentationToCloud = async function () {
-  if(presentationWriteBusy||sessionChecking)return;
+  if(presentationWriteBusy||sessionChecking||sessionLoadBlocked)return;
   const planId = document.getElementById("presentationPlanSelect")?.value;
   const sessionIdx = window.selectedSessionIndex;
 

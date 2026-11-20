@@ -5,7 +5,16 @@ import { readFileSync, existsSync } from 'node:fs';
 import vm from 'node:vm';
 import { roleHome } from './session-destination.mjs';
 
+// Run the production information architecture in the same VM as the navigation
+// fixture. The browser loads it as an async ESM chunk; the fixture supplies the
+// already-resolved module so legacy synchronous DOM assertions remain meaningful.
+const navigationIA = readFileSync('js/core/navigation-ia.mjs','utf8').replace(
+  /^export function buildNavigationIA/m, 'function buildNavigationIA');
 const source = readFileSync('js/core/adminerva-nav.js', 'utf8');
+const forFixture = code => navigationIA + '\n' +
+  code.replace(/await import\("\.\/navigation-ia\.mjs\?v=[^"]+"\)/,
+    '({buildNavigationIA})')
+    .replace(/\bimport\(/g,'fixtureImport(');
 class Element {
   constructor(tag = 'div') {
     this.tagName = tag;
@@ -50,9 +59,20 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
     getElementById: id => id === 'adminerva-nav' ? root : document.head.children.find(child => child.id === id) || null,
     addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback)
   };
-  const window = { location: { href: '' } };
+  const routeByPage={xml:'student-xml-lab.html',practice:'student-practice.html',
+    'studio-submissions':'studio-submissions.html',dashboard:module==='student'?'student-home.html':'teacher-home.html'};
+  const pathname='/'+(routeByPage[page]||page+'.html');
+  const window = { location: { href: 'https://adminerva.example'+pathname, pathname, search:'' } };
   const localStorage = { getItem: () => { if (storageThrows) throw new Error('Unavailable'); return role; } };
-  vm.runInNewContext(integrations.source || source, { document, window, localStorage, console: { warn() {} }, ...integrations });
+  const fixtureImport=()=>Promise.resolve({
+    mountInformationMenu(){},mountNotificationCenter(){},mountAccountContextSwitcher(){},
+    mountSiteUpdates(){},startPushSync(){},clearConnectionPreferences(){},
+    departPushAccount:async()=>{},getAuth:()=>({}),signOut:async()=>{}
+  });
+  vm.runInNewContext(forFixture(integrations.source || source), {
+    document,window,location:window.location,localStorage,fixtureImport,
+    URLSearchParams,console:{warn(){}},...integrations
+  });
   documentEvents.DOMContentLoaded[0]();
   const clickOutside = () => { for (const callback of documentEvents.click) callback({ target: new Element(), preventDefault() {} }); };
   const roleReady = role => { for (const callback of documentEvents['adminerva:role-ready'] || []) callback({ detail: { role } }); };
