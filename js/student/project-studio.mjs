@@ -9,7 +9,7 @@ import {
 } from "./code-projects.mjs?v=2.1.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
-import {analyzeProjectEvidence,evidenceSnippet} from "./project-competency-evidence.mjs?v=2.0.0";
+import {analyzeProjectEvidence,evidenceSnippet} from "./project-competency-evidence.mjs?v=2.1.0";
 import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,loadV4StudioProject,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
