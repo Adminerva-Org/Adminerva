@@ -111,7 +111,7 @@ const picker=createTenantSchoolPicker({
     if(get("pa-invite-help"))get("pa-invite-help").textContent=standardEnrollmentMode
       ?"Manila Cathedral School students activate from Enrollment & Registration. Use invitations here for verified staff access."
       :"The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.";
-    for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card"])
+    for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card","pa-section-enrollment-card"])
       if(get(id))get(id).hidden=standardEnrollmentMode;
     if(get("pa-classes-help"))get("pa-classes-help").innerHTML=standardEnrollmentMode
       ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for Manila Cathedral School. Teaching assignments and roster review remain available here.'
@@ -692,6 +692,8 @@ async function loadAcademics(){
     .sort((a,b)=>a.label.localeCompare(b.label));
   populateOptions("[data-offering]",labeledOfferings,"offeringId","label");
   populateOptions("[data-assignment-section]",schoolSections.filter(item=>item.status==="active"),"id");
+  populateOptions("#pa-section-enrollment-year",catalogs[1].items.filter(row=>row.status==="active"),"id");
+  refreshStudentSectionPicker();
   populateOptions("[data-student-person]",people.students||[],"personId");
   populateOptions("[data-school-teacher]",teachers.teachers||[],"uid");
   populateMultiOptions("[data-student-person-bulk]",people.students||[],"personId");
@@ -700,6 +702,60 @@ async function loadAcademics(){
   renderImportCourseMapping();
   if(people.unavailable)say(people.unavailable+" Teaching and class controls remain available.");
 }
+
+function refreshStudentSectionPicker(){
+  const form=get("pa-section-enrollment-form");
+  if(!form)return;
+  const yearId=form.elements.yearId.value;
+  const termSelect=form.elements.termId,sectionSelect=form.elements.sectionId;
+  const oldTerm=termSelect.value,oldSection=sectionSelect.value;
+  const terms=schoolTerms.filter(row=>row.status==="active"&&row.yearId===yearId);
+  termSelect.replaceChildren(new Option("Choose academic period",""));
+  for(const row of terms)termSelect.add(new Option(row.name,row.id));
+  if(terms.some(row=>row.id===oldTerm))termSelect.value=oldTerm;
+  const term=terms.find(row=>row.id===termSelect.value);
+  const sections=schoolSections.filter(row=>row.status==="active"&&
+    (!term||row.programId===term.programId));
+  sectionSelect.replaceChildren(new Option("Choose section",""));
+  for(const row of sections)sectionSelect.add(new Option(row.name,row.id));
+  if(sections.some(row=>row.id===oldSection))sectionSelect.value=oldSection;
+  refreshStudentSectionPreview();
+}
+function refreshStudentSectionPreview(){
+  const form=get("pa-section-enrollment-form");
+  if(!form)return;
+  const {yearId,termId,sectionId}=form.elements;
+  const term=schoolTerms.find(row=>row.id===termId.value);
+  const section=schoolSections.find(row=>row.id===sectionId.value);
+  const matches=schoolOfferings.filter(row=>row.status==="active"&&
+    row.yearId===yearId.value&&row.termId===termId.value&&
+    row.sectionId===sectionId.value&&term?.programId===section?.programId);
+  const info=get("pa-section-enrollment-preview");
+  info.textContent=!yearId.value||!termId.value||!sectionId.value
+    ?"Choose an academic year, period and section to preview the subjects."
+    :matches.length
+      ?matches.length+" active subject offering(s) will be added for "+section.name+". Existing active enrollments are preserved."
+      :"No active subjects match this placement. Configure course offerings first.";
+  form.querySelector('button[type="submit"]').disabled=!matches.length;
+}
+get("pa-section-enrollment-year")?.addEventListener("change",refreshStudentSectionPicker);
+get("pa-section-enrollment-term")?.addEventListener("change",refreshStudentSectionPicker);
+get("pa-section-enrollment-section")?.addEventListener("change",refreshStudentSectionPreview);
+get("pa-section-enrollment-form")?.addEventListener("submit",event=>{
+  event.preventDefault();
+  const form=event.currentTarget,d=new FormData(form);
+  const personId=String(d.get("personId")||""),sectionId=String(d.get("sectionId")||""),
+    yearId=String(d.get("yearId")||""),termId=String(d.get("termId")||""),
+    reason=String(d.get("reason")||"").trim();
+  if(!personId||!sectionId||!yearId||!termId||reason.length<12){say("Select a student and complete the section placement.");return;}
+  if(!confirm("Assign this existing student to the selected section and enroll all active subjects for the academic period?"))return;
+  void submitAcademic(form,"enroll_student_section",{personId,sectionId,yearId,termId,reason},
+    "Existing student assigned to section and matching active subjects. No new account was created.")
+    .then(result=>{
+      if(result)say("Section placement saved · "+result.created+" subject enrollment(s) added · "+
+        result.alreadyActive+" already active.");
+    });
+});
 get("pa-bulk-enrollment-form").addEventListener("submit",event=>{
   event.preventDefault();const form=event.currentTarget;
   const personIds=[...form.elements.personIds.selectedOptions].map(option=>option.value);
