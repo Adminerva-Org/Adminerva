@@ -18,6 +18,7 @@ const requestedSubjectId=params.get("subjectId")||"";
 const requestedSubjectName=params.get("subject")||"";
 const forceLegacy=params.get("legacy")==="1";
 let picker=null,profile=null,current=null,busy=false,epoch=0,legacyMode=false,streamData=null,streamLimit=20;
+let classroomParticipation={canPost:false,canComment:false,muted:false,mode:"teacher_only"};
 
 function make(tag,cls,text){
   const node=document.createElement(tag);if(cls)node.className=cls;
@@ -145,17 +146,84 @@ function assignmentCard(task,statusRow,grade){
   if(grade){const result=make("a","rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-2.5 text-sm font-bold","View result "+grade.awarded+" / "+grade.total);result.href=legacyMode?taskHref(task):"school-student-grades.html"+subjectQuery();actions.append(result);}
   card.append(actions);return card;
 }
+function participationCopy(){
+  if(legacyMode)return "Class discussion becomes available after this class is linked to the verified school workspace.";
+  if(classroomParticipation.muted)return "Your teacher muted your classroom participation. You can still read posts, classwork, feedback and released results.";
+  if(classroomParticipation.mode==="posts_comments")return "You may post and comment in this classroom. Teachers can moderate classroom discussion.";
+  if(classroomParticipation.mode==="comments_only")return "You may comment on classroom posts. New top-level posts are teacher-only.";
+  return "Classroom discussion is teacher-only. You can read posts, classwork, feedback and released results.";
+}
+function renderParticipation(){
+  const panel=el("subjectParticipationPanel"),form=el("subjectPostForm"),note=el("subjectParticipationNote");
+  if(!panel||!form||!note)return;
+  note.textContent=participationCopy();
+  form.hidden=legacyMode||!classroomParticipation.canPost;
+  for(const control of form.querySelectorAll("textarea,button"))control.disabled=busy||form.hidden;
+}
+async function writeClassroom(action,details,success){
+  if(busy||legacyMode||!current)return false;
+  busy=true;el("subjectRefresh").disabled=true;renderParticipation();setStatus("Saving classroom discussion…");
+  try{
+    await scoped(streamApi,action,{offeringId:current.offeringId,...details});
+    busy=false;el("subjectRefresh").disabled=false;
+    await refresh();setStatus(success);return true;
+  }catch(error){
+    setStatus(error?.message||"Classroom discussion could not be saved.",true);return false;
+  }finally{
+    busy=false;el("subjectRefresh").disabled=false;renderParticipation();
+  }
+}
+async function addClassComment(post,body){
+  if(!classroomParticipation.canComment)return;
+  await writeClassroom("create_comment",{postId:post.postId,body},"Comment posted.");
+}
+async function removeClassComment(comment){
+  if(!comment.canDelete||!confirm("Remove this classroom comment?"))return;
+  await writeClassroom("archive_comment",{commentId:comment.commentId},"Comment removed.");
+}
+async function removeClassPost(post){
+  if(!post.canModerate||!confirm("Remove your classroom post?"))return;
+  await writeClassroom("archive",{postId:post.postId},"Classroom post removed.");
+}
+function appendPostDiscussion(post,card){
+  const comments=Array.isArray(post.comments)?post.comments:[],section=make("section","mt-4 border-t border-slate-100 pt-3");
+  section.append(make("p","text-xs font-extrabold uppercase tracking-wide text-slate-500",comments.length+" comment"+(comments.length===1?"":"s")));
+  if(comments.length){
+    const list=make("div","mt-2 space-y-2");
+    for(const comment of comments){
+      const row=make("div","rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"),top=make("div","flex items-start justify-between gap-3");
+      top.append(make("p","text-xs text-slate-500",(comment.authorName||"Class member")+" · "+(comment.authorRole==="student"?"Student":"Teacher")+" · "+date(comment.createdAt)));
+      if(comment.canDelete){
+        const remove=make("button","text-xs font-bold text-rose-700","Remove");remove.type="button";remove.addEventListener("click",()=>void removeClassComment(comment));top.append(remove);
+      }
+      row.append(top,make("p","text-sm text-slate-700 whitespace-pre-wrap break-words mt-1",comment.body||""));list.append(row);
+    }section.append(list);
+  }
+  if(classroomParticipation.canComment){
+    const form=make("form","mt-3 flex gap-2"),input=make("input","min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"),submit=make("button","rounded-lg bg-slate-800 text-white px-3 py-2 text-xs font-bold","Comment");
+    input.type="text";input.maxLength=2000;input.required=true;input.placeholder="Add a class comment…";submit.type="submit";
+    form.append(input,submit);form.addEventListener("submit",event=>{event.preventDefault();const body=input.value.trim();if(body)void addClassComment(post,body);});section.append(form);
+  }
+  card.append(section);
+}
 function postCard(post,pinned=false){
-  const card=make("article","rounded-2xl border shadow-sm p-4 sm:p-5 "+(pinned?"border-cyan-300 bg-cyan-50":"border-slate-200 bg-white"));
+  const student=post.authorRole==="student";
+  const card=make("article","rounded-2xl border shadow-sm p-4 sm:p-5 "+(pinned?"border-cyan-300 bg-cyan-50":student?"border-violet-200 bg-white":"border-slate-200 bg-white"));
   const top=make("div","flex items-start justify-between gap-3"),identity=make("div","min-w-0");
-  identity.append(make("p","text-xs uppercase tracking-wider font-bold "+(pinned?"text-cyan-800":"text-slate-500"),
-    pinned?"Pinned announcement":post.kind==="material"?"Class material":post.kind==="post"?"Teacher post":"Announcement"));
+  const kind=pinned?"Pinned announcement":student?"Student post":post.kind==="material"?"Class material":post.kind==="post"?"Teacher post":"Announcement";
+  identity.append(make("p","text-xs uppercase tracking-wider font-bold "+(student?"text-violet-700":pinned?"text-cyan-800":"text-slate-500"),kind));
   if(post.title)identity.append(make("h3","text-lg font-extrabold mt-1 text-slate-900",post.title));
-  identity.append(make("p","text-xs text-slate-500 mt-1",(post.authorName||"Teacher")+" · "+date(post.createdAt)));
-  top.append(identity);if(pinned)top.append(badge("Pinned","blue"));card.append(top);
+  identity.append(make("p","text-xs text-slate-500 mt-1",(post.authorName||(student?"Student":"Teacher"))+" · "+date(post.createdAt)));
+  top.append(identity);
+  const actions=make("div","flex items-center gap-2");
+  if(pinned)actions.append(badge("Pinned","blue"));
+  if(post.canModerate){
+    const remove=make("button","rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-bold text-rose-700","Remove");remove.type="button";remove.addEventListener("click",()=>void removeClassPost(post));actions.append(remove);
+  }
+  if(actions.children.length)top.append(actions);card.append(top);
   if(post.body)card.append(make("p","whitespace-pre-wrap text-sm text-slate-700 mt-3 leading-6",post.body));
   if(post.linkUrl){const link=make("a","inline-block mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-cyan-800","Open shared link ↗");link.href=post.linkUrl;link.target="_blank";link.rel="noopener noreferrer";card.append(link);}
-  return card;
+  appendPostDiscussion(post,card);return card;
 }
 function gradeCard(grade,task){
   const card=make("article","rounded-2xl border border-emerald-200 bg-emerald-50 shadow-sm p-4 sm:p-5");
@@ -178,14 +246,14 @@ function renderUpcoming(tasks,statuses,grades,availability={}){
   }
 }
 function renderStream(posts,tasks,statuses,grades){
-  streamData={posts,tasks,statuses,grades};streamLimit=20;paintStream();
+  streamData={posts,tasks,statuses,grades};streamLimit=20;renderParticipation();paintStream();
 }
 function paintStream(){
   const pinnedHost=el("subjectPinnedPosts"),host=el("subjectStream"),more=el("subjectStreamMore");pinnedHost.replaceChildren();host.replaceChildren();more.hidden=true;
   if(!streamData)return;
   const {posts,tasks,statuses,grades}=streamData,filter=el("subjectStreamFilter").value,term=el("subjectStreamSearch").value.trim().toLowerCase();
   const matches=values=>!term||values.some(value=>String(value||"").toLowerCase().includes(term));
-  const visiblePosts=posts.filter(post=>(filter==="all"||filter===post.kind)&&matches([post.title,post.body,post.authorName]));
+  const visiblePosts=posts.filter(post=>(filter==="all"||filter===post.kind)&&matches([post.title,post.body,post.authorName,...(post.comments||[]).map(comment=>comment.body)]));
   for(const post of visiblePosts.filter(item=>item.pinned))pinnedHost.append(postCard(post,true));
   const items=[];
   for(const post of visiblePosts.filter(item=>!item.pinned))items.push({time:post.createdAt||0,type:"post",post});
@@ -204,6 +272,11 @@ function paintStream(){
   }
   more.hidden=items.length<=streamLimit;
 }
+el("subjectPostForm").addEventListener("submit",event=>{
+  event.preventDefault();if(!classroomParticipation.canPost||busy||legacyMode||!current)return;
+  const body=el("subjectPostBody").value.trim();if(!body){setStatus("Write something before posting.",true);return;}
+  void writeClassroom("create",{kind:"post",title:"",body},"Posted to your classroom.").then(saved=>{if(saved)el("subjectPostBody").value="";});
+});
 el("subjectStreamSearch").addEventListener("input",()=>{streamLimit=20;paintStream();});
 el("subjectStreamFilter").addEventListener("change",()=>{streamLimit=20;paintStream();});
 el("subjectStreamMore").addEventListener("click",()=>{streamLimit+=20;paintStream();});
@@ -237,13 +310,13 @@ async function refreshLegacy(){
     setStatus(tasks.length||grades.size?"Existing programming classroom loaded. Announcements will join this stream after verified school access is linked.":"Your programming classroom is ready. No current assignments were found.");
   }catch(error){
     if(turn===epoch)setStatus(error?.message||"Your existing programming classroom could not be loaded.",true);
-  }finally{if(turn===epoch){busy=false;el("subjectRefresh").disabled=false;}}
+  }finally{if(turn===epoch){busy=false;el("subjectRefresh").disabled=false;renderParticipation();}}
 }
 
 async function refresh(){
   if(!picker?.scope.current||busy)return;
   const turn=++epoch;busy=true;legacyMode=false;el("subjectRefresh").disabled=true;setStatus("Loading your classroom stream…");
-  current=null;profile=null;renderHeader();renderSummary([],new Map(),new Map(),[]);renderUpcoming([],new Map(),new Map());renderStream([],[],new Map(),new Map());
+  current=null;profile=null;classroomParticipation={canPost:false,canComment:false,muted:false,mode:"teacher_only"};renderParticipation();renderHeader();renderSummary([],new Map(),new Map(),[]);renderUpcoming([],new Map(),new Map());renderStream([],[],new Map(),new Map());
   try{
     profile=await scoped(profileApi,"my_profile");if(turn!==epoch)return;
     current=resolveClass(profile.classes||[]);
@@ -259,6 +332,13 @@ async function refresh(){
     const grades=new Map((gradeResult.grades||[]).filter(grade=>tasks.some(task=>task.taskId===grade.taskId)).map(grade=>[grade.taskId,grade]));
     const statuses=await loadStatuses(tasks,grades);if(turn!==epoch)return;
     const posts=streamResult.posts||[];
+    classroomParticipation={
+      canPost:streamResult.canPost===true,
+      canComment:streamResult.canComment===true,
+      muted:streamResult.viewer?.muted===true,
+      mode:streamResult.settings?.participationMode||"teacher_only"
+    };
+    renderParticipation();
     const teacherNames=(streamResult.teachers||[]).map(item=>item.name).filter(Boolean);
     el("subjectClassroomMeta").textContent=[courseLabel(current),teacherNames.length?"Teacher: "+teacherNames.join(", "):""].filter(Boolean).join(" · ")||"Active school classroom";
     const availability={assignments:!assignmentResult.error,grades:!gradeResult.error,posts:!streamResult.error};
@@ -267,7 +347,7 @@ async function refresh(){
     setStatus(missing.length?"Partially loaded. Unavailable: "+missing.join(", ")+". Refresh to retry.":tasks.length||posts.length||grades.size?"Classroom is up to date.":"This classroom has no activity yet.",Boolean(missing.length));
   }catch(error){
     if(turn===epoch)setStatus(error?.message||"Your classroom could not be loaded.",true);
-  }finally{if(turn===epoch){busy=false;el("subjectRefresh").disabled=false;}}
+  }finally{if(turn===epoch){busy=false;el("subjectRefresh").disabled=false;renderParticipation();}}
 }
 el("subjectOfferingSelect").addEventListener("change",event=>{
   const selected=(profile?.classes||[]).find(item=>item.offeringId===event.target.value);
