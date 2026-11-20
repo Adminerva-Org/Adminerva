@@ -181,8 +181,11 @@ async function openClass(offeringId){
 }
 async function mutate(action,details,success){
   if(busy||!selected())return;setBusy(true);say("Saving class assignment…");
-  try{await scoped(action,details);await loadOverview({preserveSelection:true});say(success);}
-  catch(error){say(error?.message||"The class assignment could not be changed.",true);}
+  try{
+    await scoped(action,details);
+    await loadOverview({preserveSelection:true,force:true});
+    say(success);
+  }catch(error){say(error?.message||"The class assignment could not be changed.",true);}
   finally{setBusy(false);}
 }
 async function endAssignment(row){
@@ -190,8 +193,8 @@ async function endAssignment(row){
   if(reason===null)return;if(reason.trim().length<12){say("Explain the teaching assignment change in at least 12 characters.",true);return;}
   await mutate("end_teacher_assignment",{teacherUid:row.teacherUid,offeringId:selectedId,reason:reason.trim()},"Teacher removed from this class.");
 }
-async function loadOverview({preserveSelection=false}={}){
-  if(!picker?.scope.current||busy)return;const turn=++epoch;say("Loading classes and teaching assignments…");
+async function loadOverview({preserveSelection=false,force=false}={}){
+  if(!picker?.scope.current||(busy&&!force))return;const turn=++epoch;say("Loading classes and teaching assignments…");
   try{
     const result=await scoped("faculty_workload");if(turn!==epoch)return;
     model={teachers:result.teachers||[],offerings:result.offerings||[]};renderSummary();fillFilters();renderList();
