@@ -57,6 +57,16 @@ function rowKey(...values){
  const checked=values.map(v=>checkId(v,"Key segment",330));
  return createHash("sha256").update(JSON.stringify(checked)).digest("hex");
 }
+function scheduleMinute(value){
+ const match=/^([0-9]{2}):([0-9]{2})$/.exec(String(value||""));
+ return match?Number(match[1])*60+Number(match[2]):null;
+}
+function scheduleMeetingOverlap(first,second){
+ if(!first||!second||first.day!==second.day)return false;
+ const aStart=scheduleMinute(first.startTime),aEnd=scheduleMinute(first.endTime),
+  bStart=scheduleMinute(second.startTime),bEnd=scheduleMinute(second.endTime);
+ return [aStart,aEnd,bStart,bEnd].every(Number.isFinite)&&aStart<bEnd&&bStart<aEnd;
+}
 function createSchoolAcademicsService({db}) {
  const root=id=>({doc:path=>db.doc("schools/"+id+"/"+path)});
  return async request=>{
@@ -66,6 +76,25 @@ function createSchoolAcademicsService({db}) {
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
   const memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+uid);
   function requireAdmin(){if(!admin)deny("permission-denied","School administration is required.");}
+  async function ensureTeacherScheduleAvailable(tx,teacherUid,offeringId){
+   const targetScheduleRef=schoolRoot.doc("class_schedules/"+offeringId),
+    grantsQuery=db.collection("schools/"+ctx.schoolId+"/staff_assignments").where("teacherUid","==",teacherUid).limit(201);
+   const [targetSchedule,grants]=await Promise.all([tx.get(targetScheduleRef),tx.get(grantsQuery)]);
+   if(grants.size===201)deny("resource-exhausted","Teacher schedule conflict review requires pagination.");
+   if(!targetSchedule.exists||targetSchedule.data().schoolId!==ctx.schoolId||
+      targetSchedule.data().status==="archived"||!Array.isArray(targetSchedule.data().meetings)||
+      !targetSchedule.data().meetings.length)return;
+   const otherIds=[...new Set(grants.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+     doc.data().status==="active"&&doc.data().offeringId!==offeringId).map(doc=>doc.data().offeringId))];
+   const schedules=await Promise.all(otherIds.map(id=>tx.get(schoolRoot.doc("class_schedules/"+id))));
+   for(const schedule of schedules){
+    if(!schedule.exists||schedule.data().schoolId!==ctx.schoolId||schedule.data().status==="archived")continue;
+    const otherMeetings=Array.isArray(schedule.data().meetings)?schedule.data().meetings:[];
+    for(const target of targetSchedule.data().meetings)for(const existing of otherMeetings)
+     if(scheduleMeetingOverlap(target,existing))
+      deny("failed-precondition","This teacher already has another official class at "+target.day+" "+target.startTime+"–"+target.endTime+". Change the class schedule or choose another teacher.");
+   }
+  }
   async function checkWriteAuthority(tx){
    if(ctx.platformOverride)return;
    const [school,membership]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
@@ -715,6 +744,8 @@ function createSchoolAcademicsService({db}) {
       return data.schoolId===ctx.schoolId&&reviewerUid===fromTeacherUid&&
         data.lifecycle!=="cancelled";
     });
+    if(!toAssignment.exists||toAssignment.data().status!=="active")
+      await ensureTeacherScheduleAvailable(tx,toTeacherUid,offeringId);
     const now=FieldValue.serverTimestamp();
     tx.update(fromRef,{status:"ended",endedByUid:uid,endedAt:now,
       endReason:reason,revision:(fromAssignment.data().revision||1)+1});
@@ -813,11 +844,13 @@ function createSchoolAcademicsService({db}) {
         deny("failed-precondition","Only an ended teaching assignment can be restored.");
       if(offering.data().status!=="active")
         deny("failed-precondition","A teacher cannot be restored to a closed course offering.");
+      await ensureTeacherScheduleAvailable(tx,teacherUid,offeringId);
       tx.update(ref,{status:"active",restoredByUid:uid,restoredAt:FieldValue.serverTimestamp(),
         restoreReason:reason,revision:(prior.data().revision||1)+1});
     }else{
       if(prior.exists)deny("already-exists","A teaching assignment already has history. Restore an ended assignment instead of replacing it.");
       if(offering.data().status!=="active")deny("failed-precondition","Cannot assign a closed course offering.");
+      await ensureTeacherScheduleAvailable(tx,teacherUid,offeringId);
       tx.create(ref,{schoolId:ctx.schoolId,teacherUid,offeringId,
         yearId:offering.data().yearId,termId:offering.data().termId,
         subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
