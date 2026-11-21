@@ -10,6 +10,7 @@ const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 const CATALOG=new Set(["academic_years","academic_programs","terms","subjects","sections"]);
 const PERIOD_TYPES=new Set(["term","semester","quarter","trimester","custom"]);
+const ROSTER_MODES=new Set(["section","selective"]);
 const DEFAULT_ACADEMIC_YEAR_START_MONTH=7;
 const DEFAULT_ACADEMIC_YEAR_END_MONTH=5;
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -57,6 +58,27 @@ function rowKey(...values){
  const checked=values.map(v=>checkId(v,"Key segment",330));
  return createHash("sha256").update(JSON.stringify(checked)).digest("hex");
 }
+function scheduleMinute(value){
+ const match=/^([0-9]{2}):([0-9]{2})$/.exec(String(value||""));
+ return match?Number(match[1])*60+Number(match[2]):null;
+}
+function scheduleMeetingOverlap(first,second){
+ if(!first||!second||first.day!==second.day)return false;
+ const aStart=scheduleMinute(first.startTime),aEnd=scheduleMinute(first.endTime),
+  bStart=scheduleMinute(second.startTime),bEnd=scheduleMinute(second.endTime);
+ return [aStart,aEnd,bStart,bEnd].every(Number.isFinite)&&aStart<bEnd&&bStart<aEnd;
+}
+function teachingLead(configured,teacherUids){
+ const ids=[...new Set((teacherUids||[]).filter(Boolean))],
+  configuredUid=typeof configured==="string"?configured:"";
+ if(configuredUid&&ids.includes(configuredUid))
+  return {primaryTeacherUid:configuredUid,primarySource:"explicit",primaryNeedsReview:false};
+ if(ids.length===1)
+  return {primaryTeacherUid:ids[0],primarySource:configuredUid?"inferred_stale":"inferred",
+   primaryNeedsReview:Boolean(configuredUid)};
+ return {primaryTeacherUid:"",primarySource:configuredUid?"stale":ids.length?"missing":"none",
+  primaryNeedsReview:ids.length>0||Boolean(configuredUid)};
+}
 function createSchoolAcademicsService({db}) {
  const root=id=>({doc:path=>db.doc("schools/"+id+"/"+path)});
  return async request=>{
@@ -66,6 +88,25 @@ function createSchoolAcademicsService({db}) {
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
   const memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+uid);
   function requireAdmin(){if(!admin)deny("permission-denied","School administration is required.");}
+  async function ensureTeacherScheduleAvailable(tx,teacherUid,offeringId){
+   const targetScheduleRef=schoolRoot.doc("class_schedules/"+offeringId),
+    grantsQuery=db.collection("schools/"+ctx.schoolId+"/staff_assignments").where("teacherUid","==",teacherUid).limit(201);
+   const [targetSchedule,grants]=await Promise.all([tx.get(targetScheduleRef),tx.get(grantsQuery)]);
+   if(grants.size===201)deny("resource-exhausted","Teacher schedule conflict review requires pagination.");
+   if(!targetSchedule.exists||targetSchedule.data().schoolId!==ctx.schoolId||
+      targetSchedule.data().status==="archived"||!Array.isArray(targetSchedule.data().meetings)||
+      !targetSchedule.data().meetings.length)return;
+   const otherIds=[...new Set(grants.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+     doc.data().status==="active"&&doc.data().offeringId!==offeringId).map(doc=>doc.data().offeringId))];
+   const schedules=await Promise.all(otherIds.map(id=>tx.get(schoolRoot.doc("class_schedules/"+id))));
+   for(const schedule of schedules){
+    if(!schedule.exists||schedule.data().schoolId!==ctx.schoolId||schedule.data().status==="archived")continue;
+    const otherMeetings=Array.isArray(schedule.data().meetings)?schedule.data().meetings:[];
+    for(const target of targetSchedule.data().meetings)for(const existing of otherMeetings)
+     if(scheduleMeetingOverlap(target,existing))
+      deny("failed-precondition","This teacher already has another official class at "+target.day+" "+target.startTime+"–"+target.endTime+". Change the class schedule or choose another teacher.");
+   }
+  }
   async function checkWriteAuthority(tx){
    if(ctx.platformOverride)return;
    const [school,membership]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
@@ -119,6 +160,12 @@ function createSchoolAcademicsService({db}) {
    return {
     schoolId:ctx.schoolId,
     sections:[...sectionNames.values()].sort((a,b)=>a.localeCompare(b)),
+    sectionRecords:sections.filter(doc=>doc.exists&&sectionNames.has(doc.id)).map(doc=>({
+      sectionId:doc.id,name:sectionNames.get(doc.id),
+      programId:doc.data().programId||null,
+      gradeLevel:typeof doc.data().gradeLevel==="string"?doc.data().gradeLevel:"",
+      pathway:typeof doc.data().pathway==="string"?doc.data().pathway:""
+    })).sort((a,b)=>a.name.localeCompare(b.name)),
     subjects:[...subjectNames.values()].sort((a,b)=>a.localeCompare(b)),
     schoolYears:[...yearNames.values()].sort((a,b)=>a.localeCompare(b)),
     terms:[...termNames.values()].sort((a,b)=>a.localeCompare(b)),
@@ -141,24 +188,122 @@ function createSchoolAcademicsService({db}) {
     })).filter(item=>item.programName&&item.sectionName&&item.subjectName)
    };
   }
+  if(input.action==="my_advisory_sections"){
+   if(!teacher)deny("permission-denied","Teacher access is required for advisory sections.");
+   const adviserSnap=await db.collection("schools/"+ctx.schoolId+"/section_advisers")
+    .where("teacherUid","==",uid).limit(51).get();
+   if(adviserSnap.size===51)deny("resource-exhausted","Advisory assignments require pagination.");
+   const advisers=adviserSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+    doc.data().status==="active"&&doc.data().sectionId&&doc.data().yearId);
+   if(!advisers.length)return {schoolId:ctx.schoolId,sections:[]};
+
+   const prefix="schools/"+ctx.schoolId+"/";
+   const staffSnap=await db.collection(prefix+"staff_assignments").where("status","==","active").limit(2001).get();
+   if(staffSnap.size===2001)deny("resource-exhausted","Advisory class staffing exceeds the current review limit.");
+   const staff=staffSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
+   const teacherUids=[...new Set(staff.map(doc=>doc.data().teacherUid).filter(Boolean))];
+   const teacherDocs=await Promise.all(teacherUids.map(id=>schoolRoot.doc("memberships/"+id).get()));
+   const teacherNames=new Map(teacherDocs.map((doc,index)=>[
+    teacherUids[index],doc.exists&&doc.data().schoolId===ctx.schoolId?
+      String(doc.data().displayName||("Teacher "+teacherUids[index].slice(0,8))):"Teacher "+teacherUids[index].slice(0,8)
+   ]));
+
+   const results=[];
+   for(const adviser of advisers){
+    const data=adviser.data(),sectionId=checkId(data.sectionId,"Section ID"),
+     yearId=checkId(data.yearId,"Academic year ID");
+    const [section,year,registrationSnap,enrollmentSnap,offeringSnap]=await Promise.all([
+     schoolRoot.doc("sections/"+sectionId).get(),
+     schoolRoot.doc("academic_years/"+yearId).get(),
+     db.collection(prefix+"student_registrations").where("sectionId","==",sectionId).limit(201).get(),
+     db.collection(prefix+"enrollments").where("sectionId","==",sectionId).limit(501).get(),
+     db.collection(prefix+"course_offerings").where("sectionId","==",sectionId).limit(201).get()
+    ]);
+    if(registrationSnap.size===201||enrollmentSnap.size===501||offeringSnap.size===201)
+     deny("resource-exhausted","This advisory section exceeds the current overview limit.");
+    if(!section.exists||section.data().schoolId!==ctx.schoolId||!year.exists||year.data().schoolId!==ctx.schoolId)
+     continue;
+
+    const registrations=registrationSnap.docs.filter(doc=>{
+     const row=doc.data();
+     return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId;
+    });
+    const registrationByPerson=new Map(registrations.map(doc=>[doc.data().personId,doc.data()]));
+    const fallbackPeople=new Set(enrollmentSnap.docs.filter(doc=>{
+     const row=doc.data();
+     return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId;
+    }).map(doc=>doc.data().personId).filter(Boolean));
+    const personIds=registrationByPerson.size?[...registrationByPerson.keys()]:[...fallbackPeople];
+    if(personIds.length>200)deny("resource-exhausted","This advisory roster requires pagination.");
+    const people=await Promise.all(personIds.map(personId=>schoolRoot.doc("people/"+checkId(personId,"Person ID",128)).get()));
+    const students=people.map((person,index)=>{
+     const personId=personIds[index],row=registrationByPerson.get(personId)||{},personData=person.exists?person.data():null;
+     return {
+      personId,name:personData&&personData.schoolId===ctx.schoolId?
+       String(personData.displayName||row.displayName||"Student"):String(row.displayName||"Student"),
+      studentNumber:String(row.studentNumber||""),
+      accountLinked:Boolean(personData&&personData.schoolId===ctx.schoolId&&personData.authUid),
+      registrationSource:registrationByPerson.has(personId)?"registration":"class_enrollment"
+     };
+    }).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+
+    const classDocs=offeringSnap.docs.filter(doc=>{
+     const row=doc.data();
+     return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId;
+    });
+    const subjectIds=[...new Set(classDocs.map(doc=>doc.data().subjectId).filter(Boolean))],
+     termIds=[...new Set(classDocs.map(doc=>doc.data().termId).filter(Boolean))];
+    const [subjects,terms]=await Promise.all([
+     Promise.all(subjectIds.map(id=>schoolRoot.doc("subjects/"+id).get())),
+     Promise.all(termIds.map(id=>schoolRoot.doc("terms/"+id).get()))
+    ]);
+    const subjectNames=new Map(subjects.map((doc,index)=>[subjectIds[index],
+      doc.exists&&doc.data().schoolId===ctx.schoolId?String(doc.data().name||subjectIds[index]):subjectIds[index]])),
+     termNames=new Map(terms.map((doc,index)=>[termIds[index],
+      doc.exists&&doc.data().schoolId===ctx.schoolId?String(doc.data().name||termIds[index]):termIds[index]]));
+    const classes=classDocs.map(doc=>{
+     const row=doc.data(),teachers=staff.filter(grant=>grant.data().offeringId===doc.id)
+      .map(grant=>teacherNames.get(grant.data().teacherUid)||"Teacher");
+     return {
+      offeringId:doc.id,subjectId:row.subjectId,subjectName:subjectNames.get(row.subjectId)||row.subjectId||"Subject",
+      termId:row.termId,termName:termNames.get(row.termId)||row.termId||"Period",
+      teacherNames:[...new Set(teachers)]
+     };
+    }).sort((a,b)=>a.termName.localeCompare(b.termName)||a.subjectName.localeCompare(b.subjectName));
+
+    results.push({
+     advisoryId:adviser.id,sectionId,sectionName:String(section.data().name||sectionId),
+     yearId,yearName:String(year.data().name||yearId),programId:section.data().programId||null,
+     gradeLevel:section.data().gradeLevel||null,pathway:section.data().pathway||null,
+     students,classes,revision:Number(data.revision)||1
+    });
+   }
+   return {schoolId:ctx.schoolId,sections:results.sort((a,b)=>a.yearName.localeCompare(b.yearName)||a.sectionName.localeCompare(b.sectionName))};
+  }
+
   if(input.action==="faculty_workload"){
    requireAdmin();
    const prefix="schools/"+ctx.schoolId+"/";
    // One bounded school-wide read. Only active course grants are used;
    // suspended accounts cannot make a course appear staffed.
-   const [members,offerings,grants]=await Promise.all([
+   const [members,offerings,grants,adviserGrants]=await Promise.all([
     db.collection(prefix+"memberships").where("roles","array-contains","teacher").limit(501).get(),
     db.collection(prefix+"course_offerings").where("status","==","active").limit(1001).get(),
-    db.collection(prefix+"staff_assignments").where("status","==","active").limit(2001).get()
+    db.collection(prefix+"staff_assignments").where("status","==","active").limit(2001).get(),
+    db.collection(prefix+"section_advisers").where("status","==","active").limit(1001).get()
    ]);
-   if(members.size===501||offerings.size===1001||grants.size===2001)
-    deny("resource-exhausted","Faculty workload exceeds its current review limit. No partial staffing counts are displayed.");
+   if(members.size===501||offerings.size===1001||grants.size===2001||adviserGrants.size===1001)
+    deny("resource-exhausted","Faculty workload exceeds its current review limit. No partial staffing or advisory counts are displayed.");
    const teachers=members.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
     .map(doc=>({uid:doc.id,name:typeof doc.data().displayName==="string"?doc.data().displayName:"Teacher "+doc.id.slice(0,8)}));
    const teacherIds=new Set(teachers.map(row=>row.uid));
    const classes=offerings.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>{
     const row=doc.data();
-    return {offeringId:doc.id,sectionId:row.sectionId||"",subjectId:row.subjectId||"",yearId:row.yearId||"",termId:row.termId||"",programId:row.programId||"",teacherUids:[],invalidGrantCount:0};
+    return {offeringId:doc.id,sectionId:row.sectionId||"",subjectId:row.subjectId||"",yearId:row.yearId||"",termId:row.termId||"",programId:row.programId||"",
+      rosterMode:ROSTER_MODES.has(row.rosterMode)?row.rosterMode:"legacy",revision:Number(row.revision)||1,
+      configuredPrimaryTeacherUid:typeof row.primaryTeacherUid==="string"?row.primaryTeacherUid:"",
+      primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,
+      teacherUids:[],invalidGrantCount:0};
    });
    const byId=new Map(classes.map(row=>[row.offeringId,row]));
    let unmatchedGrants=0;
@@ -170,6 +315,12 @@ function createSchoolAcademicsService({db}) {
      offering.invalidGrantCount++;continue;
     }
     if(!offering.teacherUids.includes(row.teacherUid))offering.teacherUids.push(row.teacherUid);
+   }
+   for(const offering of classes){
+    const lead=teachingLead(offering.configuredPrimaryTeacherUid,offering.teacherUids);
+    offering.primaryTeacherUid=lead.primaryTeacherUid;
+    offering.primarySource=lead.primarySource;
+    offering.primaryNeedsReview=lead.primaryNeedsReview;
    }
    const catalogFields=[["sections","sectionId","sectionName"],["subjects","subjectId","subjectName"],["academic_years","yearId","yearName"],["terms","termId","termName"],["academic_programs","programId","programName"]];
    const refs=[];
@@ -187,8 +338,122 @@ function createSchoolAcademicsService({db}) {
     });
    }
    for(const row of classes)for(const [collection,field,label] of catalogFields)row[label]=labels.get(collection+"/"+row[field])||row[field]||"Unspecified";
-   return {schoolId:ctx.schoolId,teachers,offerings:classes,unmatchedGrants};
+   const advisories=adviserGrants.docs.filter(doc=>{
+    const row=doc.data();
+    return row.schoolId===ctx.schoolId&&teacherIds.has(row.teacherUid)&&row.sectionId&&row.yearId;
+   }).map(doc=>({
+    advisoryId:doc.id,teacherUid:doc.data().teacherUid,sectionId:doc.data().sectionId,
+    yearId:doc.data().yearId,status:"active",revision:Number(doc.data().revision)||1
+   }));
+   return {schoolId:ctx.schoolId,teachers,offerings:classes,advisories,unmatchedGrants};
   }
+
+  if(input.action==="set_primary_teacher"){
+   requireAdmin();
+   const offeringId=checkId(input.offeringId,"Course offering ID",330),
+    teacherUid=checkId(input.teacherUid,"Primary teacher UID",128),
+    expectedRevision=Number(input.expectedRevision),
+    reason=checkName(input.reason,"Primary teacher reason");
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","Current class revision is required.");
+   if(reason.length<12)deny("invalid-argument","Explain the primary-teacher change in at least 12 characters.");
+   const offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
+    assignmentRef=schoolRoot.doc("staff_assignments/"+rowKey(teacherUid,offeringId)),
+    auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const [offering,assignment]=await Promise.all([tx.get(offeringRef),tx.get(assignmentRef)]);
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
+     deny("not-found","This active class offering is unavailable.");
+    const data=offering.data(),revision=Number(data.revision)||1;
+    if(revision!==expectedRevision)
+     deny("failed-precondition","A newer class revision exists. Reload before changing the primary teacher.");
+    if(!assignment.exists||assignment.data().schoolId!==ctx.schoolId||
+       assignment.data().teacherUid!==teacherUid||assignment.data().offeringId!==offeringId||
+       assignment.data().status!=="active")
+     deny("failed-precondition","The primary teacher must already have an active teaching assignment in this class.");
+    const prior=typeof data.primaryTeacherUid==="string"?data.primaryTeacherUid:"",now=FieldValue.serverTimestamp();
+    if(prior===teacherUid){
+     result={offeringId,teacherUid,revision,alreadyCurrent:true};return;
+    }
+    tx.update(offeringRef,{primaryTeacherUid:teacherUid,revision:revision+1,updatedByUid:uid,updatedAt:now});
+    tx.create(auditRef,audit("class_primary_teacher_changed",{
+     offeringId,fromTeacherUid:prior||null,toTeacherUid:teacherUid,reason,revision:revision+1
+    }));
+    result={offeringId,teacherUid,revision:revision+1,priorTeacherUid:prior||null,alreadyCurrent:false};
+   });
+   return result;
+  }
+
+  if(["set_section_adviser","end_section_adviser"].includes(input.action)){
+   requireAdmin();
+   const sectionId=checkId(input.sectionId,"Section ID"),
+    yearId=checkId(input.yearId,"Academic year ID"),
+    reason=checkName(input.reason,input.action==="set_section_adviser"?"Adviser assignment reason":"Adviser end reason");
+   if(reason.length<12)deny("invalid-argument","Explain the advisory assignment change in at least 12 characters.");
+   const sectionRef=schoolRoot.doc("sections/"+sectionId),
+    yearRef=schoolRoot.doc("academic_years/"+yearId),
+    query=db.collection("schools/"+ctx.schoolId+"/section_advisers").where("sectionId","==",sectionId).limit(101),
+    auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   const setting=input.action==="set_section_adviser";
+   const teacherUid=setting?checkId(input.teacherUid,"Adviser teacher UID",128):null;
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const reads=[tx.get(sectionRef),tx.get(yearRef),tx.get(query)];
+    if(setting)reads.push(tx.get(schoolRoot.doc("memberships/"+teacherUid)));
+    const records=await Promise.all(reads),section=records[0],year=records[1],assignments=records[2],teacherMember=setting?records[3]:null;
+    if(!section.exists||section.data().schoolId!==ctx.schoolId||section.data().status!=="active")
+     deny("failed-precondition","Choose an active section in this school.");
+    if(!year.exists||year.data().schoolId!==ctx.schoolId||year.data().status!=="active")
+     deny("failed-precondition","Choose an active academic year in this school.");
+    if(assignments.size===101)
+     deny("resource-exhausted","This section has too much adviser history for the current workflow.");
+    if(setting&&(!teacherMember.exists||teacherMember.data().schoolId!==ctx.schoolId||
+       teacherMember.data().status!=="active"||!Array.isArray(teacherMember.data().roles)||
+       !teacherMember.data().roles.includes("teacher")))
+     deny("permission-denied","The adviser must be an active teacher in this school.");
+    const sameYear=assignments.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().yearId===yearId);
+    const active=sameYear.find(doc=>doc.data().status==="active")||null;
+    const now=FieldValue.serverTimestamp();
+    if(!setting){
+     if(!active)deny("failed-precondition","This section has no active adviser for the selected school year.");
+     tx.update(active.ref,{status:"ended",endedByUid:uid,endedAt:now,endReason:reason,
+       revision:(Number(active.data().revision)||1)+1});
+     tx.create(auditRef,audit("section_adviser_ended",{
+      sectionId,yearId,teacherUid:active.data().teacherUid,reason
+     }));
+     result={sectionId,yearId,teacherUid:active.data().teacherUid,status:"ended"};
+     return;
+    }
+    if(active?.data().teacherUid===teacherUid){
+     result={sectionId,yearId,teacherUid,status:"active",alreadyCurrent:true};return;
+    }
+    const targetId=rowKey(yearId,sectionId,teacherUid),target=sameYear.find(doc=>doc.id===targetId)||null;
+    if(active){
+     tx.update(active.ref,{status:"ended",endedByUid:uid,endedAt:now,
+       endReason:reason,revision:(Number(active.data().revision)||1)+1});
+    }
+    if(target){
+     if(target.data().status!=="ended")
+      deny("failed-precondition","The selected adviser history is in an unsupported state.");
+     tx.update(target.ref,{status:"active",restoredByUid:uid,restoredAt:now,restoreReason:reason,
+       revision:(Number(target.data().revision)||1)+1});
+    }else{
+     tx.create(db.doc("schools/"+ctx.schoolId+"/section_advisers/"+targetId),{
+      schoolId:ctx.schoolId,sectionId,yearId,teacherUid,status:"active",revision:1,
+      createdByUid:uid,createdAt:now
+     });
+    }
+    tx.create(auditRef,audit(active?"section_adviser_changed":"section_adviser_assigned",{
+     sectionId,yearId,fromTeacherUid:active?.data().teacherUid||null,toTeacherUid:teacherUid,reason
+    }));
+    result={sectionId,yearId,teacherUid,status:"active",replacedTeacherUid:active?.data().teacherUid||null};
+   });
+   return result;
+  }
+
   if(input.action==="list_teachers"){
    requireAdmin();
    const snap=await db.collection("schools/"+ctx.schoolId+"/memberships")
@@ -205,6 +470,29 @@ function createSchoolAcademicsService({db}) {
    if(snap.size===101)deny("resource-exhausted","Student picker requires paginated school directory search.");
    return {students:snap.docs.filter(doc=>doc.data().status==="active"&&doc.data().schoolId===ctx.schoolId)
      .map(doc=>({personId:doc.id,name:doc.data().displayName}))};
+  }
+  if(input.action==="search_students"){
+   requireAdmin();
+   const query=String(input.query||"").trim().toLocaleLowerCase("en");
+   if(query.length<2)deny("invalid-argument","Enter at least 2 characters to search students.");
+   if(query.length>120)deny("invalid-argument","Student search is too long.");
+   const people=db.collection("schools/"+ctx.schoolId+"/people");
+   const [nameSnap,numberSnap]=await Promise.all([
+    people.orderBy("searchKey").startAt(query).endAt(query+"\uf8ff").limit(31).get(),
+    people.where("studentNumber","==",String(input.query||"").trim()).limit(4).get()
+   ]);
+   const unique=new Map();
+   for(const doc of [...numberSnap.docs,...nameSnap.docs]){
+    const row=doc.data();
+    if(row.schoolId!==ctx.schoolId||row.kind!=="student"||row.status!=="active")continue;
+    unique.set(doc.id,{
+     personId:doc.id,name:String(row.displayName||"Student").slice(0,140),
+     studentNumber:String(row.studentNumber||"").slice(0,80),
+     accountLinked:Boolean(row.authUid)
+    });
+    if(unique.size>=20)break;
+   }
+   return {students:[...unique.values()].sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}))};
   }
   if(input.action==="create_catalog"){
    requireAdmin();
@@ -270,6 +558,9 @@ function createSchoolAcademicsService({db}) {
    const kind=input.kind;
    if(!CATALOG.has(kind))deny("invalid-argument","Unknown academic catalog type.");
    const itemId=checkId(input.recordId),ref=schoolRoot.doc(kind+"/"+itemId);
+   const expectedRevision=Number(input.expectedRevision);
+   if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+     deny("invalid-argument","Refresh this academic record before saving changes.");
    const name=checkName(input.name),parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null,
     parentProgram=input.programId?checkId(input.programId,"Academic program ID"):null,
     gradeLevel=kind==="sections"?sectionLevel(input.gradeLevel):null,
@@ -296,6 +587,9 @@ function createSchoolAcademicsService({db}) {
     const current=await tx.get(ref);
     if(!current.exists||current.data().schoolId!==ctx.schoolId)
       deny("not-found","Academic record was not found in this school.");
+    const currentRevision=Number(current.data().revision)||1;
+    if(currentRevision!==expectedRevision)
+      deny("failed-precondition","This academic record changed after you opened it. Refresh Academic Structure, review the latest values, then save again.");
     if(kind==="terms"||kind==="sections"){
       if(!parentProgram)deny("invalid-argument",(kind==="terms"?"Academic period":"Section")+" requires an academic program/division.");
       const program=await tx.get(schoolRoot.doc("academic_programs/"+parentProgram));
@@ -322,11 +616,11 @@ function createSchoolAcademicsService({db}) {
       endMonth:kind==="academic_years"?endMonth:null,
       startDate:["academic_years","terms"].includes(kind)?startDate:null,
       endDate:["academic_years","terms"].includes(kind)?endDate:null,
-      revision:(Number(current.data().revision)||1)+1,updatedByUid:uid,updatedAt:now
+      revision:currentRevision+1,updatedByUid:uid,updatedAt:now
     });
     tx.create(auditRef,audit("academic_catalog_updated",{kind,recordId:itemId}));
    });
-   return {recordId:itemId,kind,status:"active"};
+   return {recordId:itemId,kind,status:"active",revision:expectedRevision+1};
   }
   if(input.action==="list_catalog"){
    requireAdmin();
@@ -344,13 +638,15 @@ function createSchoolAcademicsService({db}) {
       academicMonth(doc.data().endMonth,DEFAULT_ACADEMIC_YEAR_END_MONTH,"Academic-year end month"):null,
     startDate:["academic_years","terms"].includes(kind)?(doc.data().startDate||null):null,
     endDate:["academic_years","terms"].includes(kind)?(doc.data().endDate||null):null,
-    status:doc.data().status})),truncated:snap.size===200};
+    status:doc.data().status,revision:Number(doc.data().revision)||1})),truncated:snap.size===200};
   }
   if(input.action==="create_offering"){
    requireAdmin();
    const programId=checkId(input.programId,"Academic program/division"),
     yearId=checkId(input.yearId,"Academic year"),termId=checkId(input.termId,"Academic period"),
-    subjectId=checkId(input.subjectId,"Subject"),sectionId=checkId(input.sectionId,"Section");
+    subjectId=checkId(input.subjectId,"Subject"),sectionId=checkId(input.sectionId,"Section"),
+    rosterMode=String(input.rosterMode||"section").trim().toLowerCase();
+   if(!ROSTER_MODES.has(rosterMode))deny("invalid-argument","Choose Official section placement or Selective/manual roster.");
    const offeringId=rowKey(programId,yearId,termId,sectionId,subjectId);
    const ref=schoolRoot.doc("course_offerings/"+offeringId);
    const refs=[
@@ -361,21 +657,67 @@ function createSchoolAcademicsService({db}) {
     schoolRoot.doc("sections/"+sectionId)
    ];
    const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   let result;
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
-    const catalog=await Promise.all(refs.map(ref=>tx.get(ref)));
+    const registrationQuery=db.collection("schools/"+ctx.schoolId+"/student_registrations")
+      .where("sectionId","==",sectionId).limit(201);
+    const [catalog,existingOffering,registrationSnap]=await Promise.all([
+      Promise.all(refs.map(ref=>tx.get(ref))),tx.get(ref),
+      rosterMode==="section"?tx.get(registrationQuery):Promise.resolve({docs:[],size:0})
+    ]);
     if(catalog.some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active"))
       deny("failed-precondition","Offering references must be active catalog records at this school.");
     if(catalog[2].data().yearId!==yearId||catalog[2].data().programId!==programId)
       deny("failed-precondition","The selected academic period belongs to another year or program.");
     if(catalog[4].data().programId!==programId)
       deny("failed-precondition","The selected section belongs to another academic program/division.");
-    if((await tx.get(ref)).exists)deny("already-exists","This school course offering already exists.");
+    if(existingOffering.exists)deny("already-exists","This school course offering already exists.");
+    if(registrationSnap.size===201)
+      deny("resource-exhausted","This section has more than 200 active/historical registrations. Create the class only after roster pagination support is available.");
+
+    const registrations=registrationSnap.docs.filter(doc=>{
+      const row=doc.data();
+      return row.schoolId===ctx.schoolId&&row.status==="active"&&row.sectionId===sectionId&&
+        row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.personId;
+    });
+    const enrollmentRefs=registrations.map(registration=>
+      schoolRoot.doc("enrollments/"+rowKey(registration.data().personId,offeringId)));
+    const existingEnrollments=await Promise.all(enrollmentRefs.map(enrollmentRef=>tx.get(enrollmentRef)));
+    const ended=existingEnrollments.find(record=>record.exists&&record.data().status!=="active");
+    if(ended)
+      deny("failed-precondition","A student in this official section has historical enrollment for the new class key. Review that enrollment history before creating the class.");
+
+    const now=FieldValue.serverTimestamp();let autoEnrolled=0,alreadyActive=0;
     tx.create(ref,{schoolId:ctx.schoolId,programId,yearId,termId,subjectId,sectionId,
-      status:"active",revision:1,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
-    tx.create(auditRef,audit("course_offering_created",{offeringId}));
+      rosterMode,status:"active",revision:1,createdByUid:uid,createdAt:now});
+    registrations.forEach((registration,index)=>{
+      const personId=registration.data().personId,prior=existingEnrollments[index];
+      if(prior.exists){
+        if(prior.data().schoolId!==ctx.schoolId||prior.data().personId!==personId||
+           prior.data().offeringId!==offeringId)
+          deny("failed-precondition","A student enrollment key collision requires review.");
+        alreadyActive++;return;
+      }
+      autoEnrolled++;
+      tx.create(enrollmentRefs[index],{
+        schoolId:ctx.schoolId,personId,offeringId,programId,yearId,termId,sectionId,subjectId,
+        status:"active",revision:1,enrollmentSource:"official_section_placement",
+        registrationId:registration.id,createdByUid:uid,createdAt:now
+      });
+      const registrationData=registration.data();
+      tx.update(registration.ref,{
+        courseCount:(Number(registrationData.courseCount)||0)+1,
+        updatedByUid:uid,updatedAt:now,revision:(Number(registrationData.revision)||1)+1
+      });
+    });
+    tx.create(auditRef,audit("course_offering_created",{
+      offeringId,sectionId,yearId,termId,subjectId,rosterMode,
+      officialRegistrationCount:registrations.length,autoEnrolled,alreadyActive
+    }));
+    result={offeringId,status:"active",rosterMode,officialRegistrationCount:registrations.length,autoEnrolled,alreadyActive};
    });
-   return {offeringId,status:"active"};
+   return result;
   }
   if(input.action==="list_offerings"){
    if(!admin&&!teacher)deny("permission-denied","Teaching access is required.");
@@ -391,8 +733,84 @@ function createSchoolAcademicsService({db}) {
    return {offerings:snap.docs.filter(doc=>admin||allowed.has(doc.id))
     .map(doc=>({offeringId:doc.id,programId:doc.data().programId,
       yearId:doc.data().yearId,termId:doc.data().termId,
-      subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,status:doc.data().status}))};
+      subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,status:doc.data().status,
+      rosterMode:ROSTER_MODES.has(doc.data().rosterMode)?doc.data().rosterMode:"legacy",
+      revision:Number(doc.data().revision)||1}))};
   }
+  if(input.action==="set_offering_roster_mode"){
+   requireAdmin();
+   const offeringId=checkId(input.offeringId,"Course offering ID",330),
+    requestedMode=String(input.rosterMode||"").trim().toLowerCase(),
+    expectedRevision=Number(input.expectedRevision),
+    reason=checkName(input.reason,"Roster source change reason");
+   if(!ROSTER_MODES.has(requestedMode))deny("invalid-argument","Choose Official section placement or Selective/manual roster.");
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)deny("invalid-argument","Current class revision is required.");
+   if(reason.length<12)deny("invalid-argument","Explain the roster-source change in at least 12 characters.");
+   const offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
+    auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const offering=await tx.get(offeringRef);
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
+     deny("not-found","This active class offering is unavailable.");
+    const data=offering.data(),revision=Number(data.revision)||1;
+    if(revision!==expectedRevision)deny("failed-precondition","A newer class revision exists. Reload before changing its roster source.");
+    let registrations=[],enrollmentRefs=[],existing=[];
+    if(requestedMode==="section"){
+     const registrationQuery=db.collection("schools/"+ctx.schoolId+"/student_registrations")
+      .where("sectionId","==",data.sectionId).limit(201);
+     const registrationSnap=await tx.get(registrationQuery);
+     if(registrationSnap.size===201)
+      deny("resource-exhausted","This section has more than 200 active/historical registrations. Roster synchronization requires pagination.");
+     registrations=registrationSnap.docs.filter(doc=>{
+      const row=doc.data();return row.schoolId===ctx.schoolId&&row.status==="active"&&
+       row.sectionId===data.sectionId&&row.yearId===data.yearId&&row.programId===data.programId&&
+       row.termId===data.termId&&row.personId;
+     });
+     enrollmentRefs=registrations.map(registration=>
+      schoolRoot.doc("enrollments/"+rowKey(registration.data().personId,offeringId)));
+     existing=await Promise.all(enrollmentRefs.map(ref=>tx.get(ref)));
+     const ended=existing.find(record=>record.exists&&record.data().status!=="active");
+     if(ended)
+      deny("failed-precondition","At least one officially placed student has ended enrollment history for this class. Review that history before adopting the official section roster.");
+    }
+    const now=FieldValue.serverTimestamp();let added=0,alreadyActive=0;
+    registrations.forEach((registration,index)=>{
+     const personId=registration.data().personId,prior=existing[index];
+     if(prior.exists){
+      if(prior.data().schoolId!==ctx.schoolId||prior.data().personId!==personId||
+         prior.data().offeringId!==offeringId)
+       deny("failed-precondition","A student enrollment key collision requires review.");
+      alreadyActive++;return;
+     }
+     added++;
+     tx.create(enrollmentRefs[index],{
+      schoolId:ctx.schoolId,personId,offeringId,
+      programId:data.programId,yearId:data.yearId,termId:data.termId,sectionId:data.sectionId,subjectId:data.subjectId,
+      status:"active",revision:1,enrollmentSource:"official_section_placement",
+      registrationId:registration.id,createdByUid:uid,createdAt:now
+     });
+     const registrationData=registration.data();
+     tx.update(registration.ref,{
+      courseCount:(Number(registrationData.courseCount)||0)+1,
+      updatedByUid:uid,updatedAt:now,revision:(Number(registrationData.revision)||1)+1
+     });
+    });
+    const currentMode=ROSTER_MODES.has(data.rosterMode)?data.rosterMode:"legacy",
+     changed=currentMode!==requestedMode||added>0,
+     nextRevision=changed?revision+1:revision;
+    if(changed)tx.update(offeringRef,{rosterMode:requestedMode,revision:nextRevision,updatedByUid:uid,updatedAt:now});
+    tx.create(auditRef,audit(currentMode===requestedMode?"class_roster_synchronized":"class_roster_mode_changed",{
+     offeringId,fromRosterMode:currentMode,toRosterMode:requestedMode,reason,
+     officialRegistrationCount:registrations.length,added,alreadyActive,revision:nextRevision
+    }));
+    result={offeringId,rosterMode:requestedMode,revision:nextRevision,
+     officialRegistrationCount:registrations.length,added,alreadyActive,changed};
+   });
+   return result;
+  }
+
   if(input.action==="enroll_student_section"){
    requireAdmin();
    const personId=checkId(input.personId,"Student ID",128);
@@ -494,6 +912,8 @@ function createSchoolAcademicsService({db}) {
     ]);
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
       deny("failed-precondition","Select an active school course offering.");
+    if(offering.data().rosterMode==="section")
+      deny("failed-precondition","This class follows official section placement. Bulk class enrollment cannot override the official roster; change student registration instead.");
     const people=records.slice(0,personIds.length),existing=records.slice(personIds.length);
     if(people.some(person=>!person.exists||person.data().schoolId!==ctx.schoolId||
        person.data().kind!=="student"||person.data().status!=="active"))
@@ -554,6 +974,16 @@ function createSchoolAcademicsService({db}) {
     if(offerings.some(offering=>!offering.exists||offering.data().schoolId!==ctx.schoolId||
        offering.data().status!=="active"||offering.data().sectionId!==sectionId))
      deny("failed-precondition","Every selected class must be an active course offering in the selected section.");
+    const candidateIds=offeringIds.filter((offeringId,index)=>!existing[index].exists);
+    for(const offeringId of candidateIds)await ensureTeacherScheduleAvailable(tx,teacherUid,offeringId);
+    const candidateSchedules=await Promise.all(candidateIds.map(offeringId=>tx.get(schoolRoot.doc("class_schedules/"+offeringId))));
+    for(let i=0;i<candidateSchedules.length;i++)for(let j=i+1;j<candidateSchedules.length;j++){
+     const first=candidateSchedules[i],second=candidateSchedules[j];
+     if(!first.exists||!second.exists||first.data().schoolId!==ctx.schoolId||second.data().schoolId!==ctx.schoolId)continue;
+     for(const a of first.data().meetings||[])for(const b of second.data().meetings||[])
+      if(scheduleMeetingOverlap(a,b))
+       deny("failed-precondition","The selected classes overlap in the official timetable. Assign them separately or correct the class schedules first.");
+    }
     const now=FieldValue.serverTimestamp();let created=0,alreadyActive=0,historyExists=0;
     offeringIds.forEach((offeringId,index)=>{
      const prior=existing[index],offering=offerings[index];
@@ -607,6 +1037,8 @@ function createSchoolAcademicsService({db}) {
        member.data().status!=="active"||!Array.isArray(member.data().roles)||
        !member.data().roles.includes("teacher")))
       deny("permission-denied","Every selected account must be an active teacher in this school.");
+    for(let index=0;index<teacherUids.length;index++)
+      if(!existing[index].exists)await ensureTeacherScheduleAvailable(tx,teacherUids[index],offeringId);
     const now=FieldValue.serverTimestamp();let created=0,alreadyActive=0,historyExists=0;
     teacherUids.forEach((teacherUid,index)=>{
       const prior=existing[index];
@@ -647,7 +1079,9 @@ function createSchoolAcademicsService({db}) {
       deny("failed-precondition","Select an active student person in this school.");
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
       deny("failed-precondition","Select an active school course offering.");
-    if(prior.exists)deny("already-exists","The student already has an enrollment for this offering. Preserve its history.");
+    if(offering.data().rosterMode==="section")
+      deny("failed-precondition","This class follows official section placement. Change the student's official registration instead of manually adding them to the class.");
+    if(prior.exists)deny("already-exists","The student already has enrollment history for this class. Restore an ended enrollment instead of recreating it.");
     tx.create(ref,{schoolId:ctx.schoolId,personId,offeringId,
       programId:offering.data().programId,yearId:offering.data().yearId,termId:offering.data().termId,
       sectionId:offering.data().sectionId,subjectId:offering.data().subjectId,
@@ -677,9 +1111,11 @@ function createSchoolAcademicsService({db}) {
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     const taskQuery=db.collection("schools/"+ctx.schoolId+"/assessments")
+      .where("offeringId","==",offeringId).limit(101),
+     assignmentQuery=db.collection("schools/"+ctx.schoolId+"/staff_assignments")
       .where("offeringId","==",offeringId).limit(101);
-    const [offering,fromAssignment,toAssignment,toMember,tasks]=await Promise.all([
-      tx.get(offeringRef),tx.get(fromRef),tx.get(toRef),tx.get(toMemberRef),tx.get(taskQuery)
+    const [offering,fromAssignment,toAssignment,toMember,tasks,assignmentSnap]=await Promise.all([
+      tx.get(offeringRef),tx.get(fromRef),tx.get(toRef),tx.get(toMemberRef),tx.get(taskQuery),tx.get(assignmentQuery)
     ]);
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId||
        offering.data().status!=="active")
@@ -695,6 +1131,8 @@ function createSchoolAcademicsService({db}) {
       deny("permission-denied","The replacement account must be an active verified teacher in this school.");
     if(tasks.size===101)
       deny("resource-exhausted","This offering has more than 100 assessment deployments. Use a paginated handover workflow.");
+    if(assignmentSnap.size===101)
+      deny("resource-exhausted","This class has too much teaching-assignment history for handover.");
     if(toAssignment.exists&&
        (toAssignment.data().schoolId!==ctx.schoolId||
         toAssignment.data().teacherUid!==toTeacherUid||
@@ -705,6 +1143,12 @@ function createSchoolAcademicsService({db}) {
       return data.schoolId===ctx.schoolId&&reviewerUid===fromTeacherUid&&
         data.lifecycle!=="cancelled";
     });
+    const activeUids=[...new Set(assignmentSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+      doc.data().status==="active").map(doc=>doc.data().teacherUid))],
+     lead=teachingLead(offering.data().primaryTeacherUid,activeUids),
+     primaryTransferred=lead.primaryTeacherUid===fromTeacherUid;
+    if(!toAssignment.exists||toAssignment.data().status!=="active")
+      await ensureTeacherScheduleAvailable(tx,toTeacherUid,offeringId);
     const now=FieldValue.serverTimestamp();
     tx.update(fromRef,{status:"ended",endedByUid:uid,endedAt:now,
       endReason:reason,revision:(fromAssignment.data().revision||1)+1});
@@ -724,6 +1168,9 @@ function createSchoolAcademicsService({db}) {
     }else{
       deny("failed-precondition","The replacement teacher assignment is in an unsupported state.");
     }
+    if(primaryTransferred)
+      tx.update(offeringRef,{primaryTeacherUid:toTeacherUid,revision:(Number(offering.data().revision)||1)+1,
+        updatedByUid:uid,updatedAt:now});
     for(const task of applicable){
       const data=task.data(),revision=data.revision||1;
       tx.update(task.ref,{
@@ -737,7 +1184,7 @@ function createSchoolAcademicsService({db}) {
       });
     }
     tx.create(directoryAudit,audit("teacher_offering_handed_over",{
-      offeringId,fromTeacherUid,toTeacherUid,reason,
+      offeringId,fromTeacherUid,toTeacherUid,reason,primaryTransferred,
       replacementAssignmentState,assessmentCount:applicable.length
     }));
     tx.create(assessmentAudit,{
@@ -745,7 +1192,7 @@ function createSchoolAcademicsService({db}) {
       offeringId,fromTeacherUid,toTeacherUid,taskIds:applicable.map(doc=>doc.id),
       assessmentCount:applicable.length,reason,createdAt:now
     });
-    result={offeringId,fromTeacherUid,toTeacherUid,
+    result={offeringId,fromTeacherUid,toTeacherUid,primaryTransferred,
       replacementAssignmentState,assessmentCount:applicable.length};
    });
    await writeSchoolNotification({
@@ -770,20 +1217,29 @@ function createSchoolAcademicsService({db}) {
    const restoring=input.action==="restore_teacher_assignment";
    const reason=(ending||restoring)?checkName(input.reason,restoring?"Restore reason":"Handover reason"):null;
    if(reason&&reason.length<12)deny("invalid-argument","Explain the teaching assignment change in at least 12 characters.");
+   let result;
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     const taskQuery=ending?db.collection("schools/"+ctx.schoolId+"/assessments")
-      .where("offeringId","==",offeringId).limit(101):null;
-    const [offering,staff,prior,responsibilities]=await Promise.all([
+      .where("offeringId","==",offeringId).limit(101):null,
+     assignmentQuery=db.collection("schools/"+ctx.schoolId+"/staff_assignments")
+      .where("offeringId","==",offeringId).limit(101);
+    const [offering,staff,prior,responsibilities,assignmentSnap]=await Promise.all([
       tx.get(offeringRef),tx.get(teacherMemberRef),tx.get(ref),
-      taskQuery?tx.get(taskQuery):Promise.resolve(null)
+      taskQuery?tx.get(taskQuery):Promise.resolve(null),tx.get(assignmentQuery)
     ]);
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId)
       deny("failed-precondition","Course offering is not in this school.");
+    if(assignmentSnap.size===101)
+      deny("resource-exhausted","This class has too much teaching-assignment history for the current workflow.");
     if(!ending&&(!staff.exists||staff.data().schoolId!==ctx.schoolId||
        staff.data().status!=="active"||!Array.isArray(staff.data().roles)||
        !staff.data().roles.includes("teacher")))
       deny("permission-denied","The account is not an active teacher of this school.");
+    const activeUids=[...new Set(assignmentSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+      doc.data().status==="active").map(doc=>doc.data().teacherUid))],
+     lead=teachingLead(offering.data().primaryTeacherUid,activeUids),
+     now=FieldValue.serverTimestamp();
     if(ending) {
       if(!prior.exists||prior.data().status!=="active")
         deny("failed-precondition","There is no active appointment to end.");
@@ -796,27 +1252,49 @@ function createSchoolAcademicsService({db}) {
       });
       if(outstanding.length)
         deny("failed-precondition","This teacher still has review responsibility for deployed assessments. Use Teacher handover so submissions and Gradebook access are not stranded.");
-      tx.update(ref,{status:"ended",endedByUid:uid,endedAt:FieldValue.serverTimestamp(),
+      const remaining=activeUids.filter(id=>id!==teacherUid);
+      if(lead.primaryTeacherUid===teacherUid&&remaining.length)
+        deny("failed-precondition","This teacher is the class primary teacher. Set another active teacher as primary or use Teacher handover before removing them.");
+      tx.update(ref,{status:"ended",endedByUid:uid,endedAt:now,
         endReason:reason,revision:(prior.data().revision||1)+1});
+      if(offering.data().primaryTeacherUid===teacherUid&&!remaining.length)
+        tx.update(offeringRef,{primaryTeacherUid:null,revision:(Number(offering.data().revision)||1)+1,
+          updatedByUid:uid,updatedAt:now});
+      result={teacherUid,offeringId,status:"ended",role:lead.primaryTeacherUid===teacherUid?"primary":"co_teacher"};
     }else if(restoring){
       if(!prior.exists||prior.data().status!=="ended")
         deny("failed-precondition","Only an ended teaching assignment can be restored.");
       if(offering.data().status!=="active")
         deny("failed-precondition","A teacher cannot be restored to a closed course offering.");
-      tx.update(ref,{status:"active",restoredByUid:uid,restoredAt:FieldValue.serverTimestamp(),
+      await ensureTeacherScheduleAvailable(tx,teacherUid,offeringId);
+      tx.update(ref,{status:"active",restoredByUid:uid,restoredAt:now,
         restoreReason:reason,revision:(prior.data().revision||1)+1});
+      const becomesPrimary=!activeUids.length&&
+        (!offering.data().primaryTeacherUid||offering.data().primaryTeacherUid===teacherUid);
+      if(becomesPrimary&&offering.data().primaryTeacherUid!==teacherUid)
+        tx.update(offeringRef,{primaryTeacherUid:teacherUid,revision:(Number(offering.data().revision)||1)+1,
+          updatedByUid:uid,updatedAt:now});
+      result={teacherUid,offeringId,status:"active",role:becomesPrimary?"primary":"co_teacher"};
     }else{
       if(prior.exists)deny("already-exists","A teaching assignment already has history. Restore an ended assignment instead of replacing it.");
       if(offering.data().status!=="active")deny("failed-precondition","Cannot assign a closed course offering.");
+      await ensureTeacherScheduleAvailable(tx,teacherUid,offeringId);
       tx.create(ref,{schoolId:ctx.schoolId,teacherUid,offeringId,
         yearId:offering.data().yearId,termId:offering.data().termId,
         subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
-        status:"active",revision:1,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
+        status:"active",revision:1,createdByUid:uid,createdAt:now});
+      const becomesPrimary=!activeUids.length&&!offering.data().primaryTeacherUid;
+      if(becomesPrimary)
+        tx.update(offeringRef,{primaryTeacherUid:teacherUid,revision:(Number(offering.data().revision)||1)+1,
+          updatedByUid:uid,updatedAt:now});
+      result={teacherUid,offeringId,status:"active",role:becomesPrimary?"primary":"co_teacher"};
     }
     tx.create(auditRef,audit(ending?"teacher_assignment_ended":
-      restoring?"teacher_assignment_restored":"teacher_assigned",{teacherUid,offeringId,reason}));
+      restoring?"teacher_assignment_restored":"teacher_assigned",{
+       teacherUid,offeringId,reason,teachingRole:result.role
+      }));
    });
-   return {teacherUid,offeringId,status:ending?"ended":"active"};
+   return result;
   }
   if(["end_enrollment","restore_enrollment"].includes(input.action)){
    requireAdmin();
@@ -830,19 +1308,21 @@ function createSchoolAcademicsService({db}) {
     const record=await tx.get(ref);
     if(!record.exists||record.data().schoolId!==ctx.schoolId)
       deny("not-found","The enrollment is not in this school.");
-    const data=record.data(),ending=input.action==="end_enrollment";
+    const data=record.data(),ending=input.action==="end_enrollment",
+     offering=await tx.get(schoolRoot.doc("course_offerings/"+data.offeringId));
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId)
+      deny("failed-precondition","The class offering no longer exists.");
+    if(offering.data().rosterMode==="section")
+      deny("failed-precondition","This class follows official section placement. Change the student's official registration instead of manually changing class enrollment.");
+
     if(ending&&data.status!=="active")
       deny("failed-precondition","Only an active enrollment can be ended.");
     if(!ending&&data.status!=="ended")
       deny("failed-precondition","Only an ended enrollment can be restored.");
     if(!ending){
-      const [person,offering]=await Promise.all([
-        tx.get(schoolRoot.doc("people/"+data.personId)),
-        tx.get(schoolRoot.doc("course_offerings/"+data.offeringId))
-      ]);
+      const person=await tx.get(schoolRoot.doc("people/"+data.personId));
       if(!person.exists||person.data().schoolId!==ctx.schoolId||
          person.data().kind!=="student"||person.data().status!=="active"||
-         !offering.exists||offering.data().schoolId!==ctx.schoolId||
          offering.data().status!=="active")
         deny("failed-precondition","The student and course offering must both be active before restoring enrollment.");
     }
@@ -877,21 +1357,30 @@ function createSchoolAcademicsService({db}) {
     deny("resource-exhausted","Class roster exceeds the first page. Use paginated school roster.");
    const rows=snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&(admin||d.data().status==="active"));
    const people=await Promise.all(rows.map(record=>schoolRoot.doc("people/"+record.data().personId).get()));
-   let staff=[];
+   let staff=[],primaryTeacherUid="",primarySource="none",primaryNeedsReview=false;
    if(admin&&staffSnap){
-    const grants=staffSnap.docs.filter(d=>d.data().schoolId===ctx.schoolId);
+    const grants=staffSnap.docs.filter(d=>d.data().schoolId===ctx.schoolId),
+     activeTeacherUids=[...new Set(grants.filter(record=>record.data().status==="active")
+      .map(record=>record.data().teacherUid))],
+     lead=teachingLead(offering.data().primaryTeacherUid,activeTeacherUids);
+    primaryTeacherUid=lead.primaryTeacherUid;primarySource=lead.primarySource;primaryNeedsReview=lead.primaryNeedsReview;
     const memberships=await Promise.all(grants.map(record=>schoolRoot.doc("memberships/"+record.data().teacherUid).get()));
     staff=grants.map((record,i)=>({
       assignmentId:record.id,teacherUid:record.data().teacherUid,status:record.data().status,
+      role:record.data().status==="active"?
+        (record.data().teacherUid===primaryTeacherUid?"primary":"co_teacher"):"ended",
       name:memberships[i].exists&&memberships[i].data().schoolId===ctx.schoolId?
         memberships[i].data().displayName||("Teacher "+record.data().teacherUid.slice(0,8)):
         "Teacher "+record.data().teacherUid.slice(0,8)
     }));
    }
-   return {offeringId,students:rows.map((record,i)=>({
+   return {offeringId,primaryTeacherUid,primarySource,primaryNeedsReview,students:rows.map((record,i)=>({
      personId:record.data().personId,enrollmentId:record.id,status:record.data().status,
      name:people[i].exists&&people[i].data().schoolId===ctx.schoolId?
-       people[i].data().displayName:"Unlinked student record"
+       people[i].data().displayName:"Unlinked student record",
+     studentNumber:people[i].exists&&people[i].data().schoolId===ctx.schoolId?
+       String(people[i].data().studentNumber||""):"",
+     accountLinked:Boolean(people[i].exists&&people[i].data().schoolId===ctx.schoolId&&people[i].data().authUid)
    })),teachers:staff};
   }
   deny("invalid-argument","Unknown academic operation.");
