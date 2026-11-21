@@ -298,6 +298,15 @@ test("new compact package keeps the original response JSON contract and single-s
  assert.match(oldSingle,/scenario 1/);
 });
 
+test("staged suggestions are no longer saveable when frozen GitHub approval is revoked",()=>{
+ const stages=new Map([["github-1",{key:"github-1",version:2,
+   review:{saveEligible:true}}]]);
+ const rows=[{evidenceId:"github-1",version:2,status:"submitted",bulkReady:false,
+   gradeStatus:null}];
+ assert.equal(bulkSaveableStages({staged:stages,saveSelection:new Set(["github-1"]),rows}).length,0);
+ rows[0].status="approved";rows[0].bulkReady=true;
+ assert.equal(bulkSaveableStages({staged:stages,saveSelection:new Set(["github-1"]),rows}).length,1);
+});
 test("bulk selection and stage lookup support GitHub evidence IDs without changing student IDs",()=>{
  const rows=[
    {evidenceId:"github-1",studentUid:"old-uid",status:"approved",version:2,bulkReady:true},
