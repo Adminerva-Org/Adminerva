@@ -129,6 +129,29 @@
   </form>
 </dialog>
 
+<dialog id="gs-lifecycle-dialog" class="gs-dialog" aria-labelledby="gs-lifecycle-heading">
+  <form id="gs-lifecycle-form" class="p-4 sm:p-5 bg-white">
+    <div class="flex justify-between items-start gap-3">
+      <div>
+        <p class="text-xs font-extrabold uppercase tracking-widest text-amber-700">Policy lifecycle</p>
+        <h2 id="gs-lifecycle-heading" class="text-xl font-extrabold mt-1">Archive grading policy</h2>
+      </div>
+      <button id="gs-lifecycle-close" type="button" class="gs-btn">Close</button>
+    </div>
+    <p id="gs-lifecycle-target" class="mt-4 font-bold text-slate-900"></p>
+    <p id="gs-lifecycle-help" class="mt-1 text-sm text-slate-600"></p>
+    <label class="block mt-4 text-sm font-bold">Institutional reason
+      <textarea name="reason" class="gs-input mt-1" rows="3" minlength="12" maxlength="500" required
+        placeholder="Explain why this grading policy is being archived or restored."></textarea>
+    </label>
+    <div class="flex flex-wrap gap-2 mt-5">
+      <button id="gs-lifecycle-confirm" type="submit" class="gs-btn primary">Confirm</button>
+      <button id="gs-lifecycle-cancel" type="button" class="gs-btn">Cancel</button>
+    </div>
+    <p id="gs-lifecycle-status" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite"></p>
+  </form>
+</dialog>
+
 <script defer src="js/core/release-footer.js?v=20261121-admin-reconciled2"></script>
 <script src="js/core/adminerva-loader.js?v=20261121-admin-reconciled2"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261121-admin-reconciled2"></script>
