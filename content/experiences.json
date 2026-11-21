@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "channel": "experiences",
+  "items": [
+    {
+      "id": "discover-studio-2026",
+      "status": "published",
+      "publishedAt": "2026-11-21T18:00:00+08:00",
+      "expiresAt": "2027-01-15T23:59:59+08:00",
+      "title": "Turn an idea into something you can test",
+      "summary": "Visit the public coding playground and experiment with your first working program. No school login required.",
+      "audience": [
+        "all"
+      ],
+      "url": "guest-playground.html",
+      "label": "TODAY'S EXPLORATION"
+    },
+    {
+      "id": "discover-practice-2026",
+      "status": "published",
+      "publishedAt": "2026-11-21T18:00:00+08:00",
+      "expiresAt": "2027-01-15T23:59:59+08:00",
+      "title": "Try a quick programming challenge",
+      "summary": "Discover a concept in Practice Lab, make a prediction and compare your answer with the result.",
+      "audience": [
+        "all"
+      ],
+      "url": "guest-practice.html",
+      "label": "DISCOVERY MISSION"
+    }
+  ]
+}
