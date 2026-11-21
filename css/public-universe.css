@@ -85,3 +85,15 @@ main[data-home-experience="guest"] .av-universe-hero::after{content:"";position:
 }
 @media(prefers-reduced-motion:reduce){.av-universe,.av-universe *{animation:none!important;transition:none!important}.av-universe{transform:none!important}}
 html[data-motion="reduce"] .av-universe,html[data-motion="reduce"] .av-universe *,html[data-adminerva-reduce-motion="true"] .av-universe,html[data-adminerva-reduce-motion="true"] .av-universe *{animation:none!important;transition:none!important;transform-style:flat}
+
+
+/* Approved daily experience changes the spatial atmosphere, not the template. */
+.av-universe[data-scene-tone="sky"] .av-universe-ring--inner{border-color:#88d8ff;box-shadow:0 0 70px #38aaf247,inset 0 0 60px #38aaf222}
+.av-universe[data-scene-tone="sky"] .av-universe-core{border-color:#aee6ff;box-shadow:0 0 65px #54c5ff60}
+.av-universe[data-scene-tone="sky"] .av-universe-spotlight-kicker,.av-universe[data-scene-tone="sky"] .av-universe-open{color:#a5e9ff!important}
+.av-universe[data-scene-tone="amber"] .av-universe-ring--inner{border-color:#ffe2a5;box-shadow:0 0 70px #ffc45e48,inset 0 0 60px #ffc45e25}
+.av-universe[data-scene-tone="amber"] .av-universe-core{border-color:#ffe2aa;box-shadow:0 0 65px #ffb85756}
+.av-universe[data-scene-tone="amber"] .av-universe-spotlight-kicker,.av-universe[data-scene-tone="amber"] .av-universe-open{color:#ffe4b4!important}
+.av-universe[data-scene-tone="violet"] .av-universe-ring--inner{border-color:#cdb6ff;box-shadow:0 0 70px #a27dfa4a,inset 0 0 60px #a27dfa2c}
+.av-universe[data-scene-tone="violet"] .av-universe-core{border-color:#e2d4ff;box-shadow:0 0 65px #b19bff59}
+.av-universe[data-scene-tone="violet"] .av-universe-spotlight-kicker,.av-universe[data-scene-tone="violet"] .av-universe-open{color:#e2d4ff!important}
