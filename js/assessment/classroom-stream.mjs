@@ -131,11 +131,68 @@ function updateClassLinks(){
   el("teacherClassroomAssessmentLink").href=offeringId?"assessment-studio.html?offeringId="+encodeURIComponent(offeringId):"assessment-studio.html";
   el("teacherClassroomPlanLink").href=offeringId?"lesson-planner.html?offeringId="+encodeURIComponent(offeringId):"lesson-planner.html";
 }
+const metricTone={
+  slate:["bg-slate-50","border-slate-200","text-slate-900","text-slate-700"],
+  amber:["bg-amber-50","border-amber-200","text-amber-900","text-amber-700"],
+  indigo:["bg-indigo-50","border-indigo-200","text-indigo-900","text-indigo-700"],
+  violet:["bg-violet-50","border-violet-200","text-violet-900","text-violet-700"],
+  emerald:["bg-emerald-50","border-emerald-200","text-emerald-900","text-emerald-700"]
+};
 function metricCard(label,value,tone="slate"){
-  const card=make("div","rounded-lg border px-3 py-2 bg-"+tone+"-50 border-"+tone+"-200");
-  card.append(make("strong","block text-lg leading-5 text-"+tone+"-900",Number(value||0).toLocaleString()),
-    make("span","block text-[11px] font-bold text-"+tone+"-700 mt-1",label));
+  const palette=metricTone[tone]||metricTone.slate;
+  const card=make("div","rounded-lg border px-3 py-2 "+palette[0]+" "+palette[1]);
+  card.append(make("strong","block text-lg leading-5 "+palette[2],Number(value||0).toLocaleString()),
+    make("span","block text-[11px] font-bold mt-1 "+palette[3],label));
   return card;
+}
+function gradebookTaskHref(item,view="review"){
+  return "school-gradebook.html?"+new URLSearchParams({
+    view,offeringId:item.offeringId,task:item.taskId
+  }).toString();
+}
+function renderActionQueue(){
+  const panel=el("teacherClassroomActionQueuePanel"),host=el("teacherClassroomActionQueue"),
+    count=el("teacherClassroomActionQueueCount");
+  host.replaceChildren();panel.hidden=true;count.textContent="";
+  if(!loadedOffering||classworkHealthError)return;
+  const queue=[];
+  for(const item of classwork){
+    const health=classworkHealth.get(item.taskId);if(!health)continue;
+    if(Number(health.awaitingGrade)>0)queue.push({
+      priority:0,item,label:health.awaitingGrade+" submission"+(health.awaitingGrade===1?"":"s")+" awaiting grade",
+      detail:"Submitted work is ready for review.",view:"review",action:"Review now"
+    });
+    if(Number(health.draftGrades)>0)queue.push({
+      priority:1,item,label:health.draftGrades+" draft grade"+(health.draftGrades===1?"":"s")+" not published",
+      detail:"Review the saved drafts before releasing results.",view:"review",action:"Review drafts"
+    });
+    if(Number(health.revisionRequested)>0)queue.push({
+      priority:2,item,label:health.revisionRequested+" revision request"+(health.revisionRequested===1?"":"s")+" pending",
+      detail:"Learners are working on requested revisions or have not resubmitted yet.",view:"submissions",action:"Track revisions"
+    });
+    if(Number(health.notSubmitted)>0)queue.push({
+      priority:3,item,label:health.notSubmitted+" learner"+(health.notSubmitted===1?"":"s")+" not submitted",
+      detail:"No submission is recorded for these active linked learners.",view:"submissions",action:"Open submissions"
+    });
+  }
+  queue.sort((a,b)=>a.priority-b.priority||(a.item.dueAt||0)-(b.item.dueAt||0)||String(a.item.title).localeCompare(String(b.item.title)));
+  if(!queue.length){
+    panel.hidden=false;count.textContent="0";
+    host.append(make("p","rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900",
+      "No current classwork state requires teacher action. Published results and future deadlines remain visible below."));
+    return;
+  }
+  panel.hidden=false;count.textContent=queue.length+" item"+(queue.length===1?"":"s");
+  for(const entry of queue.slice(0,10)){
+    const row=make("div","flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-amber-100 bg-white p-3"),
+      text=make("div","min-w-0");
+    text.append(make("strong","block text-sm text-slate-900",entry.item.title||"Assessment"),
+      make("span","block text-xs font-bold text-amber-900 mt-1",entry.label),
+      make("span","block text-xs text-slate-500 mt-1",entry.detail));
+    const link=make("a","shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-extrabold text-amber-900",entry.action);
+    link.href=gradebookTaskHref(entry.item,entry.view);row.append(text,link);host.append(row);
+  }
+  if(queue.length>10)host.append(make("p","text-xs text-amber-900","Showing the 10 highest-priority actions. Open Submissions or Review & Grade for the full class queue."));
 }
 function renderPreparation(){
   const host=el("teacherClassroomPreparation"),count=el("teacherClassroomPreparationCount");host.replaceChildren();
@@ -160,6 +217,8 @@ function renderPreparation(){
 function renderClasswork(){
   const host=el("teacherClassroomClasswork"),summaryHost=el("teacherClassroomClassworkSummary"),healthStatus=el("teacherClassroomClassworkHealthStatus");
   host.replaceChildren();summaryHost.replaceChildren();summaryHost.hidden=true;healthStatus.textContent="";
+  const queuePanel=el("teacherClassroomActionQueuePanel"),queueHost=el("teacherClassroomActionQueue"),queueCount=el("teacherClassroomActionQueueCount");
+  queuePanel.hidden=true;queueHost.replaceChildren();queueCount.textContent="";
   if(classworkError){host.append(make("p","rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900",classworkError));return;}
   if(!loadedOffering){host.append(make("p","text-sm text-slate-500","Choose a classroom to load classwork."));return;}
   if(classworkSummary){
@@ -197,6 +256,7 @@ function renderClasswork(){
     }
     host.append(row);
   }
+  renderActionQueue();
 }
 function renderRoster(){
   const host=el("teacherClassroomRoster");host.replaceChildren();
@@ -220,7 +280,7 @@ function beginEdit(post){
 async function loadPosts(){
   const item=current(),turn=++epoch;loadedOffering="";canPost=false;canComment=false;posts=[];classwork=[];rosterStudents=[];mutedPersonIds=new Set();
   classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];classroomSettings={participationMode:"teacher_only",revision:0};
-  renderPosts();renderPreparation();renderPreparation();renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
+  renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
   if(!item)return false;
   try{
     const results=await Promise.allSettled([
