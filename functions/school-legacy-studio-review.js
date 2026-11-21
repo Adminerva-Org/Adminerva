@@ -45,7 +45,7 @@ const validSnapshot=(head,version)=>{
   if(!Object.values(files).some(content=>content.trim()))
     deny("failed-precondition","Frozen Studio source has no recoverable code.");
   return {
-    version:head.revision,status:head.status||"submitted",
+    version:head.revision,status:head.status==="revision_requested"?"reopened":head.status||"submitted",
     files:order.map(path=>({path,content:files[path]})),
     artifacts:{database:value.database||{},design:value.design||{},
       config:value.config||{},executionEvidence:value.executionEvidence||{}},
@@ -167,7 +167,8 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
           student=students[index].exists?students[index].data():null;
         return {submissionId:doc.id,studentUid:data.ownerUid,studentName:String(student?.name||data.studentId),
           legacyStudentId:data.studentId,section:data.section||"",
-          status:data.status||"submitted",version:data.revision,
+          status:data.status==="revision_requested"?"reopened":data.status||"submitted",
+          version:data.revision,
           gradeStatus:grade?grade.published===true?"published":"draft":null,
           awarded:grade?Number(grade.score||0):null,
           updatedAt:data.submittedAt?.toMillis?.()||null};
