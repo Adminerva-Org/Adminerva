@@ -113,6 +113,28 @@ export function buildNavigationIA(ctx){
     ])
   ]);
 
+  const registrarWorkspace=()=>ws("registrar","Registrar & SIS","school-enrollment.html","Student information, enrollment, records and credentials",[
+    group("Student Information",[
+      live("enrollment","Enrollment & Registration","school-enrollment.html","Admissions review, official registration, section placement, withdrawal/transfer handling and verified account preparation."),
+      live("student-records","Student Records / 201 Files","school-student-records.html","Canonical student-file aggregation across identity, placement, guardian relationships, released academic results and registrar requests."),
+      needs("guardians","Parents / Guardians","school-student-records.html","Canonical guardian contacts and student relationships are active; guardian account/portal authority and consent workflows remain future development."),
+      needs("admissions","Admissions","school-enrollment.html","Reviewed application queue and enrollment handoff are active; broader admissions workflow and applicant services remain incomplete."),
+      future("student-tags","Student Tags / Statuses","Enrollment status, learner classifications and registrar-managed student tags · Future development")
+    ]),
+    group("Academic Records",[
+      needs("promotion","Promotion / Retention / Graduation","school-enrollment.html","Individual and bounded cohort progression uses released Final Grades, final-period gating and audited registration transitions."),
+      needs("released-results","Released Academic Results","school-student-records.html","Student Records shows formally released Class Record revisions without creating a duplicate grade store."),
+      future("curriculum","Curriculum Assignment"),future("transcripts","Report Cards / Transcripts"),
+      future("credentials","Certificates & Credentials"),future("registrar-clearance","Student Clearance"),
+      future("alumni","Alumni Records")
+    ]),
+    group("Requests",[
+      needs("registrar-requests","Document Requests","school-student-records.html","Audited request, review, ready, release and cancellation lifecycle is active; generated document production/delivery remains future work."),
+      needs("records-release","Records Release","school-student-records.html","Registrar release status and release/reference number are recorded; controlled file generation and delivery remain future work."),
+      future("verification","Student Verification / Enrollment Certification")
+    ])
+  ]);
+
   const schoolAdminWorkspaces=()=>[
     ws("school-admin","School Administration","school-admin.html","School operations, access, academic configuration and policy",[
       group("Operations",[
@@ -136,24 +158,7 @@ export function buildNavigationIA(ctx){
         future("school-policies","Policies & Handbooks"),future("school-integrations","Integrations")
       ])
     ]),
-    ws("registrar","Registrar & SIS","school-enrollment.html","Student information, enrollment, records and credentials",[
-      group("Student Information",[
-        live("enrollment","Enrollment & Registration","school-enrollment.html","Standard student registration, section placement and verified account activation."),
-        live("student-directory","Student Directory","people-access.html#people"),
-        future("student-records","Student Records / 201 Files"),
-        future("student-tags","Student Tags / Statuses","Enrollment status, learner classifications and registrar-managed student tags · Future development"),
-        future("guardians","Parents / Guardians"),future("admissions","Admissions")
-      ]),
-      group("Academic Records",[
-        future("curriculum","Curriculum Assignment"),future("promotion","Promotion / Retention"),
-        future("transcripts","Report Cards / Transcripts"),future("credentials","Certificates & Credentials"),
-        future("registrar-clearance","Student Clearance"),future("alumni","Alumni Records")
-      ]),
-      group("Requests",[
-        future("registrar-requests","Document Requests"),future("records-release","Records Release"),
-        future("verification","Student Verification / Enrollment Certification")
-      ])
-    ]),
+    registrarWorkspace(),
     ws("finance","Finance","future-workspace.html?workspace=finance","Billing, cashiering, budgets, accounting and school financial operations",[
       group("Student Finance",[
         future("fee-setup","Fee Setup"),future("billing-ledger","Billing & Student Ledgers"),
@@ -290,6 +295,7 @@ export function buildNavigationIA(ctx){
       ])
     ];
     if(scope.isSchoolAdmin)out.push(...schoolAdminWorkspaces());
+    else if(scope.isRegistrar)out.push(registrarWorkspace());
     return out;
   };
 
@@ -336,11 +342,14 @@ export function buildNavigationIA(ctx){
   const systemDefault=platformAdmin&&!viewRole;
   const studentView=ctx.isStudent||viewRole==="student";
   const schoolAdminView=ctx.isSchoolAdmin||viewRole==="schooladmin";
+  const registrarView=ctx.isRegistrar||viewRole==="registrar";
   const teacherView=ctx.hasSchoolTeacher||viewRole==="teacher"||schoolAdminView;
-  const modelCtx={...ctx,isSchoolAdmin:schoolAdminView,hasSchoolTeacher:teacherView,
-    hasSchoolStudent:ctx.hasSchoolStudent||studentView};
+  const registrarOnly=registrarView&&!teacherView&&!schoolAdminView;
+  const modelCtx={...ctx,isSchoolAdmin:schoolAdminView,isRegistrar:registrarView,
+    hasSchoolTeacher:teacherView,hasSchoolStudent:ctx.hasSchoolStudent||studentView};
 
-  const workspaces=systemDefault?system():studentView?student(modelCtx):teacher(modelCtx);
+  const workspaces=systemDefault?system():studentView?student(modelCtx):
+    registrarOnly?[registrarWorkspace()]:teacher(modelCtx);
   const route=(location.pathname.split("/").pop()||"").toLowerCase();
   const rawRequestedWorkspace=new URLSearchParams(location.search).get("workspace")||"";
   const requestedWorkspace=systemDefault&&["system-analytics","directory","system"].includes(rawRequestedWorkspace)?
@@ -360,12 +369,12 @@ export function buildNavigationIA(ctx){
   const workspaceMatches=w=>
     (routePath(w.route)===route&&routeQueryMatches(w.route))||w.groups.some(g=>g.items.some(itemMatches));
   const homeRoute=systemDefault?"owner-schools.html":studentView?"student-home.html":
-    schoolAdminView?"school-admin.html":"teacher-home.html";
+    schoolAdminView?"school-admin.html":registrarView?"school-enrollment.html":"teacher-home.html";
   // School Administration is both the administrator landing page and a real
   // workspace with its own Operations / Academic Policy / School Profile nav.
   // Keep student/teacher home pages as Home, but do not collapse the admin
   // workspace into a generic Home state.
-  const isHome=!systemDefault&&routePath(homeRoute)===route&&!requestedWorkspace&&!schoolAdminView;
+  const isHome=!systemDefault&&routePath(homeRoute)===route&&!requestedWorkspace&&!schoolAdminView&&!registrarView;
   const activeWorkspace=isHome?null:(workspaces.find(w=>w.id===requestedWorkspace)||
     workspaces.find(workspaceMatches)||workspaces[0]||null);
   const groups=activeWorkspace?.groups||[];
@@ -389,6 +398,8 @@ export function buildNavigationIA(ctx){
       {id:"learning",label:"Learning",ids:["classroom","games","laboratory"]},
       {id:"services",label:"Student Services",ids:["student-services"]},
       {id:"support",label:"Support & Information",ids:["student-other"]}
+    ]):registrarOnly?sectionize([
+      {id:"registrar",label:"Registrar & SIS",ids:["registrar"]}
     ]):sectionize([
       {id:"teaching",label:"Teaching",ids:["analytics","assessment","grading","preparation"]},
       {id:"technology",label:"Technology",ids:["repository"]},
@@ -409,7 +420,8 @@ export function buildNavigationIA(ctx){
     homeRoute,
     homeLabel:systemDefault?"System Admin":"Home",
     roleLabel:systemDefault?"System administrator":studentView?"Student":
-      schoolAdminView?(teacherView?"School administrator · Teacher":"School administrator"):"Teacher",
-    systemDefault,studentView,schoolAdminView,platformAdmin
+      schoolAdminView?(teacherView?"School administrator · Teacher":"School administrator"):
+      registrarView?(teacherView?"Registrar · Teacher":"Registrar"):"Teacher",
+    systemDefault,studentView,schoolAdminView,registrarView,platformAdmin
   };
 }
