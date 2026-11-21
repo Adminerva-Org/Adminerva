@@ -1193,7 +1193,9 @@ async function openPersonDetail(person){
     get("pa-person-detail-relationships").textContent=String(result.relationships?.length||0);
     const classesAction=get("pa-person-detail-classes-action"),enrollmentAction=get("pa-person-detail-enrollment-action");
     if(p.kind==="student"&&standardEnrollmentMode){
-      classesAction.hidden=true;enrollmentAction.style.display="inline-flex";
+      classesAction.hidden=true;
+      enrollmentAction.href="school-enrollment.html?personId="+encodeURIComponent(p.personId);
+      enrollmentAction.style.display="inline-flex";
     }else{
       classesAction.hidden=false;classesAction.textContent=p.kind==="student"?"Enrollment relationships":"Teaching & classes";
       enrollmentAction.style.display="none";
