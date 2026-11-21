@@ -633,8 +633,10 @@ async function provisionAssessmentProject(assessmentId,studioSchool){
   window.adminervaAssessmentProjectContext={...context,projectId:result?.projectId||"",created:result?.created===true};
   if(result?.project){
     showSaveStatus(result.recoveredSubmittedVersion
-      ?"Recovered submitted version "+result.recoveredSubmittedVersion+" · verifying school cloud save"
-      :result.created?"Assessment project created automatically":"Assessment project reopened");
+      ?"Recovered school submission version "+result.recoveredSubmittedVersion+" · cloud saving"
+      :result.recoveredLegacyRevision
+        ?"Restored previous Studio submission "+result.recoveredLegacyRevision+" · preserving original project"
+        :result.created?"Assessment project created automatically":"Assessment project reopened");
     window.dispatchEvent(new CustomEvent("adminerva:assessment-project-ready",{detail:{
       assessmentId:context.assessmentId,projectId:result.projectId,created:result.created===true
     }}));
