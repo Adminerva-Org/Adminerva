@@ -88,6 +88,15 @@ export function nextBulkSelection(rows,{excluded=new Set(),limit=BULK_MAX_BATCH}
   return ids;
 }
 
+export function canClearCompletedBulkExchange({referenceMap,staged,rows,savedIds}){
+  if(staged.size)return false;
+  return ![...referenceMap.values()].some(original=>{
+    const current=(rows||[]).find(row=>
+      String(row?.submissionId||row?.recordId||"")===original.key);
+    return current&&!current.gradeStatus&&!savedIds.has(original.key);
+  });
+}
+
 export function createV4BulkEvaluationController({
   root,scoped,migrationApi,assessmentApi,submissionApi,gradeApi,verificationApi,
   buildPackage,parseResponse,generateContent,evaluationJSON,
@@ -473,11 +482,9 @@ export function createV4BulkEvaluationController({
         // Do not throw away a partial external response or an unsaved staged
         // evaluation. Only retire the package after every export reference has
         // been saved (or already appears graded in the current inbox).
-        const incompletePackage=[...referenceMap.values()].some(original=>{
-          const current=rows.find(row=>key(row)===original.key);
-          return current&&!current.gradeStatus&&!savedIds.has(original.key);
+        const clearedExchange=canClearCompletedBulkExchange({
+          referenceMap,staged,rows,savedIds
         });
-        const clearedExchange=!staged.size&&!incompletePackage;
         if(clearedExchange){
           batchId="";referenceMap.clear();payload.value="";
           el("gbV4BulkResponse").value="";
