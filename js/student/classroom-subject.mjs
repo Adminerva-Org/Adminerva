@@ -355,8 +355,14 @@ async function refresh(){
       mode:streamResult.settings?.participationMode||"teacher_only"
     };
     renderParticipation();renderOfficialSchedule();
-    const teacherNames=(streamResult.teachers||[]).map(item=>item.name).filter(Boolean);
-    el("subjectClassroomMeta").textContent=[courseLabel(current),teacherNames.length?"Teacher: "+teacherNames.join(", "):""].filter(Boolean).join(" · ")||"Active school classroom";
+    const teacherRows=streamResult.teachers||[],
+      primary=teacherRows.find(item=>item.role==="primary"),
+      coTeachers=teacherRows.filter(item=>item.role==="co_teacher").map(item=>item.name).filter(Boolean),
+      teamParts=[];
+    if(primary?.name)teamParts.push("Primary Teacher: "+primary.name);
+    if(coTeachers.length)teamParts.push("Co-teacher"+(coTeachers.length===1?"":"s")+": "+coTeachers.join(", "));
+    if(streamResult.primaryNeedsReview===true)teamParts.push("Primary Teacher pending school review");
+    el("subjectClassroomMeta").textContent=[courseLabel(current),...teamParts].filter(Boolean).join(" · ")||"Active school classroom";
     const availability={assignments:!assignmentResult.error,grades:!gradeResult.error,posts:!streamResult.error};
     renderSummary(tasks,statuses,grades,posts,availability);renderUpcoming(tasks,statuses,grades,availability);renderStream(posts,tasks,statuses,grades);
     const missing=[assignmentResult.error?"classwork":"",gradeResult.error?"grades":"",streamResult.error?"announcements":"",[...statuses.values()].some(row=>row.error)?"some submission statuses":""].filter(Boolean);
