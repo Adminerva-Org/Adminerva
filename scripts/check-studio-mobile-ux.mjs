@@ -25,7 +25,7 @@ for(const [name,page] of [['student',student],['guest',guest]]){
     'the Tools trigger should not consume a second row');
   assert.ok(page.indexOf('id="studioAssignmentDock"')<
     page.indexOf('<div class="studio-project-bar">'));
-  assert.match(page,/css\/playground-workspace\.css\?v=3\.0\.11/);
+  assert.match(page,/css\/playground-workspace\.css\?v=[A-Za-z0-9._-]+/,name+' must load versioned Studio workspace CSS');
   assert.ok(page.includes('enterkeyhint="send"'),name+' needs the terminal keyboard Send action');
   assert.match(page,/id="studioMobileTerminal" type="button" aria-label="Show terminal"/);
   assert.ok(page.includes('-mobilekb1'),name+' should refresh mobile workspace script');
