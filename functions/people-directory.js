@@ -612,7 +612,7 @@ function createPeopleDirectoryService({db}) {
         const roles=Array.isArray(current.data().roles)?current.data().roles:[];
         if(!roles.some(role=>["student","teacher"].includes(role)))
           throw new TenantAccessError("failed-precondition","This membership has no recoverable school role.");
-        const now=FieldValue.serverTimestamp(),revision=(current.data().revision||0)+1;
+        const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         tx.update(targetRef,{status:"active",revision,restoredAt:now,
           restoredByUid:ctx.uid,restoreReason:reason,updatedAt:now,updatedByUid:ctx.uid});
         tx.set(indexRef,{schoolId:ctx.schoolId,status:"active",roles,revision,updatedAt:now});
