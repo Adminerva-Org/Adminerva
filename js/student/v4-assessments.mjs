@@ -10,6 +10,10 @@ const list=document.getElementById("v4AssignmentsList");
 const status=document.getElementById("v4AssignmentsStatus");
 const schoolHost=document.getElementById("v4AssignmentsSchoolSwitcher");
 const assignmentSubjectLabel=document.getElementById("assignmentSubjectLabel");
+const classMaterialsPanel=document.getElementById("v4ClassMaterialsPanel");
+const classMaterialsList=document.getElementById("v4ClassMaterialsList");
+const classMaterialsCount=document.getElementById("v4ClassMaterialsCount");
+const classMaterialsStatus=document.getElementById("v4ClassMaterialsStatus");
 const assignmentParams=new URLSearchParams(location.search);
 const requestedSubjectId=assignmentParams.get("subjectId")||"";
 const requestedOfferingId=assignmentParams.get("offeringId")||"";
@@ -59,6 +63,7 @@ if(panel&&list&&status&&schoolHost){
   const conversationApi=httpsCallable(functions,"schoolAssessmentConversation");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const reclaimsApi=httpsCallable(functions,"schoolReclaims");
+  const streamApi=httpsCallable(functions,"schoolClassroomStream");
   let renderGeneration=0,picker=null,githubTask=null,githubTaskStatus=null;
   let githubCommits=[],githubSelected=new Set(),githubCheckpoint="",githubBusy=false,reclaimTarget=null,githubSessionToken="";
   let githubClaims=new Map(),historyRepository="",githubTokenOwner="";
@@ -67,6 +72,53 @@ if(panel&&list&&status&&schoolHost){
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
     scope.assertLease(lease);
     return result;
+  }
+  function configurePageContext(){
+    const classScoped=Boolean(requestedOfferingId);
+    const title=document.getElementById("assignmentPageTitle"),description=document.getElementById("assignmentPageDescription"),
+      heading=document.getElementById("v4AssignmentsHeading"),back=document.getElementById("assignmentBackLink"),
+      legacy=document.getElementById("legacyAssignmentsSection");
+    if(title)title.textContent=classScoped?"Classwork":"Assignments";
+    if(description)description.textContent=classScoped?
+      "Teacher materials, active assignments, submission status and released results for this class.":
+      "Open verified school tasks and your existing programming assignments from one workspace.";
+    if(heading)heading.textContent=classScoped?"Assignments & activities":"Current school tasks";
+    if(back)back.href=classScoped?"student-subject.html?offeringId="+encodeURIComponent(requestedOfferingId):"student-classroom.html";
+    if(legacy)legacy.hidden=classScoped;
+    document.title=(classScoped?"Classwork":"Assignments")+" | Adminerva";
+  }
+  function renderClassMaterials(posts=[],error=""){
+    if(!classMaterialsPanel||!classMaterialsList)return;
+    classMaterialsList.replaceChildren();
+    if(!requestedOfferingId){classMaterialsPanel.hidden=true;return;}
+    classMaterialsPanel.hidden=false;
+    const materials=posts.filter(post=>post.kind==="material")
+      .sort((a,b)=>Number(b.pinned)-Number(a.pinned)||Number(b.createdAt||0)-Number(a.createdAt||0));
+    classMaterialsCount.textContent=materials.length+" material"+(materials.length===1?"":"s");
+    classMaterialsStatus.textContent=error?"Class materials are temporarily unavailable. Assignments below are unaffected.":
+      materials.length?"These are the same teacher resources shown in your class Stream.":"No class materials have been posted yet.";
+    if(error){
+      classMaterialsList.append(node("p","rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900",error));return;
+    }
+    if(!materials.length){
+      classMaterialsList.append(node("p","rounded-xl border border-dashed border-sky-200 bg-white/70 p-4 text-sm text-sky-900","Your teacher has not shared any class materials yet."));return;
+    }
+    for(const material of materials){
+      const card=node("article","rounded-xl border border-sky-100 bg-white p-4 shadow-sm");
+      const top=node("div","flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2"),text=node("div","min-w-0");
+      text.append(node("h3","font-extrabold text-slate-900",material.title||"Class material"),
+        node("p","text-xs text-slate-500 mt-1",[material.authorName||"Teacher",date(material.createdAt),material.pinned?"Pinned":""].filter(Boolean).join(" · ")));
+      top.append(text);card.append(top);
+      if(material.body)card.append(node("p","mt-3 text-sm text-slate-700 whitespace-pre-wrap break-words",material.body));
+      if(material.linkUrl)try{
+        const url=new URL(material.linkUrl);
+        if(["http:","https:"].includes(url.protocol)){
+          const link=node("a","inline-block mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700","Open resource ↗");
+          link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";card.append(link);
+        }
+      }catch{}
+      classMaterialsList.append(card);
+    }
   }
   function privateConversation(scope,task){
     const details=node("details","mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3");
@@ -154,10 +206,13 @@ if(panel&&list&&status&&schoolHost){
       const results=await Promise.all([
         scoped(scope,assessmentsApi,"list_student"),
         scoped(scope,gradebookApi,"my_published").catch(error=>({grades:[],error:error?.message||"Grades unavailable"})),
-        scoped(scope,profileApi,"my_profile")
+        scoped(scope,profileApi,"my_profile"),
+        requestedOfferingId?scoped(scope,streamApi,"list",{offeringId:requestedOfferingId})
+          .catch(error=>({posts:[],materialError:error?.message||"Class materials unavailable"})):Promise.resolve({posts:[]})
       ]);
       if(generation!==renderGeneration)return;
       const profile=results[2]||{},classes=profile.classes||[];
+      renderClassMaterials(results[3]?.posts||[],results[3]?.materialError||"");
       let subjectId=requestedSubjectId,subjectName=requestedSubjectName,offeringId=requestedOfferingId;
       const allowedOfferings=new Set(classes.filter(item=>
         (!offeringId||item.offeringId===offeringId)&&(!subjectId||item.subjectId===subjectId)&&(!subjectName||Boolean(subjectId)||String(item.subject||"").toLowerCase()===subjectName.toLowerCase())
@@ -593,6 +648,8 @@ if(panel&&list&&status&&schoolHost){
     finally{githubBusy=false;ghSubmit.disabled=!historyRepository;document.getElementById("v4GithubLoad").disabled=false;}
   })());
 
+  configurePageContext();
+  renderClassMaterials();
   await auth.authStateReady();
   if(auth.currentUser){
     picker=createTenantSchoolPicker({
@@ -600,7 +657,7 @@ if(panel&&list&&status&&schoolHost){
       onReady:scope=>void render(scope),
       onBeforeChange:async()=>{
         if(githubBusy||generalBusy||ghDialog.open||generalDialog.open)throw Error("Close the open assessment editor before switching schools.");
-        renderGeneration++;list.replaceChildren();
+        renderGeneration++;list.replaceChildren();renderClassMaterials();
         status.textContent="Switching verified school…";
       }
     });
