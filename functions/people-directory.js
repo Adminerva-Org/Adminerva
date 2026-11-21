@@ -74,27 +74,8 @@ function createPeopleDirectoryService({db}) {
 
     if(input.action==="overview") {
       const scopes=["people","enrollments","staff_assignments","invitations"];
-      const [counts,audit]=await Promise.all([
-        Promise.all(scopes.map(name=>db.collection("schools/"+ctx.schoolId+"/"+name).count().get())),
-        db.collection("schools/"+ctx.schoolId+"/directory_audit").orderBy("createdAt","desc").limit(20).get()
-      ]);
-      const recentActivity=audit.docs.map(doc=>{
-        const row=doc.data();
-        return {
-          auditId:doc.id,
-          action:String(row.action||"directory_change").slice(0,120),
-          actorUid:String(row.actorUid||row.createdByUid||"").slice(0,128),
-          personId:typeof row.personId==="string"?row.personId.slice(0,128):null,
-          offeringId:typeof row.offeringId==="string"?row.offeringId.slice(0,330):null,
-          reason:typeof row.reason==="string"?row.reason.slice(0,300):"",
-          createdAt:row.createdAt?.toMillis?.()||0
-        };
-      });
-      return {
-        schoolId:ctx.schoolId,
-        counts:Object.fromEntries(scopes.map((name,i)=>[name,counts[i].data().count])),
-        recentActivity
-      };
+      const counts=await Promise.all(scopes.map(name=>db.collection("schools/"+ctx.schoolId+"/"+name).count().get()));
+      return {schoolId:ctx.schoolId,counts:Object.fromEntries(scopes.map((name,i)=>[name,counts[i].data().count]))};
     }
     if(input.action==="reconcile_directory") {
       const names=["people","memberships","enrollments","staff_assignments","course_offerings","invitations"];
@@ -409,6 +390,11 @@ function createPeopleDirectoryService({db}) {
       return {
         person:{
           personId,displayName:data.displayName,kind:data.kind,status:data.status,
+          studentNumber:data.studentNumber||"",birthDate:data.birthDate||"",
+          primaryGuardianName:data.primaryGuardianName||"",
+          primaryGuardianEmail:data.primaryGuardianEmail||"",
+          primaryGuardianMobile:data.primaryGuardianMobile||"",
+          contactEmail:data.email||"",
           accountLinked:Boolean(authUid),activationReady:Boolean(data.activationEmailHash),
           revision:data.revision||1
         },
@@ -442,13 +428,27 @@ function createPeopleDirectoryService({db}) {
       let query=base.orderBy("searchKey").limit(101);
       if(raw)query=query.startAt(raw).endAt(raw+"\uf8ff");
       const snap=await query.get();
-      const matches=snap.docs.filter(person=>{
+      const byId=new Map(snap.docs.map(doc=>[doc.id,doc]));
+      // Search the canonical student number/email as well as the display-name prefix.
+      // Every result remains restricted to this verified school.
+      if(raw){
+        const additional=await Promise.all([
+          base.where("studentNumber","==",raw).limit(10).get(),
+          base.where("email","==",raw).limit(10).get(),
+          base.where("personId","==",raw).limit(10).get()
+        ]);
+        for(const results of additional)for(const doc of results.docs)byId.set(doc.id,doc);
+        const direct=await base.doc(raw.replace(/[^a-zA-Z0-9_-]/g,"")).get().catch(()=>null);
+        if(direct?.exists)byId.set(direct.id,direct);
+      }
+      const matches=[...byId.values()].filter(person=>{
         const data=person.data();
         return data.schoolId===ctx.schoolId&&(kind==="all"||data.kind===kind)&&
           (status==="all"||data.status===status);
       });
       return {items:matches.slice(0,50).map(person=>({
         personId:person.id,displayName:person.data().displayName,
+        studentNumber:person.data().studentNumber||"",
         kind:person.data().kind,status:person.data().status,
         accountLinked:Boolean(person.data().authUid),
         activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId
@@ -588,6 +588,17 @@ function createPeopleDirectoryService({db}) {
     }
     if(input.action==="update_person"){
       const personId=id(input.personId),displayName=field(input.displayName,140,"Person name");
+      const clean=(value,max,label)=>{
+        const result=String(value??"").trim();
+        if(result.length>max)invalid(label+" is too long.");
+        return result;
+      };
+      const studentNumber=input.studentNumber===undefined?undefined:clean(input.studentNumber,80,"Student number");
+      const guardianName=input.primaryGuardianName===undefined?undefined:clean(input.primaryGuardianName,140,"Guardian name");
+      const guardianEmail=input.primaryGuardianEmail===undefined?undefined:clean(input.primaryGuardianEmail,254,"Guardian email").toLowerCase();
+      const guardianMobile=input.primaryGuardianMobile===undefined?undefined:clean(input.primaryGuardianMobile,40,"Guardian mobile");
+      if(guardianEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guardianEmail))
+        invalid("Enter a valid guardian email.");
       const ref=base.doc(personId),audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
@@ -595,16 +606,25 @@ function createPeopleDirectoryService({db}) {
         if(!person.exists||person.data().schoolId!==ctx.schoolId)
           throw new TenantAccessError("not-found","The person is not in this school directory.");
         const now=FieldValue.serverTimestamp(),revision=(person.data().revision||0)+1;
-        tx.update(ref,{displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+personId,
-          revision,updatedAt:now,updatedByUid:ctx.uid});
-        if(person.data().authUid){
-          const memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+id(person.data().authUid));
-          const member=await tx.get(memberRef);
-          if(member.exists&&member.data().schoolId===ctx.schoolId)
-            tx.update(memberRef,{displayName,updatedAt:now});
+        const change={displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+personId,
+          revision,updatedAt:now,updatedByUid:ctx.uid};
+        if(person.data().kind==="student"){
+          if(studentNumber!==undefined)change.studentNumber=studentNumber||null;
+          if(guardianName!==undefined)change.primaryGuardianName=guardianName||null;
+          if(guardianEmail!==undefined)change.primaryGuardianEmail=guardianEmail||null;
+          if(guardianMobile!==undefined)change.primaryGuardianMobile=guardianMobile||null;
         }
+        // All transaction reads must happen before the first write.
+        let memberRef=null,member=null;
+        if(person.data().authUid){
+          memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+id(person.data().authUid));
+          member=await tx.get(memberRef);
+        }
+        tx.update(ref,change);
+        if(member?.exists&&member.data().schoolId===ctx.schoolId)
+          tx.update(memberRef,{displayName,updatedAt:now});
         tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
-          action:"person_name_updated",revision,createdAt:now});
+          action:"person_profile_updated",revision,createdAt:now});
       });
       return {personId,displayName};
     }
