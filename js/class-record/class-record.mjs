@@ -724,17 +724,31 @@ function selectedAssessment(){
   const value=assessmentSelect.value;
   return assessments.find(task=>assessmentKey(task.sourceType,task.taskId)===value)||null;
 }
+function policyCategorySuggestion(task){
+  const categories=(settings.categoryWeights||[]).map(row=>String(row.category||"").trim()).filter(Boolean);
+  if(!categories.length)return "";
+  if(categories.length===1)return categories[0];
+  const normalized=value=>String(value||"").trim().toLocaleLowerCase("en").replace(/[^a-z0-9]+/g," ").trim();
+  const suggested=normalized(task?.categorySuggestion);
+  if(!suggested)return "";
+  return categories.find(category=>normalized(category)===suggested)||"";
+}
 function syncAssessmentSourceNote(){
   const note=el("cr-assessment-source-note"),task=selectedAssessment();
   if(!task){note.hidden=true;note.textContent="";return;}
   note.hidden=false;
+  const suggested=policyCategorySuggestion(task);
   if(task.sourceType===PERSONALIZED_SOURCE){
     note.textContent="Personalized Studio is graded from the exact learner-specific Studio submission. Class Record imports the score only after Studio grading publishes it; Repository Management is not involved.";
   }else{
     note.textContent="This school assessment uses the school Gradebook. Class Record shows only its published score.";
   }
-  if(!columnForm.elements.category.value.trim()&&task.categorySuggestion)
-    columnForm.elements.category.value=task.categorySuggestion;
+  if(suggested){
+    note.textContent+=" School grading policy matches this activity to "+suggested+".";
+    if(!columnForm.elements.category.value.trim())columnForm.elements.category.value=suggested;
+  }else if(task.categorySuggestion){
+    note.textContent+=" Its assessment type is “"+task.categorySuggestion+"”, but Adminerva will not guess a grading category when the school policy is ambiguous.";
+  }
 }
 function syncColumnFields(){
   const kind=columnKind.value;
@@ -935,7 +949,10 @@ function maybeOpenAssessmentDeepLink(){
   assessmentSelect.value=assessmentKey(task.sourceType,task.taskId);
   syncAssessmentSourceNote();
   columnForm.elements.label.value=String(task.title||"Assessment").slice(0,80);
-  el("cr-column-status").textContent="Assessment preselected. Choose the Class Record label/category, then add the column.";
+  const suggested=policyCategorySuggestion(task);
+  el("cr-column-status").textContent=suggested?
+    "Assessment preselected. "+suggested+" was matched from the active school grading policy; review it, then add the column.":
+    "Assessment preselected. Choose the grading category deliberately, then add the column.";
 }
 async function saveLayout(nextColumns,nextSettings=settings,success="Class Record layout saved."){
   if(busy||!currentOfferingId)throw Error("Finish the current Class Record operation first.");
