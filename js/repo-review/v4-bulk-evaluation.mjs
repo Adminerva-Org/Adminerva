@@ -2,7 +2,7 @@ import {
   buildGeneralExternalEvaluationData,
   GENERAL_EXTERNAL_EVALUATION_REQUIRED_RULES,
   responseShape
-} from "../assessment/general-external-evaluation.mjs?v=20261121-compact-bulk1";
+} from "../assessment/general-external-evaluation.mjs?v=20261121-universal-bulk20-1";
 
 /**
  * Bulk assessment review on top of the authoritative V4/historical
