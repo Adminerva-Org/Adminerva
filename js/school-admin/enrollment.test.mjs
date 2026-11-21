@@ -6,15 +6,18 @@ import vm from "node:vm";
 // Run the actual enrollment controller with a small DOM/callable adapter.
 function harness(){
   class Element{
-    constructor(){this.value="";this.children=[];this.listeners={};this.style={};this.disabled=false;}
+    constructor(){this.value="";this.children=[];this.listeners={};this.style={};this.disabled=false;this.hidden=false;this.open=false;this.textContent="";}
     replaceChildren(...items){this.children=[];this.append(...items);}
     append(...items){this.children.push(...items);for(const item of items)if(item.selected)this.value=item.value;}
     addEventListener(type,callback){(this.listeners[type]??=[]).push(callback);}
-    dispatch(type){for(const callback of this.listeners[type]||[])callback({preventDefault(){}});}
+    dispatch(type){for(const callback of this.listeners[type]||[])callback({preventDefault(){},currentTarget:this,target:this});}
     setAttribute(){}
     scrollIntoView(){}
     focus(){}
     select(){}
+    showModal(){this.open=true;}
+    close(){this.open=false;}
+    reportValidity(){return true;}
     querySelectorAll(){return this.children.flatMap(item=>item.querySelectorAll?.()||[]);}
   }
   const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id);};
@@ -22,6 +25,11 @@ function harness(){
   form.elements=fields.map(name=>{const node=new Element();node.name=name;return node;});
   for(const field of form.elements)form.elements[field.name]=field;
   form.reset=()=>{for(const field of form.elements)field.value="";};
+  const changeForm=get("en-registration-change-form"),changeFields=["reason","sectionId"];
+  changeForm.elements=changeFields.map(name=>{const node=new Element();node.name=name;return node;});
+  for(const field of changeForm.elements)changeForm.elements[field.name]=field;
+  changeForm.reset=()=>{for(const field of changeForm.elements)field.value="";};
+  changeForm.reportValidity=()=>true;
   const actionButton=new Element(),requests=[];
   let allowDiscard=true,pickerOptions;
   const scope={lease:()=>({schoolId:"manila-cathedral-school",uid:"admin"}),assertLease(){}};
@@ -32,7 +40,8 @@ function harness(){
     document:{getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[actionButton]},
     location:{href:"https://example.test/school-enrollment.html"},URL,
     Option:class extends Element{constructor(label,value){super();this.textContent=label;this.value=value;}},
-    sessionStorage:{getItem:()=>null},navigator:{},prompt:()=>"Verified review reason",confirm:()=>allowDiscard
+    sessionStorage:{getItem:()=>null},navigator:{},prompt:()=>"Verified review reason",confirm:()=>allowDiscard,
+    FormData:class{constructor(target){this.target=target;}get(name){return this.target.elements?.[name]?.value??"";}}
   });
   let source=readFileSync(new URL("./enrollment.mjs",import.meta.url),"utf8").replace(/^import .*;\r?$/gm,"");
   source=source.slice(0,source.lastIndexOf("\ntry{"));
@@ -40,7 +49,11 @@ function harness(){
   const catalog={years:[{id:"new-year"},{id:"old-year"}],programs:[{id:"new-program"},{id:"old-program"}],
     terms:[{id:"new-period",yearId:"new-year",programId:"new-program"},{id:"other-period",yearId:"new-year",programId:"new-program"}],
     sections:[{id:"new-section",programId:"new-program",gradeLevel:"7"},{id:"other-section",programId:"new-program",gradeLevel:"7"}],
-    subjects:[],offerings:[]};
+    subjects:[{id:"auto-subject",name:"Automatic"},{id:"elective-subject",name:"Elective"}],
+    offerings:[
+      {offeringId:"auto-offering",yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"other-section",subjectId:"auto-subject",rosterMode:"section"},
+      {offeringId:"elective-offering",yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"other-section",subjectId:"elective-subject",rosterMode:"selective"}
+    ]};
   context.setCatalog(catalog);
   const applicant={applicationId:"app-new",reference:"MCS-NEW",displayName:"New student",birthDate:"2013-03-01",guardianEmail:"new.parent@example.test",incomingLevel:"7",yearId:"new-year",preferredProgramId:"new-program"};
   return {context,form,get,applicant,requests,actionButton,setDiscard:value=>{allowDiscard=value;},get pickerOptions(){return pickerOptions;}};
@@ -107,4 +120,38 @@ test("school switching veto preserves the draft, then accepted switching clears 
   assert.equal(h.form.elements.applicationId.value,"");
   assert.equal(h.form.elements.studentNumber.value,"");
   assert.equal(h.get("en-workspace").hidden,true);
+});
+
+
+test("section-change preview excludes selective offerings",()=>{
+  const h=harness(),item={
+    registrationId:"reg-1",personId:"person-1",displayName:"Student One",
+    yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"new-section",
+    gradeLevel:"7",revision:4,status:"active",courseCount:1
+  };
+  assert.equal(h.context.automaticOfferings(item,"other-section").length,1);
+  h.context.openRegistrationChange(item,"move");
+  const section=h.get("en-registration-change-form").elements.sectionId;
+  section.value="other-section";section.dispatch("change");
+  assert.match(h.get("en-registration-change-preview").textContent,/1 automatic class/);
+  assert.doesNotMatch(h.get("en-registration-change-preview").textContent,/Elective/);
+});
+
+test("section change sends the reviewed registration revision",()=>{
+  const h=harness(),item={
+    registrationId:"reg-1",personId:"person-1",displayName:"Student One",
+    yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"new-section",
+    gradeLevel:"7",revision:7,status:"active",courseCount:1
+  };
+  h.context.openRegistrationChange(item,"move");
+  const change=h.get("en-registration-change-form");
+  change.elements.sectionId.value="other-section";
+  change.elements.sectionId.dispatch("change");
+  change.elements.reason.value="Correct section assignment after registrar review";
+  change.dispatch("submit");
+  assert.equal(h.requests.length,1);
+  assert.equal(h.requests[0].payload.action,"change_registration_section");
+  assert.equal(h.requests[0].payload.registrationId,"reg-1");
+  assert.equal(h.requests[0].payload.sectionId,"other-section");
+  assert.equal(h.requests[0].payload.expectedRevision,7);
 });
