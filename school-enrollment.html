@@ -220,6 +220,18 @@
         </label>
         <p id="en-registration-change-preview" class="en-muted mt-2">Choose a new section to preview its automatic class roster.</p>
       </section>
+      <section id="en-registration-end-type" class="en-summary mt-4" hidden>
+        <label class="text-sm font-bold">Registration end type
+          <select name="endReasonType" class="en-input mt-1">
+            <option value="">Choose why the registration is ending</option>
+            <option value="withdrawal">Withdrawal</option>
+            <option value="transfer_out">Transfer out</option>
+            <option value="registration_cancelled">Registration cancelled</option>
+            <option value="other">Other institutional reason</option>
+          </select>
+        </label>
+        <p class="en-muted mt-2">This classification is retained with the ended registration and audit history. It does not delete the learner or their academic records.</p>
+      </section>
       <label class="text-sm font-bold block mt-4">Reason
         <textarea name="reason" class="en-input mt-1" rows="3" minlength="12" maxlength="500" required placeholder="Explain the institutional reason for this registration change."></textarea>
       </label>
@@ -235,7 +247,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-exact-student1"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-registration-lifecycle2"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
