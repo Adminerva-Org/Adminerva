@@ -19,6 +19,20 @@ function safeUrl(value){
   catch{deny("invalid-argument","Classroom links must use http or https.");}
 }
 function millis(value){return value?.toMillis?.()||null}
+function teachingTeam(offering,teacherUids){
+  const ids=[...new Set((teacherUids||[]).filter(Boolean))],
+    configured=typeof offering?.primaryTeacherUid==="string"?offering.primaryTeacherUid:"";
+  let primaryTeacherUid="",primarySource="none",primaryNeedsReview=false;
+  if(configured&&ids.includes(configured)){
+    primaryTeacherUid=configured;primarySource="explicit";
+  }else if(ids.length===1){
+    primaryTeacherUid=ids[0];primarySource=configured?"inferred_stale":"inferred";primaryNeedsReview=Boolean(configured);
+  }else{
+    primarySource=configured?"stale":ids.length?"missing":"none";
+    primaryNeedsReview=ids.length>0||Boolean(configured);
+  }
+  return {primaryTeacherUid,primarySource,primaryNeedsReview};
+}
 function createSchoolClassroomStreamService({db}){
  return async request=>{
   const input=request.data||{};
@@ -149,18 +163,23 @@ function createSchoolClassroomStreamService({db}){
         canEdit:item.authorUid===ctx.uid&&(item.authorRole!=="student"||perm.canPost),
         canModerate:authority.canTeach||item.authorUid===ctx.uid
       }));
-    const activeTeachers=grantSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+    const activeTeachers=grantSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"),
+      teacherUids=activeTeachers.map(doc=>doc.data().teacherUid),
+      team=teachingTeam(authority.offering,teacherUids);
     const members=await Promise.all(activeTeachers.map(doc=>db.doc(prefix+"memberships/"+doc.data().teacherUid).get()));
     const teachers=members.map((member,index)=>{
       const grant=activeTeachers[index].data(),data=member.exists?member.data():null;
       return {uid:grant.teacherUid,name:data&&data.schoolId===ctx.schoolId?
-        clean(data.displayName||data.name||"Teacher",140):"Teacher"};
-    });
+        clean(data.displayName||data.name||"Teacher",140):"Teacher",
+        role:grant.teacherUid===team.primaryTeacherUid?"primary":"co_teacher",
+        current:grant.teacherUid===ctx.uid};
+    }).sort((a,b)=>a.role===b.role?a.name.localeCompare(b.name,undefined,{sensitivity:"base"}):a.role==="primary"?-1:1);
     const mutedPersonIds=authority.canTeach&&muteSnap?muteSnap.docs.filter(doc=>{
       const row=doc.data();return row.schoolId===ctx.schoolId&&row.offeringId===offeringId&&row.status==="active";
     }).map(doc=>doc.data().personId).filter(Boolean):[];
     return {
-      offeringId,teachers,posts:items,...perm,
+      offeringId,teachers,primaryTeacherUid:team.primaryTeacherUid,
+      primarySource:team.primarySource,primaryNeedsReview:team.primaryNeedsReview,posts:items,...perm,
       viewer:{role:authority.role,personId:authority.personId||null,muted:config.muted},
       settings:{participationMode:config.participationMode,revision:config.revision},
       schedule:scheduleDoc.exists&&scheduleDoc.data().schoolId===ctx.schoolId&&scheduleDoc.data().status!=="archived"?{
