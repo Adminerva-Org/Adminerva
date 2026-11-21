@@ -9,6 +9,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
+const {studentAccountUids,studentRecordUidAllowed}=require("./student-account-history.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
@@ -85,22 +86,39 @@ function createSchoolAssessmentSubmissionService({db}){
        enrollment.data().personId!==personId||enrollment.data().offeringId!==offeringId||
        enrollment.data().status!=="active")
       deny("permission-denied","You are not actively enrolled in this course offering.");
-    return {member:member.data(),personId};
+    return {member:member.data(),personId,person:person.data()};
   }
 
-  const submissionId=hash(ctx.schoolId,taskId,ctx.uid);
-  const submissionRef=collection.doc(submissionId);
+  const currentSubmissionId=hash(ctx.schoolId,taskId,ctx.uid),
+    currentSubmissionRef=collection.doc(currentSubmissionId);
+  async function resolveStudentSubmission(personId,personData,read=ref=>ref.get()){
+    const candidates=studentAccountUids(personData,ctx.uid).map(uid=>{
+      const submissionId=hash(ctx.schoolId,taskId,uid);
+      return {uid,submissionId,ref:collection.doc(submissionId)};
+    }),docs=await Promise.all(candidates.map(row=>read(row.ref))),
+      existing=candidates.map((row,index)=>({...row,doc:docs[index]})).filter(row=>row.doc.exists);
+    for(const row of existing){
+      const data=row.doc.data();
+      if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||data.offeringId!==offeringId||
+         data.personId!==personId||!studentRecordUidAllowed(personData,ctx.uid,data.studentUid))
+        deny("data-loss","A submission in this recovered account history does not match the canonical student.");
+    }
+    if(existing.length>1)
+      deny("failed-precondition","Multiple submissions exist for this student and assessment across recovered accounts. Ask an administrator to reconcile them before continuing.");
+    return existing[0]||{uid:ctx.uid,submissionId:currentSubmissionId,ref:currentSubmissionRef,doc:docs[0]};
+  }
 
   if(input.action==="my_status"){
     if(taskData.published!==true)deny("not-found","This assessment is not published to students.");
-    const {personId}=await verifyStudentRead();
-    const current=await submissionRef.get();
+    const {personId,person}=await verifyStudentRead(),
+      located=await resolveStudentSubmission(personId,person),current=located.doc;
     if(!current.exists)return {taskId,submitted:false,status:"not_submitted",version:0};
     const data=current.data();
-    if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||data.studentUid!==ctx.uid||
+    if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||
+       !studentRecordUidAllowed(person,ctx.uid,data.studentUid)||
        data.personId!==personId||data.offeringId!==offeringId)
       deny("permission-denied","Stored submission belongs to a different school context.");
-    return {taskId,submissionId,submitted:true,status:data.status,version:data.currentVersion,
+    return {taskId,submissionId:located.submissionId,submitted:true,status:data.status,version:data.currentVersion,
       currentVersion:data.currentVersion,submissionSource:source,payload:data.payload||{},
       requestMessage:data.status==="reopened"?data.revisionRequestMessage||"":"",
       revisionDueAt:data.status==="reopened"?data.revisionDueAt?.toMillis?.()||null:null};
@@ -119,9 +137,13 @@ function createSchoolAssessmentSubmissionService({db}){
       checkId(personId,"Person ID",128);
       const personRef=db.doc(prefix+"people/"+personId);
       const enrollmentRef=db.doc(prefix+"enrollments/"+rowKey(personId,offeringId));
-      const [currentTask,person,enrollment,current]=await Promise.all([
-        tx.get(taskRef),tx.get(personRef),tx.get(enrollmentRef),tx.get(submissionRef)
+      const [currentTask,person,enrollment]=await Promise.all([
+        tx.get(taskRef),tx.get(personRef),tx.get(enrollmentRef)
       ]);
+      const located=person.exists?
+        await resolveStudentSubmission(personId,person.data(),ref=>tx.get(ref)):
+        {submissionId:currentSubmissionId,ref:currentSubmissionRef,doc:await tx.get(currentSubmissionRef)},
+        submissionId=located.submissionId,submissionRef=located.ref,current=located.doc;
       if(!currentTask.exists||currentTask.data().schoolId!==ctx.schoolId||
          currentTask.data().submissionSource!==source||currentTask.data().status!=="deployed"||
          currentTask.data().published!==true||currentTask.data().offeringId!==offeringId)
@@ -146,8 +168,9 @@ function createSchoolAssessmentSubmissionService({db}){
       if(current.exists){
         const prior=current.data();
         if(prior.schoolId!==ctx.schoolId||prior.taskId!==taskId||
-           prior.studentUid!==ctx.uid||prior.offeringId!==offeringId)
-          deny("permission-denied","Stored submission belongs to another context.");
+           prior.personId!==personId||prior.offeringId!==offeringId||
+           !studentRecordUidAllowed(person.data(),ctx.uid,prior.studentUid))
+          deny("permission-denied","Stored submission belongs to another student identity.");
         if(prior.status==="submitted"&&prior.submissionDigest===digest){
           receipt={submissionId,version:prior.currentVersion,status:"submitted",alreadyExisted:true};return;
         }
@@ -160,8 +183,13 @@ function createSchoolAssessmentSubmissionService({db}){
         submissionSource:source,payload,submissionDigest:digest,version,submittedAt:when};
       tx.create(submissionRef.collection("versions").doc(String(version)),immutable);
       if(current.exists){
+        const prior=current.data(),previousStudentUids=[...new Set([
+          ...(Array.isArray(prior.previousStudentUids)?prior.previousStudentUids:[]),
+          ...(prior.studentUid&&prior.studentUid!==ctx.uid?[prior.studentUid]:[])
+        ])].slice(-20);
         tx.update(submissionRef,{...immutable,status:"submitted",currentVersion:version,
-          revisionRequestMessage:null,revisionDueAt:null,reviewedAt:null,reviewedByUid:null,updatedAt:when});
+          previousStudentUids,revisionRequestMessage:null,revisionDueAt:null,
+          reviewedAt:null,reviewedByUid:null,updatedAt:when});
       }else{
         tx.create(submissionRef,{...immutable,status:"submitted",currentVersion:version,
           createdAt:when,updatedAt:when});
@@ -247,7 +275,7 @@ function createSchoolAssessmentSubmissionService({db}){
     if(Date.now()>taskData.dueAt.toMillis()&&!extension)
       deny("failed-precondition","The original deadline passed. Set an explicit revision extension.");
     const auditRef=db.collection(prefix+"submission_audit").doc();
-    let revisionStudentUid=null;
+    let revisionStudentUid=null,revisionNotificationUid=null;
     await db.runTransaction(async tx=>{
       await teacherWriteAuthority(tx);
       const record=await tx.get(targetRef);
@@ -256,8 +284,13 @@ function createSchoolAssessmentSubmissionService({db}){
          !["submitted","reviewed"].includes(record.data().status))
         deny("failed-precondition","Only a submitted response can be reopened.");
       revisionStudentUid=record.data().studentUid;
-      const gradeRef=db.doc(prefix+"student_grades/"+hash(taskId,revisionStudentUid));
-      const grade=await tx.get(gradeRef);
+      const gradeRef=db.doc(prefix+"student_grades/"+hash(taskId,revisionStudentUid)),
+        studentPersonRef=db.doc(prefix+"people/"+checkId(record.data().personId,"Student person",128)),
+        [grade,studentPerson]=await Promise.all([tx.get(gradeRef),tx.get(studentPersonRef)]);
+      if(studentPerson.exists&&studentPerson.data().schoolId===ctx.schoolId&&
+         studentPerson.data().status==="active"&&studentPerson.data().kind==="student"&&
+         typeof studentPerson.data().authUid==="string")
+        revisionNotificationUid=studentPerson.data().authUid;
       if(grade.exists&&grade.data().status==="published")
         deny("failed-precondition","Published grades require a grade correction workflow, not submission reopening.");
       const when=FieldValue.serverTimestamp();
@@ -267,8 +300,8 @@ function createSchoolAssessmentSubmissionService({db}){
         actorUid:ctx.uid,studentUid:revisionStudentUid,action:"assessment_response_revision_requested",
         version:record.data().currentVersion,reason,createdAt:when});
     });
-    if(revisionStudentUid)await writeSchoolNotification({
-      db,schoolId:ctx.schoolId,uid:revisionStudentUid,
+    if(revisionNotificationUid)await writeSchoolNotification({
+      db,schoolId:ctx.schoolId,uid:revisionNotificationUid,
       id:"assessment_revision_"+taskId+"_"+targetId,
       title:"Assessment revision requested",
       body:(taskData.title||"Assessment")+" · your teacher requested a revised response.",
