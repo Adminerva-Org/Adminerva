@@ -403,6 +403,13 @@
             <span><strong class="text-sm text-amber-950">Allow late submissions</strong>
               <span class="block text-xs text-amber-800">Keeps the official deadline, but allows students to submit after it while the deployment remains active.</span></span>
           </label>
+          <div id="deployExistingSchedule" class="hidden rounded-lg border border-cyan-200 bg-cyan-50 p-3 mb-3">
+            <p class="text-xs font-bold text-cyan-950">Edit this existing class deployment</p>
+            <p id="deployOriginalAssigned" class="text-xs text-cyan-900 mt-1"></p>
+            <label for="deployEditDeadline" class="block text-sm font-bold text-slate-800 mt-3 mb-1">Extend deadline (school local time)</label>
+            <input id="deployEditDeadline" type="datetime-local" class="w-full rounded-lg border border-cyan-300 bg-white px-3 py-2.5 text-sm text-slate-900" />
+            <p class="text-xs text-cyan-900 mt-2">Change only this deadline, or check Allow late submissions above without changing its original deadline. The already-submitted work, variants and grades remain preserved.</p>
+          </div>
           <div id="deployScheduleFields">
             <label class="block text-sm font-bold text-gray-700 mb-2"
               >Duration & Schedule</label
@@ -483,7 +490,7 @@
 <script src="js/core/adminerva-loader.js?v=47eba756913e"></script>
     <script type="module" src="js/core/auth-guard-v4-pilot.js?v=47eba756913e"></script>
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.2"></script>
-    <script type="module" src="js/repo-review/assessment-studio.js?v=3.0.17"></script>
+    <script type="module" src="js/repo-review/assessment-studio.js?v=20261121-legacy-deploy-restore1"></script>
     <div id="assessmentToastRegion" class="fixed right-4 top-4 z-[220] flex w-[min(92vw,24rem)] flex-col gap-2 pointer-events-none" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
