@@ -343,3 +343,25 @@ html[data-adminerva-experience="full"] main[data-home-experience="guest"]>.avfx-
  html[data-adminerva-experience="full"] main[data-home-experience="public"]>.avfx-journey,
  html[data-adminerva-experience="full"] main[data-home-experience="guest"]>.avfx-journey{overflow-x:auto;overflow-y:hidden}
 }
+
+
+/* Scene choreography: restrained enough for school use, but clearly staged. */
+@media(prefers-reduced-motion:no-preference){
+ html[data-adminerva-experience="full"] .avfx-scene .avfx-copy,
+ html[data-adminerva-experience="full"] .avfx-scene .avfx-orbit,
+ html[data-adminerva-experience="full"] .avfx-scene .avfx-signal-stack,
+ html[data-adminerva-experience="full"] .avfx-scene .avfx-choice-grid{
+   transition:opacity .52s ease,transform .68s cubic-bezier(.2,.82,.22,1),filter .52s ease
+ }
+ html[data-adminerva-experience="full"] .avfx-scene[data-active="false"] .avfx-copy{opacity:.28;transform:translateY(30px)}
+ html[data-adminerva-experience="full"] .avfx-scene[data-active="false"] .avfx-orbit{opacity:.42;filter:blur(1.5px);transform:scale(.92)}
+ html[data-adminerva-experience="full"] .avfx-scene[data-active="false"] .avfx-signal-stack,
+ html[data-adminerva-experience="full"] .avfx-scene[data-active="false"] .avfx-choice-grid{opacity:.34;transform:translateY(22px) scale(.97)}
+ html[data-adminerva-experience="full"] .avfx-scene[data-active="true"] .avfx-copy,
+ html[data-adminerva-experience="full"] .avfx-scene[data-active="true"] .avfx-signal-stack,
+ html[data-adminerva-experience="full"] .avfx-scene[data-active="true"] .avfx-choice-grid{opacity:1;transform:none;filter:none}
+ html[data-adminerva-experience="full"] .avfx-scene[data-active="true"] .avfx-orbit{opacity:1;filter:none}
+ html[data-adminerva-experience="full"] .av-cine-chapter{transition:filter .55s ease,opacity .55s ease}
+ html[data-adminerva-experience="full"] .av-cine-chapter[data-active="false"]{opacity:.48;filter:saturate(.68)}
+ html[data-adminerva-experience="full"] .av-cine-chapter[data-active="true"]{opacity:1;filter:none}
+}
