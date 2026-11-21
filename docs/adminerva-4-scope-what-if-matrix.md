@@ -1,3 +1,5 @@
+> **Planning authority:** This document is retained only as a technical/historical reference. The canonical Adminerva product roadmap, development status and future priorities are maintained in [Adminerva School OS — Master Development Plan](https://github.com/Adminerva-Org/Adminerva/blob/main/docs/adminerva-school-os-master-plan.md). Any older sequencing, milestone, status or future-work statement here is subordinate to the master plan.
+
 # Adminerva 4.0 — cross-school what-if matrix, workflow invariants and release acceptance
 
 Status: **planning / design**, not automated evidence of implementation. These scenarios are mandatory design inputs, not a claim every scenario has been tested.
