@@ -12,10 +12,11 @@ import {
  * One run is bounded to 10 records. Invalid/zero/pending responses are surfaced
  * as exceptions and never auto-published.
  */
-export const BULK_PACKAGE_FORMAT="adminerva-v4-bulk-evaluation-package-v1";
+// The request package is now V2; evaluated replies intentionally remain V1.
+export const BULK_PACKAGE_FORMAT="adminerva-v4-bulk-evaluation-package-v2";
 export const BULK_RESPONSE_FORMAT="adminerva-v4-bulk-evaluation-response-v1";
 export const BULK_MAX_BATCH=10;
-export const BULK_COMPACT_PACKAGE_FORMAT="adminerva-v4-bulk-evaluation-package-v2";
+export const BULK_COMPACT_PACKAGE_FORMAT=BULK_PACKAGE_FORMAT;
 
 /**
  * V2 transport keeps each immutable submission distinct but hoists published
