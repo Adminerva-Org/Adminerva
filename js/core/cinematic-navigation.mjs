@@ -4,10 +4,12 @@ if(main){
   const chapters=[...main.querySelectorAll('[data-cine-chapter]')];
   const page=main.id||'editorial';
   const key='adminerva:experience-mode:'+page;
+  const readMode=()=>{try{return localStorage.getItem(key);}catch{return null;}};
+  const saveMode=value=>{try{localStorage.setItem(key,value);}catch{/* Storage can be unavailable; mode still works for this page view. */}};
   const reduce=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches||
     document.documentElement.dataset.motion==='reduce'||
     document.documentElement.dataset.adminervaReduceMotion==='true';
-  const current=localStorage.getItem(key)==='quick'?'quick':'full';
+  const current=readMode()==='quick'?'quick':'full';
   document.documentElement.dataset.adminervaExperience=current;
 
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;};
@@ -22,7 +24,7 @@ if(main){
   const horizontal=()=>window.matchMedia('(max-height:620px) and (orientation:landscape) and (pointer:coarse)').matches;
   function apply(mode){
     document.documentElement.dataset.adminervaExperience=mode;
-    localStorage.setItem(key,mode);
+    saveMode(mode);
     full.setAttribute('aria-pressed',String(mode==='full'));
     quick.setAttribute('aria-pressed',String(mode==='quick'));
     sync();
