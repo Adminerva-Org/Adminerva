@@ -13,6 +13,7 @@ const {rosterEmailHash,normalizedRosterEmail}=require("./school-roster-identity.
 
 const EMAIL_TYPES=new Set(["personal","institutional"]);
 const APPLICATION_REVIEW_STATUSES=new Set(["needs_information","rejected"]);
+const REGISTRATION_END_TYPES=new Set(["withdrawal","transfer_out","registration_cancelled","other"]);
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function checkId(value,label="Identifier",max=330){
@@ -228,6 +229,7 @@ function createSchoolEnrollmentService({db}){
         accountResponsibility:doc.data().accountResponsibility||"student",
         guardianEmail:doc.data().guardianEmail||"",
         source:doc.data().source||"onsite",
+        endReasonType:doc.data().endReasonType||null,
         revision:Number(doc.data().revision)||1
       }))};
     }
@@ -236,6 +238,9 @@ function createSchoolEnrollmentService({db}){
       const registrationId=checkId(input.registrationId,"Registration ID",128);
       const reason=text(input.reason,input.action==="end_registration"?"Registration end reason":"Registration restore reason",500);
       if(reason.length<12)deny("invalid-argument","Explain the registration change in at least 12 characters.");
+      const endReasonType=input.action==="end_registration"?String(input.endReasonType||"").trim().toLowerCase():null;
+      if(input.action==="end_registration"&&!REGISTRATION_END_TYPES.has(endReasonType))
+        deny("invalid-argument","Choose whether this registration ended by withdrawal, transfer out, cancellation or another institutional reason.");
       const registrationRef=db.doc(root+"student_registrations/"+registrationId);
       const initial=await registrationRef.get();
       if(!initial.exists||initial.data().schoolId!==ctx.schoolId)
@@ -329,11 +334,11 @@ function createSchoolEnrollmentService({db}){
           const now=FieldValue.serverTimestamp();
           for(const doc of active){
             tx.update(doc.ref,{status:"ended",endedByUid:ctx.uid,endedAt:now,endReason:reason,
-              endedByRegistrationId:registrationId,revision:(doc.data().revision||1)+1});
+              endReasonType,endedByRegistrationId:registrationId,revision:(doc.data().revision||1)+1});
           }
           changedCourses=active.length;
           tx.update(registrationRef,{status:"ended",endedByUid:ctx.uid,endedAt:now,
-            endReason:reason,updatedByUid:ctx.uid,updatedAt:now,
+            endReason:reason,endReasonType,updatedByUid:ctx.uid,updatedAt:now,
             revision:(data.revision||1)+1});
           const slotData={schoolId:ctx.schoolId,personId:data.personId,yearId:data.yearId,
             programId:data.programId,termId:data.termId,sectionId:data.sectionId,
@@ -346,9 +351,10 @@ function createSchoolEnrollmentService({db}){
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId:data.personId,
           registrationId,action:restoring?"student_registration_restored":"student_registration_ended",
           yearId:data.yearId,programId:data.programId,termId:data.termId,sectionId:data.sectionId,
-          courseCount:changedCourses,reason,createdAt:FieldValue.serverTimestamp()});
+          courseCount:changedCourses,reason,...(!restoring?{endReasonType}:{}),createdAt:FieldValue.serverTimestamp()});
       });
-      return {registrationId,status:restoring?"active":"ended",courseCount:changedCourses};
+      return {registrationId,status:restoring?"active":"ended",courseCount:changedCourses,
+        ...(!restoring?{endReasonType}:{})};
     }
 
     if(input.action==="change_registration_section"){
