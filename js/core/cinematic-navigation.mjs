@@ -38,8 +38,14 @@ if(main){
     const fullMode=document.documentElement.dataset.adminervaExperience==='full';
     const h=horizontal();
     const pos=h?main.scrollLeft:main.scrollTop;
-    const size=h?main.clientWidth:main.clientHeight;
-    if(fullMode&&size>0)active=Math.max(0,Math.min(chapters.length-1,Math.round(pos/size)));
+    if(fullMode&&chapters.length){
+      const nearest=chapters.reduce((best,chapter,index)=>{
+        const offset=h?chapter.offsetLeft:chapter.offsetTop;
+        const distance=Math.abs(offset-pos);
+        return distance<best.distance?{index,distance}:best;
+      },{index:0,distance:Number.POSITIVE_INFINITY});
+      active=nearest.index;
+    }
     [...nav.children].forEach((b,i)=>i===active?b.setAttribute('aria-current','step'):b.removeAttribute('aria-current'));
     chapters.forEach((chapter,i)=>chapter.dataset.active=String(i===active));
     progress.firstElementChild?.style.setProperty('--avfx-progress',chapters.length>1?((active/(chapters.length-1))*100)+'%':'100%');
