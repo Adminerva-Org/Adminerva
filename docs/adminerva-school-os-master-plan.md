@@ -206,7 +206,7 @@ Status definitions:
 | Teacher Classroom consolidation | In development | PR #215 organizes Stream, Classwork, roster, submissions, grades and Class Record around one selected class. |
 | Advisory and school attendance | In development | PR #215 implements adviser authority, daily attendance and School Admin oversight. |
 | Class Record | Operational / evolving | School-scoped Class Record exists; PR #215 improves assessment links and administrator oversight. |
-| Practical exam manual open/close | Backend merged; frontend in development | PR #223 merged the backend-first stage; PR #224 fixed first deployment bootstrap behavior; PR #216 contains the teacher/student UI and complete session workflow. |
+| Practical exam manual open/close | Merged; deployment/operational verification pending | PR #223 merged the backend-first stage; PR #224 fixed first deployment bootstrap behavior; PR #216 then merged the teacher/student UI and complete session workflow. Do not call the workflow operational until the corresponding backend/frontend release state is confirmed in production. |
 | System Admin Operations Center | In development | Draft PR #194 contains the first-party observability/incident-management implementation. |
 | V4 verified-school / multi-school foundation | Foundation | PR #113 contains the broad V4 foundation; PR #186 staged selective main-first integration. These are not the roadmap anymore; their architectural invariants remain inputs to this document. |
 | Games / Practice modernization | Evolving | School-scoped progress, challenges, analytics and game UX have been developed through the recent Practice/Games PR series. |
@@ -407,7 +407,7 @@ When useful information from an older plan changes the product direction, move t
 ## 12. Immediate next actions
 
 1. Continue PR #215 as the primary School Admin/System Admin consolidation workstream.
-2. Complete the practical-exam frontend release only after its merged backend stage is confirmed usable.
+2. Confirm the merged practical-exam backend/frontend release state and perform only the focused classroom-readiness check required before ordinary use; do not reopen it as a broad development workstream unless a defect appears.
 3. Reconcile the useful V4 verified-school foundation into current mainline without overwriting newer Class Record, Studio, Games or administration work.
 4. Finish the standard SIS student lifecycle before building many independent service modules.
 5. Use the canonical school/person/class/enrollment model as the foundation for Finance, Clinic, Cafeteria, Uniforms and the remaining School OS modules.
