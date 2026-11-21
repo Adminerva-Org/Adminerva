@@ -2,11 +2,8 @@
 /** Verified course-roster capacity for class-scoped Studio personalization. */
 const {FieldPath}=require("firebase-admin/firestore");
 const {checkId,rowKey}=require("./school-academics.js");
-
-class PersonalizationPlanningError extends Error{
- constructor(code,message){super(message);this.code=code;}
-}
-const deny=(code,message)=>{throw new PersonalizationPlanningError(code,message);};
+const {TenantAccessError}=require("./tenant-access.js");
+const deny=(code,message)=>{throw new TenantAccessError(code,message);};
 const MIN_VARIANTS=10,MAX_VARIANTS=600,MAX_DEPLOY_CLASSES=20;
 
 async function planPersonalizationForOfferings({db,schoolId,teacherUid,offeringIds,platformOverride=false}){
