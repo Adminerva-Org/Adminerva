@@ -870,6 +870,7 @@ function ensureDeploymentCalendar(){
   }
   deployDatePicker=window.flatpickr(el("tl-deploy-date-range"),{
     mode:"range",dateFormat:"M j, Y",allowInput:false,disableMobile:true,
+    appendTo:el("tl-deploy-dialog"),
     onChange(selectedDates){
       if(selectedDates.length===1)el("tl-deploy-feedback").textContent="Choose the second date to complete this range.";
       if(selectedDates.length===2)setDeploymentRange(selectedDates[0],selectedDates[1]);
