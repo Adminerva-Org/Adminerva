@@ -101,7 +101,7 @@ function createSchoolStudioSubmissionService({db}){
        data.version!==version||data.projectId!==current.projectId||
        !Array.isArray(data.files)||!data.files.length||
        data.contentDigest!==digestProject(data.files,data.artifacts||{})||
-       (current.status==="submitted"&&current.contentDigest!==data.contentDigest))
+       current.contentDigest!==data.contentDigest)
       deny("failed-precondition","The submitted project recovery snapshot could not be verified.");
     // Do not expose private teacher evaluation notes or another learner's
     // scenario. Return only the student's submitted source and artifacts.
