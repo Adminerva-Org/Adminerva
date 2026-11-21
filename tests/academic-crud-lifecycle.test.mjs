@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
+import {readFileSync} from "node:fs";
 
 const require=createRequire(import.meta.url);
 const {
@@ -43,4 +44,14 @@ test("academic periods must remain within their parent school year dates",()=>{
   assert.equal(academicPeriodFitsYear({startDate:"2026-05-31",endDate:"2026-10-31"},year),false);
   assert.equal(academicPeriodFitsYear({startDate:"2027-01-01",endDate:"2027-04-01"},year),false);
   assert.equal(academicPeriodFitsYear({startDate:null,endDate:null},year),true);
+});
+
+
+test("section adviser lifecycle mutations use the reviewed active assignment revision",()=>{
+  const backend=readFileSync(new URL("../functions/school-academics.js",import.meta.url),"utf8");
+  const frontend=readFileSync(new URL("../js/school-admin/classes-scheduling.mjs",import.meta.url),"utf8");
+  assert.match(backend,/expectedRevision=Number\(input\.expectedRevision\)/);
+  assert.match(backend,/currentRevision!==expectedRevision[\s\S]*section adviser changed after you opened this class/);
+  assert.match(frontend,/set_section_adviser[\s\S]*expectedRevision:Number\(existing\?\.revision\)\|\|0/);
+  assert.match(frontend,/end_section_adviser[\s\S]*expectedRevision:Number\(adviser\.revision\)\|\|1/);
 });
