@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {parsePublicChannel,normalizePublicItem,PUBLIC_CHANNELS} from './public-content.mjs';
 
@@ -45,4 +46,38 @@ test('public notices require a traceable source, not a fictional release',()=>{
 });
 test('there is one explicit file for each scheduled editorial channel',()=>{
   assert.deepEqual(Object.keys(PUBLIC_CHANNELS),['opportunities','experiences','announcements','weekly-pulse']);
+});
+
+test('all configured public content is safe for publication as static JSON',async()=>{
+  const allowedStatus=new Set(['published','draft']);
+  const prohibitedKeys=new Set([
+    'schoolId','studentId','studentUid','uid','email','token','accessToken',
+    'enrollmentId','grade','score','guardianId','personId','membershipId'
+  ]);
+  for(const [channel,path] of Object.entries(PUBLIC_CHANNELS)){
+    const raw=await readFile(new URL('../../'+path,import.meta.url),'utf8');
+    assert.ok(Buffer.byteLength(raw,'utf8')<=200_000,path+' exceeds public size limit');
+    const data=JSON.parse(raw);
+    assert.equal(data.schemaVersion,1);
+    assert.equal(data.channel,channel);
+    assert.ok(Array.isArray(data.items));
+    assert.ok(data.items.length<=150);
+    const seenIds=new Set(),seenProviders=new Set();
+    for(const item of data.items){
+      assert.ok(allowedStatus.has(item.status),channel+' has an unknown status');
+      assert.ok(!seenIds.has(item.id),channel+' contains a duplicate ID');
+      seenIds.add(item.id);
+      for(const key of Object.keys(item))assert.ok(!prohibitedKeys.has(key),channel+' contains private key '+key);
+      if(channel==='opportunities'){
+        const fingerprint=String(item.provider||'')+'|'+String(item.url||'');
+        assert.ok(!seenProviders.has(fingerprint),channel+' has a duplicate provider and destination');
+        seenProviders.add(fingerprint);
+      }
+      // Validate intrinsic shape while the publication window is valid, even
+      // after a listing has naturally expired and disappeared from the UI.
+      const first=Date.parse(item.publishedAt),last=Date.parse(item.expiresAt);
+      const at=first+Math.min(60_000,Math.max(1,(last-first)/2));
+      assert.ok(normalizePublicItem({...item,status:'published'},channel,at),channel+' contains invalid item '+item.id);
+    }
+  }
 });
