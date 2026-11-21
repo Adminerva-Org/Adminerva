@@ -42,7 +42,7 @@ test("V4 repository evaluation reuses substantive-diff analysis and pins source"
   assert.equal(payload.evidence.pinnedSource[0].content,"public class Main {}");
   assert.equal(payload.evidence.commits[0].files[0].path,"src/Main.java");
   assert.equal(payload.evidence.analysis.complete,true);
-  assert.match(payload.gradingRules.repositoryBoundary,/do not independently prove/);
+  assert.match(payload.gradingRules.repositoryBoundary,/independently prove individual authorship/);
 });
 test("V4 refuses unapproved GitHub evidence and mismatched commit objects",async()=>{
   await assert.rejects(
