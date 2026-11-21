@@ -11,6 +11,12 @@ const {
 }=require("../functions/school-academics.js");
 
 test("academic catalog archive dependencies protect canonical active relationships",()=>{
+  assert.deepEqual(catalogArchiveDependencySpecs("academic_years"),[
+    ["terms","yearId","academic period"],
+    ["course_offerings","yearId","course offering"],
+    ["student_registrations","yearId","student registration"],
+    ["section_advisers","yearId","section adviser"]
+  ]);
   assert.deepEqual(catalogArchiveDependencySpecs("subjects"),[
     ["course_offerings","subjectId","course offering"],
     ["grading_schemes","applicability.subjectId","grading policy"]
