@@ -915,7 +915,7 @@ async function prepareDeployment(item){
   // Practical-exam deployments default to teacher-controlled class sessions.
   form.elements.manualOpenRequired.checked=
     form.elements.submissionSource.value==="studio"&&
-    /\\b(?:practical\\s+)?exam(?:ination)?\\b/i.test(String(item.assessmentType||""));
+    /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(item.assessmentType||""));
   const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   form.elements.opensAt.value=localDateInput(now);
   form.elements.dueAt.value=localDateInput(tomorrow);
@@ -996,52 +996,124 @@ el("tl-lifecycle-form").addEventListener("submit",event=>{
     finally{pendingWrite=false;[...form.elements].forEach(control=>control.disabled=false);}
   })();
 });
-el("tl-cancel-deploy").addEventListener("click",()=>{
-  if(pendingWrite)return;
-  el("tl-deploy-form").elements.submissionSource.disabled=false;
-  el("tl-deploy-dialog").close();
-});
+el("tl-cancel-deploy").addEventListener("click",()=>{if(!pendingWrite)el("tl-deploy-dialog").close();});
 el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
-el("tl-deploy-dialog").addEventListener("close",()=>{++deployEpoch;deployReady=false;deploying=null;deployRequestKey=null;});
+el("tl-deploy-dialog").addEventListener("close",()=>{
+  ++deployEpoch;deployReady=false;deploying=null;deployOfferings=[];
+  deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();deployAttempted=false;
+});
+el("tl-deploy-offering-search").addEventListener("input",renderDeploymentOfferings);
+el("tl-deploy-select-visible").addEventListener("click",()=>{
+  const existing=previouslyDeployedOfferingIds();
+  for(const offering of matchingDeployOfferings()){
+    if(existing.has(offering.offeringId)||deploySucceededOfferings.has(offering.offeringId))continue;
+    if(deploySelectedOfferings.size>=MAX_BULK_DEPLOYMENTS)break;
+    deploySelectedOfferings.add(offering.offeringId);
+  }
+  renderDeploymentOfferings();
+});
+el("tl-deploy-clear").addEventListener("click",()=>{
+  for(const id of deploySelectedOfferings)deployRequestKeys.delete(id);
+  deploySelectedOfferings.clear();renderDeploymentOfferings();
+});
+el("tl-deploy-custom-range").addEventListener("click",()=>{
+  ensureDeploymentCalendar();
+  if(deployDatePicker)deployDatePicker.open();
+  else el("tl-deploy-form").elements.opensAt.focus();
+});
+for(const button of document.querySelectorAll("#tl-deploy-form [data-deploy-range-days]")){
+  button.addEventListener("click",()=>{
+    if(deployAttempted)return;
+    const start=new Date();start.setHours(0,0,0,0);
+    const end=new Date(start);end.setDate(start.getDate()+Number(button.dataset.deployRangeDays));
+    ensureDeploymentCalendar();
+    if(deployDatePicker)deployDatePicker.setDate([start,end],false);
+    setDeploymentRange(start,end);
+  });
+}
 el("tl-deploy-form").elements.submissionSource.addEventListener("change",()=>{
+  if(deployAttempted)return;
   toggleManualOpening();
   const form=el("tl-deploy-form");
   if(form.elements.submissionSource.value==="studio"&&
      /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(deploying?.assessmentType||"")))
     form.elements.manualOpenRequired.checked=true;
+  deployRequestKeys.clear();
 });
-el("tl-deploy-form").addEventListener("input",()=>{if(!pendingWrite)deployRequestKey=crypto.randomUUID();});
+for(const name of ["manualOpenRequired","allowLateSubmissions"]){
+  el("tl-deploy-form").elements[name].addEventListener("change",()=>{
+    if(!deployAttempted)deployRequestKeys.clear();
+  });
+}
+for(const name of ["opensAt","dueAt"]){
+  el("tl-deploy-form").elements[name].addEventListener("change",()=>{
+    if(deployAttempted)return;
+    deployTimesEdited=true;deployRequestKeys.clear();
+    const form=el("tl-deploy-form");
+    const opens=new Date(form.elements.opensAt.value),due=new Date(form.elements.dueAt.value);
+    if(deployDatePicker&&Number.isFinite(opens.getTime())&&Number.isFinite(due.getTime())&&due>=opens)
+      deployDatePicker.setDate([opens,due],false);
+  });
+}
 el("tl-deploy-form").addEventListener("submit",event=>{
   event.preventDefault();if(!deploying||pendingWrite||!deployReady)return;
   const form=event.currentTarget;
   if(!form.reportValidity())return;
-  const fields=new FormData(form);
-  const key=deployRequestKey||crypto.randomUUID(),resource=deploying;
-  deployRequestKey=key;
-  const opensAt=new Date(String(fields.get("opensAt")||""));
-  const dueAt=new Date(String(fields.get("dueAt")||""));
-  if(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt){
-    say("Choose a valid opening time and later deadline.");return;
+  const ids=[...deploySelectedOfferings];
+  if(!ids.length){el("tl-deploy-feedback").textContent="Select at least one assigned class.";return;}
+  if(ids.length>MAX_BULK_DEPLOYMENTS){
+    el("tl-deploy-feedback").textContent="Choose no more than "+MAX_BULK_DEPLOYMENTS+" classes.";return;
   }
+  const opensAt=new Date(form.elements.opensAt.value),dueAt=new Date(form.elements.dueAt.value);
+  if(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt){
+    el("tl-deploy-feedback").textContent="Choose a valid opening time and a later deadline.";return;
+  }
+  const resource=deploying,settings={
+    blueprintId:resource.id,
+    submissionSource:personalized(resource)?"studio":form.elements.submissionSource.value,
+    opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
+    allowLateSubmissions:form.elements.allowLateSubmissions.checked===true,
+    manualOpenRequired:form.elements.manualOpenRequired.checked===true
+  };
   void (async()=>{
-    pendingWrite=true;
+    pendingWrite=true;deployAttempted=true;
     const controls=[...form.elements].filter(control=>!control.disabled);
     controls.forEach(control=>control.disabled=true);
-    say("Checking your course assignment and deploying a frozen assessment…");
+    const failures=[];let completed=0;
     try{
-      const task=await performScoped(scopedAssessmentApi,"deploy",{
-        blueprintId:resource.id,offeringId:String(fields.get("offeringId")||""),
-        submissionSource:personalized(resource)?"studio":String(fields.get("submissionSource")||""),
-        opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
-        allowLateSubmissions:fields.get("allowLateSubmissions")==="on",
-        manualOpenRequired:fields.get("manualOpenRequired")==="on",requestKey:key
-      });
-      const message=task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
-        "Assessment prepared privately for this class. Publish it when you are ready for students to see it.";
-      el("tl-deploy-dialog").close();deploying=null;deployRequestKey=null;
-      await refreshAfterWrite(message);
-    }catch(error){say(error.message||"Deployment could not be completed. Retry the same request safely.");}
-    finally{pendingWrite=false;controls.forEach(control=>control.disabled=false);}
+      for(const offeringId of ids){
+        if(deploySucceededOfferings.has(offeringId))continue;
+        const offering=deployOfferings.find(entry=>entry.offeringId===offeringId);
+        const name=offering?deploymentOfferingLabel(offering):offeringId;
+        const requestKey=deployRequestKeys.get(offeringId)||crypto.randomUUID();
+        deployRequestKeys.set(offeringId,requestKey);
+        const status="Preparing "+(completed+failures.length+1)+" of "+ids.length+" classes: "+name+"…";
+        say(status);el("tl-deploy-feedback").textContent=status;
+        try{
+          await performScoped(scopedAssessmentApi,"deploy",{...settings,offeringId,requestKey});
+          deploySucceededOfferings.add(offeringId);
+          deploySelectedOfferings.delete(offeringId);
+          completed++;
+        }catch(error){
+          failures.push(name+": "+(error?.message||"Request failed"));
+        }
+      }
+      if(!failures.length){
+        el("tl-deploy-dialog").close();
+        await refreshAfterWrite("Prepared "+completed+" independent class deployment"+(completed===1?"":"s")+
+          ". Each remains private until published individually.");
+      }else{
+        const summary="Prepared "+completed+" of "+ids.length+" selected class"+(ids.length===1?"":"es")+
+          ". "+failures.length+" could not be prepared. Retry reuses each class's request ID. "+
+          failures.join(" | ");
+        el("tl-deploy-feedback").textContent=summary;say(summary);
+        if(completed)try{await refresh();}catch{/* successful writes are retained */}
+      }
+    }finally{
+      pendingWrite=false;controls.forEach(control=>control.disabled=false);
+      if(failures.length)freezeBulkDeploymentSettings();
+      if(el("tl-deploy-dialog").open)renderDeploymentOfferings();
+    }
   })();
 });
 form.elements.personalizationMode.addEventListener("change",togglePersonalizationFields);
