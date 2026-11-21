@@ -1,3 +1,5 @@
+> **Planning authority:** This document is retained as a technical specification or historical implementation record. The canonical Adminerva product roadmap, development status and future priorities are maintained only in [Adminerva School OS — Master Development Plan](https://github.com/Adminerva-Org/Adminerva/blob/main/docs/adminerva-school-os-master-plan.md). Do not use this file as a competing progress tracker.
+
 # CheerpJ Studio — Phases 3 & 4: lifecycle + isolated hosting
 
 Status: PRE-ACTIVATION CODE. Interactive Java remains disabled in Student/Guest Studio. Judge0 is still the default. Live CheerpJ browser execution is not yet verified against an independent HTTPS host.
