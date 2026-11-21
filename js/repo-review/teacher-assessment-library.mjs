@@ -245,7 +245,7 @@ function render(){
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
       meta.textContent=(task.published?"Published":"Private deployment")+" · "+sourceLabel(task.submissionSource)+
         (task.manualOpenRequired?" · Teacher session: "+(task.manualAccessState==="open"?"OPEN":
-          ["closing","held"].includes(task.manualAccessState)?"CLOSED":"WAITING"):"")+
+          ["closed","closing","held"].includes(task.manualAccessState)?"CLOSED":"WAITING"):"")+
         (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
@@ -273,7 +273,7 @@ function render(){
       }
       if(lifecycle==="active"&&task.published&&task.manualOpenRequired&&task.submissionSource==="studio"){
         const isOpen=task.manualAccessState==="open",
-          finalSaving=task.manualAccessState==="closing"&&Number(task.manualCloseGraceUntil||0)>Date.now();
+          finalSaving=["closed","closing"].includes(task.manualAccessState)&&Number(task.manualCloseGraceUntil||0)>Date.now();
         const button=actionButton(isOpen?"Close exam":finalSaving?"Finalizing saves…":"Open exam",
           ()=>void setExamOpening(task,!isOpen),isOpen);
         button.disabled=finalSaving;
