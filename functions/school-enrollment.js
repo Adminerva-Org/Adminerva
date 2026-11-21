@@ -450,27 +450,153 @@ function createSchoolEnrollmentService({db}){
     }
 
     if(input.action==="list_registrations"){
-      const snap=await db.collection(root+"student_registrations").orderBy("displayName").limit(201).get();
+      const [snap,enrollmentSnap]=await Promise.all([
+        db.collection(root+"student_registrations").orderBy("displayName").limit(201).get(),
+        db.collection(root+"enrollments").where("status","==","active").limit(501).get()
+      ]);
       if(snap.size===201)deny("resource-exhausted","Enrollment list requires pagination.");
-      return {items:snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>({
-        registrationId:doc.id,personId:doc.data().personId,
-        displayName:doc.data().displayName||"Student",
-        studentNumber:doc.data().studentNumber||"",
-        status:doc.data().status||"active",
-        yearId:doc.data().yearId,programId:doc.data().programId,
-        termId:doc.data().termId,sectionId:doc.data().sectionId,
-        gradeLevel:doc.data().gradeLevel||null,
-        courseCount:Number(doc.data().courseCount)||0,
-        accountLinked:Boolean(doc.data().accountLinked),
-        accountResponsibility:doc.data().accountResponsibility||"student",
-        guardianEmail:doc.data().guardianEmail||"",
-        source:doc.data().source||"onsite",
-        endReasonType:doc.data().endReasonType||null,
-        progressionType:doc.data().progressionType||null,
-        progressedToRegistrationId:doc.data().progressedToRegistrationId||null,
-        previousRegistrationId:doc.data().previousRegistrationId||null,
-        revision:Number(doc.data().revision)||1
-      }))};
+      if(enrollmentSnap.size===501)deny("resource-exhausted",
+        "Pre-canonical enrollment reconciliation requires pagination before it can be reviewed safely.");
+      const registrationDocs=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId),
+        items=registrationDocs.map(doc=>({
+          registrationId:doc.id,personId:doc.data().personId,
+          displayName:doc.data().displayName||"Student",
+          studentNumber:doc.data().studentNumber||"",
+          status:doc.data().status||"active",
+          yearId:doc.data().yearId,programId:doc.data().programId,
+          termId:doc.data().termId,sectionId:doc.data().sectionId,
+          gradeLevel:doc.data().gradeLevel||null,
+          courseCount:Number(doc.data().courseCount)||0,
+          accountLinked:Boolean(doc.data().accountLinked),
+          accountResponsibility:doc.data().accountResponsibility||"student",
+          guardianEmail:doc.data().guardianEmail||"",
+          source:doc.data().source||"onsite",
+          endReasonType:doc.data().endReasonType||null,
+          progressionType:doc.data().progressionType||null,
+          progressedToRegistrationId:doc.data().progressedToRegistrationId||null,
+          previousRegistrationId:doc.data().previousRegistrationId||null,
+          revision:Number(doc.data().revision)||1
+        })),
+        activelyRegisteredPeople=new Set(registrationDocs
+          .filter(doc=>(doc.data().status||"active")==="active")
+          .map(doc=>doc.data().personId)),
+        orphanEnrollments=enrollmentSnap.docs.filter(doc=>{
+          const row=doc.data();
+          return row.schoolId===ctx.schoolId&&row.status==="active"&&
+            typeof row.personId==="string"&&!activelyRegisteredPeople.has(row.personId);
+        }),
+        grouped=new Map();
+      for(const doc of orphanEnrollments){
+        const row=doc.data(),group=grouped.get(row.personId)||[];
+        group.push({
+          enrollmentId:doc.id,expectedRevision:Number(row.revision)||1,
+          offeringId:row.offeringId||null,yearId:row.yearId||null,termId:row.termId||null,
+          sectionId:row.sectionId||null,subjectId:row.subjectId||null,
+          registrationId:row.registrationId||null
+        });
+        grouped.set(row.personId,group);
+      }
+      const personIds=[...grouped.keys()];
+      if(personIds.length>100)deny("resource-exhausted",
+        "Too many students have pre-canonical active enrollments for one reconciliation page.");
+      const people=await Promise.all(personIds.map(personId=>
+        db.doc(root+"people/"+checkId(personId,"Person ID",128)).get()));
+      const legacyItems=personIds.map((personId,index)=>{
+        const person=people[index],enrollments=grouped.get(personId)||[];
+        if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student")
+          return null;
+        const row=person.data();
+        return {
+          personId,displayName:row.displayName||"Student",studentNumber:row.studentNumber||"",
+          personStatus:row.status||"active",courseCount:enrollments.length,
+          sectionIds:[...new Set(enrollments.map(item=>item.sectionId).filter(Boolean))],
+          yearIds:[...new Set(enrollments.map(item=>item.yearId).filter(Boolean))],
+          termIds:[...new Set(enrollments.map(item=>item.termId).filter(Boolean))],
+          hasRegistrationLinkedEnrollment:enrollments.some(item=>Boolean(item.registrationId)),
+          enrollments
+        };
+      }).filter(Boolean).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+      return {items,legacyItems};
+    }
+
+    if(input.action==="end_orphan_enrollments"){
+      const personId=checkId(input.personId,"Person ID",128),
+        reason=text(input.reason,"Legacy enrollment reconciliation reason",500),
+        expected=Array.isArray(input.enrollments)?input.enrollments.map(item=>({
+          enrollmentId:checkId(item?.enrollmentId,"Enrollment ID",128),
+          expectedRevision:Number(item?.expectedRevision)
+        })):[];
+      if(reason.length<12)deny("invalid-argument","Explain the enrollment reconciliation in at least 12 characters.");
+      if(!expected.length||expected.length>80)
+        deny("invalid-argument","Review between 1 and 80 active legacy enrollments before reconciling.");
+      if(expected.some(item=>!Number.isSafeInteger(item.expectedRevision)||item.expectedRevision<1))
+        deny("invalid-argument","Refresh the legacy enrollment review before saving.");
+      if(new Set(expected.map(item=>item.enrollmentId)).size!==expected.length)
+        deny("invalid-argument","Legacy enrollment review contains duplicate records.");
+      const [currentEnrollments,currentRegistrations]=await Promise.all([
+        db.collection(root+"enrollments").where("personId","==",personId).limit(101).get(),
+        db.collection(root+"student_registrations").where("personId","==",personId).limit(51).get()
+      ]);
+      if(currentEnrollments.size===101||currentRegistrations.size===51)
+        deny("resource-exhausted","This student has too much enrollment history for automatic legacy reconciliation.");
+      if(currentRegistrations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&
+        (doc.data().status||"active")==="active"))
+        deny("failed-precondition",
+          "This student now has an active official registration. Use the registration lifecycle instead of legacy cleanup.");
+      const active=currentEnrollments.docs.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+      const activeIds=active.map(doc=>doc.id).sort(),
+        expectedIds=expected.map(item=>item.enrollmentId).sort();
+      if(activeIds.length!==expectedIds.length||activeIds.some((value,index)=>value!==expectedIds[index]))
+        deny("failed-precondition","The student's active class enrollments changed. Refresh the reconciliation list before saving.");
+      if(active.some(doc=>doc.data().registrationId))
+        deny("failed-precondition",
+          "An active class enrollment is linked to registration history. Review that registration before legacy cleanup.");
+      const personRef=db.doc(root+"people/"+personId),
+        refs=expected.map(item=>db.doc(root+"enrollments/"+item.enrollmentId)),
+        auditRef=db.collection(root+"directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const [person,registrationCheck,...records]=await Promise.all([
+          tx.get(personRef),
+          tx.get(db.collection(root+"student_registrations").where("personId","==",personId).limit(51)),
+          ...refs.map(ref=>tx.get(ref))
+        ]);
+        if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
+           person.data().status!=="active")
+          deny("failed-precondition","The student directory record must remain active during reconciliation.");
+        if(registrationCheck.size===51)
+          deny("resource-exhausted","This student has too much registration history for automatic reconciliation.");
+        if(registrationCheck.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&
+          (doc.data().status||"active")==="active"))
+          deny("failed-precondition",
+            "An official registration was created after preview. Refresh before changing legacy enrollments.");
+        const now=FieldValue.serverTimestamp();
+        records.forEach((record,index)=>{
+          const reviewed=expected[index];
+          if(!record.exists||record.data().schoolId!==ctx.schoolId||
+             record.data().personId!==personId||record.data().status!=="active")
+            deny("failed-precondition","A reviewed legacy enrollment changed. Refresh before saving.");
+          const currentRevision=Number(record.data().revision)||1;
+          if(currentRevision!==reviewed.expectedRevision)
+            deny("failed-precondition","A reviewed legacy enrollment changed. Refresh before saving.");
+          if(record.data().registrationId)
+            deny("failed-precondition",
+              "A reviewed class enrollment is now linked to registration history. Refresh before saving.");
+          tx.update(record.ref,{
+            status:"ended",endedByUid:ctx.uid,endedAt:now,endReason:reason,
+            endedByReconciliation:true,reconciliationType:"pre_canonical_orphan",
+            revision:currentRevision+1
+          });
+        });
+        tx.create(auditRef,{
+          schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
+          action:"pre_canonical_student_enrollments_ended",reason,
+          enrollmentIds:expected.map(item=>item.enrollmentId),
+          enrollmentCount:expected.length,createdAt:now
+        });
+      });
+      return {personId,status:"ended",courseCount:expected.length};
     }
 
     if(["end_registration","restore_registration"].includes(input.action)){

@@ -136,7 +136,7 @@ function createPeopleDirectoryService({db}) {
       if(registrations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
         blockers.push("The duplicate student has an active official registration. End or correct it in Enrollment & Registration first.");
       if(enrollments.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
-        blockers.push("The duplicate student has active class enrollment. Resolve it in the authoritative enrollment/class workflow first.");
+        blockers.push("The duplicate student has active class enrollment. End any pre-canonical orphaned enrollments in Enrollment & Registration before recovery.");
       const substantive=[
         [grades,"grade history"],[studio,"Studio submissions"],[responses,"assessment submissions"],
         [githubEvidence,"GitHub evidence"],[repositoryConfigs,"repository configuration"],

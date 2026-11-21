@@ -48,3 +48,20 @@ test("People & Access exposes a guarded account recovery panel",async()=>{
   assert.match(ui,/recover_student_account/);
   assert.match(ui,/recoveryPreview/);
 });
+
+
+test("canonical Enrollment exposes audited cleanup for pre-canonical orphan enrollments",async()=>{
+  const [service,html,ui]=await Promise.all([
+    readFile(new URL("../functions/school-enrollment.js",import.meta.url),"utf8"),
+    readFile(new URL("../school-enrollment.html",import.meta.url),"utf8"),
+    readFile(new URL("../js/school-admin/enrollment.mjs",import.meta.url),"utf8")
+  ]);
+  assert.match(service,/end_orphan_enrollments/);
+  assert.match(service,/pre_canonical_student_enrollments_ended/);
+  assert.match(service,/This student now has an active official registration/);
+  assert.match(service,/registrationId/);
+  assert.match(html,/Pre-canonical enrollment reconciliation/);
+  assert.match(html,/en-legacy-reconciliation-dialog/);
+  assert.match(ui,/renderLegacyRegistrations/);
+  assert.match(ui,/end_orphan_enrollments/);
+});
