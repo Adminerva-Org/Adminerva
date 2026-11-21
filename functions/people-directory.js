@@ -541,11 +541,14 @@ function createPeopleDirectoryService({db}) {
         .map(member=>({
           uid:member.id,status:member.data().status,
           roles:Array.isArray(member.data().roles)?member.data().roles:[],
-          displayName:typeof member.data().displayName==="string"?member.data().displayName:""
+          displayName:typeof member.data().displayName==="string"?member.data().displayName:"",
+          revision:Number(member.data().revision)||1
         }))};
     }
     if(input.action==="suspend_access"){
-      const targetUid=id(input.targetUid);
+      const targetUid=id(input.targetUid),expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this school access record before suspending it.");
       const reason=field(input.reason,500,"Suspension reason");
       if(reason.length<12)invalid("Suspension reason must explain the institutional decision.");
       if(targetUid===ctx.uid)
@@ -559,9 +562,12 @@ function createPeopleDirectoryService({db}) {
         if(!current.exists||current.data().schoolId!==ctx.schoolId||
           current.data().status!=="active")
           throw new TenantAccessError("failed-precondition","The school membership is not active.");
+        const currentRevision=Number(current.data().revision)||1;
+        if(currentRevision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This school access record changed after you reviewed it. Refresh before suspending access.");
         if(Array.isArray(current.data().roles)&&current.data().roles.includes("school_admin"))
           throw new TenantAccessError("permission-denied","School administrator suspension requires platform-owner review.");
-        const now=FieldValue.serverTimestamp(),revision=(current.data().revision||0)+1;
+        const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         tx.update(targetRef,{status:"suspended",revision,updatedAt:now,updatedByUid:ctx.uid});
         tx.set(indexRef,{schoolId:ctx.schoolId,status:"suspended",
           roles:Array.isArray(current.data().roles)?current.data().roles:[],
@@ -569,10 +575,12 @@ function createPeopleDirectoryService({db}) {
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,
           action:"school_membership_suspended",reason,createdAt:now});
       });
-      return {targetUid,status:"suspended"};
+      return {targetUid,status:"suspended",revision:expectedRevision+1};
     }
     if(input.action==="restore_access"){
-      const targetUid=id(input.targetUid);
+      const targetUid=id(input.targetUid),expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this school access record before restoring it.");
       const reason=field(input.reason,500,"Restore reason");
       if(reason.length<12)invalid("Restore reason must explain the institutional decision.");
       const targetRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+targetUid);
@@ -584,6 +592,9 @@ function createPeopleDirectoryService({db}) {
         if(!current.exists||current.data().schoolId!==ctx.schoolId||
           current.data().status!=="suspended")
           throw new TenantAccessError("failed-precondition","The school membership is not suspended.");
+        const currentRevision=Number(current.data().revision)||1;
+        if(currentRevision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This school access record changed after you reviewed it. Refresh before restoring access.");
         if(Array.isArray(current.data().roles)&&current.data().roles.includes("school_admin"))
           throw new TenantAccessError("permission-denied","School administrator recovery requires platform-owner review.");
         if(current.data().personId){
@@ -602,7 +613,7 @@ function createPeopleDirectoryService({db}) {
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,
           action:"school_membership_restored",reason,createdAt:now});
       });
-      return {targetUid,status:"active"};
+      return {targetUid,status:"active",revision:expectedRevision+1};
     }
     if(input.action==="list_invitable_people") {
       const role=input.role;
