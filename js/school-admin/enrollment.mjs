@@ -309,6 +309,7 @@ function applicationMeta(item){
 function loadApplicationIntoForm(item){
   if(saving||loadedApplication?.applicationId===item.applicationId||!discardDraft())return;
   loadedPerson=null;form.elements.personId.value="";
+  form.elements.displayName.readOnly=false;
   loadedApplication=item;
   form.elements.applicationId.value=item.applicationId;
   form.elements.displayName.value=item.displayName||"";
@@ -333,8 +334,16 @@ function loadApplicationIntoForm(item){
   form.elements.displayName.focus();
 }
 function clearLoadedApplication({resetIdentity=false}={}){
+  const hadLoadedPerson=Boolean(loadedPerson);
   loadedApplication=null;loadedPerson=null;
   form.elements.applicationId.value="";form.elements.personId.value="";
+  form.elements.displayName.readOnly=false;
+  if(hadLoadedPerson){
+    try{
+      const url=new URL(location.href);url.searchParams.delete("personId");
+      history.replaceState({},"",url);
+    }catch{}
+  }
   get("en-register-title").textContent="Onsite / manual enrollment";
   get("en-register-help").textContent="Use this for walk-in enrollees. Online applications and reviewed directory students can be loaded here before official placement.";
   get("en-clear-application").hidden=true;
@@ -365,6 +374,7 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
     loadedApplication=null;loadedPerson=person;
     form.elements.applicationId.value="";form.elements.personId.value=person.personId;
     form.elements.displayName.value=person.displayName||"";
+    form.elements.displayName.readOnly=true;
     form.elements.birthDate.value=person.birthDate||"";
     form.elements.studentNumber.value=person.studentNumber||"";
     form.elements.guardianName.value=person.guardianName||"";
@@ -551,6 +561,7 @@ picker=createTenantSchoolPicker({
     ++refreshVersion;
     for(const source of Object.keys(requestVersions))++requestVersions[source];
     loadedApplication=null;loadedPerson=null;registrationChange=null;draftDirty=false;registrations=[];
+    form.elements.displayName.readOnly=false;
     catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]};
     if(get("en-registration-change-dialog").open)get("en-registration-change-dialog").close();
     form.reset();clearLoadedApplication({resetIdentity:true});
