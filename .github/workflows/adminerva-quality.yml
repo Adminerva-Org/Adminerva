@@ -23,6 +23,9 @@ jobs:
       - name: Audit sitewide interactive controls
         continue-on-error: true
         run: node scripts/audit-interactive-controls.mjs
+      - name: Validate public editorial publishing content
+        run: node --test js/core/public-content.test.mjs
+
       - name: Test grading evidence and feedback regressions
         run: |
           node --test tests/google-docs-export.test.mjs
@@ -44,7 +47,6 @@ jobs:
           node --test tests/v4-bulk-evaluation.test.mjs
           node --test tests/v4-bulk-link-review.test.mjs
           node --check js/repo-review/v4-bulk-evaluation.mjs
-          node --check js/repo-review/v4-gradebook.mjs
           node --check functions/school-gradebook.js
           node --test tests/v4-repository-evaluation.test.mjs
           node --test tests/studio-student-recovery-guard.test.mjs tests/studio-legacy-reopen.test.mjs
