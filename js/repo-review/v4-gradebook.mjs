@@ -656,13 +656,17 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   document.getElementById("gbV4Close").addEventListener("click",()=>{if(!busy)dialog.close();});
   dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
   bulkPublish?.addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||currentTask.legacyCompatibility||bulkPublish.dataset.ready!=="true")return;
+    if(busy||!currentTask||bulkPublish.dataset.ready!=="true")return;
     const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
     if(!count)return;
     if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? This confirmation is the teacher approval step. Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
     try{
       setBusy(true,"Publishing all valid drafts…");
-      const result=await scoped(gradeApi,"publish_task_drafts",{taskId:currentTask.taskId});
+      const result=currentTask.legacyCompatibility?
+        await scoped(migrationApi,"legacy_review_bulk_publish",{
+          legacyAssessmentId:currentTask.legacyAssessmentId
+        }):
+        await scoped(gradeApi,"publish_task_drafts",{taskId:currentTask.taskId});
       const summary="Published "+result.published+" draft"+(result.published===1?"":"s")+
         (result.zeroSkipped?" · "+result.zeroSkipped+" zero-score draft"+(result.zeroSkipped===1?" remains":"s remain")+" for attention":"")+
         (result.failed?" · "+result.failed+" draft"+(result.failed===1?" was":"s were")+" skipped after validation":"")+".";
@@ -680,15 +684,32 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     try{
       const criteria=collectCriteria();
       setBusy(true,"Saving grade draft…");
-      await scoped(gradeApi,"save_draft",{
-        taskId:currentTask.taskId,studentUid:currentRow.studentUid,
-        submissionVersion:currentSnapshot.version,criteria,
-        feedback:document.getElementById("gbV4Feedback").value.trim(),
-        draftSource:currentDraftSource
-      });
+      if(currentTask.legacyCompatibility){
+        await scoped(migrationApi,"legacy_review_save_draft",{
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          legacySubmissionId:currentRow.recordId,criteria,
+          feedback:document.getElementById("gbV4Feedback").value.trim(),
+          draftSource:currentDraftSource
+        });
+      }else{
+        await scoped(gradeApi,"save_draft",{
+          taskId:currentTask.taskId,studentUid:currentRow.studentUid,
+          submissionVersion:currentSnapshot.version,criteria,
+          feedback:document.getElementById("gbV4Feedback").value.trim(),
+          draftSource:currentDraftSource
+        });
+      }
       saved=true;
-      const refreshed=await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
-      currentGrade=refreshed.grade;renderRubric(currentGrade);
+      const refreshed=currentTask.legacyCompatibility?
+        await scoped(migrationApi,"legacy_review_inspect",{
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          legacySubmissionId:currentRow.recordId
+        }):
+        await scoped(gradeApi,"get_draft",{
+          taskId:currentTask.taskId,studentUid:currentRow.studentUid
+        });
+      currentGrade=currentTask.legacyCompatibility?refreshed.grade:refreshed.grade;
+      renderRubric(currentGrade);
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=
         "Draft saved against frozen submission version "+currentSnapshot.version+".";
@@ -702,7 +723,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(!confirm("Publish this reviewed grade to the student? The current V4 workflow does not allow ordinary edits after publication."))return;
     try{
       setBusy(true,"Verifying current submission and publishing grade…");
-      const result=await scoped(gradeApi,"publish",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
+      const result=currentTask.legacyCompatibility?
+        await scoped(migrationApi,"legacy_review_publish",{
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          legacySubmissionId:currentRow.recordId
+        }):
+        await scoped(gradeApi,"publish",{
+          taskId:currentTask.taskId,studentUid:currentRow.studentUid
+        });
       document.getElementById("gbV4ReviewStatus").textContent="Published "+result.awarded+" / "+result.total+" to the student.";
       currentGrade={...(currentGrade||{}),status:"published"};
       currentRow={...currentRow,status:"reviewed"};
@@ -797,6 +825,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   })());
   document.getElementById("gbV4RequestRevision").addEventListener("click",()=>void (async()=>{
     if(busy||reviewNeedsRefresh||!currentTask||!currentRow)return;
+    if(currentTask.legacyCompatibility){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "Historical revisions remain managed by the original Studio submission workflow. Existing source and grades are unchanged.";
+      return;
+    }
     const reason=document.getElementById("gbV4RevisionReason").value.trim();
     if(reason.length<12){
       document.getElementById("gbV4ReviewStatus").textContent="Explain the revision request in at least 12 characters.";return;
