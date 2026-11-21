@@ -4,9 +4,10 @@
  *
  * Recovery-safe precedence:
  * 1. canonical person legacyStudentIds (newer adoption path);
- * 2. canonical person previousAuthUids -> historical Firebase Auth email
+ * 2. canonical person previousAuthUids -> old server-owned student_access.studentIds;
+ * 3. canonical person previousAuthUids -> historical Firebase Auth email
  *    -> legacy students row (older canonical-foundation migration);
- * 3. current verified email only for non-recovered/legacy-only accounts.
+ * 4. current verified email only for non-recovered/legacy-only accounts.
  *
  * Never match by display name or section.
  */
@@ -85,6 +86,21 @@ async function historicalEmails({uids,resolveUser}){
   }
   return [...new Set(emails)];
 }
+
+async function recordsForPreviousAccess({db,uids,maxRecords}){
+  const ids=[];
+  for(const previousUid of uids){
+    const access=await db.doc("student_access/"+previousUid).get();
+    if(!access.exists)continue;
+    const data=access.data()||{};
+    for(const id of cleanLegacyIds(data.studentIds,maxRecords)){
+      if(!ids.includes(id))ids.push(id);
+      if(ids.length>=maxRecords)break;
+    }
+    if(ids.length>=maxRecords)break;
+  }
+  return recordsForIds({db,ids,maxRecords});
+}
 async function legacyStudentRecordsForAccount({
   db,uid,email,schoolId=SCHOOL_ID,maxRecords=50,resolveUser=null
 }){
@@ -101,6 +117,8 @@ async function legacyStudentRecordsForAccount({
 
     const previousUids=cleanUids(canonical.data.previousAuthUids,uid);
     if(previousUids.length){
+      const projected=await recordsForPreviousAccess({db,uids:previousUids,maxRecords:bounded});
+      if(projected.length)return {source:"canonical_previous_access",records:projected};
       const emails=await historicalEmails({uids:previousUids,resolveUser});
       const historical=await recordsForEmails({db,emails,maxRecords:bounded});
       if(historical.length)return {source:"canonical_account_history",records:historical};
