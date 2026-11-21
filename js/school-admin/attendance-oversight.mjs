@@ -2,9 +2,17 @@ import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.1";
 
-const el=id=>document.getElementById(id),api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAttendance");
-let picker=null,rows=[],busy=false,epoch=0;
+const functions=getFunctions(app,"asia-southeast1"),
+  el=id=>document.getElementById(id),
+  api=httpsCallable(functions,"schoolAttendance"),
+  profileApi=httpsCallable(functions,"schoolProfile");
+let picker=null,rows=[],busy=false,epoch=0,dateTouched=false;
 function localDate(){const now=new Date(),local=new Date(now.getTime()-now.getTimezoneOffset()*60000);return local.toISOString().slice(0,10);}
+function dateInTimeZone(timeZone){
+  const parts=new Intl.DateTimeFormat("en-US",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"})
+    .formatToParts(new Date()),values=Object.fromEntries(parts.filter(part=>part.type!=="literal").map(part=>[part.type,part.value]));
+  return values.year+"-"+values.month+"-"+values.day;
+}
 function make(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;}
 function say(message,error=false){el("attendanceStatus").textContent=message;el("attendanceStatus").className="text-sm mt-3 "+(error?"text-rose-700":"text-slate-600");}
 function platformMode(){try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":undefined;}catch{return undefined;}}
@@ -13,6 +21,24 @@ async function scoped(action,details={}){
  const lease=picker.scope.lease(),mode=platformMode();
  const result=(await api({schoolId:lease.schoolId,action,...details,...(mode?{platformMode:mode}:{})})).data;
  picker.scope.assertLease(lease);return result;
+}
+async function initializeSchoolDate(){
+ if(!picker?.scope.current)return;
+ const lease=picker.scope.lease(),mode=platformMode();
+ try{
+  const result=(await profileApi({schoolId:lease.schoolId,action:"get",...(mode?{platformMode:mode}:{})})).data;
+  picker.scope.assertLease(lease);
+  const timeZone=String(result?.profile?.timezone||"").trim();
+  if(timeZone){
+    if(!dateTouched)el("attendanceDate").value=dateInTimeZone(timeZone);
+    el("attendanceTimezone").textContent="School timezone · "+timeZone;
+    return;
+  }
+ }catch(error){
+  try{picker.scope.assertLease(lease);}catch{return;}
+ }
+ if(!dateTouched)el("attendanceDate").value=localDate();
+ el("attendanceTimezone").textContent="School timezone unavailable · using this device's local date.";
 }
 function counts(){
  const submitted=rows.filter(row=>row.submitted).length;
@@ -104,14 +130,23 @@ async function load(){
  finally{if(turn===epoch){busy=false;el("attendanceRefresh").disabled=false;}}
 }
 el("attendanceDate").value=localDate();
+el("attendanceDate").addEventListener("change",()=>{dateTouched=true;});
 el("attendanceRefresh").addEventListener("click",()=>void load());
 el("attendanceSearch").addEventListener("input",renderTable);
 el("attendanceDetailClose").addEventListener("click",()=>el("attendanceDetailDialog").close());
 el("attendanceDetailDialog").addEventListener("cancel",()=>{});
 picker=createTenantSchoolPicker({
  host:el("attendanceSchoolSwitcher"),status:null,
- onBeforeChange:async()=>{if(busy)throw Error("Finish the attendance refresh before switching schools.");++epoch;rows=[];renderSummary();renderTable();},
- onReady:scope=>{if(scope.current?.roles.includes("school_admin")||platformMode()==="assist")void load();else say("School Administrator access is required.",true);}
+ onBeforeChange:async()=>{
+  if(busy)throw Error("Finish the attendance refresh before switching schools.");
+  ++epoch;rows=[];dateTouched=false;renderSummary();renderTable();
+  el("attendanceTimezone").textContent="Loading school timezone…";
+ },
+ onReady:scope=>{
+  if(scope.current?.roles.includes("school_admin")||platformMode()==="assist")
+    void initializeSchoolDate().then(()=>load());
+  else say("School Administrator access is required.",true);
+ }
 });
 renderSummary();renderTable();
 await auth.authStateReady();
