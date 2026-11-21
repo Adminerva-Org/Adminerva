@@ -2,9 +2,10 @@
 const studentPages=new Set(["student-home.html","student-dashboard.html","student-assessments.html","student-settings.html","student-practice.html","student-playground.html","student-xml-lab.html","issues.html","school-student-projects.html","school-student-settings.html","school-student-assessments.html","school-student-grades.html"]);
 const staffPages=new Set(["teacher-home.html","teacher-analytics.html","practice-analytics.html","learning-follow-up.html","lesson-planner.html","presentation.html","schedule.html","library.html","teacher-assessment-library.html","class-record.html","pilot-sandbox.html","repofetch.html","repobank.html","gradebook.html","grading.html","activity-grader.html","group-inspector.html","contribution-inspector.html","assessment-studio.html","assessment-evidence-review.html","submissions.html","reclaim-inbox.html","studio-submissions.html","settings.html","issues.html","school-gradebook.html"]);
 const adminPages=new Set(["users.html","teacher-accounts.html","admin-analytics.html","manage-sections.html","manage-programs.html","manage-subjects.html","owner-schools.html"]);
-const schoolAdminPages=new Set(["school-admin.html","school-pilot.html","people-access.html","school-enrollment.html","reclaim-inbox.html","teacher-assessment-library.html","issues.html","school-grading-schemes.html","school-class-records.html","school-academic-configuration.html","school-academic-structure.html"]);
+const schoolAdminPages=new Set(["school-admin.html","school-pilot.html","people-access.html","school-enrollment.html","school-student-records.html","reclaim-inbox.html","teacher-assessment-library.html","issues.html","school-grading-schemes.html","school-class-records.html","school-academic-configuration.html","school-academic-structure.html"]);
+const registrarPages=new Set(["school-enrollment.html","school-student-records.html","settings.html","issues.html","wiki.html"]);
 const guestPages=new Set(["guest-home.html","guest-practice.html","guest-playground.html"]);
-export function workspaceHome(access){return access.platformAdmin&&!access.role&&!access.schoolAdmin&&!access.schoolTeacher?"owner-schools.html":access.schoolAdmin?"school-admin.html":access.role||access.schoolTeacher?"teacher-home.html":access.schoolStudent||access.students?.length?"student-home.html":"guest-home.html";}
+export function workspaceHome(access){return access.platformAdmin&&!access.role&&!access.schoolAdmin&&!access.schoolRegistrar&&!access.schoolTeacher?"owner-schools.html":access.schoolAdmin?"school-admin.html":access.schoolRegistrar?"school-enrollment.html":access.role||access.schoolTeacher?"teacher-home.html":access.schoolStudent||access.students?.length?"student-home.html":"guest-home.html";}
 export function sessionDestination(candidate,access){
   const fallback=workspaceHome(access);
   if(!candidate)return fallback;
@@ -31,7 +32,7 @@ export function sessionDestination(candidate,access){
       };
       page=v4Routes[page]||page;
     }
-    const allowed=page==="join-school.html"||page==="issues.html"||page==="owner-schools.html"&&(access.platformAdmin||access.role==="admin")||studentPages.has(page)&&(Boolean(access.role)||access.schoolAdmin||access.schoolStudent||access.students?.length)||staffPages.has(page)&&(Boolean(access.role)||access.schoolAdmin||access.schoolTeacher)||schoolAdminPages.has(page)&&(access.schoolAdmin||access.role==="admin")||adminPages.has(page)&&access.role==="admin"||guestPages.has(page)&&!access.role&&!access.platformAdmin&&!access.schoolAdmin&&!access.schoolStudent&&!access.students?.length;
+    const allowed=page==="join-school.html"||page==="issues.html"||page==="owner-schools.html"&&(access.platformAdmin||access.role==="admin")||studentPages.has(page)&&(Boolean(access.role)||access.schoolAdmin||access.schoolStudent||access.students?.length)||staffPages.has(page)&&(Boolean(access.role)||access.schoolAdmin||access.schoolTeacher)||registrarPages.has(page)&&Boolean(access.schoolRegistrar)||schoolAdminPages.has(page)&&(access.schoolAdmin||access.role==="admin")||adminPages.has(page)&&access.role==="admin"||guestPages.has(page)&&!access.role&&!access.platformAdmin&&!access.schoolAdmin&&!access.schoolRegistrar&&!access.schoolStudent&&!access.students?.length;
     return allowed?page+target.search+target.hash:fallback;
   }catch{return fallback;}
 }
@@ -45,13 +46,15 @@ export function roleHome(role){
   return role==="student"?"student-home.html":
     role==="platformowner"?"owner-schools.html":
     role==="schooladmin"?"school-admin.html":
+    role==="registrar"?"school-enrollment.html":
     role==="teacher"||role==="superadmin"?"teacher-home.html":
     role==="guest"?"guest-home.html":"";
 }
 function cachedRoleAllows(page,role){
-  if(page==="issues.html")return ["student","teacher","schooladmin","superadmin"].includes(role);
+  if(page==="issues.html")return ["student","teacher","registrar","schooladmin","superadmin"].includes(role);
   if(role==="student")return studentPages.has(page);
   if(role==="teacher")return staffPages.has(page);
+  if(role==="registrar")return registrarPages.has(page);
   if(role==="schooladmin")return staffPages.has(page)||schoolAdminPages.has(page);
   if(role==="platformowner")return page==="owner-schools.html"||page==="issues.html"||page==="settings.html";
   if(role==="superadmin")return staffPages.has(page)||schoolAdminPages.has(page)||adminPages.has(page);
