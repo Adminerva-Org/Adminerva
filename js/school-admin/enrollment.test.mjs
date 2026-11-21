@@ -221,5 +221,34 @@ test("ending a registration sends an explicit institutional end type",()=>{
   assert.equal(h.requests.length,1);
   assert.equal(h.requests[0].payload.action,"end_registration");
   assert.equal(h.requests[0].payload.registrationId,"reg-end-1");
+  assert.equal(h.requests[0].payload.expectedRevision,2);
   assert.equal(h.requests[0].payload.endReasonType,"transfer_out");
+});
+
+
+test("restoring a registration sends the reviewed registration revision",()=>{
+  const h=harness(),item={
+    registrationId:"reg-restore-1",personId:"person-1",displayName:"Student Restore",
+    yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"new-section",
+    gradeLevel:"7",revision:5,status:"ended",courseCount:0
+  };
+  h.context.openRegistrationChange(item,"restore");
+  const change=h.get("en-registration-change-form");
+  change.elements.reason.value="Registrar approved restoration after records review";
+  change.dispatch("submit");
+  assert.equal(h.requests.length,1);
+  assert.equal(h.requests[0].payload.action,"restore_registration");
+  assert.equal(h.requests[0].payload.registrationId,"reg-restore-1");
+  assert.equal(h.requests[0].payload.expectedRevision,5);
+});
+
+test("application review sends the exact application revision",()=>{
+  const h=harness(),item={
+    applicationId:"app-review-1",displayName:"Applicant One",revision:6,status:"submitted"
+  };
+  h.context.reviewApplication(item,"rejected");
+  assert.equal(h.requests.length,1);
+  assert.equal(h.requests[0].payload.action,"review_application");
+  assert.equal(h.requests[0].payload.applicationId,"app-review-1");
+  assert.equal(h.requests[0].payload.expectedRevision,6);
 });
