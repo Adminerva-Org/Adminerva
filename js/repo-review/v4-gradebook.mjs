@@ -274,6 +274,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }catch(error){
       if(token!==generation)return;
       status.textContent=error?.message||"Submission inbox is unavailable.";
+      if(task?.legacyCompatibility&&task.submissionSource==="studio"){
+        const help=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
+        help.append(make("p","text-sm text-amber-950",
+          "The historical V4 review adapter may not be available on the school backend yet. Original submissions remain unchanged."));
+        const link=make("a","mt-2 inline-flex rounded-lg border border-amber-500 px-3 py-2 text-sm font-bold text-amber-950",
+          "Open original Studio submissions");
+        link.href="studio-submissions.html?assessment="+encodeURIComponent(task.legacyAssessmentId);
+        help.append(link);inbox.append(help);
+      }
     }
   }
   function renderFile(){
@@ -758,7 +767,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         await scoped(gradeApi,"get_draft",{
           taskId:currentTask.taskId,studentUid:currentRow.studentUid
         });
-      currentGrade=currentTask.legacyCompatibility?refreshed.grade:refreshed.grade;
+      currentGrade=refreshed.grade;
       renderRubric(currentGrade);
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=
