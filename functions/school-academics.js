@@ -88,17 +88,22 @@ function catalogArchiveDependencySpecs(kind){
    ["terms","programId","academic period"],
    ["sections","programId","section"],
    ["course_offerings","programId","course offering"],
-   ["student_registrations","programId","student registration"]
+   ["student_registrations","programId","student registration"],
+   ["grading_schemes","applicability.programId","grading policy"]
   ],
   terms:[
    ["course_offerings","termId","course offering"],
    ["student_registrations","termId","student registration"]
   ],
-  subjects:[["course_offerings","subjectId","course offering"]],
+  subjects:[
+   ["course_offerings","subjectId","course offering"],
+   ["grading_schemes","applicability.subjectId","grading policy"]
+  ],
   sections:[
    ["course_offerings","sectionId","course offering"],
    ["student_registrations","sectionId","student registration"],
-   ["section_advisers","sectionId","section adviser"]
+   ["section_advisers","sectionId","section adviser"],
+   ["grading_schemes","applicability.sectionId","grading policy"]
   ]
  }[kind]||[];
 }
