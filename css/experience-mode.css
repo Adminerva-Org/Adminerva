@@ -365,3 +365,41 @@ html[data-adminerva-experience="full"] main[data-home-experience="guest"]>.avfx-
  html[data-adminerva-experience="full"] .av-cine-chapter[data-active="false"]{opacity:.48;filter:saturate(.68)}
  html[data-adminerva-experience="full"] .av-cine-chapter[data-active="true"]{opacity:1;filter:none}
 }
+
+
+/* First-visit public/guest gate. Native dialog keeps keyboard focus contained. */
+.avfx-gate{width:min(860px,calc(100vw - 1.2rem));max-width:none;border:1px solid #86c7c872;border-radius:1.5rem;padding:0;background:#071827;color:#efffff;box-shadow:0 35px 120px #000d;overflow:hidden}
+.avfx-gate::backdrop{background:rgba(2,10,20,.82);backdrop-filter:blur(14px)}
+.avfx-gate-shell{display:grid;grid-template-columns:minmax(180px,.55fr) minmax(0,1.45fr);gap:0;min-height:360px}
+.avfx-gate-mark{position:relative;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,#2b7f817a,#0b2439 58%,#071827);overflow:hidden}
+.avfx-gate-mark::before,.avfx-gate-mark::after{content:"";position:absolute;border-radius:50%;border:1px solid #a9ffe06e}
+.avfx-gate-mark::before{width:250px;height:250px;animation:avfx-spin 38s linear infinite}
+.avfx-gate-mark::after{width:145px;height:145px;box-shadow:0 0 55px #7ef4d03d}
+.avfx-gate-mark img{position:relative;z-index:2;width:min(34%,90px);height:auto;filter:drop-shadow(0 0 16px #c5ffee)}
+.avfx-gate-copy{padding:clamp(1.5rem,4vw,3rem);display:flex;flex-direction:column;justify-content:center}
+.avfx-gate-copy h2{font-size:clamp(2rem,4vw,3.8rem);line-height:1;letter-spacing:-.055em;font-weight:950;margin:0;color:#f5feff;max-width:12ch}
+.avfx-gate-copy>p:not(.avfx-kicker){color:#aac5d1;line-height:1.65;margin-top:1rem;max-width:54ch}
+.avfx-gate-actions{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;margin-top:1.4rem}
+@media(max-width:650px) and (orientation:portrait){
+ .avfx-gate{width:min(94vw,520px)}
+ .avfx-gate-shell{grid-template-columns:1fr;min-height:0}
+ .avfx-gate-mark{min-height:155px}
+ .avfx-gate-mark::before{width:190px;height:190px}
+ .avfx-gate-mark::after{width:110px;height:110px}
+ .avfx-gate-mark img{width:64px}
+ .avfx-gate-copy{padding:1.2rem}
+ .avfx-gate-copy h2{font-size:2.25rem}
+ .avfx-gate-copy>p:not(.avfx-kicker){font-size:.82rem}
+ .avfx-gate-actions{display:grid;grid-template-columns:1fr}
+}
+@media(max-height:620px) and (orientation:landscape) and (pointer:coarse){
+ .avfx-gate{width:min(88vw,820px);max-height:88dvh}
+ .avfx-gate-shell{grid-template-columns:minmax(140px,.5fr) minmax(0,1.5fr);min-height:0}
+ .avfx-gate-mark{min-height:250px}
+ .avfx-gate-copy{padding:1rem 1.25rem}
+ .avfx-gate-copy h2{font-size:clamp(1.8rem,5vw,2.8rem)}
+ .avfx-gate-copy>p:not(.avfx-kicker){font-size:.72rem;line-height:1.4;margin-top:.55rem}
+ .avfx-gate-actions{margin-top:.8rem}
+ .avfx-gate-actions .avfx-primary,.avfx-gate-actions .avfx-secondary{min-height:38px;font-size:.64rem}
+}
+@media(prefers-reduced-motion:reduce){.avfx-gate-mark::before{animation:none}}
