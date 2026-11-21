@@ -221,3 +221,81 @@ html[data-adminerva-experience="quick"] .avfx-role-stage{display:none!important}
 }
 html[data-motion="reduce"] .avfx-orbit,html[data-adminerva-reduce-motion="true"] .avfx-orbit{transform:none!important}
 html[data-motion="reduce"] .avfx-orbit *,html[data-adminerva-reduce-motion="true"] .avfx-orbit *{animation:none!important;transition:none!important}
+
+
+/* Keep chapter rail in the viewport rather than inside the scrollable scene surface. */
+html[data-adminerva-experience="full"] .avfx-journey>.avfx-scene-index,
+html[data-adminerva-experience="full"] .av-cine>.avfx-cine-index{position:fixed;z-index:92;left:clamp(.55rem,2vw,1.4rem);top:50%;transform:translateY(-50%)}
+html[data-adminerva-experience="full"] .avfx-journey>.avfx-scene-progress,
+html[data-adminerva-experience="full"] .av-cine>.avfx-cine-progress{position:fixed;z-index:91;left:clamp(1.8rem,3.05vw,2.72rem);top:18%;bottom:18%}
+
+/* Pulse and Opportunity Hunter use the same explicit full/quick experience model. */
+html[data-adminerva-experience="full"] body.av-cine-page{height:100dvh;overflow:hidden}
+html[data-adminerva-experience="full"] body.av-cine-page .av-cine{
+  height:calc(100dvh - var(--avfx-nav));
+  overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
+  scroll-snap-type:y mandatory;scrollbar-width:none
+}
+html[data-adminerva-experience="full"] body.av-cine-page .av-cine::-webkit-scrollbar{display:none}
+html[data-adminerva-experience="full"] body.av-cine-page .av-cine-chapter{
+  min-height:calc(100dvh - var(--avfx-nav));
+  scroll-snap-align:start;scroll-snap-stop:always;
+}
+html[data-adminerva-experience="full"] body.av-cine-page .av-atlas-console,
+html[data-adminerva-experience="full"] body.av-cine-page .av-signal-room{
+  width:min(1500px,100%);display:flex;flex-direction:column;justify-content:center
+}
+html[data-adminerva-experience="full"] body.av-cine-page .av-cine-next{
+  width:100%;max-width:none;margin:0;justify-content:center
+}
+html[data-adminerva-experience="quick"] .av-cine>.avfx-cine-index,
+html[data-adminerva-experience="quick"] .av-cine>.avfx-cine-progress{display:none}
+
+/* Tablet portrait: bottom chapter rail avoids covering the spatial canvas. */
+@media(max-width:900px) and (orientation:portrait){
+ html[data-adminerva-experience="full"] .avfx-journey>.avfx-scene-index,
+ html[data-adminerva-experience="full"] .av-cine>.avfx-cine-index{
+   left:50%;top:auto;bottom:4.25rem;transform:translateX(-50%);flex-direction:row;
+   padding:.3rem;border:1px solid #78bfc35c;border-radius:999px;background:#081d2cdb;backdrop-filter:blur(12px)
+ }
+ html[data-adminerva-experience="full"] .avfx-journey>.avfx-scene-progress,
+ html[data-adminerva-experience="full"] .av-cine>.avfx-cine-progress{display:none}
+ .avfx-scene-index button{width:36px;height:36px}
+ .avfx-scene-index button[aria-current="step"]{width:42px;height:42px}
+}
+/* Phone portrait: chapter rail sits just above Full/Quick switch. */
+@media(max-width:600px) and (orientation:portrait){
+ html[data-adminerva-experience="full"] .avfx-journey>.avfx-scene-index,
+ html[data-adminerva-experience="full"] .av-cine>.avfx-cine-index{bottom:3.55rem}
+ .avfx-scene-index button{width:32px;height:32px;font-size:.56rem}
+ .avfx-scene-index button[aria-current="step"]{width:36px;height:36px}
+}
+/* Short coarse-pointer landscape is a horizontal story: swipe left/right. */
+@media(max-height:620px) and (orientation:landscape) and (pointer:coarse){
+ html[data-adminerva-experience="full"] body.av-cine-page .av-cine{
+   display:flex;height:calc(100dvh - var(--avfx-nav));overflow-x:auto;overflow-y:hidden;
+   scroll-snap-type:x mandatory
+ }
+ html[data-adminerva-experience="full"] body.av-cine-page .av-cine-chapter{
+   flex:0 0 100vw;width:100vw;min-height:calc(100dvh - var(--avfx-nav));
+   height:calc(100dvh - var(--avfx-nav));overflow-y:auto
+ }
+ html[data-adminerva-experience="full"] body.av-cine-page .av-atlas-console,
+ html[data-adminerva-experience="full"] body.av-cine-page .av-signal-room{padding:.7rem 3.8rem .7rem 1rem}
+ html[data-adminerva-experience="full"] body.av-cine-page .av-cine-next{padding:.8rem 4rem .8rem 1rem;align-content:center}
+ html[data-adminerva-experience="full"] .avfx-journey>.avfx-scene-index,
+ html[data-adminerva-experience="full"] .av-cine>.avfx-cine-index{
+   left:auto;right:.4rem;top:50%;bottom:auto;transform:translateY(-50%);flex-direction:column;
+   padding:.2rem;background:#071d2add;border:1px solid #71b9be55;border-radius:999px
+ }
+ .avfx-scene-index button{width:30px;height:30px;font-size:.5rem}
+ .avfx-scene-index button[aria-current="step"]{width:34px;height:34px}
+ html[data-adminerva-experience="full"] .avfx-journey>.avfx-scene-progress,
+ html[data-adminerva-experience="full"] .av-cine>.avfx-cine-progress{display:none}
+}
+/* Tablet landscape: the experience remains split rather than collapsing prematurely. */
+@media(min-width:700px) and (max-width:1180px) and (orientation:landscape) and (min-height:621px){
+ html[data-adminerva-experience="full"] body.av-cine-page .av-cine-chapter{min-height:calc(100dvh - var(--avfx-nav))}
+ html[data-adminerva-experience="full"] body.av-cine-page .av-atlas-console,
+ html[data-adminerva-experience="full"] body.av-cine-page .av-signal-room{padding:1.1rem 3.4rem}
+}
