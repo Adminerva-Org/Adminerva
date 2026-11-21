@@ -192,6 +192,61 @@
         </section>
 
         <section class="en-card">
+          <div class="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h2 class="text-lg font-extrabold">Year-end cohort progression</h2>
+              <p class="en-muted mt-1">Preview a section cohort for Promotion, Retention or Graduation. Every learner is checked independently against released Final Grades, canonical placement, target classes and identity requirements.</p>
+            </div>
+          </div>
+          <form id="en-cohort-form" class="mt-4">
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <label class="text-sm font-bold">Source academic year
+                <select name="sourceYearId" class="en-input mt-1" required></select>
+              </label>
+              <label class="text-sm font-bold">Source academic period
+                <select name="sourceTermId" class="en-input mt-1" required></select>
+              </label>
+              <label class="text-sm font-bold">Source section
+                <select name="sourceSectionId" class="en-input mt-1" required></select>
+              </label>
+              <label class="text-sm font-bold">Decision
+                <select name="progressionType" class="en-input mt-1" required>
+                  <option value="">Choose decision</option>
+                  <option value="promotion">Promotion</option>
+                  <option value="retention">Retention</option>
+                  <option value="graduation">Graduation</option>
+                </select>
+              </label>
+            </div>
+            <section id="en-cohort-target" class="en-summary mt-4" hidden>
+              <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <label class="text-sm font-bold">Target academic year
+                  <select name="targetYearId" class="en-input mt-1"></select>
+                </label>
+                <label class="text-sm font-bold">Target program / division
+                  <select name="targetProgramId" class="en-input mt-1"></select>
+                </label>
+                <label class="text-sm font-bold">Target academic period
+                  <select name="targetTermId" class="en-input mt-1"></select>
+                </label>
+                <label class="text-sm font-bold">Target section
+                  <select name="targetSectionId" class="en-input mt-1"></select>
+                </label>
+              </div>
+            </section>
+            <label class="text-sm font-bold block mt-4">Cohort decision reason
+              <textarea name="reason" class="en-input mt-1" rows="2" minlength="12" maxlength="500" required placeholder="Record the institutional basis for this cohort decision."></textarea>
+            </label>
+            <div class="flex flex-wrap gap-2 mt-4">
+              <button id="en-cohort-preview" class="en-btn" type="button">Preview cohort</button>
+              <button id="en-cohort-apply" class="en-btn" type="button" disabled>Apply ready students</button>
+            </div>
+          </form>
+          <p id="en-cohort-status" class="en-notice mt-4" role="status" aria-live="polite">Choose a source cohort and decision.</p>
+          <div id="en-cohort-results" class="en-list mt-3" role="list"></div>
+        </section>
+
+        <section class="en-card">
           <h2 class="text-lg font-extrabold">Bulk enrollment</h2>
           <p class="en-muted mt-1">Use CSV / Google Sheets import to stage school identities in bulk. Official academic placement still happens here so the chosen section, period, guardian details and all active subject enrollments are created together.</p>
           <div class="flex gap-2 flex-wrap mt-3">
