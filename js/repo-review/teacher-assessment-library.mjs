@@ -784,7 +784,66 @@ async function setExamOpening(task,opening){
 }
 const MAX_BULK_DEPLOYMENTS=20;
 let deployOfferings=[],deploySelectedOfferings=new Set(),deploySucceededOfferings=new Set(),
-  deployRequestKeys=new Map(),deployDatePicker=null,deployTimesEdited=false,deployAttempted=false,deployRangePending=false;
+  deployRequestKeys=new Map(),deployDatePicker=null,deployTimesEdited=false,deployAttempted=false,deployRangePending=false,
+  deployVariantReview=null,deployVariantLoading=false;
+function deploySelectionKey(){return [...deploySelectedOfferings].sort().join("|");}
+function syncDeploymentPersonalizationReview(){
+  if(!deploying||!personalized(deploying)||!personalizationState?.calculated||
+     !personalizingOfferings.length||personalizing?.id!==deploying.id)return;
+  const key=[...personalizingOfferings].sort().join("|");
+  if(key!==deploySelectionKey())return;
+  deployVariantReview={key,ready:personalizationState.ready===true,status:personalizationState};
+  renderDeploymentOfferings();
+}
+function updateDeploymentVariantMessage(){
+  const review=el("tl-deploy-variant-review");
+  if(!review)return;
+  const existing=previouslyDeployedOfferingIds().size,ids=[...deploySelectedOfferings];
+  const applicable=personalized(deploying);
+  review.hidden=!applicable;
+  if(!applicable)return;
+  if(!ids.length){
+    review.textContent=existing
+      ?existing+" class deployment(s) already exist for this blueprint. Their original student variants are preserved. Select only a new class if you need another deployment."
+      :"Choose at least one assigned class. Variant requirements will be calculated automatically.";
+    return;
+  }
+  if(deployVariantLoading){
+    review.textContent="Checking verified class rosters and existing private variants…";
+    return;
+  }
+  const plan=deployVariantReview?.key===deploySelectionKey()?deployVariantReview:null;
+  if(!plan){
+    review.textContent="Deployment settings are ready. Continue to calculate variants for "+ids.length+
+      " class(es); no variants will be regenerated if the existing pool is sufficient.";
+    return;
+  }
+  const data=plan.status;
+  review.textContent="Current students: "+Number(data.roster?.totalStudents||0)+
+    " across "+ids.length+" class(es) · largest class "+Number(data.roster?.largestClass||0)+
+    " · needed pool "+Number(data.variantTarget||0)+" · existing pool "+Number(data.count||0)+
+    (plan.ready?" · ready, no additional variants required.":" · complete or activate the pool before deploying.");
+}
+async function reviewDeploymentPersonalization(item,ids){
+  if(deployVariantLoading||pendingWrite||!item||!ids.length)return;
+  const key=[...ids].sort().join("|"),turn=deployEpoch;
+  deployVariantLoading=true;renderDeploymentOfferings();
+  try{
+    const state=await perform("personalization_status",{resourceId:item.id,offeringIds:ids});
+    if(deploying!==item||turn!==deployEpoch||deploySelectionKey()!==key||
+       !el("tl-deploy-dialog").open)return;
+    deployVariantReview={key,ready:state.ready===true,status:state};
+    renderDeploymentOfferings();
+    if(!state.ready)await loadPersonalization(item,ids,state);
+  }catch(error){
+    el("tl-deploy-feedback").textContent=error?.message||"Could not calculate the class variant requirement.";
+    say("Variant requirements could not be verified. Try again.");
+  }finally{
+    deployVariantLoading=false;
+    if(el("tl-deploy-dialog").open)renderDeploymentOfferings();
+  }
+}
+
 
 function deploymentOfferingLabel(offering){
   return [offering.subjectName||offering.subjectId||"Subject",
@@ -801,6 +860,7 @@ function matchingDeployOfferings(){
   return deployOfferings.filter(offering=>deploymentOfferingLabel(offering).toLocaleLowerCase().includes(term));
 }
 function renderDeploymentOfferings(){
+  if(!deployAttempted&&deployVariantReview?.key!==deploySelectionKey())deployVariantReview=null;
   const selected=el("tl-deploy-selected"),list=el("tl-deploy-offerings"),
     status=el("tl-deploy-selection-status"),existing=previouslyDeployedOfferingIds();
   selected.replaceChildren();list.replaceChildren();
@@ -852,8 +912,13 @@ function renderDeploymentOfferings(){
   status.textContent=deploySelectedOfferings.size+" selected · "+visible.length+" visible · "+MAX_BULK_DEPLOYMENTS+" maximum per operation."+
     (existing.size?" Classes already deployed from this blueprint cannot be selected again.":"");
   const submit=el("tl-deploy-submit");
-  submit.disabled=!deployReady||!deploySelectedOfferings.size||pendingWrite||deployRangePending;
-  submit.textContent="Deploy to "+deploySelectedOfferings.size+" class"+(deploySelectedOfferings.size===1?"":"es");
+  submit.disabled=!deployReady||!deploySelectedOfferings.size||pendingWrite||deployRangePending||deployVariantLoading;
+  const reviewReady=Boolean(deployVariantReview?.ready&&
+    (deployAttempted||deployVariantReview.key===deploySelectionKey()));
+  submit.textContent=personalized(deploying)&&!reviewReady
+    ?"Continue · check variants"
+    :"Deploy to "+deploySelectedOfferings.size+" class"+(deploySelectedOfferings.size===1?"":"es");
+  updateDeploymentVariantMessage();
   el("tl-deploy-select-visible").disabled=!deployReady||pendingWrite;
   el("tl-deploy-clear").disabled=!deploySelectedOfferings.size||pendingWrite;
 }
@@ -902,19 +967,11 @@ function freezeBulkDeploymentSettings(){
 async function prepareDeployment(item){
   if(pendingWrite)return;
   const turn=++deployEpoch;deployReady=false;
-  if(personalized(item)){
-    try{
-      const pool=await perform("personalization_status",{resourceId:item.id});
-      if(turn!==deployEpoch)return;
-      if(!pool.ready){
-        say("Complete and activate the private personalization pool before deployment.");
-        await loadPersonalization(item);return;
-      }
-    }catch(error){say(error?.message||"Personalization readiness could not be verified.");return;}
-  }
-  if(turn!==deployEpoch)return;
+  // Deployment settings come first; do not force the blueprint's old
+  // variant target before knowing which new course offerings are selected.
   deploying=item;deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();
   deployRequestKeys.clear();deployAttempted=false;deployTimesEdited=false;deployRangePending=false;
+  deployVariantReview=null;deployVariantLoading=false;
   el("tl-deploy-title").textContent=item.title;
   const form=el("tl-deploy-form");form.reset();
   form.elements.submissionSource.disabled=personalized(item);
@@ -1016,6 +1073,7 @@ el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.p
 el("tl-deploy-dialog").addEventListener("close",()=>{
   ++deployEpoch;deployReady=false;deploying=null;deployOfferings=[];
   deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();deployAttempted=false;deployRangePending=false;
+  deployVariantReview=null;deployVariantLoading=false;
 });
 el("tl-deploy-offering-search").addEventListener("input",renderDeploymentOfferings);
 el("tl-deploy-select-visible").addEventListener("click",()=>{
