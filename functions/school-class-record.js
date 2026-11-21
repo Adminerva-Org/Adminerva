@@ -519,10 +519,57 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
             applicability:requestedApplicability,revision};
         }else{
           if(!prior)deny("not-found","Grading scheme does not exist.");
-          const status=input.action==="archive_scheme"?"archived":"active";
+          const restoring=input.action==="restore_scheme",status=restoring?"active":"archived";
           if(prior.status===status){result={schemeId,status,revision:priorRevision};return;}
+          if(restoring){
+            if(prior.status!=="archived")
+              deny("failed-precondition","Only an archived grading policy can be restored.");
+            const restoredApplicability=cleanSchemeApplicability(prior.applicability||{});
+            const [program,subject,section,activeSchemes]=await Promise.all([
+              restoredApplicability.programId?
+                tx.get(db.doc(prefix+"academic_programs/"+restoredApplicability.programId)):Promise.resolve(null),
+              restoredApplicability.subjectId?
+                tx.get(db.doc(prefix+"subjects/"+restoredApplicability.subjectId)):Promise.resolve(null),
+              restoredApplicability.sectionId?
+                tx.get(db.doc(prefix+"sections/"+restoredApplicability.sectionId)):Promise.resolve(null),
+              tx.get(db.collection(prefix+"grading_schemes").where("status","==","active").limit(51))
+            ]);
+            if(program&&(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active"))
+              deny("failed-precondition","Restore the grading policy's program/division before restoring this policy.");
+            if(subject&&(!subject.exists||subject.data().schoolId!==ctx.schoolId||subject.data().status!=="active"))
+              deny("failed-precondition","Restore the grading policy's subject before restoring this policy.");
+            if(section&&(!section.exists||section.data().schoolId!==ctx.schoolId||section.data().status!=="active"))
+              deny("failed-precondition","Restore the grading policy's section before restoring this policy.");
+            if(section&&restoredApplicability.programId&&section.data().programId!==restoredApplicability.programId)
+              deny("failed-precondition","The grading policy section no longer belongs to its configured program/division.");
+            if(activeSchemes.size===51)
+              deny("resource-exhausted","Active grading policies require pagination before restore overlap can be validated safely.");
+            const restoredSpecificity=schemeSpecificity(restoredApplicability);
+            const sameSpecificity=activeSchemes.docs.filter(doc=>{
+              const data=doc.data();
+              return doc.id!==schemeId&&data.schoolId===ctx.schoolId&&data.status==="active"&&
+                schemeSpecificity(data.applicability||{})===restoredSpecificity;
+            });
+            const sectionIds=[...new Set([
+              restoredApplicability.sectionId,
+              ...sameSpecificity.map(doc=>cleanSchemeApplicability(doc.data().applicability||{}).sectionId)
+            ].filter(Boolean))];
+            const sectionDocs=await Promise.all(sectionIds.map(sectionId=>
+              tx.get(db.doc(prefix+"sections/"+sectionId))));
+            const sectionPrograms=new Map(sectionDocs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId)
+              .map(doc=>[doc.id,doc.data().programId||null]));
+            const collision=sameSpecificity.find(doc=>
+              schemeScopesOverlap(restoredApplicability,doc.data().applicability||{},{sectionPrograms}));
+            if(collision)
+              deny("failed-precondition","This archived grading policy now overlaps active policy “"+
+                String(collision.data().name||collision.id).slice(0,120)+
+                "” at the same specificity. Narrow or archive the conflicting policy before restoring this one.");
+          }else if(prior.status!=="active"){
+            deny("failed-precondition","Only an active grading policy can be archived.");
+          }
           const revision=priorRevision+1;
-          tx.update(schemeRef,{status,revision,updatedByUid:ctx.uid,updatedAt:now});
+          tx.update(schemeRef,{status,revision,updatedByUid:ctx.uid,updatedAt:now,
+            ...(restoring?{restoredAt:now,restoredByUid:ctx.uid}:{archivedAt:now,archivedByUid:ctx.uid})});
           tx.create(auditRef,{schoolId:ctx.schoolId,schemeId,actorUid:ctx.uid,
             action:status==="archived"?"grading_scheme_archived":"grading_scheme_restored",
             revision,createdAt:now});
