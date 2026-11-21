@@ -1,130 +1,35 @@
-import {loadPublicChannel} from './public-content.mjs?v=20261121-1';
-
-/** A public discovery atlas. Selection stays local; applications are external. */
-const list=document.getElementById('opportunities-list');
-const universe=document.getElementById('atlas-nodes');
-const detail=document.getElementById('atlas-detail');
-const search=document.getElementById('opportunities-search');
-const filters=[...document.querySelectorAll('[data-atlas-category]')];
-const reset=document.getElementById('opportunities-reset');
-const status=document.getElementById('opportunities-status');
-const count=document.getElementById('opportunities-count');
-const empty=document.getElementById('opportunities-empty');
-const fieldCount=document.getElementById('atlas-field-count');
-const surprise=document.getElementById('atlas-surprise');
-const locations=[[18,25],[78,24],[78,76],[20,73],[51,12],[49,88],[9,49],[90,50]];
-const el=(tag,cls,value)=>{
-  const node=document.createElement(tag);
-  if(cls)node.className=cls;
-  if(value!==undefined)node.textContent=String(value);
-  return node;
-};
-const link=(url,label,cls)=>{
-  const node=el('a',cls,label);
-  node.href=url;
-  node.target='_blank';
-  node.rel='noopener noreferrer';
-  return node;
-};
-let items=[],visible=[],selected=null,category='all';
-function detailFact(label,value,full=false){
-  const node=el('div','av-atlas-fact'+(full?' av-atlas-fact--full':''));
-  node.append(el('span',null,label),el('strong',null,value));
-  return node;
+import {loadPublicChannel} from './public-content.mjs?v=20261122-1';
+import {bindDepth,mountExperienceMode,scrollToElement} from './experience-world.mjs?v=20261122-2';
+const root=document.getElementById('opportunities-main'),trail=document.getElementById('opportunity-trail'),list=document.getElementById('opportunities-list'),detail=document.getElementById('opportunity-focus'),search=document.getElementById('opportunities-search'),count=document.getElementById('opportunities-count'),status=document.getElementById('opportunities-status'),empty=document.getElementById('opportunities-empty'),reset=document.getElementById('opportunities-reset'),surprise=document.getElementById('opportunities-surprise'),tools=document.getElementById('opportunity-tools'),filters=[...document.querySelectorAll('[data-opportunity-category]')];
+const mode=mountExperienceMode({key:'opportunities',defaultMode:'full'});bindDepth(root);
+const make=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;};
+const ext=(href,text,cls)=>{const a=make('a',cls,text);a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a;};
+let items=[],visible=[],selectedId=null,category='all';
+function fact(label,value){const wrap=make('div','avx-detail-fact');wrap.append(make('dt',null,label),make('dd',null,value));return wrap;}
+function choose(item,{scroll=false}={}){
+  selectedId=item?.id||null;document.querySelectorAll('[data-opportunity-id]').forEach(control=>control.setAttribute('aria-pressed',String(control.dataset.opportunityId===selectedId)));
+  if(!item){detail.replaceChildren(make('p','avx-kicker','NO SIGNAL SELECTED'),make('h3',null,'Choose a trail stop.'),make('p',null,'Every published opportunity opens into its verified provider details here.'));return;}
+  const heading=make('div','avx-focus-heading');heading.append(make('p','avx-kicker',item.category+' / VERIFIED '+item.verifiedAt),make('h3',null,item.title),make('p','avx-focus-provider',item.provider));
+  const facts=make('dl','avx-detail-facts');facts.append(fact('Location',item.location),fact('Cost',item.cost),fact('Eligibility',item.eligibility));if(item.applicationDeadline)facts.append(fact('Application deadline',item.applicationDeadline));
+  const actions=make('div','avx-focus-actions');actions.append(ext(item.url,'Explore with provider ↗','avx-source-link'),ext(item.sourceUrl,'Verify original source ↗','avx-source-link avx-source-link-muted'));
+  detail.replaceChildren(heading,make('p','avx-focus-summary',item.summary),facts,actions);if(scroll&&window.matchMedia('(max-width: 900px)').matches)scrollToElement(detail);
 }
-function choose(item,scroll=false){
-  selected=item?.id||null;
-  for(const control of document.querySelectorAll('[data-atlas-id]')){
-    control.setAttribute('aria-pressed',String(control.dataset.atlasId===selected));
-  }
-  if(!item){
-    detail.replaceChildren();
-    const placeholder=el('div','av-atlas-detail-empty');
-    placeholder.append(el('div','av-atlas-detail-symbol','✳'),el('p','av-cine-micro','AWAITING A SIGNAL'),el('h3',null,'Choose your next discovery.'),el('p',null,'Select any visible beacon or result to inspect the original provider details.'));
-    detail.append(placeholder);
-    return;
-  }
-  const head=el('div','av-atlas-detail-header');
-  head.append(el('span','av-cine-pill',item.category.toUpperCase()),el('span','av-cine-micro','SOURCE CHECKED · '+item.verifiedAt));
-  const symbol=el('div','av-atlas-detail-mark','✳');
-  symbol.setAttribute('aria-hidden','true');
-  const title=el('h3','av-atlas-detail-title',item.title);
-  const summary=el('p','av-atlas-detail-desc',item.summary);
-  const provider=el('p','av-cine-micro','PRESENTED BY '+item.provider);
-  const facts=el('div','av-atlas-facts');
-  facts.append(
-    detailFact('Provider',item.provider),
-    detailFact('Location',item.location),
-    detailFact('Cost',item.cost),
-    detailFact('Listing verified',item.verifiedAt),
-    detailFact('Eligibility',item.eligibility,true)
-  );
-  if(item.applicationDeadline)facts.append(detailFact('Confirmed application deadline',item.applicationDeadline,true));
-  const actions=el('div','av-atlas-detail-actions');
-  actions.append(link(item.url,'Explore with provider ↗','av-atlas-provider-link'),link(item.sourceUrl,'Verify original source ↗','av-atlas-source-link'));
-  detail.replaceChildren(head,symbol,provider,title,summary,facts,actions);
-  if(scroll){
-    const target=window.matchMedia('(max-width:850px)').matches?detail:document.getElementById('discover');
-    target.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
-  }
-}
-function matches(item){
-  const q=search.value.trim().toLocaleLowerCase();
-  return (category==='all'||item.category===category)&&(!q||
-    [item.title,item.provider,item.category,item.summary,item.eligibility,item.location,...item.tags].join(' ').toLocaleLowerCase().includes(q));
+function matches(item){const q=search.value.trim().toLowerCase(),haystack=[item.title,item.provider,item.category,item.summary,item.eligibility,item.location,...item.tags].join(' ').toLowerCase();return (category==='all'||item.category===category)&&(!q||haystack.includes(q));}
+function stop(item,index,compact=false){
+  const button=make('button',compact?'avx-trail-stop':'avx-expedition-stop');button.type='button';button.dataset.opportunityId=item.id;button.setAttribute('aria-pressed',String(item.id===selectedId));
+  const body=make('span',compact?'avx-trail-copy':'avx-expedition-copy');body.append(make('small',null,item.category+' · '+item.location),make('strong',null,item.title),make('em',null,item.provider));
+  button.append(make('span',compact?'avx-trail-number':'avx-expedition-number',String(index+1).padStart(2,'0')),body,make('b',null,'↗'));button.addEventListener('click',()=>choose(item,{scroll:compact}));return button;
 }
 function render(){
-  visible=items.filter(matches);
-  list.replaceChildren();
-  universe.replaceChildren();
-  count.textContent=visible.length+' verified '+(visible.length===1?'discovery':'discoveries');
-  fieldCount.textContent=String(visible.length).padStart(2,'0')+' SIGNAL'+(visible.length===1?'':'S');
-  status.textContent=visible.length?'Select a result or beacon to explore its verified details.':'No currently verified listings match these filters.';
-  empty.hidden=Boolean(visible.length);
-  for(const [index,item] of visible.entries()){
-    const row=el('button','av-atlas-result');
-    row.type='button';
-    row.dataset.atlasId=item.id;
-    row.setAttribute('aria-pressed','false');
-    const body=el('span','av-atlas-result-text');
-    body.append(el('small',null,item.category+' / '+item.location),el('strong',null,item.title),el('em',null,item.provider));
-    row.append(el('span','av-atlas-result-number',String(index+1).padStart(2,'0')),body,el('span','av-atlas-result-arrow','↗'));
-    row.addEventListener('click',()=>choose(item));
-    list.append(row);
-  }
-  for(const [index,item] of visible.slice(0,8).entries()){
-    const node=el('button','av-atlas-node',item.provider);
-    node.type='button';
-    node.dataset.atlasId=item.id;
-    node.setAttribute('aria-label','Inspect '+item.title);
-    node.setAttribute('aria-pressed','false');
-    node.style.setProperty('--nx',locations[index][0]+'%');
-    node.style.setProperty('--ny',locations[index][1]+'%');
-    node.addEventListener('click',()=>choose(item,true));
-    universe.append(node);
-  }
-  choose(visible.find(item=>item.id===selected)||visible[0]||null);
-  filters.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.atlasCategory===category)));
+  visible=items.filter(matches);list.replaceChildren();trail.replaceChildren();
+  visible.forEach((item,index)=>{const entry=make('div','avx-expedition-entry');entry.append(stop(item,index));list.append(entry);});
+  visible.slice(0,5).forEach((item,index)=>{const entry=make('li','avx-trail-entry');entry.append(stop(item,index,true));trail.append(entry);});
+  count.textContent=visible.length+' verified '+(visible.length===1?'opportunity':'opportunities');status.textContent=visible.length?'Choose a trail stop or result to inspect the verified details.':'No verified opportunities match these filters.';empty.hidden=Boolean(visible.length);
+  filters.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.opportunityCategory===category)));choose(visible.find(item=>item.id===selectedId)||visible[0]||null);
 }
-if(list&&universe&&detail&&search&&count&&empty){
-  search.addEventListener('input',render);
-  filters.forEach(button=>button.addEventListener('click',()=>{category=button.dataset.atlasCategory;render();}));
-  reset?.addEventListener('click',()=>{category='all';search.value='';render();search.focus();});
-  surprise?.addEventListener('click',()=>{
-    if(!visible.length)return;
-    const pick=visible[Math.floor(Math.random()*visible.length)];
-    choose(pick,true);
-  });
-  try{
-    items=await loadPublicChannel('opportunities',{role:'all'});
-    render();
-    if(!items.length)surprise.disabled=true;
-  }catch{
-    status.textContent='The discovery catalog is temporarily unavailable. Please try again later.';
-    fieldCount.textContent='OFFLINE';
-    surprise.disabled=true;
-    count.textContent='Catalog unavailable';
-    empty.hidden=true;
-    detail.replaceChildren(el('p','av-cine-lead','The public opportunity source could not be loaded. Please retry later.'));
-  }
-}
+filters.forEach(button=>button.addEventListener('click',()=>{category=button.dataset.opportunityCategory;render();}));
+search.addEventListener('input',render);
+reset.addEventListener('click',()=>{category='all';search.value='';render();search.focus();});
+surprise.addEventListener('click',()=>{if(!visible.length)return;choose(visible[Math.floor(Math.random()*visible.length)],{scroll:true});scrollToElement(document.getElementById('discover'));});
+document.addEventListener('adminerva:experience-mode-change',event=>{if(event.detail?.key==='opportunities')tools.open=event.detail.mode==='quick';});tools.open=mode.mode==='quick';
+try{items=await loadPublicChannel('opportunities',{role:'all'});render();if(!items.length)surprise.disabled=true;}catch{status.textContent='The verified opportunity source is temporarily unavailable.';count.textContent='Catalog unavailable';trail.replaceChildren();list.replaceChildren();empty.hidden=true;surprise.disabled=true;detail.replaceChildren(make('p','avx-kicker','SOURCE UNAVAILABLE'),make('h3',null,'The trail is temporarily offline.'),make('p',null,'No substitute or invented listings are shown. Try again later.'));}

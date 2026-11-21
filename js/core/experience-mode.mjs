@@ -1,356 +1,89 @@
 import {loadPublicChannel} from './public-content.mjs?v=20261122-1';
 import {loadPublicReleases} from './patch-history.mjs?v=1.4.19';
+import {bindDepth,mountExperienceMode,scrollToElement} from './experience-world.mjs?v=20261122-2';
 
-/**
- * Full Experience mode.
- * Public/guest: replaces the stacked landing page with a four-scene journey.
- * Authenticated role homes: adds a one-viewport command stage, then hands back
- * to the existing operational dashboard. No private data is read here.
- */
 const home=document.querySelector('main[data-home-experience]');
-if(home){
-  const role=home.dataset.homeExperience;
-  const publicLike=role==='public'||role==='guest';
-  const reduce=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches||
-    document.documentElement.dataset.motion==='reduce'||
-    document.documentElement.dataset.adminervaReduceMotion==='true';
-  const storageKey='adminerva:experience-mode:'+role;
-  const readMode=()=>{try{return localStorage.getItem(storageKey);}catch{return null;}};
-  const saveMode=value=>{try{localStorage.setItem(storageKey,value);}catch{/* Private browsing/storage denial: session still works. */}};
-  const requested=readMode();
-  const initial=requested==='quick'?'quick':'full';
-  document.documentElement.dataset.adminervaExperience=initial;
+if(!home)throw new Error('Adminerva experience host not found');
+const role=home.dataset.homeExperience;
+const publicLike=role==='public'||role==='guest';
+const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;};
+const link=(href,label,cls)=>{const a=el('a',cls,label);a.href=href;return a;};
+mountExperienceMode({key:role,firstEntry:publicLike,defaultMode:'full'});
 
-  const el=(tag,cls,text)=>{
-    const n=document.createElement(tag);
-    if(cls)n.className=cls;
-    if(text!==undefined)n.textContent=String(text);
-    return n;
+const publicRoutes={
+  public:[
+    ['01','Create','Build in Studio','Make and run code in the public workspace.','guest-playground.html'],
+    ['02','Discover','Opportunity Hunter','Follow source-checked opportunities beyond Adminerva.','opportunities.html'],
+    ['03','Practice','Practice Lab','Try a guided mission and learn by doing.','guest-practice.html'],
+    ['04','Follow','Pulse','Move through verified releases and public stories.','pulse.html']
+  ],
+  guest:[
+    ['01','Build','Adminerva Studio','Start with code instead of a brochure.','guest-playground.html'],
+    ['02','Practice','Practice Lab','Work through a short guided mission.','guest-practice.html'],
+    ['03','Design','XML Layout Lab','Experiment with interface structure.','guest-xml-lab.html'],
+    ['04','Discover','Opportunity Hunter','Follow a source-checked trail outward.','opportunities.html']
+  ]
+};
+function makeBackdrop(){
+  const backdrop=el('div','avx-world-backdrop');backdrop.setAttribute('aria-hidden','true');
+  backdrop.innerHTML='<i class="avx-plane avx-plane-a"></i><i class="avx-plane avx-plane-b"></i><i class="avx-horizon"></i><i class="avx-glow"></i>';return backdrop;
+}
+function routeStop(entry){
+  const [index,kicker,title,summary,href]=entry;const a=link(href,'','avx-route-stop');a.dataset.route=index;
+  a.append(el('span','avx-route-index',index));
+  const body=el('span','avx-route-body');body.append(el('small',null,kicker),el('strong',null,title),el('em',null,summary));
+  a.append(body,el('span','avx-route-arrow','↗'));return a;
+}
+function signalRow(kicker,title,summary,href){
+  const a=link(href,'','avx-current-row');a.append(el('small',null,kicker),el('strong',null,title),el('span',null,summary),el('b',null,'↗'));return a;
+}
+if(publicLike){
+  const journey=el('div','avx-world-shell');journey.setAttribute('aria-label',role==='public'?'Explore Adminerva':'Explore public Adminerva tools');journey.append(makeBackdrop());
+  const threshold=el('div','avx-threshold');const thresholdCopy=el('div','avx-threshold-copy');
+  thresholdCopy.innerHTML=role==='public'
+    ?'<p class="avx-kicker">ADMINERVA / SCHOOL OPERATING SYSTEM</p><h1>Enter a school day that <em>moves as one.</em></h1><p>Learning, teaching, evidence, records and operations connect through one school context. Discover the system by moving through it.</p>'
+    :'<p class="avx-kicker">ADMINERVA / OPEN WORLD</p><h1>Start with an action, <em>not a menu.</em></h1><p>Build, practise, design and discover before signing in. Public work remains separate from school records.</p>';
+  const actions=el('div','avx-threshold-actions');const begin=el('button','avx-text-action','Start moving ↓');begin.type='button';
+  const enter=link(role==='public'?'login.html?continue=1':'guest-playground.html',role==='public'?'Open my workspace ↗':'Start building ↗','avx-text-link');
+  actions.append(begin,enter);thresholdCopy.append(actions);
+  const gate=el('div','avx-gate');gate.setAttribute('aria-hidden','true');
+  const gateMark=el('div','avx-gate-mark');const owl=document.createElement('img');owl.src='assets/adminerva-emblem.png';owl.alt='';owl.width=112;owl.height=112;
+  gateMark.append(owl,el('span',null,'ADMINERVA'));
+  gate.innerHTML='<i class="avx-gate-plane avx-gate-plane-left"></i><i class="avx-gate-plane avx-gate-plane-right"></i><i class="avx-gate-floor"></i>';gate.append(gateMark);
+  threshold.append(thresholdCopy,gate);
+  const routeSection=el('div','avx-route-section');routeSection.id='adminerva-route';
+  const routeIntro=el('header','avx-route-intro');routeIntro.innerHTML='<p class="avx-kicker">FOLLOW THE PATH</p><h2>Every turn leads somewhere real.</h2><p>Move by intent. Each stop opens an existing Adminerva destination.</p>';
+  const route=el('nav','avx-route');route.setAttribute('aria-label','Adminerva destinations');route.append(el('i','avx-route-line'));publicRoutes[role].forEach(entry=>route.append(routeStop(entry)));routeSection.append(routeIntro,route);
+  const current=el('div','avx-current-section');const currentIntro=el('header','avx-current-intro');
+  currentIntro.innerHTML='<p class="avx-kicker">WHAT IS MOVING NOW</p><h2>Verified signals join the same world.</h2><p>Published releases, approved experiences and source-checked opportunities appear here only when their canonical sources provide them.</p>';
+  const currentRows=el('div','avx-current-rows');currentRows.setAttribute('aria-live','polite');currentRows.append(signalRow('CONNECTING','Loading published signals','No simulated school activity is used.','pulse.html'));current.append(currentIntro,currentRows);
+  const crossing=el('div','avx-crossing');const crossingCopy=el('div','avx-crossing-copy');
+  crossingCopy.innerHTML=role==='public'?'<p class="avx-kicker">CROSS THE THRESHOLD</p><h2>Explore openly. Enter school work only when you are ready.</h2>':'<p class="avx-kicker">KEEP MOVING</p><h2>Public exploration ends where your school workspace begins.</h2>';
+  const crossingLinks=el('div','avx-crossing-links');
+  if(role==='public')crossingLinks.append(link('login.html?continue=1','Sign in ↗','avx-crossing-link'),link('enroll.html','Begin enrollment ↗','avx-crossing-link'),link('guest-home.html','Explore as guest ↗','avx-crossing-link'));
+  else crossingLinks.append(link('guest-playground.html','Build ↗','avx-crossing-link'),link('opportunities.html','Discover ↗','avx-crossing-link'),link('login.html?continue=1','Sign in ↗','avx-crossing-link'));
+  crossing.append(crossingCopy,crossingLinks);journey.append(threshold,routeSection,current,crossing);home.prepend(journey);bindDepth(journey);begin.addEventListener('click',()=>scrollToElement(routeSection));
+  Promise.allSettled([loadPublicReleases(),loadPublicChannel('experiences',{role}),loadPublicChannel('opportunities',{role:'all'})]).then(([releases,experiences,opportunities])=>{
+    const rows=[];
+    if(releases.status==='fulfilled'&&releases.value[0]){const item=releases.value[0];rows.push(signalRow('RELEASE / '+item.version,item.title,item.summary,'patch-notes.html?version='+encodeURIComponent(item.version)));}
+    if(experiences.status==='fulfilled'&&experiences.value[0]){const item=experiences.value[0];rows.push(signalRow('OPEN EXPERIENCE',item.title,item.summary,item.url));}
+    if(opportunities.status==='fulfilled'&&opportunities.value[0]){const item=opportunities.value[0];rows.push(signalRow('OPPORTUNITY / '+item.category,item.title,item.provider+' · '+item.location,'opportunities.html'));}
+    currentRows.replaceChildren(...(rows.length?rows:[signalRow('QUIET CHANNEL','No public signal is currently published','Adminerva does not invent releases, opportunities or activity.','pulse.html')]));
+  });
+}else{
+  const configs={
+    student:{kicker:'STUDENT / LEARNING RUNWAY',title:'See the next move. Then get to work.',summary:'The runway points to real learning destinations. Verified assignments, grades and evidence remain in the operational workspace below.',actions:[['01','Classroom','Stream, classwork and teacher directions','student-classroom.html?v=20261115-stream3'],['02','Projects','Continue saved school work','student-dashboard.html'],['03','Practice','Build skill with guided missions','student-practice.html']]},
+    teacher:{kicker:'TEACHER / TEACHING RUNWAY',title:'Prepare. Review. Move the class forward.',summary:'Enter the canonical teaching workflow without replacing the authoritative dashboard, review queue or Class Record.',actions:[['01','Assessment Studio','Create, deploy and manage assessments','assessment-studio.html'],['02','Review & Grade','Inspect submissions and evidence','repofetch.html'],['03','Class Record','Review and publish verified results','class-record.html']]},
+    admin:{kicker:'SCHOOL ADMIN / OPERATIONS RUNWAY',title:'Move from concern to the right school workflow.',summary:'School-scoped operational data remains below. This entry layer only directs you to canonical administration work.',actions:[['01','People & Access','Students, staff, roles and account concerns','people-access.html'],['02','Enrollment','Registration, placement and student lifecycle','school-enrollment.html'],['03','Academic Structure','Programs, sections and school configuration','school-academic-structure.html']]},
+    platform:{kicker:'SYSTEM ADMIN / PLATFORM RUNWAY',title:'Operate the platform without collapsing school boundaries.',summary:'Platform authority stays distinct from School Admin authority. Institution and support operations remain explicit.',actions:[['01','System Users','Platform identities and access','system-users.html'],['02','Support Reports','Platform issues requiring attention','issues.html'],['03','Release History','Verified public product releases','patch-notes.html']]}
   };
-  const link=(href,label,cls='avfx-primary')=>{
-    const a=el('a',cls,label);a.href=href;return a;
-  };
-  let journey=null;
-  const modeSwitch=el('div','avfx-mode-switch');
-  modeSwitch.setAttribute('aria-label','Homepage experience mode');
-  const fullButton=el('button',null,'Full experience');
-  const quickButton=el('button',null,'Quick mode');
-  fullButton.type=quickButton.type='button';
-  modeSwitch.append(fullButton,quickButton);
-  document.body.append(modeSwitch);
-  function applyMode(mode,{focus=false,persist=true}={}){
-    document.documentElement.dataset.adminervaExperience=mode;
-    if(persist)saveMode(mode);
-    fullButton.setAttribute('aria-pressed',String(mode==='full'));
-    quickButton.setAttribute('aria-pressed',String(mode==='quick'));
-    if(mode==='quick'&&publicLike){
-      const target=home.querySelector(':scope > :not(.avfx-journey)');
-      target?.scrollIntoView({behavior:reduce()?'auto':'smooth',block:'start'});
-    }else if(mode==='full'&&publicLike){
-      journey?.scrollTo({left:0,top:0,behavior:'auto'});
-    }
-    if(focus)(mode==='full'?fullButton:quickButton).focus();
-  }
-  fullButton.addEventListener('click',()=>applyMode('full',{focus:true}));
-  quickButton.addEventListener('click',()=>applyMode('quick',{focus:true}));
-  applyMode(initial,{persist:requested!==null});
-
-  const paths={
-    public:[
-      ['CREATE','Build something','Open the public coding playground.','guest-playground.html','⌘'],
-      ['DISCOVER','Find your next opportunity','Explore source-checked opportunities.','opportunities.html','✳'],
-      ['PRACTICE','Test an idea','Try a guided practice mission.','guest-practice.html','◈'],
-      ['PULSE','See what is changing','Explore verified releases and public stories.','pulse.html','◌'],
-      ['JOIN','Enter a school workspace','Start enrollment or sign in.','enroll.html','↗']
-    ],
-    guest:[
-      ['STUDIO','Start building','Open a public coding workspace.','guest-playground.html','⌘'],
-      ['PRACTICE','Try a mission','Explore a guided coding challenge.','guest-practice.html','◈'],
-      ['LAYOUT','Design a screen','Experiment with XML layouts.','guest-xml-lab.html','▣'],
-      ['DISCOVER','Find an opportunity','Explore source-checked external opportunities.','opportunities.html','✳'],
-      ['PULSE','Follow Adminerva','See verified releases and discoveries.','pulse.html','◌']
-    ]
-  };
-  const roleActions={
-    student:{
-      kicker:'STUDENT / LEARNING CONTROL',
-      title:'Your school day, <em>ready to move.</em>',
-      summary:'Choose the next place you need. The operational dashboard remains directly below this stage.',
-      actions:[
-        ['01','Open classroom','Assignments, class stream and teacher directions','student-classroom.html?v=20261115-stream3'],
-        ['02','Continue projects','Your project and repository workspace','student-dashboard.html'],
-        ['03','Practice a skill','Short guided missions and feedback','student-practice.html']
-      ]
-    },
-    teacher:{
-      kicker:'TEACHER / TEACHING CONTROL',
-      title:'Prepare. Review. <em>Move the class forward.</em>',
-      summary:'Enter the teaching workflow from one visual command surface, then continue into the full operational dashboard.',
-      actions:[
-        ['01','Assessment Studio','Create, deploy and manage assessments','assessment-studio.html'],
-        ['02','Review & Grade','Inspect submissions and evidence','repofetch.html'],
-        ['03','Class Record','Review and publish verified results','class-record.html']
-      ]
-    },
-    admin:{
-      kicker:'SCHOOL ADMIN / OPERATIONS CONTROL',
-      title:'See the school. <em>Act on what matters.</em>',
-      summary:'A visual entrypoint to the canonical administration workflows. Real counts and alerts remain in the dashboard below.',
-      actions:[
-        ['01','People & access','Students, staff, roles and account concerns','people-access.html'],
-        ['02','Enrollment','Registration, placement and student lifecycle','school-enrollment.html'],
-        ['03','Academic structure','Programs, sections and school configuration','school-academic-structure.html']
-      ]
-    },
-    platform:{
-      kicker:'SYSTEM ADMIN / PLATFORM CONTROL',
-      title:'One platform. <em>Every school stays distinct.</em>',
-      summary:'Enter platform-level school operations without mixing them with school-admin authority.',
-      actions:[
-        ['01','System users','Review platform-level identities and access','system-users.html'],
-        ['02','Support reports','Review platform-level issues requiring attention','issues.html'],
-        ['03','Release history','Inspect verified public product releases','patch-notes.html']
-      ]
-    }
-  };
-
-  if(publicLike){
-    const config=paths[role];
-    journey=el('div','avfx-journey');
-    journey.setAttribute('aria-label',role==='public'?'Adminerva full experience':'Adminerva guest full experience');
-    const scenes=[];
-
-    const makeScene=(number,tone)=>{
-      const s=el('section','avfx-scene');
-      s.dataset.avfxScene=String(number);
-      s.dataset.tone=tone;
-      s.setAttribute('aria-label','Experience chapter '+String(number+1));
-      scenes.push(s);journey.append(s);return s;
-    };
-
-    // Scene 1 — identity
-    const intro=makeScene(0,'sky');
-    const introGrid=el('div','avfx-scene-grid');
-    const introCopy=el('div','avfx-copy');
-    introCopy.innerHTML=role==='public'
-      ?'<p class="avfx-kicker">ADMINERVA / SCHOOL OPERATING SYSTEM</p><h1>One school day. <em>Connected.</em></h1><p>Move through learning, teaching and school operations as one connected experience—not a collection of disconnected portals.</p>'
-      :'<p class="avfx-kicker">ADMINERVA / OPEN EXPERIENCE</p><h1>Don\'t read about it. <em>Try it.</em></h1><p>Move through public tools, experiments and discoveries before you ever sign in.</p>';
-    const introActions=el('div','avfx-actions');
-    const enter=el('button','avfx-primary','Enter the experience ↓');enter.type='button';
-    const qlink=link(role==='public'?'login.html?continue=1':'guest-playground.html',role==='public'?'Open workspace ↗':'Start building ↗','avfx-secondary');
-    introActions.append(enter,qlink);introCopy.append(introActions);
-    const fine=el('p','avfx-fine','Motion is optional. Switch to Quick mode at any time. No private school activity is shown here.');
-    introCopy.append(fine);
-    const introOrbit=buildOrbit(config,0);
-    introGrid.append(introCopy,introOrbit);intro.append(introGrid);
-
-    // Scene 2 — pathways
-    const pathsScene=makeScene(1,'mint');
-    const pathGrid=el('div','avfx-scene-grid');
-    const pathCopy=el('div','avfx-copy');
-    pathCopy.innerHTML='<p class="avfx-kicker">02 / CHOOSE A PATH</p><h2>Follow what <em>pulls you in.</em></h2><p>Every signal is a working destination. Select one to preview it, then enter when you are ready.</p>';
-    const pathOrbit=buildOrbit(config,1);
-    pathGrid.append(pathCopy,pathOrbit);pathsScene.append(pathGrid);
-
-    // Scene 3 — current signals
-    const signalScene=makeScene(2,'violet');
-    const signalGrid=el('div','avfx-scene-grid');
-    const signalCopy=el('div','avfx-copy');
-    signalCopy.innerHTML='<p class="avfx-kicker">03 / CURRENT SIGNALS</p><h2>Adminerva keeps <em>moving.</em></h2><p>Published releases, approved discoveries and source-checked opportunities become part of the experience instead of another list of links.</p>';
-    const stack=el('div','avfx-signal-stack');stack.setAttribute('aria-live','polite');
-    const controls=el('div','avfx-signal-controls');
-    const prev=el('button',null,'←'),next=el('button',null,'→');prev.type=next.type='button';
-    prev.setAttribute('aria-label','Previous signal');next.setAttribute('aria-label','Next signal');
-    controls.append(prev,next);stack.append(controls);
-    signalGrid.append(signalCopy,stack);signalScene.append(signalGrid);
-
-    // Scene 4 — choose how to enter
-    const final=makeScene(3,'amber');
-    const finalGrid=el('div','avfx-scene-grid');
-    const finalCopy=el('div','avfx-copy');
-    finalCopy.innerHTML=role==='public'
-      ?'<p class="avfx-kicker">04 / ENTER ADMINERVA</p><h2>Choose how you <em>arrive.</em></h2><p>Explore openly, enter your existing workspace, or begin enrollment. The full School OS remains role- and school-scoped after sign-in.</p>'
-      :'<p class="avfx-kicker">04 / KEEP EXPLORING</p><h2>Make the next click <em>do something.</em></h2><p>Build, practice, discover or move into the signed-in school experience when you are ready.</p>';
-    const choices=el('div','avfx-choice-grid');
-    const choiceData=role==='public'?
-      [
-        ['WORKSPACE','Sign in','Continue to your authorized school workspace.','login.html?continue=1'],
-        ['ENROLL','Join a school','Start the public enrollment workflow.','enroll.html'],
-        ['EXPLORE','Guest mode','Try public tools without a school login.','guest-home.html'],
-        ['DISCOVER','Opportunity Hunter','Explore external source-checked opportunities.','opportunities.html']
-      ]:[
-        ['BUILD','Studio','Try a public coding project.','guest-playground.html'],
-        ['PRACTICE','Practice Lab','Work through a guided mission.','guest-practice.html'],
-        ['DISCOVER','Opportunity Hunter','Explore verified external opportunities.','opportunities.html'],
-        ['WORKSPACE','Sign in','Return to an authorized school workspace.','login.html?continue=1']
-      ];
-    for(const [k,t,d,h] of choiceData){
-      const a=link(h,'','avfx-choice');a.replaceChildren(el('small',null,k),el('strong',null,t),el('p',null,d));choices.append(a);
-    }
-    finalGrid.append(finalCopy,choices);final.append(finalGrid);
-    final.append(el('div','avfx-final-mark','A'));
-
-    home.prepend(journey);
-
-    // shared scene UI
-    const indexNav=el('nav','avfx-scene-index');indexNav.setAttribute('aria-label','Experience chapters');
-    const progress=el('div','avfx-scene-progress');progress.append(el('i'));
-    const sectionNav=el('div','avfx-section-nav');
-    const backQuick=el('button',null,'Quick mode');backQuick.type='button';backQuick.addEventListener('click',()=>applyMode('quick'));
-    sectionNav.append(backQuick);intro.append(sectionNav);
-    scenes.forEach((scene,i)=>{
-      const b=el('button',null,String(i+1).padStart(2,'0'));b.type='button';b.setAttribute('aria-label','Go to chapter '+(i+1));
-      b.addEventListener('click',()=>goTo(i));indexNav.append(b);
-    });
-    journey.append(indexNav,progress);
-    enter.addEventListener('click',()=>goTo(1));
-
-    let current=0;
-    function isHorizontal(){return window.matchMedia('(max-height:620px) and (orientation:landscape) and (pointer:coarse)').matches;}
-    function goTo(i){
-      current=Math.max(0,Math.min(scenes.length-1,i));
-      scenes[current].scrollIntoView({behavior:reduce()?'auto':'smooth',block:'start',inline:'start'});
-      sync();
-    }
-    function sync(){
-      const rect=journey.getBoundingClientRect();
-      const horizontal=isHorizontal();
-      const value=horizontal?journey.scrollLeft:journey.scrollTop;
-      const nearest=scenes.reduce((best,scene,index)=>{
-        const offset=horizontal?scene.offsetLeft:scene.offsetTop;
-        const distance=Math.abs(offset-value);
-        return distance<best.distance?{index,distance}:best;
-      },{index:0,distance:Number.POSITIVE_INFINITY});
-      const i=nearest.index;
-      current=i;
-      [...indexNav.children].forEach((b,j)=>j===i?b.setAttribute('aria-current','step'):b.removeAttribute('aria-current'));
-      scenes.forEach((scene,j)=>scene.dataset.active=String(j===i));
-      progress.firstElementChild?.style.setProperty('--avfx-progress',((i/(scenes.length-1))*100)+'%');
-    }
-    journey.addEventListener('scroll',()=>requestAnimationFrame(sync),{passive:true});
-    window.addEventListener('resize',sync,{passive:true});
-    journey.addEventListener('keydown',event=>{
-      if(event.target.closest('input,textarea,select'))return;
-      const forward=['ArrowDown','ArrowRight','PageDown'];
-      const backward=['ArrowUp','ArrowLeft','PageUp'];
-      if(forward.includes(event.key)){event.preventDefault();goTo(current+1);}
-      if(backward.includes(event.key)){event.preventDefault();goTo(current-1);}
-      if(event.key==='Home'){event.preventDefault();goTo(0);}
-      if(event.key==='End'){event.preventDefault();goTo(scenes.length-1);}
-    });
-    journey.tabIndex=-1;
-    sync();
-
-    // Public signal stack.
-    let signals=[],signalIndex=0;
-    const renderSignals=()=>{
-      [...stack.querySelectorAll('.avfx-signal-card')].forEach(n=>n.remove());
-      const visible=signals.length?signals:[{kicker:'NO PUBLIC SIGNAL YET',title:'The channel is quiet.',summary:'The experience does not invent releases or opportunities when nothing is published.',url:'pulse.html',action:'Open Pulse ↗'}];
-      visible.slice(0,3).forEach((item,i)=>{
-        const card=el('article','avfx-signal-card');card.dataset.active=String(i===signalIndex);
-        card.dataset.pos=i===signalIndex?'front':i===((signalIndex+1)%visible.length)?'middle':'back';
-        card.append(el('p','avfx-kicker',item.kicker),el('h3',null,item.title),el('p',null,item.summary),link(item.url,item.action,''));
-        stack.insertBefore(card,controls);
-      });
-    };
-    const stepSignal=amount=>{
-      if(!signals.length)return;
-      signalIndex=(signalIndex+amount+Math.min(signals.length,3))%Math.min(signals.length,3);
-      renderSignals();
-    };
-    prev.addEventListener('click',()=>stepSignal(-1));next.addEventListener('click',()=>stepSignal(1));
-    Promise.allSettled([loadPublicReleases(),loadPublicChannel('experiences',{role}),loadPublicChannel('opportunities',{role:'all'})]).then(([r,e,o])=>{
-      if(r.status==='fulfilled'&&r.value[0])signals.push({kicker:'VERIFIED RELEASE / '+r.value[0].version,title:r.value[0].title,summary:r.value[0].summary,url:'patch-notes.html?version='+encodeURIComponent(r.value[0].version),action:'Open release ↗'});
-      if(e.status==='fulfilled'&&e.value[0])signals.push({kicker:'TODAY / '+e.value[0].label,title:e.value[0].title,summary:e.value[0].summary,url:e.value[0].url,action:'Try it ↗'});
-      if(o.status==='fulfilled'&&o.value[0])signals.push({kicker:'OPPORTUNITY / '+o.value[0].category,title:o.value[0].title,summary:o.value[0].provider+' · '+o.value[0].location,url:'opportunities.html',action:'Explore opportunity ↗'});
-      renderSignals();
-    }).catch(renderSignals);
-    renderSignals();
-
-    // pointer depth
-    journey.addEventListener('pointermove',event=>{
-      if(reduce()||event.pointerType==='touch')return;
-      const target=event.target.closest('.avfx-orbit');
-      if(!target)return;
-      const r=target.getBoundingClientRect();
-      target.style.setProperty('--avfx-x',((event.clientX-r.left)/r.width-.5).toFixed(3));
-      target.style.setProperty('--avfx-y',((event.clientY-r.top)/r.height-.5).toFixed(3));
-    },{passive:true});
-  }else if(roleActions[role]){
-    const cfg=roleActions[role];
-    const stage=el('section','avfx-role-stage');
-    stage.setAttribute('aria-label',role+' immersive home entry');
-    const grid=el('div','avfx-role-stage-grid');
-    const copy=el('div','avfx-copy');
-    copy.innerHTML='<p class="avfx-kicker">'+cfg.kicker+'</p><h1>'+cfg.title+'</h1><p>'+cfg.summary+'</p>';
-    const quicks=el('div','avfx-actions');
-    const dashboard=el('button','avfx-primary','Continue to dashboard ↓');dashboard.type='button';
-    quicks.append(dashboard);copy.append(quicks);
-    const consoleEl=el('div','avfx-role-console');
-    consoleEl.append(el('div','avfx-role-console-ring'));
-    const core=el('div','avfx-role-console-core');
-    const img=document.createElement('img');img.src='assets/adminerva-owl.png';img.alt='';img.width=80;img.height=80;
-    core.append(img,el('strong',null,role.toUpperCase()+' / HOME'));consoleEl.append(core);
-    const loc=[[18,27],[82,27],[50,82]];
-    cfg.actions.forEach(([n,t,d,h],i)=>{
-      const a=link(h,'','avfx-role-action');a.style.setProperty('--rx',loc[i][0]+'%');a.style.setProperty('--ry',loc[i][1]+'%');
-      a.replaceChildren(el('small',null,n),el('strong',null,t),el('span',null,d));consoleEl.append(a);
-    });
-    const enter=el('button','avfx-role-enter','↓ Continue into operational dashboard');enter.type='button';
-    stage.append(grid,enter);grid.append(copy,consoleEl);home.prepend(stage);
-    const scrollDashboard=()=>{
-      const target=[...home.children].find(n=>n!==stage&&
-        !((role==='student'||role==='teacher')&&n.classList?.contains('av-home-hero')));
-      target?.scrollIntoView({behavior:reduce()?'auto':'smooth',block:'start'});
-    };
-    dashboard.addEventListener('click',scrollDashboard);enter.addEventListener('click',scrollDashboard);
-  }
-
-
-  if(publicLike&&requested===null){
-    const gate=document.createElement('dialog');
-    gate.className='avfx-gate';
-    gate.setAttribute('aria-labelledby','avfx-gate-title');
-    const shell=el('div','avfx-gate-shell');
-    const mark=el('div','avfx-gate-mark');mark.setAttribute('aria-hidden','true');
-    const owl=document.createElement('img');owl.src='assets/adminerva-owl.png';owl.width=76;owl.height=76;owl.alt='';
-    mark.append(owl);
-    const copy=el('div','avfx-gate-copy');
-    copy.innerHTML='<p class="avfx-kicker">ADMINERVA / ENTRY MODE</p><h2 id="avfx-gate-title">How do you want to enter?</h2><p>Full Experience moves through Adminerva one scene at a time. Quick Mode keeps the familiar fast-scrolling page. You can switch any time.</p>';
-    const actions=el('div','avfx-gate-actions');
-    const fullChoice=el('button','avfx-primary','Enter Full Experience →');fullChoice.type='button';
-    const quickChoice=el('button','avfx-secondary','Use Quick Mode');quickChoice.type='button';
-    actions.append(fullChoice,quickChoice);copy.append(actions);shell.append(mark,copy);gate.append(shell);document.body.append(gate);
-    const choose=mode=>{applyMode(mode);if(typeof gate.close==='function'&&gate.open)gate.close();else gate.remove();};
-    fullChoice.addEventListener('click',()=>choose('full'));
-    quickChoice.addEventListener('click',()=>choose('quick'));
-    gate.addEventListener('cancel',event=>{event.preventDefault();choose('quick');});
-    queueMicrotask(()=>{
-      try{gate.showModal();}catch{gate.setAttribute('open','');}
-      fullChoice.focus();
-    });
-  }
-
-  function buildOrbit(items,seed){
-    const orbit=el('div','avfx-orbit');
-    orbit.append(el('div','avfx-orbit-ring avfx-orbit-ring--one'),el('div','avfx-orbit-ring avfx-orbit-ring--two'),el('div','avfx-orbit-ring avfx-orbit-ring--three'));
-    const core=el('div','avfx-orbit-core');
-    const img=document.createElement('img');img.src='assets/adminerva-owl.png';img.width=84;img.height=84;img.alt='';
-    core.append(img,el('span',null,'ADMINERVA / '+(seed?'PATHS':'ENTER')));orbit.append(core);
-    const inspector=el('div','avfx-inspector');
-    const k=el('small'),t=el('strong'),d=el('p'),a=el('a');inspector.append(k,t,d,a);orbit.append(inspector);
-    const positions=[[16,28],[83,25],[84,74],[15,75],[51,6]];
-    const buttons=[];
-    const choose=i=>{
-      const item=items[i];k.textContent=item[0]+' / DESTINATION';t.textContent=item[1];d.textContent=item[2];a.href=item[3];a.textContent='Open '+item[0].toLowerCase()+' ↗';
-      buttons.forEach((b,j)=>b.setAttribute('aria-pressed',String(j===i)));
-    };
-    items.forEach((item,i)=>{
-      const b=el('button','avfx-orbit-node');b.type='button';b.style.setProperty('--fx',positions[i][0]+'%');b.style.setProperty('--fy',positions[i][1]+'%');
-      b.setAttribute('aria-label','Preview '+item[1]);b.setAttribute('aria-pressed','false');
-      b.append(el('b',null,item[4]),el('span',null,item[0]));b.addEventListener('click',()=>choose(i));orbit.append(b);buttons.push(b);
-    });
-    choose(seed%items.length);
-    return orbit;
+  const cfg=configs[role];
+  if(cfg){
+    const stage=el('section','avx-role-runway');stage.append(makeBackdrop());const copy=el('div','avx-role-copy');
+    copy.append(el('p','avx-kicker',cfg.kicker),el('h1',null,cfg.title),el('p','avx-role-summary',cfg.summary));
+    const lanes=el('nav','avx-role-lanes');lanes.setAttribute('aria-label',role+' priority destinations');
+    cfg.actions.forEach(([index,title,summary,href])=>{const a=link(href,'','avx-role-lane');a.append(el('span','avx-role-lane-index',index),el('strong',null,title),el('small',null,summary),el('b',null,'↗'));lanes.append(a);});
+    const dashboard=el('button','avx-dashboard-entry','Continue to operational dashboard ↓');dashboard.type='button';copy.append(dashboard);stage.append(copy,lanes);home.prepend(stage);bindDepth(stage);
+    dashboard.addEventListener('click',()=>{const target=[...home.children].find(n=>n!==stage);scrollToElement(target);});
   }
 }
