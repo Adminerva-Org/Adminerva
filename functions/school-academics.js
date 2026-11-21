@@ -676,8 +676,23 @@ function createSchoolAcademicsService({db}) {
     }
     const structuralTermChange=kind==="terms"&&
       (currentData.yearId!==parentYear||currentData.programId!==parentProgram);
+    const sectionProgramChange=kind==="sections"&&currentData.programId!==parentProgram;
     const structuralSectionChange=kind==="sections"&&
-      (currentData.programId!==parentProgram||String(currentData.gradeLevel||"")!==String(gradeLevel||""));
+      (sectionProgramChange||String(currentData.gradeLevel||"")!==String(gradeLevel||""));
+    if(sectionProgramChange){
+      const policies=await tx.get(db.collection("schools/"+ctx.schoolId+"/grading_schemes")
+        .where("applicability.sectionId","==",itemId).limit(51));
+      if(policies.size===51)
+        deny("resource-exhausted","Section grading-policy dependency review requires pagination before moving this section.");
+      const incompatiblePolicy=policies.docs.find(doc=>{
+        const row=doc.data(),scope=row.applicability||{};
+        return row.schoolId===ctx.schoolId&&row.status==="active"&&scope.programId&&scope.programId!==parentProgram;
+      });
+      if(incompatiblePolicy)
+        deny("failed-precondition","Archive or update grading policy “"+
+          String(incompatiblePolicy.data().name||incompatiblePolicy.id).slice(0,120)+
+          "” before moving this section to another program/division.");
+    }
     if(structuralTermChange||structuralSectionChange){
       const fieldName=kind==="terms"?"termId":"sectionId";
       const [offeringDeps,registrationDeps]=await Promise.all([
