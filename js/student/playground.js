@@ -3,7 +3,7 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=20261121-exam-data-audit";
+import {createProjectStudio} from "./project-studio.mjs?v=20261121-exam-final";
 import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
 import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261121-exam-data-audit";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
@@ -746,6 +746,20 @@ async function initializePlayground() {
         openProject:openNamedProject,
         captureState:currentState,
         onConfigChange:applyNamedProjectConfig,
+        onRevealEvidence:({file,line,column,length})=>{
+          const model=workspaceFiles[file]?.model;
+          if(!model||!editorInstance)return false;
+          const validLine=Math.max(1,Math.min(model.getLineCount(),Math.trunc(Number(line)||1)));
+          switchTab(file);
+          const endColumn=model.getLineMaxColumn(validLine);
+          const startColumn=Math.max(1,Math.min(endColumn,Math.trunc(Number(column)||1)));
+          const targetEnd=Math.max(startColumn,Math.min(endColumn,startColumn+Math.min(80,Math.max(1,Math.trunc(Number(length)||1)))));
+          editorInstance.setSelection({startLineNumber:validLine,startColumn,endLineNumber:validLine,endColumn:targetEnd});
+          editorInstance.revealLineInCenter(validLine);
+          // On phones, show highlighted evidence without forcing the soft keyboard open.
+          if(!window.matchMedia("(max-width:767px)").matches)editorInstance.focus();
+          return true;
+        },
         legacyDraftAvailable:legacyAvailable,
         importLegacyDraft:importLegacyDraftAsProject,
         cloudEnabled:!guestMode,

@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=47eba756913e" />
     <link rel="stylesheet" href="css/directory-ux.css?v=4.0.0" />
 </head>
   <body
@@ -245,14 +245,31 @@
           <div><button value="approved" class="av-btn">Approve selected access</button><button value="rejected" class="av-btn" formnovalidate>Reject request</button><button id="admission-cancel" type="button" class="av-secondary-button">Cancel</button></div>
         </form>
       </section>
+      <dialog id="student-section-dialog" aria-labelledby="student-section-title" class="rounded-2xl border-0 p-0 shadow-2xl w-[min(94vw,480px)] backdrop:bg-slate-950/60">
+        <form id="student-section-form" class="p-5 sm:p-6 space-y-4">
+          <div>
+            <h2 id="student-section-title" class="text-lg font-extrabold">Assign student to section</h2>
+            <p id="student-section-target" class="text-sm text-slate-600 mt-1"></p>
+            <p class="text-sm text-slate-600 mt-2">This updates the student's existing school roster record. Their account, project work, submissions and grades remain in place.</p>
+          </div>
+          <label class="block text-sm font-bold">Existing school section
+            <select id="student-section-choice" class="block w-full mt-1 border border-slate-300 rounded-lg p-3" required></select>
+          </label>
+          <p id="student-section-status" role="status" aria-live="polite" class="text-sm text-slate-600"></p>
+          <div class="flex flex-wrap gap-2">
+            <button id="student-section-save" type="submit" class="av-btn">Assign section</button>
+            <button id="student-section-cancel" type="button" class="av-btn secondary">Cancel</button>
+          </div>
+        </form>
+      </dialog>
     </main>
 
     <script type="module" src="js/school-admin/legacy-directory-route.mjs?v=1.0.1"></script>
-    <script src="js/core/adminerva-nav.js?v=21a534696b3d"></script>
-    <script type="module" src="js/settings/settings-user.js?v=4.0.1"></script>
+    <script src="js/core/adminerva-nav.js?v=47eba756913e"></script>
+    <script type="module" src="js/settings/settings-user.js?v=20261120-section-assign"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
     <script type="module" src="js/core/user-admissions.mjs?v=1.3.1"></script>
-    <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
-<script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
+    <script defer src="js/core/release-footer.js?v=47eba756913e"></script>
+<script src="js/core/adminerva-loader.js?v=47eba756913e"></script>
   </body>
 </html>

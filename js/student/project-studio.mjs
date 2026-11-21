@@ -9,6 +9,7 @@ import {
 } from "./code-projects.mjs?v=2.1.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
+import {analyzeProjectEvidence,evidenceSnippet} from "./project-competency-evidence.mjs?v=2.1.0";
 import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,listV4StudioAssignments,loadV4StudioProject,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
@@ -153,7 +154,7 @@ function matchesTemplateStarter(project,template){
 }
 
 export function createProjectStudio({
-  uid,openProject,captureState,onConfigChange,legacyDraftAvailable=false,importLegacyDraft=null,
+  uid,openProject,captureState,onConfigChange,onRevealEvidence=null,legacyDraftAvailable=false,importLegacyDraft=null,
   cloudEnabled=true,guest=false,limits={},projectScope=""
 }){
   const policy={
@@ -550,6 +551,44 @@ export function createProjectStudio({
       if(typeof importLegacyDraft==="function")importLegacyDraft();
     });
     el("guestUpgradeBtn")?.addEventListener("click",()=>{location.href="login.html";});
+    el("evidenceFilter")?.addEventListener("change",renderEvidence);
+    el("evidenceRefresh")?.addEventListener("click",renderEvidence);
+    el("evidenceExpandAll")?.addEventListener("click",()=>{
+      const items=[...el("evidenceChecklist")?.querySelectorAll("details.evidence-details")||[]];
+      const expand=items.some(item=>!item.open);
+      for(const item of items)item.open=expand;
+      const button=el("evidenceExpandAll");
+      if(button)button.textContent=expand?"Collapse all details":"Expand all details";
+    });
+    el("evidenceChecklist")?.addEventListener("click",event=>{
+      const button=event.target.closest("button[data-evidence-file],button[data-evidence-view]");
+      if(!button||!activeProject)return;
+      const destination=button.dataset.evidenceView;
+      if(destination==="database"&&activeProject.config?.database===true){
+        switchStudioView("database");return;
+      }
+      if(destination==="design"&&activeProject.config?.design!==false){
+        const name=button.dataset.evidenceArtifact;
+        switchStudioView("design");
+        if(name&&[...el("designTypeSelect")?.options||[]].some(option=>option.value===name)){
+          el("designTypeSelect").value=name;loadDesignEditor();
+          void renderDesignPreview();
+        }
+        return;
+      }
+      const file=button.dataset.evidenceFile,number=Number(button.dataset.evidenceLine),column=Number(button.dataset.evidenceColumn),length=Number(button.dataset.evidenceLength);
+      const state=captureState();
+      if(!file||!Object.hasOwn(state?.files||{},file)||!Number.isInteger(number)||number<1)return;
+      if(typeof onRevealEvidence!=="function")return;
+      switchStudioView("code");
+      try{
+        const ok=onRevealEvidence({file,line:number,column,length});
+        if(ok===false)throw Error("This file is no longer available in the editor.");
+      }catch(error){
+        const note=el("evidenceProjectNote");
+        if(note)note.textContent="Could not open source: "+(error?.message||"Please open the file manually.");
+      }
+    });
     el("designTypeSelect")?.addEventListener("change",loadDesignEditor);
     el("saveDesignBtn")?.addEventListener("click",saveDesign);
     el("renderDesignBtn")?.addEventListener("click",()=>void renderDesignPreview());
@@ -1276,30 +1315,77 @@ export function createProjectStudio({
     }
   }
 
-  function competencyRows(){
-    if(!activeProject)return [];
-    const stats=sourceStats(activeProject.state),history=activeProject.database?.history||[],types=new Set(history.map(item=>item.type));
-    const designCount=Object.values(activeProject.design||{}).filter(value=>String(value||"").trim()).length;
-    const checks=[
-      ["Object-oriented structure",stats.classes>=2||stats.hasEncapsulation,"Classes / encapsulation"],
-      ["Inheritance / interfaces",stats.hasInheritance||stats.interfaces>0,"extends / implements / interface"],
-      ["Collections & generics",stats.hasCollections||stats.hasGenerics,"Collections / generics"],
-      ["Exception handling",stats.hasExceptions,"try/catch or throws"],
-      ["JDBC source usage",stats.hasJdbc,"java.sql / DriverManager / PreparedStatement"],
-      ["SQL CRUD lab",["INSERT","SELECT","UPDATE","DELETE"].every(type=>types.has(type)),"Adminerva DB CRUD activity"],
-      ["File I/O",stats.hasFileIo,"java.io / NIO.2"],
-      ["Multithreading",stats.hasThreads,"Thread / Runnable / executors"],
-      ["OO analysis & design",designCount>=3,designCount+" design artifact(s)"]
-    ];
-    return checks;
+  function evidenceProof(row,loc,state){
+    if(row.kind==="source"){
+      const snippet=evidenceSnippet(state,loc);
+      const excerpt=snippet.map(item=>
+        '<span class="evidence-code-line'+(item.focus?' is-target':'')+'"><span class="evidence-line-number">'+
+        item.line+'</span><span class="evidence-line-text">'+escapeHtml(item.code||" ")+'</span></span>'
+      ).join("");
+      return '<li class="evidence-proof"><div class="evidence-proof-head"><strong>'+
+        escapeHtml(loc.file)+':'+loc.line+'</strong><button type="button" data-evidence-file="'+
+        escapeHtml(loc.file)+'" data-evidence-line="'+loc.line+'" data-evidence-column="'+loc.column+'" data-evidence-length="'+loc.length+'">Open in editor</button></div>'+
+        '<pre class="evidence-code" aria-label="Source excerpt near '+escapeHtml(loc.file)+':'+loc.line+'"><code>'+
+        excerpt+'</code></pre></li>';
+    }
+    if(row.kind==="activity"){
+      return '<li class="evidence-proof"><strong>'+escapeHtml(loc.label||"Recorded operation")+'</strong>'+
+        (loc.at?'<small class="evidence-proof-time">Recorded '+escapeHtml(loc.at)+'</small>':'')+
+        (loc.sql?'<pre class="evidence-code evidence-activity-code"><code>'+escapeHtml(loc.sql)+'</code></pre>':'')+
+        (activeProject.config?.database===true?'<button type="button" data-evidence-view="database">Open database lab</button>':'')+
+        '</li>';
+    }
+    if(row.kind==="artifact"){
+      return '<li class="evidence-proof"><div class="evidence-proof-head"><strong>'+
+        escapeHtml(loc.label||"Design artifact")+'</strong>'+
+        (activeProject.config?.design!==false?'<button type="button" data-evidence-view="design" data-evidence-artifact="'+
+          escapeHtml(loc.label||"")+'">Open design workspace</button>':'')+
+        '</div>'+(loc.preview?'<pre class="evidence-code evidence-activity-code"><code>'+
+          escapeHtml(loc.preview)+'</code></pre>':'')+'</li>';
+    }
+    return "";
   }
   function renderEvidence(){
     if(!activeProject)return;
     activeProject.state=captureState();
-    const target=el("evidenceChecklist");if(!target)return;
-    target.innerHTML=competencyRows().map(([name,met,evidence])=>'<article class="evidence-check" data-met="'+met+'"><span class="evidence-check-mark">'+(met?"✓":"○")+'</span><div><strong>'+escapeHtml(name)+'</strong><p>'+escapeHtml(evidence)+'</p></div></article>').join("");
+    const result=analyzeProjectEvidence(activeProject),target=el("evidenceChecklist");
+    if(!target)return;
+    const previous=new Set([...target.querySelectorAll("details.evidence-details[open]")].map(node=>node.dataset.evidenceId));
+    const filter=el("evidenceFilter")?.value||"all";
+    const visible=result.checks.filter(row=>filter==="all"||(filter==="detected"&&row.detected)||(filter==="missing"&&!row.detected));
+    const groups=[...new Set(visible.map(row=>row.group))];
+    target.innerHTML=groups.map(group=>{
+      const rows=visible.filter(row=>row.group===group);
+      return '<section class="evidence-group" aria-label="'+escapeHtml(group)+'">'+
+        '<h3>'+escapeHtml(group)+'</h3><div class="evidence-grid">'+rows.map(row=>{
+          const status=row.detected?"Pattern detected":"Not detected";
+          const details=row.locations.map(loc=>evidenceProof(row,loc,activeProject.state)).join("");
+          const count=row.matchCount||0;
+          const detailsLabel=row.kind==="source"?"View source evidence":row.kind==="activity"?"View SQL activity":"View saved design";
+          const detailTitle=row.locations.length?detailsLabel+" ("+count+")":"How to demonstrate this";
+          const detailsText=count>row.locations.length?'<p class="evidence-proof-limit">Showing the first '+
+            row.locations.length+' of '+count+' matches. These are examples, not a complete code review.</p>':"";
+          return '<article class="evidence-check" data-met="'+row.detected+'"><span class="evidence-check-mark" aria-hidden="true">'+
+            (row.detected?"✓":"○")+'</span><div class="evidence-check-content"><strong>'+escapeHtml(row.label)+
+            '</strong><span class="evidence-check-status">'+escapeHtml(status)+'</span>'+
+            '<details class="evidence-details" data-evidence-id="'+escapeHtml(row.id)+'"'+(previous.has(row.id)?' open':'')+'>'+
+            '<summary>'+escapeHtml(detailTitle)+'</summary><div class="evidence-detail-body">'+
+            '<p class="evidence-detail-heading">What Adminerva checked</p><p>'+escapeHtml(row.explanation)+'</p>'+
+            '<p class="evidence-detail-heading">Suggested next check</p><p>'+escapeHtml(row.feedback)+'</p>'+
+            (details?'<ol class="evidence-proof-list">'+details+'</ol>':
+              '<p class="evidence-no-match">No matching proof was found in the current project. This does not prove the concept is absent or incorrectly implemented.</p>')+
+            detailsText+'</div></details></div></article>';
+        }).join("")+'</div></section>';
+    }).join("")||'<p class="studio-empty">No indicators match this filter. Select All to see the full checklist.</p>';
+    const found=result.checks.filter(row=>row.detected).length,summary=el("evidenceSummary");
+    if(summary)summary.textContent=found+" of "+result.checks.length+" preliminary indicators detected · "+
+      result.javaFiles+" Java source file(s) scanned. This is not a score.";
+    const show=el("evidenceExpandAll");if(show)show.textContent="Expand all details";
     const note=el("evidenceProjectNote");
-    if(note)note.textContent="This is learning evidence gathered from the project. It does not by itself constitute an official TESDA competency assessment.";
+    if(note)note.textContent="Evidence is generated from the current working project. Source examples show file and line references; "+
+      "the code can change after editing, so refresh to recheck. A detected pattern is not a verified competency or grade. "+
+      "Compile, run, demonstrate correct behavior and ask your teacher to confirm your implementation. "+
+      "Not an official TESDA competency assessment.";
   }
   function canonicalSourceJson(value){
     const normalize=node=>{
