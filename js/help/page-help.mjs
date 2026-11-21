@@ -17,7 +17,7 @@ const guides = {
   other:["Need a hand?", "Choose a guide in the public Wiki for this module. If loading fails, preserve your work and report the steps needed to reproduce it.", "getting-started"]
 };
 export function hasActivityPreferences(scripts) {
-  return [...scripts].some(script => /\/(auth-guard\.js|admin-analytics\.mjs|settings-security\.js)(?:[?]|$)/.test(script.src));
+  return [...scripts].some(script => /\/(auth-guard(?:-v4-pilot)?\.js|admin-analytics\.mjs|settings-security\.js)(?:[?]|$)/.test(script.src));
 }
 export function mountHelp() {
   if (document.getElementById("adminerva-help")) return;
@@ -68,7 +68,10 @@ export function mountHelp() {
   });
   document.getElementById("page-help-open").addEventListener("click", () => { dialog.showModal(); window.adminervaActivity?.record("help-open"); });
   const privatePage = hasActivityPreferences(document.scripts);
-  document.getElementById("help-settings-link").href = document.getElementById("adminerva-nav")?.dataset.module?.startsWith("student") ? "student-settings.html" : "settings.html";
+  const nav=document.getElementById("adminerva-nav"),studentModule=nav?.dataset.module?.startsWith("student");
+  document.getElementById("help-settings-link").href = studentModule
+    ? (nav?.dataset.schoolStudent==="true"?"school-student-settings.html":"student-settings.html")
+    : "settings.html";
   if (privatePage && window.self === window.top) {
     import("./activity-preferences.mjs?v=1.3.0").then(module => module.mountActivityPreferences()).catch(() => {});
   }
