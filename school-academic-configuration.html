@@ -273,6 +273,13 @@
         <label class="text-sm font-bold">Academic period<select name="termId" class="ac-input mt-1" required></select></label>
         <label class="text-sm font-bold">Section<select name="sectionId" class="ac-input mt-1" required></select></label>
         <label class="text-sm font-bold">Subject<select name="subjectId" class="ac-input mt-1" required></select></label>
+        <label class="text-sm font-bold">Roster source
+          <select name="rosterMode" class="ac-input mt-1" required>
+            <option value="section">Official section placement · automatic roster</option>
+            <option value="selective">Selective / elective · manual roster</option>
+          </select>
+          <span class="ac-helper">Use the official section roster for normal subjects. Selective mode is for electives, irregular learners, or classes that intentionally include only part of the section.</span>
+        </label>
         <div id="ac-offering-preview" class="ac-summary ac-muted">Choose the required fields to preview this class offering.</div>
         <button class="ac-btn success" type="submit">Create class offering</button>
       </form>
@@ -295,6 +302,6 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261120-admin-foundation"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
-<script type="module" src="js/school-admin/academic-configuration.mjs?v=09073098dd88"></script>
+<script type="module" src="js/school-admin/academic-configuration.mjs?v=20261121-roster-source1"></script>
 </body>
 </html>
