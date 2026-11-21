@@ -5,7 +5,6 @@ const api=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
 const rosterSourceApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolRosterSource");
 const get=id=>document.getElementById(id);
 const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
-const enrollmentApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 let schoolPrograms=[],schoolTerms=[],schoolSections=[],schoolOfferings=[];
 let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0,inviteRun=0,staffSearchRun=0,detailRun=0,academicRun=0,membershipRun=0,recoverySearchRun=0;
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
@@ -534,12 +533,6 @@ get("pa-import-commit").addEventListener("click",()=>{
 async function performAcademic(action,details={}){
   const lease=picker.scope.lease();
   const response=(await academicsApi({schoolId:lease.schoolId,action,...details})).data;
-  picker.scope.assertLease(lease);
-  return response;
-}
-async function performEnrollment(action,details={}){
-  const lease=picker.scope.lease();
-  const response=(await enrollmentApi({schoolId:lease.schoolId,action,...details})).data;
   picker.scope.assertLease(lease);
   return response;
 }
@@ -1302,7 +1295,7 @@ async function openPersonDetail(person){
       placementForm.elements.personId.value=p.personId;
       get("pa-detail-placement-status").textContent="";
       try{
-        legacyPlacementReview=await performEnrollment("student_candidate",{personId:p.personId});
+        legacyPlacementReview=await performAcademic("review_student_section_placement",{personId:p.personId});
       }catch(error){
         legacyPlacementReview={unavailable:true,person:{personId:p.personId}};
         get("pa-detail-placement-status").textContent=error?.message||"Current placement could not be checked.";
@@ -1379,8 +1372,14 @@ get("pa-account-recovery-preview")?.addEventListener("click",()=>{
       enrollmentBlocked=(preview.blockers||[]).some(message=>String(message).toLowerCase().includes("active class enrollment"));
     if(reconcile){
       reconcile.style.display=enrollmentBlocked?"inline-flex":"none";
-      if(enrollmentBlocked)reconcile.href="school-enrollment.html?personId="+encodeURIComponent(preview.replacement.personId);
-      else reconcile.removeAttribute("href");
+      if(enrollmentBlocked){
+        reconcile.textContent=standardEnrollmentMode?"Open enrollment reconciliation":"Open duplicate placement controls";
+        reconcile.href=(standardEnrollmentMode?"school-enrollment.html?personId=":"people-access.html?personId=")+
+          encodeURIComponent(preview.replacement.personId);
+      }else{
+        reconcile.textContent="Open enrollment reconciliation";
+        reconcile.removeAttribute("href");
+      }
     }
     get("pa-account-recovery-confirm").disabled=Boolean(preview.blockers?.length);
   }).catch(error=>resetRecoveryPreview(error?.message||"Account recovery preview failed."))
@@ -1510,13 +1509,13 @@ get("pa-detail-placement-end")?.addEventListener("click",()=>{
   const button=get("pa-detail-placement-end"),personId=legacyPlacementReview.person.personId;
   pendingWrite=true;button.disabled=true;
   get("pa-detail-placement-status").textContent="Ending current placement while preserving enrollment history…";
-  void performEnrollment("end_orphan_enrollments",{
+  void performAcademic("end_student_section_placement",{
     personId,reason,
     enrollments:legacy.map(row=>({enrollmentId:row.enrollmentId,expectedRevision:Number(row.expectedRevision)||1}))
   }).then(async result=>{
     get("pa-detail-placement-status").textContent="Ended · "+result.courseCount+" legacy class enrollment"+
       (result.courseCount===1?"":"s")+" preserved in history. You can now assign a new section or continue account recovery.";
-    legacyPlacementReview=await performEnrollment("student_candidate",{personId});
+    legacyPlacementReview=await performAcademic("review_student_section_placement",{personId});
     renderDetailPlacementState();updateDetailPlacementPicker();
     await Promise.allSettled([loadOverview(),loadPeople(false)]);
   }).catch(error=>{

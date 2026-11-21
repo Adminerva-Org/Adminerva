@@ -83,17 +83,23 @@ test("blocked recovery deep-links the exact replacement person into enrollment r
 });
 
 
-test("People & Access can safely end a pre-canonical placement before reassignment",async()=>{
-  const [html,ui]=await Promise.all([
+test("People & Access can safely end a compatibility placement before reassignment",async()=>{
+  const [html,ui,academics]=await Promise.all([
     readFile(new URL("../people-access.html",import.meta.url),"utf8"),
-    readFile(new URL("../js/school-admin/people-access.mjs",import.meta.url),"utf8")
+    readFile(new URL("../js/school-admin/people-access.mjs",import.meta.url),"utf8"),
+    readFile(new URL("../functions/school-academics.js",import.meta.url),"utf8")
   ]);
   assert.match(html,/pa-detail-current-placement/);
   assert.match(html,/End current placement/);
-  assert.match(ui,/schoolEnrollment/);
-  assert.match(ui,/student_candidate/);
-  assert.match(ui,/end_orphan_enrollments/);
+  assert.doesNotMatch(ui,/schoolEnrollment/);
+  assert.match(ui,/review_student_section_placement/);
+  assert.match(ui,/end_student_section_placement/);
   assert.match(ui,/activeLegacyEnrollments/);
+  assert.match(ui,/people-access\.html\?personId=/);
   assert.match(ui,/Current placement could not be verified\. Placement changes are disabled/);
   assert.match(ui,/End the current placement before assigning the student to another section/);
+  assert.match(academics,/input\.action==="review_student_section_placement"/);
+  assert.match(academics,/input\.action==="end_student_section_placement"/);
+  assert.match(academics,/student_section_placement_ended/);
+  assert.match(academics,/registrationId/);
 });
