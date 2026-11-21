@@ -3,50 +3,83 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Opportunities | Adminerva</title>
-<meta name="description" content="Discover verified learning and career opportunities from external providers, curated for the Adminerva community.">
+<meta name="theme-color" content="#070f23">
+<title>Opportunity Hunter — Adminerva Discovery Atlas</title>
+<meta name="description" content="Explore an interactive atlas of verified learning, scholarship and career opportunities. Every discovery leads to its official source.">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/adminerva-favicon-32.png">
 <link rel="stylesheet" href="css/adminerva-ui.css?v=bd973909b74d">
 <link rel="stylesheet" href="css/public-shell.css?v=bd973909b74d">
-<link rel="stylesheet" href="css/public-content.css?v=20261121-1">
+<link rel="stylesheet" href="css/editorial-cinematic.css?v=20261122-1">
 </head>
-<body class="bg-slate-50 min-h-screen flex flex-col">
+<body class="av-cine-page">
 <div id="adminerva-public-nav" data-page="opportunities"></div>
-<main class="av-home av-opportunities flex-1" id="opportunities-main">
-  <header class="av-opportunities-hero">
-    <div>
-      <p class="av-opportunities-kicker">ADMINERVA · OPPORTUNITY HUNTER</p>
-      <h1>More paths to discover. More possibilities to pursue.</h1>
-      <p>Find learning resources, scholarships, competitions, internships and other opportunities from external providers. Every listing has a source and a freshness check.</p>
-      <a href="guest-home.html" class="av-opportunities-explore">Explore Adminerva's public tools <span aria-hidden="true">↗</span></a>
+<main id="opportunities-main" class="av-cine av-atlas">
+<section class="av-cine-hero av-atlas-hero" aria-labelledby="atlas-title" data-cine-scene>
+  <canvas class="av-cine-particles" data-cine-particles aria-hidden="true"></canvas>
+  <div class="av-cine-noise" aria-hidden="true"></div>
+  <div class="av-cine-topline"><span><i class="av-cine-light" aria-hidden="true"></i> ADMINERVA / DISCOVERY SYSTEM</span><span>01 — OPPORTUNITY HUNTER</span></div>
+  <div class="av-atlas-hero-grid">
+    <div class="av-cine-intro">
+      <p class="av-cine-micro">A WORLD OF POSSIBILITY / ALWAYS EXPLORING</p>
+      <h1 id="atlas-title">Your next <em>big thing</em> is out there.</h1>
+      <p class="av-cine-lead">Discover the courses, competitions and opportunities that could change what you build next. Explore the field; open a signal to see where it leads.</p>
+      <div class="av-cine-actions">
+        <a class="av-cine-main-cta" href="#discover">Explore the atlas <span aria-hidden="true">↘</span></a>
+        <button class="av-cine-ghost-cta" id="atlas-surprise" type="button">Surprise me <span aria-hidden="true">✦</span></button>
+      </div>
+      <p class="av-cine-fine">Only published, source-checked listings appear here. This is not a live people feed.</p>
     </div>
-    <div class="av-opportunities-orbit" aria-hidden="true">
-      <span>DISCOVER</span><span>LEARN</span><span>GROW</span>
+    <div class="av-atlas-universe" id="atlas-universe" aria-label="Interactive map of available opportunities">
+      <div class="av-atlas-halo av-atlas-halo--outer" aria-hidden="true"></div>
+      <div class="av-atlas-halo av-atlas-halo--inner" aria-hidden="true"></div>
+      <div class="av-atlas-sweep" aria-hidden="true"></div>
+      <div class="av-atlas-crosshair" aria-hidden="true"></div>
+      <div class="av-atlas-core" aria-hidden="true"><img src="assets/adminerva-owl.png" width="86" height="86" alt=""><span>SCAN IN PROGRESS</span></div>
+      <div id="atlas-nodes" class="av-atlas-nodes"></div>
+      <div class="av-atlas-universe-caption"><span>DISCOVERY FIELD</span><strong id="atlas-field-count">SCANNING</strong></div>
     </div>
-  </header>
-  <div class="av-opportunities-info" role="note">Listings are informational, not endorsements or guaranteed placements. Check the official provider's eligibility, availability, deadlines and costs before applying. Adminerva never asks you to submit an application through this directory.</div>
-  <section aria-labelledby="opportunities-list-heading" class="av-opportunities-section">
-    <div class="av-opportunities-heading">
-      <div><p class="av-opportunities-kicker">OPEN TO EXPLORE</p><h2 id="opportunities-list-heading">Discover opportunities</h2></div>
-      <p id="opportunities-count" aria-live="polite"></p>
+  </div>
+  <div class="av-cine-bottomline"><span>DISCOVER → INSPECT → VISIT SOURCE</span><a href="#discover">SCROLL TO THE SIGNALS ↓</a></div>
+</section>
+<section class="av-atlas-console" id="discover" aria-labelledby="atlas-console-title">
+  <div class="av-cine-section-heading">
+    <p class="av-cine-micro">02 / THE DISCOVERY ENGINE</p>
+    <h2 id="atlas-console-title">Follow a <em>signal.</em></h2>
+    <p>Select a beacon above or filter the transmissions below. Each opportunity opens into an interactive brief with its official provider.</p>
+  </div>
+  <div class="av-atlas-console-grid">
+    <div class="av-atlas-browser">
+      <div class="av-atlas-browser-top"><div><span class="av-cine-pill">LIVE CATALOG · PUBLIC</span><p id="opportunities-count" aria-live="polite"></p></div><button id="opportunities-reset" type="button" class="av-cine-icon-button">Reset ↺</button></div>
+      <label class="av-atlas-search-label" for="opportunities-search">Search the field</label>
+      <input id="opportunities-search" class="av-atlas-search" type="search" placeholder="Try programming, scholarship, provider…" autocomplete="off">
+      <div id="atlas-filters" class="av-atlas-filters" role="group" aria-label="Filter opportunities by category">
+        <button type="button" data-atlas-category="all" aria-pressed="true">Everything</button>
+        <button type="button" data-atlas-category="Training" aria-pressed="false">Learn</button>
+        <button type="button" data-atlas-category="Scholarship" aria-pressed="false">Scholarships</button>
+        <button type="button" data-atlas-category="Competition" aria-pressed="false">Compete</button>
+        <button type="button" data-atlas-category="Internship" aria-pressed="false">Internships</button>
+        <button type="button" data-atlas-category="Event" aria-pressed="false">Events</button>
+        <button type="button" data-atlas-category="Other" aria-pressed="false">More</button>
+      </div>
+      <p id="opportunities-status" class="av-atlas-status" role="status" aria-live="polite">Acquiring approved signals…</p>
+      <div id="opportunities-list" class="av-atlas-list" aria-label="Verified opportunities"></div>
+      <div id="opportunities-empty" class="av-atlas-no-results" hidden><strong>No matching signals yet.</strong><p>Try another category or search. We don't display expired or unverified opportunities.</p></div>
     </div>
-    <div class="av-opportunities-controls">
-      <label>Search opportunities<input id="opportunities-search" type="search" placeholder="Search topics, provider, or skills" autocomplete="off"></label>
-      <label>Category<select id="opportunities-category"><option value="all">All categories</option><option>Training</option><option>Scholarship</option><option>Competition</option><option>Internship</option><option>Event</option><option>Other</option></select></label>
-      <button id="opportunities-reset" type="button">Reset filters</button>
-    </div>
-    <p id="opportunities-status" role="status" aria-live="polite">Checking published opportunities…</p>
-    <div id="opportunities-list" class="av-opportunities-grid" aria-live="off"></div>
-    <div id="opportunities-empty" class="av-opportunities-empty" hidden><h3>No matching verified opportunities right now.</h3><p>Try a different category or come back after the next editorial review. Expired and unverified listings are not shown.</p></div>
-  </section>
-  <section class="av-opportunities-bottom">
-    <div><p class="av-opportunities-kicker">STAY CURIOUS</p><h2>Not ready to apply? Learn something new today.</h2><p>Try a hands-on programming activity with no school login.</p></div>
-    <a href="guest-practice.html">Try Practice Lab <span aria-hidden="true">↗</span></a>
-  </section>
+    <aside id="atlas-detail" class="av-atlas-detail" aria-live="polite">
+      <div class="av-atlas-detail-empty"><div class="av-atlas-detail-symbol" aria-hidden="true">✳</div><p class="av-cine-micro">AWAITING SELECTION</p><h3>Your discoveries, decoded.</h3><p>Choose an opportunity to inspect its provider, location and eligibility before leaving Adminerva.</p></div>
+    </aside>
+  </div>
+  <p class="av-cine-disclaimer">Independent listings are informational, not endorsements or guaranteed placements. Requirements, costs, availability and application deadlines can change. Always confirm details on the original provider website before applying. Adminerva never takes applications through this directory.</p>
+</section>
+<section class="av-cine-next">
+  <div class="av-cine-next-mark" aria-hidden="true">↗</div>
+  <div><p class="av-cine-micro">KEEP EXPLORING</p><h2>Don't just find a path.<br><em>Make something.</em></h2></div>
+  <a href="guest-playground.html" class="av-cine-main-cta">Enter the coding playground ↗</a>
+</section>
 </main>
 <script type="module" src="js/core/public-shell.mjs?v=bd973909b74d"></script>
 <script defer src="js/core/release-footer.js?v=bd973909b74d"></script>
 <script src="js/core/adminerva-loader.js?v=bd973909b74d"></script>
-<script type="module" src="js/core/opportunities-page.mjs?v=20261121-1"></script>
-</body>
-</html>
+<script type="module" src="js/core/editorial-motion.mjs?v=20261122-1"></script>
+<script type="module" src="js/core/opportunities-page.mjs?v=20261122-1"></script>
+</body></html>
