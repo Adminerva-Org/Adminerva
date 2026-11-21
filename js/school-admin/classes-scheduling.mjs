@@ -622,7 +622,13 @@ el("csHandoverForm").addEventListener("submit",event=>{
   void (async()=>{
     if(busy)return;setBusy(true);say("Handing over teaching responsibility…");
     try{
-      const result=await scoped("handover_offering",{offeringId:selectedId,fromTeacherUid,toTeacherUid,reason});
+      const fromAssignment=(roster?.teachers||[]).find(row=>row.teacherUid===fromTeacherUid)||null,
+        toAssignment=(roster?.teachers||[]).find(row=>row.teacherUid===toTeacherUid)||null;
+      if(!fromAssignment){say("The current teaching assignment is no longer in this class. Refresh before handover.",true);return;}
+      const result=await scoped("handover_offering",{offeringId:selectedId,fromTeacherUid,toTeacherUid,
+        expectedOfferingRevision:Number(selected()?.revision)||1,
+        expectedFromRevision:Number(fromAssignment.revision)||1,
+        expectedToRevision:toAssignment?(Number(toAssignment.revision)||1):0,reason});
       await loadOverview({preserveSelection:true,force:true});
       say("Teaching assignment handed over. "+result.assessmentCount+" assessment review"+(result.assessmentCount===1?"":"s")+
         " transferred."+(result.primaryTransferred?" Primary Teacher leadership also moved to the replacement.":" Class primary leadership was unchanged."));
