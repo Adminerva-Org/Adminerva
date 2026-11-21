@@ -172,7 +172,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const snap=await db.collection("platform_governance_roles").orderBy("displayName").limit(100).get();
       return {roles:snap.docs.map(doc=>({
         roleId:doc.id,displayName:doc.data().displayName,description:doc.data().description||"",
-        status:doc.data().status||"active"
+        status:doc.data().status||"active",revision:Number(doc.data().revision)||1
       }))};
     }
     if(action==="create_governance_role"){
@@ -189,6 +189,59 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
           roleId,displayName,createdAt:now});
       });
       return {roleId,displayName,status:"active"};
+    }
+    if(["update_governance_role","archive_governance_role","restore_governance_role"].includes(action)){
+      const roleId=governanceRoleId(input.roleId),ref=db.doc("platform_governance_roles/"+roleId),
+        expectedRevision=Number(input.expectedRevision),
+        auditRef=db.collection("platform_audit").doc(),
+        restoring=action==="restore_governance_role",
+        archiving=action==="archive_governance_role";
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the governance role before changing it.");
+      const displayName=action==="update_governance_role"?
+        phrase(input.displayName,3,120,"Governance role name"):null;
+      const description=action==="update_governance_role"&&typeof input.description==="string"?
+        input.description.trim().slice(0,500):null;
+      const reason=action==="update_governance_role"?null:phrase(input.reason,12,500,"Governance lifecycle reason");
+      let assignmentRefs=[];
+      if(archiving){
+        const schools=await db.collection("platform_schools").limit(101).get();
+        if(schools.size===101)
+          fail("resource-exhausted","Governance-role archive review requires paginated school discovery before this role can be retired safely.");
+        assignmentRefs=schools.docs.map(school=>db.doc("platform_schools/"+school.id+"/governance_roles/"+roleId));
+      }
+      let result;
+      await db.runTransaction(async tx=>{
+        const [current,...assignments]=await Promise.all([tx.get(ref),...assignmentRefs.map(item=>tx.get(item))]);
+        if(!current.exists)fail("not-found","The governance role does not exist.");
+        const data=current.data(),revision=Number(data.revision)||1;
+        if(revision!==expectedRevision)
+          fail("failed-precondition","This governance role changed after you opened it. Refresh before saving.");
+        if(action==="update_governance_role"&&data.status!=="active")
+          fail("failed-precondition","Restore this governance role before editing it.");
+        if(archiving&&data.status!=="active")
+          fail("failed-precondition","Only an active governance role can be archived.");
+        if(restoring&&data.status!=="archived")
+          fail("failed-precondition","Only an archived governance role can be restored.");
+        if(archiving&&assignments.some(item=>item.exists&&item.data().status==="active"))
+          fail("failed-precondition","End this governance role's active school assignments before archiving the role definition.");
+        const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+        if(action==="update_governance_role")
+          tx.update(ref,{displayName,description,revision:nextRevision,updatedByUid:uid,updatedAt:now});
+        else if(archiving)
+          tx.update(ref,{status:"archived",archiveReason:reason,archivedByUid:uid,archivedAt:now,
+            revision:nextRevision,updatedByUid:uid,updatedAt:now});
+        else
+          tx.update(ref,{status:"active",restoreReason:reason,restoredByUid:uid,restoredAt:now,
+            revision:nextRevision,updatedByUid:uid,updatedAt:now});
+        tx.create(auditRef,{actorUid:uid,action:action==="update_governance_role"?
+          "platform_governance_role_updated":archiving?
+            "platform_governance_role_archived":"platform_governance_role_restored",
+          roleId,...(reason?{reason}:{}),createdAt:now});
+        result={roleId,status:archiving?"archived":"active",revision:nextRevision,
+          ...(displayName?{displayName}:{})};
+      });
+      return result;
     }
     const schoolId=checkedSchoolId(input.schoolId),schoolRef=db.doc("platform_schools/"+schoolId);
     const auditRef=db.collection("platform_audit").doc();
@@ -221,7 +274,10 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     if(action==="list_school_governance_roles"){
       const snap=await db.collection("platform_schools/"+schoolId+"/governance_roles").limit(100).get();
       return {schoolId,roles:snap.docs.map(doc=>({
-        roleId:doc.id,status:doc.data().status||"active",assignedAt:doc.data().assignedAt?.toMillis?.()||null
+        roleId:doc.id,status:doc.data().status||"active",
+        assignedAt:doc.data().assignedAt?.toMillis?.()||null,
+        endedAt:doc.data().endedAt?.toMillis?.()||null,
+        revision:Number(doc.data().revision)||1
       }))};
     }
     if(action==="assign_governance_role"){
@@ -229,17 +285,62 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         roleRef=db.doc("platform_governance_roles/"+roleId),
         assignmentRef=db.doc("platform_schools/"+schoolId+"/governance_roles/"+roleId);
       await db.runTransaction(async tx=>{
-        const [school,role]=await Promise.all([tx.get(schoolRef),tx.get(roleRef)]);
+        const [school,role,assignment]=await Promise.all([tx.get(schoolRef),tx.get(roleRef),tx.get(assignmentRef)]);
         if(!school.exists||!["draft","pilot","active","suspended"].includes(school.data().state))
           fail("failed-precondition","The school must exist and must not be archived.");
         if(!role.exists||role.data().status!=="active")
           fail("failed-precondition","Choose an active platform governance role.");
+        if(assignment.exists)
+          fail("failed-precondition",assignment.data().status==="active"
+            ?"This governance role is already active for the selected school."
+            :"This governance assignment already has history. Use Restore assignment instead of overwriting it.");
         const now=FieldValue.serverTimestamp();
-        tx.set(assignmentRef,{schoolId,roleId,status:"active",assignedByUid:uid,assignedAt:now},{merge:false});
+        tx.create(assignmentRef,{schoolId,roleId,status:"active",revision:1,
+          assignedByUid:uid,assignedAt:now,updatedAt:now});
         tx.create(auditRef,{schoolId,actorUid:uid,action:"school_governance_role_assigned",
           roleId,reason,createdAt:now});
       });
-      return {schoolId,roleId,status:"active"};
+      return {schoolId,roleId,status:"active",revision:1};
+    }
+    if(["end_governance_role_assignment","restore_governance_role_assignment"].includes(action)){
+      const roleId=governanceRoleId(input.roleId),expectedRevision=Number(input.expectedRevision),
+        reason=phrase(input.reason,12,500,"Governance assignment lifecycle reason"),
+        assignmentRef=db.doc("platform_schools/"+schoolId+"/governance_roles/"+roleId),
+        roleRef=db.doc("platform_governance_roles/"+roleId),
+        restoring=action==="restore_governance_role_assignment";
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the governance assignment before changing it.");
+      let result;
+      await db.runTransaction(async tx=>{
+        const [school,assignment,role]=await Promise.all([
+          tx.get(schoolRef),tx.get(assignmentRef),restoring?tx.get(roleRef):Promise.resolve(null)
+        ]);
+        if(!school.exists)fail("not-found","The school does not exist.");
+        if(!assignment.exists||assignment.data().schoolId!==schoolId)
+          fail("not-found","The governance assignment does not exist for this school.");
+        const data=assignment.data(),revision=Number(data.revision)||1;
+        if(revision!==expectedRevision)
+          fail("failed-precondition","This governance assignment changed after you opened it. Refresh before saving.");
+        if(restoring){
+          if(data.status!=="ended")fail("failed-precondition","Only an ended governance assignment can be restored.");
+          if(!role?.exists||role.data().status!=="active")
+            fail("failed-precondition","Restore the platform governance role definition before restoring this school assignment.");
+        }else if(data.status!=="active")
+          fail("failed-precondition","Only an active governance assignment can be ended.");
+        const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+        tx.update(assignmentRef,restoring?{
+          status:"active",restoredByUid:uid,restoredAt:now,restoreReason:reason,
+          revision:nextRevision,updatedByUid:uid,updatedAt:now
+        }:{
+          status:"ended",endedByUid:uid,endedAt:now,endReason:reason,
+          revision:nextRevision,updatedByUid:uid,updatedAt:now
+        });
+        tx.create(auditRef,{schoolId,actorUid:uid,roleId,
+          action:restoring?"school_governance_role_restored":"school_governance_role_ended",
+          reason,createdAt:now});
+        result={schoolId,roleId,status:restoring?"active":"ended",revision:nextRevision};
+      });
+      return result;
     }
     if(action==="get_setup_status"){
       const school=await schoolRef.get();
