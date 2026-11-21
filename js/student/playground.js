@@ -202,6 +202,13 @@ let examPolicyPending=Boolean(examLinkId),examPolicy=null;
 // disallow direct browser reads. Lock the editor before the final save begins.
 let watchedExamId="",examSessionTimer=null,examNotificationUnsub=null,examSessionChecking=false,examSessionClosing=false;
 let examLastContact=0,examSessionErrorCount=0,examMonitorPaused=false;
+function pauseStudioExamEditing(message="Exam connection lost · editing paused until reconnected"){
+  if(!watchedExamId||examSessionClosing)return;
+  examMonitorPaused=true;
+  editorInstance?.updateOptions({readOnly:true});
+  const badge=document.getElementById("autoSaveIndicator");
+  if(badge)badge.textContent=message;
+}
 function stopStudioExamWatcher(){
   watchedExamId="";
   clearInterval(examSessionTimer);examSessionTimer=null;
@@ -314,11 +321,15 @@ async function checkStudioExamSession(taskId=watchedExamId){
       throw Error("The verified school exam session status is temporarily unavailable.");
     if(watchedExamId!==taskId||examSessionClosing)return;
     examLastContact=Date.now();examSessionErrorCount=0;
-    if(examMonitorPaused){
+    const openedEpoch=Number(projectStudio?.getActiveProject?.()?.assessment?.sessionEpoch||0);
+    // A successful response does not automatically mean the exam is OPEN.
+    // Keep the editor frozen until the server verifies the same session epoch.
+    if(examMonitorPaused&&state.manualAccessState==="open"&&
+       state.published===true&&state.lifecycle==="active"&&
+       Number(state.sessionEpoch||0)===openedEpoch){
       examMonitorPaused=false;
       editorInstance?.updateOptions({readOnly:Boolean(studioRuntimeIntegration?.locked?.())});
     }
-    const openedEpoch=Number(projectStudio?.getActiveProject?.()?.assessment?.sessionEpoch||0);
     if(Number(state.sessionEpoch||0)!==openedEpoch){
       // Every editor belongs to exactly one teacher-opened class session.
       // An old tab (including older drafts without an epoch) must never
@@ -343,12 +354,8 @@ async function checkStudioExamSession(taskId=watchedExamId){
     examSessionErrorCount++;
     // An interrupted network cannot verify that the exam is still open.
     // Freeze input rather than allowing a disconnected student to keep editing.
-    if(Date.now()-examLastContact>10000&&examSessionErrorCount>=3){
-      examMonitorPaused=true;
-      editorInstance?.updateOptions({readOnly:true});
-      const badge=document.getElementById("autoSaveIndicator");
-      if(badge)badge.textContent="Exam connection lost · editing paused until reconnected";
-    }
+    if(Date.now()-examLastContact>10000&&examSessionErrorCount>=3)
+      pauseStudioExamEditing();
   }finally{examSessionChecking=false;}
 }
 async function watchStudioExam(taskId){
@@ -388,6 +395,8 @@ async function watchStudioExam(taskId){
       },error=>console.warn("Realtime exam close signal unavailable; using server checks:",error));
     }
     examSessionTimer=setInterval(()=>void checkStudioExamSession(),5000);
+    // The offline event may have fired before the exam watcher started.
+    if(navigator.onLine===false)pauseStudioExamEditing();
     void checkStudioExamSession(taskId);
   }catch(error){console.warn("Studio exam session monitoring unavailable:",error);}
 }
@@ -407,6 +416,16 @@ window.addEventListener("adminerva:studio-ready",event=>{
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible"&&watchedExamId&&!examSessionClosing)
     void checkStudioExamSession();
+});
+window.addEventListener("offline",()=>{
+  // Do not allow continued local typing while the exam server is unreachable.
+  // This is advisory client-side protection; server write closure is authoritative.
+  pauseStudioExamEditing();
+});
+window.addEventListener("online",()=>{
+  // Do not unlock from the browser's online event alone. The authoritative
+  // session endpoint must verify that the same class session remains open.
+  if(watchedExamId&&!examSessionClosing)void checkStudioExamSession(watchedExamId);
 });
 window.addEventListener("pagehide",()=>stopStudioExamWatcher());
 
