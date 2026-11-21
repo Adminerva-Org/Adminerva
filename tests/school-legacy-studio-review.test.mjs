@@ -128,7 +128,7 @@ test("teacher grade and publication use legacy record, not a parallel V4 grade",
  assert.equal(before.published,false);
  assert.equal(before.studioSnapshotHash,data().hash);
  const published=await service({ctx,input:{...input("legacy_review_publish").input,
-   legacySubmissionId:submittedId}});
+   legacySubmissionId:submittedId,expectedGradeRevision:1}});
  assert.equal(published.published,true);
  assert.equal(map.get("student_grades/"+submittedId).published,true);
  assert.equal(writes.filter(x=>x[1].startsWith("schools/")).length,0);
@@ -142,4 +142,16 @@ test("zero-score drafts are never bulk-published",async()=>{
  assert.equal(result.published,0);
  assert.equal(result.zeroSkipped,1);
  assert.equal(map.get("student_grades/"+submittedId).published,false);
+});
+
+test("stale historical grade version cannot be published",async()=>{
+ const grade={studentId,taskId:legacyId,gradeSource:"studio_teacher_review",
+   studioRevision:1,studioSnapshotHash:data().hash,reviewedBy:ctx.uid,
+   studioVariantId:"",score:30,maxScore:40,pending:0,
+   reviewRequired:false,published:false,gradeVersion:5};
+ const {service,writes}=dbHarness({grade});
+ await assert.rejects(service({ctx,input:{...input("legacy_review_publish").input,
+   legacySubmissionId:submittedId,expectedGradeRevision:4}}),error=>
+   error.code==="failed-precondition");
+ assert.equal(writes.length,0);
 });
