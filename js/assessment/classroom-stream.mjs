@@ -12,7 +12,7 @@ const el=id=>document.getElementById(id);
 const form=el("teacherClassroomForm"),select=el("teacherClassroomOffering");
 let picker=null,offerings=[],posts=[],classwork=[],rosterStudents=[],busy=false,epoch=0,loadedOffering="",editing=null,composerOffering="";
 let canPost=false,canComment=false,classworkError="",classworkHealthError="",rosterError="",classroomSettings={participationMode:"teacher_only",revision:0},mutedPersonIds=new Set();
-let classworkHealth=new Map(),classworkSummary=null,preparationPlans=[];
+let classworkHealth=new Map(),classworkSummary=null,preparationPlans=[],officialMeetings=[];
 const fields=["Kind","Title","Body","Link","Pinned"];
 function make(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;}
 function date(value){return value?new Date(value).toLocaleString():"";}
@@ -121,6 +121,21 @@ function renderPosts(){
     if(post.body)card.append(make("p","whitespace-pre-wrap break-words text-sm text-slate-700 mt-3 leading-6",post.body));
     if(post.linkUrl)try{const url=new URL(post.linkUrl);if(["http:","https:"].includes(url.protocol)){const link=make("a","inline-block mt-3 text-sm font-bold text-cyan-800 underline break-all","Open shared link ↗");link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";card.append(link);}}catch{}
     renderComments(post,card);host.append(card);
+  }
+}
+const scheduleDayNames={mon:"Mon",tue:"Tue",wed:"Wed",thu:"Thu",fri:"Fri",sat:"Sat"};
+function renderOfficialSchedule(){
+  const host=el("teacherClassroomSchedule");host.replaceChildren();
+  if(!current()||!loadedOffering)return;
+  if(!officialMeetings.length){
+    host.append(make("span","rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600","Official schedule not set"));
+    return;
+  }
+  const sorted=[...officialMeetings].sort((a,b)=>Object.keys(scheduleDayNames).indexOf(a.day)-Object.keys(scheduleDayNames).indexOf(b.day)||
+    String(a.startTime).localeCompare(String(b.startTime)));
+  for(const meeting of sorted){
+    host.append(make("span","rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-900",
+      [scheduleDayNames[meeting.day]||meeting.day,meeting.startTime+"–"+meeting.endTime,meeting.room||""].filter(Boolean).join(" · ")));
   }
 }
 function updateClassLinks(){
@@ -279,8 +294,8 @@ function beginEdit(post){
 }
 async function loadPosts(){
   const item=current(),turn=++epoch;loadedOffering="";canPost=false;canComment=false;posts=[];classwork=[];rosterStudents=[];mutedPersonIds=new Set();
-  classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];classroomSettings={participationMode:"teacher_only",revision:0};
-  renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
+  classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];officialMeetings=[];classroomSettings={participationMode:"teacher_only",revision:0};
+  renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();
   if(!item)return false;
   try{
     const results=await Promise.allSettled([
@@ -293,7 +308,7 @@ async function loadPosts(){
     if(results[0].status!=="fulfilled")throw results[0].reason;
     const stream=results[0].value;
     posts=stream.posts||[];canPost=stream.canPost===true;canComment=stream.canComment===true;
-    classroomSettings=stream.settings||classroomSettings;mutedPersonIds=new Set(stream.mutedPersonIds||[]);loadedOffering=item.offeringId;
+    classroomSettings=stream.settings||classroomSettings;officialMeetings=stream.schedule?.meetings||[];mutedPersonIds=new Set(stream.mutedPersonIds||[]);loadedOffering=item.offeringId;
     if(results[1].status==="fulfilled")
       classwork=(results[1].value.assessments||[]).filter(task=>task.offeringId===item.offeringId&&!["archived","cancelled"].includes(task.lifecycle)).sort((a,b)=>(a.dueAt||0)-(b.dueAt||0));
     else classworkError="Classwork could not load. The classroom stream is still available.";
@@ -304,9 +319,9 @@ async function loadPosts(){
       classworkSummary=results[3].value.summary?.classwork||null;
       preparationPlans=results[3].value.preparation||[];
     }else classworkHealthError="Submission and grading counts are temporarily unavailable. Classwork links still work.";
-    renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();return true;
+    renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();return true;
   }catch(error){
-    if(turn===epoch){say(error?.message||"Classroom could not load.",true);renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();}
+    if(turn===epoch){say(error?.message||"Classroom could not load.",true);renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();}
     return false;
   }
 }
@@ -319,7 +334,7 @@ async function refresh(){
     for(const item of offerings)select.add(new Option(label(item),item.offeringId));
     if(offerings.some(item=>item.offeringId===previous))select.value=previous;
     else if(initialOfferingId&&offerings.some(item=>item.offeringId===initialOfferingId))select.value=initialOfferingId;
-    if(!offerings.length){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();say("No active class is assigned to this teacher account.",true);return;}
+    if(!offerings.length){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];officialMeetings=[];renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();say("No active class is assigned to this teacher account.",true);return;}
     restoreDraft(select.value);if(await loadPosts())say("Classroom ready for "+label(current())+".");
   }catch(error){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();say(error?.message||"Classroom could not load.",true);}
   finally{setBusy(false);}
@@ -385,7 +400,7 @@ el("teacherClassroomSearch").addEventListener("input",renderPosts);
 picker=createTenantSchoolPicker({host:el("teacherClassroomSchoolSwitcher"),status:null,onBeforeChange:async()=>{
   if(busy||editing)throw Error("Finish or cancel the current classroom action before switching schools.");
   keepDraft();++epoch;offerings=[];posts=[];classwork=[];rosterStudents=[];loadedOffering="";canPost=false;canComment=false;composerOffering="";
-  classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];mutedPersonIds=new Set();classroomSettings={participationMode:"teacher_only",revision:0};
+  classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];officialMeetings=[];mutedPersonIds=new Set();classroomSettings={participationMode:"teacher_only",revision:0};
   select.replaceChildren();fillComposer();renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
 },onReady:scope=>{if(scope.current?.roles.includes("teacher"))void refresh();else say("Teacher access is required.",true);}});
 renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
