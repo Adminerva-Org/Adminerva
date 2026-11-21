@@ -150,6 +150,14 @@ test("stale evidence, duplicate source identity and existing published grade blo
    ...g.gradeArgs,expectedGradeRevision:2})),error=>error.code==="failed-precondition");
  assert.equal(f.writes.length,0);assert.equal(g.writes.length,0);
 });
+test("bulk GitHub save cannot overwrite an existing original grade draft",async()=>{
+ const f=fixture({grade:{studentId,taskId,score:33,maxScore:40,gradeVersion:2},published:false});
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",{
+   ...f.gradeArgs,expectedGradeRevision:2,onlyIfUngraded:true
+ })),error=>error.code==="failed-precondition");
+ assert.equal(f.map.get("student_grades/"+evidenceId).score,33);
+ assert.equal(f.writes.length,0);
+});
 test("zero or unresolved points cannot be published, and stale versions cannot publish",async()=>{
  const f=fixture();
  await f.service(f.request("legacy_github_save_draft",{
