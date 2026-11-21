@@ -7,7 +7,7 @@
 class TenantAccessError extends Error {
   constructor(code, message) { super(message); this.code=code; this.name="TenantAccessError"; }
 }
-const VALID_ROLES=new Set(["student","teacher","school_admin"]);
+const VALID_ROLES=new Set(["student","teacher","registrar","school_admin"]);
 const LEGACY_PLATFORM_ADMIN_EMAILS=new Set(["babaynike2013@gmail.com"]);
 function verifiedAuthEmail(request){
   if(request?.auth?.token?.email_verified!==true)return "";
@@ -52,7 +52,7 @@ async function getSchoolContext({db,request,schoolId,roles=[],allowDraftAdmin=fa
   const platformOverride=Boolean((activePlatformGrant(platform)||legacyPlatformAdmin(request))&&
     data&&["draft","pilot","active","suspended"].includes(data.state));
   if(platformOverride){
-    const overrideRoles=["school_admin","teacher","student"];
+    const overrideRoles=["school_admin","registrar","teacher","student"];
     return Object.freeze({uid,schoolId:id,roles:overrideRoles,membershipRevision:0,
       schoolState:data.state,productionAuthorized:data.productionAuthorized===true,compatibilityMode:data.compatibilityMode||"legacy_allowed",
       enrollmentMode:schoolEnrollmentMode(data),platformOverride:true});
@@ -83,7 +83,7 @@ async function listVerifiedSchools({db,request}) {
       schoolId:doc.id,
       name:typeof doc.data().displayName==="string"&&doc.data().displayName.trim()?
         doc.data().displayName.trim().slice(0,120):doc.id,
-      roles:["school_admin","teacher","student"],
+      roles:["school_admin","registrar","teacher","student"],
       schoolState:doc.data().state,
       productionAuthorized:doc.data().productionAuthorized===true,
       compatibilityMode:doc.data().compatibilityMode||"legacy_allowed",
