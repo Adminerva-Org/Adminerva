@@ -323,6 +323,13 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
            head.data().revision!==raw.head.revision||
            head.data().snapshotHash!==raw.head.snapshotHash)
           deny("failed-precondition","The learner submitted a newer revision. Reload before grading.");
+        if(input.onlyIfUngraded===true){
+          if(prior.exists)
+            deny("failed-precondition","An existing grade was saved while bulk evaluation was running. No grade was replaced.");
+          if(input.expectedSubmissionVersion!==raw.head.revision||
+             input.expectedSnapshotHash!==raw.head.snapshotHash)
+            deny("failed-precondition","The bulk evaluation does not match this exact frozen submission.");
+        }
         if(prior.exists&&prior.data().published===true)
           deny("failed-precondition","Published grades require a separate audited correction.");
         const version=await tx.get(db.doc("studio_submissions/"+id+"/versions/"+raw.head.revision));
