@@ -165,7 +165,20 @@ function createSchoolEnrollmentService({db}){
             row.yearId===source.yearId&&row.termId===source.termId&&row.sectionId===source.sectionId&&
             registrationOwnsEnrollment(registrationId,row,offering?.data());
         });
-      const blockers=[];
+      const blockers=[],
+        sourceCourseCount=Number(source.courseCount)||0,
+        misplacedOwned=enrollmentSnap.docs.filter(doc=>{
+          const row=doc.data();
+          return row.schoolId===ctx.schoolId&&row.personId===personId&&row.status==="active"&&
+            row.registrationId===registrationId&&
+            !sourceEnrollments.some(owned=>owned.id===doc.id);
+        });
+      if(misplacedOwned.length)
+        blockers.push({type:"registration_roster_mismatch",
+          message:"One or more active class enrollments owned by this registration no longer match its official placement. Reconcile the class roster before progression."});
+      if(sourceEnrollments.length!==sourceCourseCount)
+        blockers.push({type:"registration_course_count_mismatch",
+          message:"The registration course count does not match its active official class enrollments. Refresh or reconcile the registration before progression."});
       if(!sourceEnrollments.length)
         blockers.push({type:"no_active_classes",message:"This registration has no active registration-owned classes to complete."});
       const finalizationRefs=sourceEnrollments.map(doc=>
@@ -405,7 +418,7 @@ function createSchoolEnrollmentService({db}){
           registrationIds.has(row.registrationId)||
           registrationIds.has(row.previousRegistrationId)||
           registrationIds.has(row.targetRegistrationId)))
-        .filter(row=>/^student_registration_/.test(String(row.action||"")))
+        .filter(row=>/^student_(?:registration_|registered_)/.test(String(row.action||"")))
         .map(row=>({
           auditId:row.auditId,action:String(row.action||"registration_change").slice(0,120),
           registrationId:row.registrationId||null,previousRegistrationId:row.previousRegistrationId||null,
