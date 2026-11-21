@@ -21,7 +21,7 @@ function harness(){
     querySelectorAll(){return this.children.flatMap(item=>item.querySelectorAll?.()||[]);}
   }
   const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id);};
-  const form=get("en-register-form"),fields=["applicationId","displayName","birthDate","studentNumber","guardianName","guardianRelationship","guardianEmail","guardianMobile","studentEmail","studentEmailType","yearId","programId","termId","sectionId"];
+  const form=get("en-register-form"),fields=["applicationId","personId","displayName","birthDate","studentNumber","guardianName","guardianRelationship","guardianEmail","guardianMobile","studentEmail","studentEmailType","yearId","programId","termId","sectionId"];
   form.elements=fields.map(name=>{const node=new Element();node.name=name;return node;});
   for(const field of form.elements)form.elements[field.name]=field;
   form.reset=()=>{for(const field of form.elements)field.value="";};
@@ -154,4 +154,54 @@ test("section change sends the reviewed registration revision",()=>{
   assert.equal(h.requests[0].payload.registrationId,"reg-1");
   assert.equal(h.requests[0].payload.sectionId,"other-section");
   assert.equal(h.requests[0].payload.expectedRevision,7);
+});
+
+
+test("reviewed directory student handoff binds Enrollment to the exact person record",async()=>{
+  const h=harness(),loading=h.context.loadStudentCandidate("person-7",{scroll:false});
+  assert.equal(h.requests.length,1);
+  assert.equal(h.requests[0].payload.action,"student_candidate");
+  assert.equal(h.requests[0].payload.personId,"person-7");
+  h.requests[0].resolve({
+    person:{
+      personId:"person-7",displayName:"Existing Student",birthDate:"2012-08-10",
+      studentNumber:"S-007",guardianName:"Parent Seven",guardianRelationship:"Mother",
+      guardianEmail:"parent7@example.test",guardianMobile:"+639001112222",
+      studentEmailType:"personal",accountResponsibility:"student",
+      accountLinked:false,activationReady:true,revision:3
+    },
+    activeRegistrations:[]
+  });
+  assert.equal(await loading,true);
+  assert.equal(h.form.elements.personId.value,"person-7");
+  assert.equal(h.form.elements.displayName.value,"Existing Student");
+  assert.equal(h.form.elements.studentNumber.value,"S-007");
+  assert.equal(h.form.elements.guardianEmail.value,"parent7@example.test");
+  assert.equal(h.form.elements.applicationId.value,"");
+});
+
+test("registering a reviewed directory student sends its exact person ID",async()=>{
+  const h=harness(),loading=h.context.loadStudentCandidate("person-7",{scroll:false});
+  h.requests[0].resolve({
+    person:{
+      personId:"person-7",displayName:"Existing Student",birthDate:"2012-08-10",
+      studentNumber:"S-007",guardianName:"Parent Seven",guardianRelationship:"Mother",
+      guardianEmail:"parent7@example.test",guardianMobile:"",
+      studentEmailType:"personal",accountResponsibility:"student",
+      accountLinked:false,activationReady:false,revision:3
+    },
+    activeRegistrations:[]
+  });
+  await loading;
+  h.form.elements.yearId.value="new-year";
+  h.form.elements.programId.value="new-program";
+  h.form.elements.termId.value="new-period";
+  h.form.elements.sectionId.value="other-section";
+  h.form.elements.studentEmail.value="student7@example.test";
+  h.form.elements.studentEmailType.value="personal";
+  h.form.dispatch("submit");
+  assert.equal(h.requests.length,2);
+  assert.equal(h.requests[1].payload.action,"register_student");
+  assert.equal(h.requests[1].payload.personId,"person-7");
+  assert.equal(h.requests[1].payload.applicationId,"");
 });
