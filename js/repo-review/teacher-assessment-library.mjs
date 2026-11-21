@@ -620,9 +620,14 @@ async function showExamCloseReport(task){
     const select=document.createElement("select");select.id="tl-close-report-session";
     select.className="tl-input";select.style.minWidth="150px";
     label.append(select);
+    const olderLabel=document.createElement("label");olderLabel.className="text-sm font-semibold";
+    olderLabel.textContent="Earlier session number";
+    const older=document.createElement("input");older.id="tl-close-report-older";older.type="number";
+    older.className="tl-input";older.min="1";older.step="1";
+    older.placeholder="e.g. 1";older.style.width="110px";olderLabel.append(older);
     const refresh=document.createElement("button");refresh.id="tl-close-report-refresh";refresh.type="button";
     refresh.className="tl-action";refresh.textContent="Refresh confirmations";
-    controls.append(label,refresh);
+    controls.append(label,olderLabel,refresh);
     const summary=document.createElement("p");summary.id="tl-close-report-summary";
     summary.className="mt-3 text-sm font-bold text-slate-700";summary.setAttribute("role","status");
     const tableWrap=document.createElement("div");tableWrap.id="tl-close-report-table";
@@ -631,6 +636,7 @@ async function showExamCloseReport(task){
   }
   const title=dialog.querySelector("#tl-close-report-title"),
     select=dialog.querySelector("#tl-close-report-session"),
+    older=dialog.querySelector("#tl-close-report-older"),
     refresh=dialog.querySelector("#tl-close-report-refresh"),
     summary=dialog.querySelector("#tl-close-report-summary"),
     tableWrap=dialog.querySelector("#tl-close-report-table");
@@ -641,10 +647,14 @@ async function showExamCloseReport(task){
     const option=document.createElement("option");option.value=String(epoch);
     option.textContent="Class session "+epoch;select.append(option);
   }
+  older.max=String(current);
+  older.value="";
   let generation=0;
   const load=async()=>{
-    const epoch=Number(select.value),turn=++generation;
-    if(!epoch)return;
+    const epoch=Number(older.value||select.value),turn=++generation;
+    if(!Number.isSafeInteger(epoch)||epoch<1||epoch>current){
+      summary.textContent="Choose a valid class session number.";return;
+    }
     refresh.disabled=true;summary.textContent="Loading school-confirmed checkpoints…";
     tableWrap.replaceChildren();
     try{
@@ -698,7 +708,8 @@ async function showExamCloseReport(task){
       if(turn===generation)summary.textContent=error?.message||"Could not load final exam save confirmations.";
     }finally{if(turn===generation)refresh.disabled=false;}
   };
-  select.onchange=()=>void load();
+  select.onchange=()=>{older.value="";void load();};
+  older.onchange=()=>void load();
   refresh.onclick=()=>void load();
   if(!dialog.open)dialog.showModal();
   void load();
