@@ -29,6 +29,9 @@ if(button){
     if(!choice?.task||!choice.status||choice.status.error)return false;
     if(choice.status.status==="reopened")return Number(choice.status.revisionDueAt||0)>Date.now();
     if(choice.status.submitted)return false;
+    if(choice.task.submissionDeadlinePassed===true||
+       (Number(choice.task.dueAt||0)<Date.now()&&choice.task.allowLateSubmissions!==true))
+      return false;
     return choice.task.windowStatus==="open";
   }
   async function loadV4(){
