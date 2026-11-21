@@ -1,4 +1,4 @@
-
+<!doctype html>
 <!-- Teacher schedule editing and scoped calendar workflow. -->
 <html lang="en">
   <head>
@@ -16,55 +16,69 @@
       href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
     />
     <script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d" />
     <link rel="stylesheet" href="css/adminerva-ui.css?v=47eba756913e" />
+    <link rel="stylesheet" href="css/teacher-ux.css?v=20261115-nav1" />
 <style>#legacyTimetable[hidden],#schoolTimetable[hidden],#schoolTimetableReturn[hidden],#schoolTimetableLegacy[hidden]{display:none!important}#schoolTimetableEditor:disabled{opacity:.75}</style>
 </head>
   <body class="av-teacher-refresh bg-gray-50 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="lesson" data-page="schedule"></div>
-    <script defer src="js/core/adminerva-nav.js?v=21a534696b3d"></script>
     <script defer src="js/core/adminerva-nav.js?v=47eba756913e"></script>
+
     <div class="max-w-screen-2xl mx-auto w-full px-4 sm:px-6 mt-3">
       <button id="schoolTimetableReturn" type="button" hidden class="av-secondary-button">Return to school timetable</button>
     </div>
     <main id="schoolTimetable" class="max-w-screen-xl mx-auto w-full p-4 sm:p-6 flex-1 space-y-4">
       <section class="av-panel p-4 sm:p-6 space-y-3">
         <div class="flex flex-wrap justify-between items-start gap-3">
-          <div><p class="text-xs font-bold uppercase text-blue-700">Verified school workspace</p><h1 class="text-2xl font-extrabold">My teaching timetable</h1><p class="text-sm text-slate-600 mt-1">Build your weekly schedule from the subjects and sections assigned by your school administrator. Save to resume on another device.</p></div>
-          <div><p class="text-xs font-bold uppercase text-blue-700">Verified school workspace</p><h1 class="text-2xl font-extrabold">My teaching timetable</h1><p class="text-sm text-slate-600 mt-1">Official class times and rooms come from School Administration. Your assigned timetable is read-only here; older personal timetable data remains available as a planning overlay.</p></div>
+          <div>
+            <p class="text-xs font-bold uppercase text-blue-700">Verified school workspace</p>
+            <h1 class="text-2xl font-extrabold">My teaching timetable</h1>
+            <p class="text-sm text-slate-600 mt-1">Official class times and rooms come from School Administration. Your assigned timetable is read-only here; the personal overlay remains available for planning and historical lesson-plan compatibility.</p>
+          </div>
+          <button id="schoolTimetableLegacy" hidden type="button" class="av-secondary-button">Open older timetable</button>
         </div>
         <div id="schoolTimetableSwitcher" hidden></div>
-        <label class="block text-sm font-bold">Academic year, program and period<select id="schoolTimetablePeriod" class="block w-full border rounded-lg p-3 mt-1"><option value="">Choose academic period</option></select></label>
+        <label class="block text-sm font-bold">Academic year, program and period
+          <select id="schoolTimetablePeriod" class="block w-full border rounded-lg p-3 mt-1">
+            <option value="">Choose academic period</option>
+          </select>
+        </label>
         <div class="flex flex-wrap gap-2">
           <button id="schoolTimetableRefreshOptions" type="button" class="av-secondary-button">Refresh teaching assignments</button>
-          <button id="schoolTimetableReload" type="button" disabled class="av-secondary-button">Reload saved timetable</button>
           <button id="schoolTimetableReload" type="button" disabled class="av-secondary-button">Reload personal overlay</button>
+        </div>
         <p id="schoolTimetableStatus" role="status" aria-live="polite" class="text-sm text-slate-700">Checking verified school access…</p>
         <p id="schoolTimetableSummary" class="text-sm font-semibold text-slate-800"></p>
       </section>
-      <fieldset id="schoolTimetableEditor" disabled class="av-panel p-4 sm:p-5 space-y-3">
+
       <section class="av-panel p-4 sm:p-5 space-y-3">
         <div class="flex flex-wrap items-start justify-between gap-3">
-          <div><p class="text-xs font-extrabold uppercase tracking-wider text-violet-700">Official timetable</p><h2 class="text-xl font-extrabold mt-1">Assigned class meetings</h2><p class="text-sm text-slate-600 mt-1">These times are controlled in School Administration → Classes &amp; Scheduling. Contact a School Administrator if an official time or room is incorrect.</p></div>
+          <div>
+            <p class="text-xs font-extrabold uppercase tracking-wider text-violet-700">Official timetable</p>
+            <h2 class="text-xl font-extrabold mt-1">Assigned class meetings</h2>
+            <p class="text-sm text-slate-600 mt-1">These times are controlled in School Administration → Classes &amp; Scheduling. Contact a School Administrator if an official time or room is incorrect.</p>
+          </div>
           <a href="teacher-classroom.html" class="av-secondary-button">Open Classroom</a>
         </div>
         <p id="schoolOfficialTimetableSummary" class="text-sm font-semibold text-slate-800"></p>
         <div id="schoolOfficialTimetableRows" class="grid md:grid-cols-2 gap-3"></div>
       </section>
+
       <details class="av-panel p-4 sm:p-5">
         <summary class="font-extrabold cursor-pointer">Personal timetable overlay · compatibility</summary>
-        <p class="text-xs text-slate-600 mt-2">This older teacher-owned timetable is retained for personal planning and historical lesson-plan compatibility. Editing it does not change the official class schedule.</p>
-      <fieldset id="schoolTimetableEditor" disabled class="mt-4 space-y-3">
-        <legend class="sr-only">Personal weekly timetable editor</legend>
-          <button id="schoolTimetableAddClass" type="button" class="av-secondary-button">Add class slot</button>
-          <button id="schoolTimetableAddClass" type="button" class="av-secondary-button">Add personal class row</button>
-          <button id="schoolTimetableAddEvent" type="button" class="av-secondary-button">Add personal event</button>
-          <button id="schoolTimetableSave" disabled type="button" class="bg-blue-700 text-white min-h-11 rounded-lg font-bold px-4 py-2 disabled:opacity-50">Save personal overlay</button>
-        <p class="text-xs text-slate-600">One time slot covers Monday–Friday. Use the same slot for different classes at the same time. Non-teaching events do not count toward scheduled class hours.</p>
-        <p class="text-xs text-slate-600">Personal overlay only: these rows can support planning and lesson context, but they do not change official School Admin meeting times.</p>
-      </fieldset>
-    </main>
+        <p class="text-xs text-slate-600 mt-2">This teacher-owned overlay is retained for personal planning and historical lesson-plan compatibility. Editing it does not change the official class schedule.</p>
+        <fieldset id="schoolTimetableEditor" disabled class="mt-4 space-y-3">
+          <legend class="sr-only">Personal weekly timetable editor</legend>
+          <div class="flex flex-wrap gap-2">
+            <button id="schoolTimetableAddClass" type="button" class="av-secondary-button">Add personal class row</button>
+            <button id="schoolTimetableAddEvent" type="button" class="av-secondary-button">Add personal event</button>
+            <button id="schoolTimetableSave" disabled type="button" class="bg-blue-700 text-white min-h-11 rounded-lg font-bold px-4 py-2 disabled:opacity-50">Save personal overlay</button>
+          </div>
+          <p class="text-xs text-slate-600">Personal overlay only: these rows can support planning and lesson context, but they do not change official School Admin meeting times.</p>
+          <div id="schoolTimetableRows" class="space-y-3"></div>
+        </fieldset>
       </details>
+    </main>
     <!-- Main Workspace: compatibility timetable -->
     <div id="legacyTimetable" hidden
       class="max-w-screen-2xl mx-auto w-full p-4 sm:p-6 mt-2 sm:mt-4 flex-1 flex flex-col"
@@ -285,9 +299,9 @@
 
     
 
-    <script type="module" src="js/lesson-review/school-timetable.mjs?v=1.0.0"></script>
-    <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
+    <script type="module" src="js/lesson-review/school-timetable.mjs?v=20261121-official1"></script>
     <script type="module" src="js/core/auth-guard-v4-pilot.js?v=47eba756913e"></script>
     <script defer src="js/core/release-footer.js?v=47eba756913e"></script>
+<script src="js/core/adminerva-loader.js?v=47eba756913e"></script>
   </body>
 </html>
