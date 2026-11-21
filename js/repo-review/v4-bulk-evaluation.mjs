@@ -60,6 +60,21 @@ export function readBulkExternalResponse(raw,{batchId,allowedRefs,task,parseResp
   return validated;
 }
 
+export function bulkSaveableStages({staged,saveSelection,rows}){
+  // Evaluation selection and private-draft selection are independent.
+  // A valid imported result stays saveable even after the teacher clears the
+  // original selection used to prepare the external package.
+  const byId=new Map((rows||[]).map(row=>
+    [String(row.submissionId||row.recordId||""),row]));
+  return [...staged.values()].filter(item=>{
+    const row=byId.get(item.key);
+    return saveSelection.has(item.key)&&item.review?.saveEligible===true&&
+      row&&!row.gradeStatus&&
+      !["reopened","revision_requested"].includes(row.status)&&
+      Number(row.version)===Number(item.version);
+  });
+}
+
 export function createV4BulkEvaluationController({
   root,scoped,migrationApi,assessmentApi,submissionApi,gradeApi,verificationApi,
   buildPackage,parseResponse,generateContent,evaluationJSON,
@@ -71,7 +86,7 @@ export function createV4BulkEvaluationController({
     errors=el("gbV4BulkExceptions"),stagedList=el("gbV4BulkStaged"),
     payload=el("gbV4BulkPayload");
   const btn=id=>el(id);
-  let task=null,rows=[],selection=new Set(),staged=new Map(),
+  let task=null,rows=[],selection=new Set(),saveSelection=new Set(),staged=new Map(),
     exceptions=new Map(),batchId="",referenceMap=new Map(),stopped=false,
     running=false,schoolSignature="",scopeGeneration=0;
   const isStudio=t=>t?.submissionSource==="studio";
@@ -80,21 +95,24 @@ export function createV4BulkEvaluationController({
     !row.gradeStatus&&!["reopened","revision_requested"].includes(row.status));
   const candidates=()=>selectedEligible().filter(row=>
     !staged.has(key(row))&&!exceptions.has(key(row)));
+  const saveable=()=>bulkSaveableStages({staged,saveSelection,rows});
   const appendStatus=(message)=>{status.textContent=message;};
   const taskKey=t=>t?(t.legacyCompatibility?"legacy:":"native:")+
     String(t.legacyAssessmentId||t.taskId):"";
   function render(){
-    const ready=selectedEligible(),remaining=candidates();
+    const ready=selectedEligible(),remaining=candidates(),saveReady=saveable();
     root.hidden=!isStudio(task);
     if(root.hidden)return;
     el("gbV4BulkCounts").textContent=selection.size+" selected · "+
-      ready.length+" not graded · "+staged.size+" suggestions staged · "+
+      ready.length+" not graded selected for evaluation · "+staged.size+
+      " suggestions staged · "+saveReady.length+" ready to save · "+
       exceptions.size+" exceptions";
     for(const id of ["gbV4BulkRun","gbV4BulkExport"])
       btn(id).disabled=running||isBusy()||remaining.length===0;
     btn("gbV4BulkImport").disabled=running||isBusy()||!batchId;
-    btn("gbV4BulkSave").disabled=running||isBusy()||
-      ![...staged.values()].some(v=>v.review.saveEligible&&ready.some(r=>key(r)===v.key));
+    btn("gbV4BulkSave").disabled=running||isBusy()||saveReady.length===0;
+    btn("gbV4BulkSave").textContent="Save "+saveReady.length+" eligible private draft"+
+      (saveReady.length===1?"":"s");
     btn("gbV4BulkSelect").disabled=running||isBusy();
     btn("gbV4BulkClear").disabled=running||isBusy();
     btn("gbV4BulkRetry").disabled=running||isBusy()||exceptions.size===0;
@@ -131,6 +149,26 @@ export function createV4BulkEvaluationController({
         (data.review.pending?" · "+data.review.pending+" pending":"")+
         (data.review.reason?" · "+data.review.reason:" · eligible private draft");
       line.append(summary);
+      const submitted=rows.find(row=>key(row)===data.key);
+      const stillGradeable=Boolean(submitted&&!submitted.gradeStatus&&
+        !["reopened","revision_requested"].includes(submitted.status)&&
+        Number(submitted.version)===Number(data.version));
+      if(data.review.saveEligible){
+        const include=document.createElement("label");
+        include.className="mt-2 flex items-center gap-2 text-xs font-semibold text-indigo-900";
+        const input=document.createElement("input");input.type="checkbox";
+        input.checked=saveSelection.has(data.key)&&stillGradeable;
+        input.disabled=!stillGradeable||running||isBusy();
+        input.addEventListener("change",()=>{
+          if(input.checked)saveSelection.add(data.key);
+          else saveSelection.delete(data.key);
+          render();
+        });
+        include.append(input,document.createTextNode(stillGradeable?
+          "Include this result when saving private drafts":
+          "Already graded, reopened, or changed version — cannot save from this batch"));
+        line.append(include);
+      }
       const feedback=document.createElement("p");
       feedback.className="mt-2 whitespace-pre-wrap text-slate-700";
       feedback.textContent=data.review.feedback;
@@ -157,7 +195,7 @@ export function createV4BulkEvaluationController({
   }
   function reset(){
     scopeGeneration++;stopped=true;
-    task=null;rows=[];selection.clear();staged.clear();exceptions.clear();
+    task=null;rows=[];selection.clear();saveSelection.clear();staged.clear();exceptions.clear();
     referenceMap.clear();batchId="";payload.value="";stopped=false;running=false;
     schoolSignature="";status.textContent="";render();
   }
@@ -165,7 +203,7 @@ export function createV4BulkEvaluationController({
     const signature=String(schoolId||"")+":"+taskKey(next);
     if(signature!==schoolSignature){
       scopeGeneration++;stopped=true;
-      selection.clear();staged.clear();exceptions.clear();referenceMap.clear();
+      selection.clear();saveSelection.clear();staged.clear();exceptions.clear();referenceMap.clear();
       batchId="";payload.value="";schoolSignature=signature;
     }
     task=next;rows=(nextRows||[]).map(row=>({
@@ -173,7 +211,9 @@ export function createV4BulkEvaluationController({
     }));
     const available=new Set(rows.map(key));
     for(const id of selection)if(!available.has(id))selection.delete(id);
-    for(const id of staged)if(!available.has(id))staged.delete(id);
+    for(const id of staged)if(!available.has(id)){
+      staged.delete(id);saveSelection.delete(id);
+    }
     if(!selection.size&&!staged.size)
       for(const row of rows)
         if(!row.gradeStatus&&!["reopened","revision_requested"].includes(row.status))
@@ -260,6 +300,8 @@ export function createV4BulkEvaluationController({
           const suggestion=parseResponse(JSON.stringify(parsed),{task});
           const review=bulkSuggestionState(suggestion,task);
           staged.set(id,{...frozen,source:"internal_ai",suggestion,review});
+          if(review.saveEligible)saveSelection.add(id);
+          else saveSelection.delete(id);
           exceptions.delete(id);
         }catch(error){
           if(session!==scopeGeneration)break;
@@ -342,6 +384,10 @@ export function createV4BulkEvaluationController({
       if(!frozen)continue;
       staged.set(frozen.key,{...frozen,source:"external_ai",
         suggestion:row.suggestion,review:row.review});
+      // The teacher explicitly exported this submission for assessment.
+      // Its result is selected for saving independently of the bulk roster.
+      if(row.review.saveEligible)saveSelection.add(frozen.key);
+      else saveSelection.delete(frozen.key);
       exceptions.delete(frozen.key);
     }
     appendStatus(incoming.length+" external suggestion(s) staged. "+
@@ -350,9 +396,7 @@ export function createV4BulkEvaluationController({
   }
   async function saveDrafts(){
     const session=scopeGeneration;
-    const eligible=[...staged.values()].filter(value=>
-      value.review.saveEligible&&selectedEligible().some(row=>key(row)===value.key)
-    );
+    const eligible=saveable();
     if(!eligible.length){appendStatus("No eligible positive, fully resolved evaluations selected.");return;}
     if(!confirm("Save "+eligible.length+" verified non-zero evaluation(s) as PRIVATE grade drafts? "+
       "Published grades and existing drafts are protected; zero/pending grades are excluded. "+
@@ -382,7 +426,8 @@ export function createV4BulkEvaluationController({
             });
           }
           if(session!==scopeGeneration)break;
-          staged.delete(item.key);exceptions.delete(item.key);selection.delete(item.key);
+          staged.delete(item.key);saveSelection.delete(item.key);
+          exceptions.delete(item.key);selection.delete(item.key);
           saved++;
         }catch(error){
           if(session!==scopeGeneration)break;
