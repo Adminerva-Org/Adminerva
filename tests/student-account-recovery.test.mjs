@@ -118,3 +118,24 @@ test("recovered verified students can enter Classroom and subject routes without
   assert.match(profile,/person\.data\(\)\.authUid!==ctx\.uid/);
   assert.match(profile,/collection\(prefix\+"enrollments"\)[\s\S]*?\.where\("personId","==",personId\)/);
 });
+
+
+test("recovered students retain legacy assessment and personalized-task identity",async()=>{
+  const [helper,index,access,assignments,variants]=await Promise.all([
+    readFile(new URL("../functions/legacy-student-identity.js",import.meta.url),"utf8"),
+    readFile(new URL("../functions/index.js",import.meta.url),"utf8"),
+    readFile(new URL("../js/student/student-access.mjs",import.meta.url),"utf8"),
+    readFile(new URL("../js/student/assessments.js",import.meta.url),"utf8"),
+    readFile(new URL("../functions/studio-assessment-variants.js",import.meta.url),"utf8")
+  ]);
+  assert.match(helper,/legacyStudentIds/);
+  assert.match(helper,/source:"canonical_person"/);
+  assert.match(helper,/source:"email_fallback"/);
+  assert.match(index,/legacyStudentRecordsForAccount/);
+  assert.match(index,/profiles,identitySource/);
+  assert.match(access,/readyProjection/);
+  assert.match(assignments,/projection\?\.profiles/);
+  assert.match(assignments,/compatibility assessments, submissions and personalized variants/);
+  assert.match(variants,/legacyStudentRecordsForAccount/);
+  assert.doesNotMatch(variants,/db\.collection\("students"\)\.where\("email","==",email\)/);
+});
