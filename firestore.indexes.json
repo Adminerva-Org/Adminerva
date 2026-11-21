@@ -135,6 +135,16 @@
       "fieldPath": "expiresAt",
       "ttl": true,
       "indexes": []
+    },
+    {
+      "collectionGroup": "studio_exam_final_checkpoints",
+      "fieldPath": "files",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "studio_exam_final_checkpoints",
+      "fieldPath": "artifacts",
+      "indexes": []
     }
   ]
 }
