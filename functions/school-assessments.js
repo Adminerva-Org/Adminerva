@@ -5,7 +5,7 @@
  * This does NOT write grades, approve evidence or accept Studio/GitHub submissions.
  */
 const {createHash}=require("node:crypto");
-const {Timestamp,FieldValue}=require("firebase-admin/firestore");
+const {Timestamp,FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {digestProject,digestSource}=require("./school-studio-projects.js");
@@ -19,6 +19,41 @@ function timestamp(value,label){
  if(!Number.isFinite(millis))deny("invalid-argument",label+" is invalid.");
  return Timestamp.fromMillis(millis);
 }
+// The same offering roster serves open/close fanout and historical fallbacks.
+// Paginate school enrollment records rather than silently truncating after
+// 100 documents; keep all account/person checks tenant scoped.
+async function activeOfferingPeople(db,prefix,offeringId){
+ const base=db.collection(prefix+"enrollments")
+   .where("offeringId","==",offeringId).orderBy(FieldPath.documentId());
+ const personIds=new Set();
+ let cursor=null;
+ for(;;){
+  let query=base.limit(200);
+  if(cursor)query=query.startAfter(cursor);
+  const page=await query.get();
+  for(const row of page.docs){
+   const data=row.data();
+   if(data.schoolId===prefix.split("/")[1]&&data.status==="active"&&
+      typeof data.personId==="string"&&data.personId)
+    personIds.add(checkId(data.personId,"Student person",128));
+  }
+  if(personIds.size>1500)
+   deny("resource-exhausted","This class roster exceeds the supported 1,500-student session fanout.");
+  if(page.size<200)break;
+  cursor=page.docs[page.docs.length-1];
+ }
+ const ids=[...personIds];
+ const people=[];
+ for(let offset=0;offset<ids.length;offset+=80){
+  const refs=ids.slice(offset,offset+80).map(id=>db.doc(prefix+"people/"+id));
+  const batch=await db.getAll(...refs);
+  people.push(...batch.filter(person=>person.exists&&
+    person.data().schoolId===prefix.split("/")[1]&&
+    person.data().status==="active"&&person.data().kind==="student"));
+ }
+ return people;
+}
+
 function createSchoolAssessmentService({db}){
  return async request=>{
   const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId});
@@ -209,12 +244,8 @@ function createSchoolAssessmentService({db}){
    });
    if(!result.alreadyCurrent){
     try{
-    const enrolled=await db.collection(prefix+"enrollments")
-      .where("offeringId","==",result.offeringId).limit(101).get().catch(()=>null);
-    if(enrolled&&enrolled.size<=100){
-      const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"&&
-        typeof doc.data().personId==="string"),
-        people=await Promise.all(active.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
+    const people=await activeOfferingPeople(db,prefix,result.offeringId);
+    {
       if(!opening){
        // Retain the class roster as it existed at closing, rather than rebuilding
        // historical reports from memberships that may change next semester.
@@ -320,14 +351,7 @@ function createSchoolAssessmentService({db}){
    }else{
     // Compatibility fallback for pre-roster sessions or a partial fanout
     // failure. Label this as a current roster instead of historical evidence.
-    const enrolled=await db.collection(prefix+"enrollments")
-      .where("offeringId","==",task.data().offeringId).limit(101).get();
-    if(enrolled.size===101)
-     deny("resource-exhausted","The class roster requires pagination for close confirmation.");
-    const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
-      doc.data().status==="active"&&typeof doc.data().personId==="string");
-    const people=await Promise.all(active.map(doc=>
-      db.doc(prefix+"people/"+doc.data().personId).get()));
+    const people=await activeOfferingPeople(db,prefix,task.data().offeringId);
     roster=[...new Map(people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
       person.data().status==="active"&&person.data().kind==="student")
       .map(person=>[person.id,{personId:person.id,
