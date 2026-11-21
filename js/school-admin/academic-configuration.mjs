@@ -179,6 +179,13 @@ function catalogKindForForm(form){
 function findCatalog(kind,id){
   return (allCatalog[kind]||[]).find(item=>item.id===id)||null;
 }
+function syncActiveCatalog(){
+  years=allCatalog.academic_years.filter(item=>item.status==="active");
+  programs=allCatalog.academic_programs.filter(item=>item.status==="active");
+  terms=allCatalog.terms.filter(item=>item.status==="active");
+  subjects=allCatalog.subjects.filter(item=>item.status==="active");
+  sections=allCatalog.sections.filter(item=>item.status==="active");
+}
 function cancelCatalogEdit(){
   if(!editingCatalog)return;
   const {kind}=editingCatalog,form=catalogForm(kind);
@@ -603,11 +610,11 @@ async function load({afterWrite=false}={}){
       scoped("list_catalog",{kind:"sections"}),
       scoped("list_offerings")
     ]);
-    years=(y.items||[]).filter(x=>x.status==="active");
-    programs=(p.items||[]).filter(x=>x.status==="active");
-    terms=(t.items||[]).filter(x=>x.status==="active");
-    subjects=(s.items||[]).filter(x=>x.status==="active");
-    sections=(sec.items||[]).filter(x=>x.status==="active");
+    allCatalog={
+      academic_years:y.items||[],academic_programs:p.items||[],terms:t.items||[],
+      subjects:s.items||[],sections:sec.items||[]
+    };
+    syncActiveCatalog();
     offerings=o.offerings||[];catalogReady=true;
     renderCatalog();
     if(!wizardInitialized){
@@ -636,46 +643,61 @@ async function createCatalog(form,kind,extra=()=>({})){
     notify("Complete the required fields in this step before saving.","error");
     return false;
   }
-  const data=payload(form);
-  const source={academic_years:years,academic_programs:programs,terms,subjects,sections}[kind]||[];
+  const edit=editingCatalog?.kind===kind?editingCatalog:null,data=payload(form);
+  if(edit)data.recordId=edit.item.id;
+  const source=allCatalog[kind]||[];
   const nameKey=value=>String(value||"").trim().toLocaleLowerCase("en");
-  const duplicate=source.find(item=>item.id===data.recordId||(nameKey(item.name)===nameKey(data.name)&&
-    (kind!=="terms"||(item.yearId===data.yearId&&item.programId===data.programId))&&
-    (kind!=="sections"||(item.programId===data.programId&&String(item.gradeLevel)===String(data.gradeLevel)))));
+  const duplicate=source.find(item=>item.id!==edit?.item.id&&
+    (item.id===data.recordId||(nameKey(item.name)===nameKey(data.name)&&
+      (kind!=="terms"||(item.yearId===data.yearId&&item.programId===data.programId))&&
+      (kind!=="sections"||(item.programId===data.programId&&String(item.gradeLevel)===String(data.gradeLevel))))));
   if(duplicate){
-    const message="“"+data.name+"” already exists in this school. Use the existing record instead of creating a duplicate.";
+    const message="“"+data.name+"” already exists in this school"+(duplicate.status==="archived"?" as an archived record. Restore that record instead.":". Use the existing record instead of creating a duplicate.");
     say(message);notify(message,"error");form.elements.name?.focus();return false;
   }
-  const details={kind,...data,...extra(data)};
+  const details={kind,...data,...extra(data),...(edit?{expectedRevision:edit.item.revision}:{})},
+    action=edit?"update_catalog":"create_catalog";
   if(inSystemAdminPreview()&&document.getElementById("adminerva-nav")?.dataset.platformAssistMode!=="true"){
-    const preview={...details,id:data.recordId,status:"active",preview:true};
-    delete preview.kind;delete preview.recordId;
-    source.push(preview);
-    form.reset();clearManual(form);renderCatalog();
-    const label={academic_years:"Academic year",academic_programs:"Division / program",terms:"Academic period",subjects:"Subject",sections:"Section"}[kind]||"Academic record";
-    const message=label+" created for this temporary System Admin preview. It will disappear when you reload or exit role test.";
+    if(edit){
+      const target=findCatalog(kind,edit.item.id);
+      if(target)Object.assign(target,{...details,id:edit.item.id,status:"active",revision:(Number(edit.item.revision)||1)+1,preview:true});
+    }else{
+      const preview={...details,id:data.recordId,status:"active",revision:1,preview:true};
+      delete preview.kind;delete preview.recordId;delete preview.expectedRevision;source.push(preview);
+    }
+    editingCatalog=null;
+    form.reset();clearManual(form);
+    if(form.elements.recordId){form.elements.recordId.readOnly=false;form.elements.recordId.dataset.manual="false";}
+    const cancel=form.querySelector("[data-cancel-catalog-edit]");if(cancel)cancel.hidden=true;
+    const submit=form.querySelector('button[type="submit"]');if(submit)submit.textContent=defaultSubmitLabel(kind);
+    syncActiveCatalog();renderCatalog();
+    const label=catalogLabel(kind),message=label+(edit?" updated":" created")+" for this temporary System Admin preview. It will disappear when you reload or exit role test.";
     say(message);notify(message,"success");syncWizard();
     return {preview:true};
   }
-  const submit=form.querySelector('button[type="submit"]'),original=submit?.textContent||"Save";
+  const submit=form.querySelector('button[type="submit"]'),original=submit?.textContent||defaultSubmitLabel(kind);
   if(submit)submit.textContent="Saving…";
-  setBusy(true,"Saving academic record…");
+  setBusy(true,(edit?"Updating ":"Saving ")+catalogLabel(kind).toLowerCase()+"…");
   try{
-    const result=await scoped("create_catalog",details);
+    const result=await scoped(action,details),wasEditing=Boolean(edit);
+    editingCatalog=null;
     form.reset();clearManual(form);
+    if(form.elements.recordId){form.elements.recordId.readOnly=false;form.elements.recordId.dataset.manual="false";}
+    const cancel=form.querySelector("[data-cancel-catalog-edit]");if(cancel)cancel.hidden=true;
     const refreshed=await load({afterWrite:true});
-    const label={academic_years:"Academic year",academic_programs:"Division / program",terms:"Academic period",subjects:"Subject",sections:"Section"}[kind]||"Academic record";
-    const message=label+" saved successfully.";
-    say(refreshed?message+" Step "+currentStep+" is complete.":message+" Refresh failed; reload before creating another record.");notify(message+(refreshed?"":" Refresh required."),refreshed?"success":"info");
+    const label=catalogLabel(kind),message=label+(wasEditing?" updated":" saved")+" successfully.";
+    say(refreshed?message:message+" Refresh failed; reload before another change.");
+    notify(message+(refreshed?"":" Refresh required."),refreshed?"success":"info");
     return result||true;
   }catch(error){
-    const message=friendlyError(error,"Academic record was not saved.");
+    const message=friendlyError(error,(edit?"Academic record was not updated.":"Academic record was not saved."));
     say(message);notify(message,"error");return false;
   }finally{
-    if(submit)submit.textContent=original;
+    if(submit)submit.textContent=editingCatalog?.kind===kind?"Save changes":defaultSubmitLabel(kind);
     setBusy(false);
   }
 }
+
 el("ac-year-form").addEventListener("submit",event=>{
   event.preventDefault();void createCatalog(event.currentTarget,"academic_years",data=>({
     startMonth:Number(data.startDate.slice(5,7)),endMonth:Number(data.endDate.slice(5,7)),
