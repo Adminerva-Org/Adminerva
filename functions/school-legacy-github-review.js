@@ -127,6 +127,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      maxScore:total,assessmentType:clean(taskData.type||"Assessment",80),
      subject:clean(taskData.subject||"Computer Programming",120),
      status:"deployed",published:taskData.published===true,
+     personalizedTask:{enabled:taskData.assessmentMode==="personalized"||
+       taskData.personalizedTask?.enabled===true},
      legacyReadThrough:true
    };
    const gradeRef=recordId=>db.doc("student_grades/"+recordId);
