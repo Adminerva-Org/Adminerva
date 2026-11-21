@@ -202,7 +202,7 @@ async function removeClassComment(comment){
 }
 async function removeClassPost(post){
   if(!post.canModerate||!confirm("Remove your classroom post?"))return;
-  await writeClassroom("archive",{postId:post.postId},"Classroom post removed.");
+  await writeClassroom("archive",{postId:post.postId,expectedRevision:post.revision},"Classroom post removed.");
 }
 function appendPostDiscussion(post,card){
   const comments=Array.isArray(post.comments)?post.comments:[],section=make("section","mt-4 border-t border-slate-100 pt-3");
