@@ -278,6 +278,14 @@ function createSchoolGradebookService({db}){
    const feedback=String(input.feedback||"").trim();
    if(feedback.length>5000)deny("invalid-argument","Teacher feedback is too long.");
    const draftSource=DRAFT_SOURCES.has(String(input.draftSource||""))?String(input.draftSource):"teacher";
+   // A frozen HTTPS link proves that a URL was submitted, not what it shows.
+   // Bulk evaluation cannot save AI claims about external contents unless the
+   // teacher attests to inspecting that learner's actual artifact.
+   const artifactReviewNote=String(input.artifactReviewNote||"").trim();
+   if(source==="link"&&input.onlyIfUngraded===true&&
+      (input.externalArtifactVerified!==true||artifactReviewNote.length<15||
+       artifactReviewNote.length>3000))
+    deny("failed-precondition","Bulk grading of an external submission link requires individual teacher artifact verification and a 15–3000 character review note.");
    const auditRef=db.collection(prefix+"grade_audit").doc();
    await db.runTransaction(async tx=>{
     const {task,submission}=await authorize(tx);
@@ -307,14 +315,20 @@ function createSchoolGradebookService({db}){
      personId:submission.personId,studentUid,reviewerUid:ctx.uid,
      evidenceType:source,submissionId:submissionRef.id,submissionVersion,submissionDigest:evidenceDigest(submission),
      gradeSchema:"rubric_v1",criteria:scores.criteria,awarded:scores.awarded,pending:scores.pending,total:scores.total,
-     feedback,draftSource,status:"draft",revision,updatedAt:now};
+     feedback,draftSource,status:"draft",revision,updatedAt:now,
+     ...(source==="link"&&input.onlyIfUngraded===true?{
+       linkedArtifactReviewedByUid:ctx.uid,linkedArtifactReviewNote:artifactReviewNote
+     }:{})};
     if(grade.exists)tx.update(gradeRef,values);
     else tx.create(gradeRef,{...values,createdAt:now});
     tx.create(gradeRef.collection("revisions").doc(String(revision)),{
      ...values,createdAt:now,action:"teacher_draft_saved"
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,studentUid,actorUid:ctx.uid,
-     action:"grade_draft_saved",revision,createdAt:now});
+     action:"grade_draft_saved",revision,createdAt:now,
+     ...(source==="link"&&input.onlyIfUngraded===true?{
+       linkedArtifactReviewedByUid:ctx.uid,linkedArtifactReviewNote:artifactReviewNote
+     }:{})});
    });
    return {taskId,studentUid,status:"draft"};
   }
