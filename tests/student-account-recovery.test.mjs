@@ -81,3 +81,19 @@ test("blocked recovery deep-links the exact replacement person into enrollment r
   assert.match(enrollmentUi,/result\.activeLegacyEnrollments/);
   assert.match(enrollmentUi,/en-legacy-reconciliation-card/);
 });
+
+
+test("People & Access can safely end a pre-canonical placement before reassignment",async()=>{
+  const [html,ui]=await Promise.all([
+    readFile(new URL("../people-access.html",import.meta.url),"utf8"),
+    readFile(new URL("../js/school-admin/people-access.mjs",import.meta.url),"utf8")
+  ]);
+  assert.match(html,/pa-detail-current-placement/);
+  assert.match(html,/End current placement/);
+  assert.match(ui,/schoolEnrollment/);
+  assert.match(ui,/student_candidate/);
+  assert.match(ui,/end_orphan_enrollments/);
+  assert.match(ui,/activeLegacyEnrollments/);
+  assert.match(ui,/Current placement could not be verified\. Placement changes are disabled/);
+  assert.match(ui,/End the current placement before assigning the student to another section/);
+});

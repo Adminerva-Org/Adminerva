@@ -165,6 +165,15 @@
           <section id="pa-detail-placement-card" class="pa-card" style="margin-top:1rem" hidden>
             <h3 style="font-weight:750">Section placement &amp; class roster</h3>
             <p class="pa-muted">Assign this existing student to an active section and academic period. The section's active subject rosters update together; the account and earlier work are preserved.</p>
+            <section id="pa-detail-current-placement" style="margin-top:.75rem;padding:.8rem;border:1px solid #cbd5e1;border-radius:12px" hidden>
+              <strong>Current placement</strong>
+              <p id="pa-detail-current-placement-summary" class="pa-muted" style="margin-top:.35rem"></p>
+              <label id="pa-detail-placement-end-reason-wrap" style="display:block;margin-top:.65rem">Placement change reason
+                <input id="pa-detail-placement-end-reason" class="pa-field" minlength="12" maxlength="500" placeholder="Explain why this current placement should end">
+              </label>
+              <button id="pa-detail-placement-end" type="button" class="pa-action" style="margin-top:.65rem;background:#9a3412">End current placement</button>
+              <p class="pa-muted" style="margin-top:.4rem">Ending a pre-canonical placement preserves its enrollment history. You can assign a new section afterward.</p>
+            </section>
             <form id="pa-detail-placement-form" style="display:grid;gap:.65rem;margin-top:.7rem">
               <input name="personId" type="hidden">
               <label>Academic year<select class="pa-field" name="yearId" required></select></label>

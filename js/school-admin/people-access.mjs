@@ -5,13 +5,14 @@ const api=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
 const rosterSourceApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolRosterSource");
 const get=id=>document.getElementById(id);
 const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
+const enrollmentApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 let schoolPrograms=[],schoolTerms=[],schoolSections=[],schoolOfferings=[];
 let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0,inviteRun=0,staffSearchRun=0,detailRun=0,academicRun=0,membershipRun=0,recoverySearchRun=0;
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false,peopleReloadQueued=false,peopleRun=0;
 let accessChange=null,personChange=null,lifecycleChange=null,invitationChange=null,currentDetailPerson=null,
   currentRosterOfferingId=null,peopleSearchTimer=null,recoverySearchTimer=null,recoveryPreview=null,recoveryCanonicalPersonId=null,
-  importRows=[],importDigest=null,importPreview=null,importCommitted=false,linkedStaffById=new Map();
+  legacyPlacementReview=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false,linkedStaffById=new Map();
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
@@ -95,7 +96,7 @@ const picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
     schoolReady=false;++peopleRun;peopleReloadQueued=false;clearTimeout(peopleSearchTimer);clearTimeout(recoverySearchTimer);++recoverySearchRun;recoveryPreview=null;recoveryCanonicalPersonId=null;++workloadRun;++rosterRun;++inviteRun;++staffSearchRun;++detailRun;++academicRun;++membershipRun;workload=null;resetWorkload();
-    linkedStaffById=new Map();workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-person-detail-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
+    linkedStaffById=new Map();legacyPlacementReview=null;workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-person-detail-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
   },
@@ -533,6 +534,12 @@ get("pa-import-commit").addEventListener("click",()=>{
 async function performAcademic(action,details={}){
   const lease=picker.scope.lease();
   const response=(await academicsApi({schoolId:lease.schoolId,action,...details})).data;
+  picker.scope.assertLease(lease);
+  return response;
+}
+async function performEnrollment(action,details={}){
+  const lease=picker.scope.lease();
+  const response=(await enrollmentApi({schoolId:lease.schoolId,action,...details})).data;
   picker.scope.assertLease(lease);
   return response;
 }
@@ -1287,12 +1294,21 @@ async function openPersonDetail(person){
     }
     const placementCard=get("pa-detail-placement-card");
     placementCard.hidden=p.kind!=="student"||standardEnrollmentMode;
+    legacyPlacementReview=null;
     if(!placementCard.hidden){
       await loadPlacementCatalog();
       if(!dialog.open||run!==detailRun)return;
       const placementForm=get("pa-detail-placement-form");
       placementForm.elements.personId.value=p.personId;
       get("pa-detail-placement-status").textContent="";
+      try{
+        legacyPlacementReview=await performEnrollment("student_candidate",{personId:p.personId});
+      }catch(error){
+        legacyPlacementReview={unavailable:true,person:{personId:p.personId}};
+        get("pa-detail-placement-status").textContent=error?.message||"Current placement could not be checked.";
+      }
+      if(!dialog.open||run!==detailRun)return;
+      renderDetailPlacementState();
       updateDetailPlacementPicker();
     }
 
@@ -1416,6 +1432,41 @@ async function loadPlacementCatalog(){
   };
   return directoryPlacementCatalog;
 }
+function renderDetailPlacementState(){
+  const box=get("pa-detail-current-placement"),summary=get("pa-detail-current-placement-summary"),
+    endButton=get("pa-detail-placement-end"),endReason=get("pa-detail-placement-end-reason"),
+    form=get("pa-detail-placement-form");
+  if(!box||!form)return;
+  const official=legacyPlacementReview?.activeRegistrations||[],
+    legacy=legacyPlacementReview?.activeLegacyEnrollments||[];
+  if(legacyPlacementReview?.unavailable){
+    box.hidden=false;summary.textContent="Current placement could not be verified. Placement changes are disabled until the record is refreshed.";
+    endButton.hidden=true;endReason.parentElement.hidden=true;form.hidden=true;return;
+  }
+  if(official.length){
+    const current=official[0],section=directoryPlacementCatalog?.sections?.find(row=>row.id===current.sectionId)?.name||current.sectionId||"assigned section";
+    box.hidden=false;summary.textContent="Official registration active · "+section+". Use Enrollment & Registration for lifecycle changes.";
+    endButton.hidden=true;endReason.parentElement.hidden=true;
+    form.hidden=true;return;
+  }
+  form.hidden=false;
+  if(!legacy.length){
+    box.hidden=true;endButton.hidden=false;endReason.parentElement.hidden=false;endReason.value="";
+    return;
+  }
+  const sectionIds=[...new Set(legacy.map(row=>row.sectionId).filter(Boolean))],
+    sectionNames=sectionIds.map(id=>directoryPlacementCatalog?.sections?.find(row=>row.id===id)?.name||id),
+    registrationLinked=legacy.some(row=>Boolean(row.registrationId));
+  box.hidden=false;
+  summary.textContent=legacy.length+" active pre-canonical class enrollment"+(legacy.length===1?"":"s")+
+    (sectionNames.length?" · "+sectionNames.join(", "):"")+
+    (registrationLinked?" · linked registration history requires registrar review":"");
+  endButton.hidden=false;endButton.disabled=registrationLinked;
+  endReason.parentElement.hidden=false;
+  get("pa-detail-placement-preview").textContent=registrationLinked
+    ?"This placement is linked to registration history. Open Enrollment & Registration instead of changing it here."
+    :"End the current placement before assigning the student to another section.";
+}
 function updateDetailPlacementPicker(stage="year"){
   const catalog=directoryPlacementCatalog,form=get("pa-detail-placement-form");
   if(!catalog)return;
@@ -1432,12 +1483,46 @@ function updateDetailPlacementPicker(stage="year"){
     select(form.elements.sectionId,catalog.sections.filter(row=>!term||row.programId===term.programId),"Choose section");
   }
   const {yearId,termId,sectionId}=form.elements;
-  const offerings=catalog.offerings.filter(row=>row.yearId===yearId.value&&row.termId===termId.value&&row.sectionId===sectionId.value);
-  get("pa-detail-placement-preview").textContent=offerings.length
-    ?offerings.length+" active subject offering(s) will be added to the student's class roster."
-    :"Choose a section with active subjects in the selected academic year and period.";
-  form.querySelector('button[type="submit"]').disabled=!offerings.length;
+  const offerings=catalog.offerings.filter(row=>row.yearId===yearId.value&&row.termId===termId.value&&row.sectionId===sectionId.value),
+    activeLegacy=Boolean(legacyPlacementReview?.activeLegacyEnrollments?.length),
+    placementUnavailable=Boolean(legacyPlacementReview?.unavailable);
+  get("pa-detail-placement-preview").textContent=placementUnavailable
+    ?"Current placement could not be verified. Refresh the student before changing placement."
+    :activeLegacy
+      ?"End the current placement before assigning the student to another section."
+    :offerings.length
+      ?offerings.length+" active subject offering(s) will be added to the student's class roster."
+      :"Choose a section with active subjects in the selected academic year and period.";
+  form.querySelector('button[type="submit"]').disabled=placementUnavailable||activeLegacy||!offerings.length;
 }
+get("pa-detail-placement-end")?.addEventListener("click",()=>{
+  if(pendingWrite||!legacyPlacementReview?.person?.personId)return;
+  const legacy=legacyPlacementReview.activeLegacyEnrollments||[],
+    reason=String(get("pa-detail-placement-end-reason")?.value||"").trim();
+  if(!legacy.length)return;
+  if(reason.length<12){
+    get("pa-detail-placement-status").textContent="Enter a placement change reason of at least 12 characters.";return;
+  }
+  if(legacy.some(row=>Boolean(row.registrationId))){
+    get("pa-detail-placement-status").textContent="This placement is linked to registration history. Use Enrollment & Registration instead.";return;
+  }
+  if(!confirm("End this student's current pre-canonical section placement? Enrollment history will be preserved."))return;
+  const button=get("pa-detail-placement-end"),personId=legacyPlacementReview.person.personId;
+  pendingWrite=true;button.disabled=true;
+  get("pa-detail-placement-status").textContent="Ending current placement while preserving enrollment history…";
+  void performEnrollment("end_orphan_enrollments",{
+    personId,reason,
+    enrollments:legacy.map(row=>({enrollmentId:row.enrollmentId,expectedRevision:Number(row.expectedRevision)||1}))
+  }).then(async result=>{
+    get("pa-detail-placement-status").textContent="Ended · "+result.courseCount+" legacy class enrollment"+
+      (result.courseCount===1?"":"s")+" preserved in history. You can now assign a new section or continue account recovery.";
+    legacyPlacementReview=await performEnrollment("student_candidate",{personId});
+    renderDetailPlacementState();updateDetailPlacementPicker();
+    await Promise.allSettled([loadOverview(),loadPeople(false)]);
+  }).catch(error=>{
+    get("pa-detail-placement-status").textContent=error?.message||"The current placement was not ended.";
+  }).finally(()=>{pendingWrite=false;button.disabled=false;});
+});
 get("pa-detail-placement-form")?.elements.yearId.addEventListener("change",()=>updateDetailPlacementPicker("term"));
 get("pa-detail-placement-form")?.elements.termId.addEventListener("change",()=>updateDetailPlacementPicker("term"));
 get("pa-detail-placement-form")?.elements.sectionId.addEventListener("change",()=>updateDetailPlacementPicker("section"));
