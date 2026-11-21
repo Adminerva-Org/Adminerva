@@ -19,3 +19,12 @@ test("person lifecycle changes require the reviewed revision",()=>{
   assert.match(source,/expectedRevision=Number\(input\.expectedRevision\)/);
   assert.match(source,/currentRevision!==expectedRevision/);
 });
+
+
+test("school membership suspend and restore require the reviewed revision",()=>{
+  assert.match(source,/list_memberships[\s\S]*revision:Number\(member\.data\(\)\.revision\)\|\|1/);
+  assert.match(source,/suspend_access[\s\S]*expectedRevision=Number\(input\.expectedRevision\)/);
+  assert.match(source,/school access record changed after you reviewed it[\s\S]*suspending access/);
+  assert.match(source,/restore_access[\s\S]*expectedRevision=Number\(input\.expectedRevision\)/);
+  assert.match(source,/school access record changed after you reviewed it[\s\S]*restoring access/);
+});
