@@ -83,7 +83,7 @@ function createPeopleDirectoryService({db}) {
       return {schoolId:ctx.schoolId,counts:Object.fromEntries(scopes.map((name,i)=>[name,counts[i].data().count]))};
     }
     if(input.action==="reconcile_directory") {
-      const names=["people","memberships","enrollments","student_registrations","staff_assignments","course_offerings","invitations"];
+      const names=["people","memberships","enrollments","student_registrations","staff_assignments","section_advisers","course_offerings","invitations"];
       const snapshots=await Promise.all(names.map(name=>
         db.collection("schools/"+ctx.schoolId+"/"+name).limit(501).get()));
       if(snapshots.some(snapshot=>snapshot.size===501))
@@ -102,9 +102,12 @@ function createPeopleDirectoryService({db}) {
         doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
       const activeAssignments=byName.staff_assignments.filter(doc=>
         doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+      const activeAdvisers=byName.section_advisers.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
       const enrollmentsByPerson=new Set(activeEnrollments.map(doc=>doc.data().personId)),
         registrationsByPerson=new Set(activeRegistrations.map(doc=>doc.data().personId));
-      const assignmentsByTeacher=new Set(activeAssignments.map(doc=>doc.data().teacherUid));
+      const assignmentsByTeacher=new Set(activeAssignments.map(doc=>doc.data().teacherUid)),
+        advisersByTeacher=new Set(activeAdvisers.map(doc=>doc.data().teacherUid));
       const peopleByAuthUid=new Map();
       for(const [personId,person] of people){
         if(typeof person.authUid!=="string"||!person.authUid)continue;
@@ -136,6 +139,10 @@ function createPeopleDirectoryService({db}) {
             if(assignmentsByTeacher.has(person.authUid))
               add("inactive_person_active_assignment","integrity",label,
                 "Inactive staff person still has an active teaching assignment.",
+                {personId,targetUid:person.authUid,targetTab:"classes"});
+            if(advisersByTeacher.has(person.authUid))
+              add("inactive_person_active_adviser_assignment","integrity",label,
+                "Inactive staff person still has an active Section Adviser / Homeroom assignment.",
                 {personId,targetUid:person.authUid,targetTab:"classes"});
           }
           if(enrollmentsByPerson.has(personId))
