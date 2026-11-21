@@ -65,3 +65,21 @@
 @media(max-width:420px){.av-opportunities-hero{border-radius:1rem;padding:1.1rem}.av-opportunities-hero h1{font-size:2rem}.av-opportunities-orbit{max-width:180px;min-height:180px}.av-opportunities-orbit span{font-size:.58rem;padding:.4rem .48rem}.av-home-editorial{padding:.8rem}.av-opportunities-bottom{padding:.95rem}}
 @media(prefers-reduced-motion:reduce){.av-home-editorial-card{transition:none}.av-home-editorial-card:hover{transform:none}}
 html[data-motion="reduce"] .av-home-editorial-card,html[data-adminerva-reduce-motion="true"] .av-home-editorial-card{transition:none!important;transform:none!important}
+
+
+/* Public Pulse editorial archive */
+.av-pulse-section{margin:clamp(1.6rem,3vw,2.5rem) 0}
+.av-pulse-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.av-pulse-story{display:flex;flex-direction:column;gap:.75rem;border:1px solid #c9dee8;border-radius:1rem;background:#fff;padding:clamp(1rem,2vw,1.45rem);box-shadow:0 6px 24px #0d405a0d;min-width:0}
+.av-pulse-story-meta{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap}
+.av-pulse-story-meta time{font-size:.72rem;color:#60758a;font-weight:750}
+.av-pulse-story h3{font-size:clamp(1.06rem,1.8vw,1.3rem);line-height:1.25;color:#133c54;font-weight:850}
+.av-pulse-story p{font-size:.87rem;line-height:1.65;color:#4b6678}
+.av-pulse-story-actions{margin-top:auto;padding-top:.5rem;display:flex;gap:.65rem;align-items:center;flex-wrap:wrap}
+.av-pulse-story-actions a{display:inline-flex;min-height:42px;align-items:center;justify-content:center;border-radius:.6rem;padding:.65rem .85rem;font-weight:800;font-size:.78rem;text-decoration:none}
+.av-pulse-story-actions a:hover{text-decoration:underline;text-underline-offset:3px}
+.av-pulse-empty{border:1px dashed #bcd4df;border-radius:.8rem;padding:1.1rem;color:#476c80;font-size:.84rem;background:#fff}
+.av-pulse-more{color:#167486;font-weight:800;font-size:.83rem;text-decoration:underline;text-underline-offset:3px}
+.av-pulse-hero{background:radial-gradient(ellipse at 86% 10%,#155d8f99,transparent 44%),linear-gradient(120deg,#0a1d31,#17364e)}
+.av-public-pulse :is(a,button):focus-visible{outline:3px solid #1fc5c0;outline-offset:3px}
+@media(max-width:760px){.av-pulse-list{grid-template-columns:1fr}}
