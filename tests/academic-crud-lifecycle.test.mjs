@@ -5,7 +5,8 @@ import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {
   catalogArchiveDependencySpecs,
-  assessmentBlocksOfferingArchive
+  assessmentBlocksOfferingArchive,
+  academicPeriodFitsYear
 }=require("../functions/school-academics.js");
 
 test("academic catalog archive dependencies protect canonical active relationships",()=>{
@@ -33,4 +34,13 @@ test("class retirement is blocked by an open or future published assessment",()=
   assert.equal(assessmentBlocksOfferingArchive({manualAccessState:"closed",published:true,dueAt:past,lifecycle:"active"},now),false);
   assert.equal(assessmentBlocksOfferingArchive({manualAccessState:"closed",published:true,dueAt:future,lifecycle:"archived"},now),false);
   assert.equal(assessmentBlocksOfferingArchive({published:false,dueAt:future,lifecycle:"active"},now),false);
+});
+
+
+test("academic periods must remain within their parent school year dates",()=>{
+  const year={startDate:"2026-06-01",endDate:"2027-03-31"};
+  assert.equal(academicPeriodFitsYear({startDate:"2026-06-01",endDate:"2026-10-31"},year),true);
+  assert.equal(academicPeriodFitsYear({startDate:"2026-05-31",endDate:"2026-10-31"},year),false);
+  assert.equal(academicPeriodFitsYear({startDate:"2027-01-01",endDate:"2027-04-01"},year),false);
+  assert.equal(academicPeriodFitsYear({startDate:null,endDate:null},year),true);
 });
