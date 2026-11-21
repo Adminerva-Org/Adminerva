@@ -114,6 +114,19 @@
           <p id="gbV4GithubAnalysisStatus" class="mt-2 text-xs text-slate-600" role="status" aria-live="polite"></p>
           <p id="gbV4GithubVerifyStatus" class="text-sm text-slate-600 mt-3" role="status"></p>
           <button id="gbV4GithubVerify" type="button" class="mt-3 rounded-lg border border-indigo-300 bg-white text-indigo-800 font-bold px-4 py-2.5">Verify frozen commit set</button>
+          <section id="gbV4LegacyGithubPanel" hidden class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+            <h4 class="text-sm font-bold text-amber-950">Historical repository · original evidence and grade</h4>
+            <p class="mt-1 text-xs text-amber-900">V4 reads the original verified commit selection and writes only to its original legacy grade. This does not create a school V4 enrollment or Class Record column.</p>
+            <p id="gbV4LegacyGithubAttribution" class="mt-2 text-xs text-amber-900" role="status"></p>
+            <a id="gbV4LegacyGithubVerifyLink" class="mt-2 inline-flex text-xs font-bold text-indigo-700 underline" target="_blank" rel="noopener noreferrer" hidden>Open original contribution approval ↗</a>
+            <label class="mt-3 block text-xs font-bold text-amber-950">Teacher evidence inspection note
+              <textarea id="gbV4LegacyGithubReviewNote" rows="2" maxlength="3000" class="mt-1 w-full rounded-lg border border-amber-300 bg-white p-2.5" placeholder="Describe which approved commits and repository evidence you inspected."></textarea>
+            </label>
+            <label class="mt-2 flex items-start gap-2 text-xs font-semibold text-amber-950">
+              <input type="checkbox" id="gbV4LegacyGithubConfirm" class="mt-0.5">
+              <span>I inspected this learner's approved checkpoint and verified individual contribution scope before saving a grade.</span>
+            </label>
+          </section>
           <div id="gbV4GithubApproval" class="hidden mt-4 border-t border-slate-200 pt-4">
             <label class="block text-sm font-bold text-slate-700">Teacher verification note
               <textarea id="gbV4GithubApprovalNote" rows="3" minlength="12" maxlength="2000" class="mt-1 w-full border border-slate-300 rounded-lg p-3"></textarea>
@@ -223,5 +236,5 @@
 <script src="js/core/adminerva-loader.js?v=25db0f5a3b30"></script>
 <script defer src="js/core/adminerva-nav.js?v=25db0f5a3b30"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=25db0f5a3b30"></script>
-<script type="module" src="js/repo-review/v4-gradebook.mjs?v=20261121-unified-repo1"></script>
+<script type="module" src="js/repo-review/v4-gradebook.mjs?v=20261121-legacy-github1"></script>
 </body></html>
