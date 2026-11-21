@@ -216,8 +216,12 @@ if(home){
       const rect=journey.getBoundingClientRect();
       const horizontal=isHorizontal();
       const value=horizontal?journey.scrollLeft:journey.scrollTop;
-      const size=horizontal?journey.clientWidth:journey.clientHeight;
-      const i=Math.max(0,Math.min(scenes.length-1,Math.round(value/Math.max(1,size))));
+      const nearest=scenes.reduce((best,scene,index)=>{
+        const offset=horizontal?scene.offsetLeft:scene.offsetTop;
+        const distance=Math.abs(offset-value);
+        return distance<best.distance?{index,distance}:best;
+      },{index:0,distance:Number.POSITIVE_INFINITY});
+      const i=nearest.index;
       current=i;
       [...indexNav.children].forEach((b,j)=>j===i?b.setAttribute('aria-current','step'):b.removeAttribute('aria-current'));
       scenes.forEach((scene,j)=>scene.dataset.active=String(j===i));
