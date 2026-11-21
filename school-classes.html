@@ -121,6 +121,19 @@
           </form>
           <p id="csScheduleStatus" class="text-xs text-violet-900 mt-2" role="status"></p>
         </section>
+        <section class="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Roster authority</p><h3 class="font-extrabold text-cyan-950 mt-1">Roster source</h3><p class="text-xs text-cyan-900 mt-1">Normal classes should follow official section placement. Selective mode is reserved for electives, irregular learners, and intentional exceptions.</p></div>
+          <p id="csRosterModeCurrent" class="text-sm font-bold text-cyan-950 mt-3"></p>
+          <form id="csRosterModeForm" class="grid gap-2 mt-3">
+            <select id="csRosterMode" class="w-full rounded-lg border border-cyan-300 bg-white px-3 py-2.5 text-sm" required>
+              <option value="section">Official section placement · automatic</option>
+              <option value="selective">Selective / manual roster</option>
+            </select>
+            <textarea id="csRosterModeReason" rows="2" minlength="12" maxlength="500" class="w-full rounded-lg border border-cyan-300 bg-white p-3 text-sm" placeholder="Reason for roster-source change or synchronization" required></textarea>
+            <button id="csRosterModeSave" type="submit" class="w-full rounded-lg bg-cyan-800 text-white px-4 py-2.5 text-sm font-extrabold">Apply roster source</button>
+          </form>
+          <p id="csRosterModeHelp" class="text-xs text-cyan-900 mt-2"></p>
+        </section>
         <section>
           <div class="flex items-center justify-between gap-3"><h3 class="font-extrabold">Students</h3><span id="csStudentCount" class="text-xs text-slate-500"></span></div>
           <p class="text-xs text-slate-500 mt-1">Roster is read-only here. Change official placement through Enrollment.</p>
@@ -138,6 +151,6 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261120-admin-classes"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
-<script type="module" src="js/school-admin/classes-scheduling.mjs?v=20261121-official-schedule1"></script>
+<script type="module" src="js/school-admin/classes-scheduling.mjs?v=20261121-roster-source1"></script>
 </body>
 </html>
