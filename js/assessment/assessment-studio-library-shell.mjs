@@ -32,6 +32,10 @@ if(host){
       margin:.3rem 0 .9rem;font:inherit;background:#fff;color:#0f172a
     }
     #schoolAssessmentStudioHost textarea.tl-input{min-height:unset;resize:vertical}
+    #schoolAssessmentStudioHost #tl-deploy-dialog .flatpickr-wrapper{display:block;width:100%}
+    #schoolAssessmentStudioHost #tl-deploy-dialog .flatpickr-calendar.static{
+      top:calc(100% + .25rem);left:0;right:auto;z-index:30
+    }
     #schoolAssessmentStudioHost .tl-dialog{
       border:0;border-radius:16px;max-width:min(820px,calc(100vw - 1.25rem));width:100%;
       max-height:calc(100dvh - 1.25rem);overflow:auto;padding:0;box-shadow:0 24px 90px #02061766
@@ -56,6 +60,11 @@ if(host){
     @media(max-width:700px){
       #schoolAssessmentStudioHost .tl-dialog{height:calc(100dvh - .5rem);max-height:none;max-width:100vw;border-radius:16px 16px 0 0;margin:auto 0 0}
       #schoolAssessmentStudioHost .tl-dialog-body{padding:.8rem}
+    }
+    @media(max-width:380px){
+      #schoolAssessmentStudioHost #tl-deploy-dialog .flatpickr-calendar.static{
+        left:50%;margin-left:-154px
+      }
     }
   `;
   document.head.append(style);
@@ -330,5 +339,5 @@ if(host){
 
   `;
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=20261121-unified-legacy-review1");
+  await import("../repo-review/teacher-assessment-library.mjs?v=20261122-calendar-anchor1");
 }
