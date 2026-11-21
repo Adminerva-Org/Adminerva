@@ -18,6 +18,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Install backend dependencies for contract tests
+        run: npm ci --prefix functions --no-audit --no-fund
       - name: Audit sitewide interactive controls
         continue-on-error: true
         run: node scripts/audit-interactive-controls.mjs
@@ -130,9 +132,7 @@ jobs:
           GCLOUD_PROJECT: demo-adminerva-contract
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8181
           FIREBASE_AUTH_EMULATOR_HOST: 127.0.0.1:9199
-        run: |
-          npm ci --prefix functions --no-audit --no-fund
-          node --test tests/monitoring-deployment.test.cjs
+        run: node --test tests/monitoring-deployment.test.cjs
   firestore-security:
     runs-on: ubuntu-latest
     timeout-minutes: 15
