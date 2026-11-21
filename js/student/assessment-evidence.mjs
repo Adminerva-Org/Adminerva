@@ -15,6 +15,14 @@ let evidenceBusy=false;
 let githubPublicMode=false,historyLoadError="";
 let stopEvidence=null,stopClaims=null,selectionDirty=false,evidenceSyncing=true,claimsReadable=false;
 const status=text=>{el("evidenceStatus").textContent=text;};
+function sessionGithubToken(){
+  const uid=auth.currentUser?.uid;
+  return uid?String(sessionStorage.getItem("Adminerva_GitHub_Token_"+uid)||"").trim():"";
+}
+function sessionGithubUsername(){
+  const uid=auth.currentUser?.uid;
+  return uid?String(sessionStorage.getItem("Adminerva_GitHub_Username_"+uid)||"").trim().replace(/^@/,""):"";
+}
 function submissionStatus(text,tone="info"){
   status(text);
   const node=el("evidenceSubmissionStatus");
@@ -103,7 +111,7 @@ async function github(path){
   const publicHeaders={Accept:"application/vnd.github+json"};
   // The browser-local legacy token can belong to a different school account.
   // Use only the token attached to the currently verified student profile.
-  const token=String(context?.profile?.githubToken||"").trim();
+  const token=sessionGithubToken()||String(context?.profile?.githubToken||"").trim();
   const authenticated=Boolean(token&&!githubPublicMode);
   const headers=authenticated?{...publicHeaders,Authorization:"Bearer "+token}:publicHeaders;
   let response;
@@ -147,8 +155,12 @@ async function github(path){
 const repositoryPath=r=>"/repos/"+encodeURIComponent(r.owner)+"/"+encodeURIComponent(r.repo);
 function contextForStudent(){
   const data=window.__adminervaSubmissionContext?.(),user=auth.currentUser;
-  if(!data?.profile||!data?.task||!user ||
-    String(data.profile.email||"").toLowerCase()!==String(user.email||"").toLowerCase())
+  if(!data?.profile||!data?.task||!user)
+    throw Error("Select an assessment under your own signed-in student profile.");
+  const projectedOwner=String(data.profile.accountUid||"");
+  const legacyEmail=String(data.profile.email||"").toLowerCase();
+  const currentEmail=String(user.email||"").toLowerCase();
+  if(projectedOwner?projectedOwner!==user.uid:legacyEmail!==currentEmail)
     throw Error("Select an assessment under your own signed-in student profile.");
   return data;
 }
@@ -193,7 +205,7 @@ function render(){
   const summary=el("evidenceSelectionSummary");
   if(summary)summary.textContent=guidance.message;
   if(!commits.length){add(list,"p",historyLoadError|| (historyPage===0?"Loading available commits…":"No commits returned. The repository may be empty or inaccessible."),"text-sm text-slate-600 rounded-lg border border-dashed p-4");return;}
-  const linked=String(context?.profile?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
+  const linked=(sessionGithubUsername()||String(context?.profile?.githubUsername||"").trim().replace(/^@/,"")).toLowerCase();
   const visible=commits.filter(commit=>{
     const sha=String(commit.sha||"").toLowerCase();
     if(commitFilter==="selected")return selected.has(sha);
