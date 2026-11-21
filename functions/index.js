@@ -28,7 +28,7 @@ const {createLegacyLessonRecovery,createLegacySchoolSetup}=require("./legacy-les
 const legacyRecovery=createLegacyLessonRecovery({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const legacySetup=createLegacySchoolSetup({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const callOptions={region:"asia-southeast1",maxInstances:3,concurrency:10,timeoutSeconds:120,cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
-const PLATFORM_PREVIEW_MUTATION=/^(create|update|upsert|edit|change|delete|archive|publish|unpublish|save|set|assign|grant|revoke|suspend|restore|import|commit|bulk|handover|decide|configure|register|transfer|replace|move|merge|promote|demote|issue|renew|rotate|duplicate|clone|provision|deprovision|upload|attach|detach|acknowledge|resolve|dismiss|generate|prepare|initialize|seed|deploy|submit|grade|review|approve|reject|reopen|close|start|end|activate|record|apply|write|link|unlink|accept|invite|enroll|remove|add|sync|finalize|release|lock|unlock|mark|request|cancel|reset|clear|purge|migrate|adopt|withdraw|return|enable|disable|refresh)/i;
+const PLATFORM_PREVIEW_MUTATION=/^(create|update|upsert|edit|change|delete|archive|publish|unpublish|save|set|assign|grant|revoke|suspend|restore|import|deploy|submit|grade|review|approve|reject|reopen|close|start|end|activate|record|apply|write|link|unlink|accept|invite|enroll|remove|add|sync|finalize|release|lock|unlock|mark|request|cancel|reset|clear|purge|migrate|adopt|withdraw|return|enable|disable|refresh)/i;
 async function rejectPlatformPreviewMutation(request,{allowPlatformSchoolWrites=false}={}){
   if(allowPlatformSchoolWrites)return null;
   const uid=request?.auth?.uid,schoolId=String(request?.data?.schoolId||"").trim(),
@@ -51,7 +51,7 @@ function safeCallable(handler,options={}){return async request=>{try{
     }).catch(error=>console.warn("System Admin assist audit write failed",{code:error.code||"unknown"}));
   }
   return result;
-}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
 async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
   return !school.exists||school.data().compatibilityMode!=="v4_only";
@@ -100,12 +100,10 @@ exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
 const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("./people-directory.js");
 const {createSchoolRosterActivationService}=require("./school-roster-activation.js");
 const {createSchoolEnrollmentService}=require("./school-enrollment.js");
-const {createSchoolProfileService}=require("./school-profile.js");
 const {createPublicSchoolEnrollmentService}=require("./public-school-enrollment.js");
 exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db})));
 exports.activateSchoolRosterAccess=onCall(callOptions,safeCallable(createSchoolRosterActivationService({db})));
 exports.schoolEnrollment=onCall(callOptions,safeCallable(createSchoolEnrollmentService({db})));
-exports.schoolProfile=onCall(callOptions,safeCallable(createSchoolProfileService({db})));
 exports.publicSchoolEnrollment=onCall(callOptions,safeCallable(createPublicSchoolEnrollmentService({db})));
 const {createSchoolLegacyDirectoryAdoptionService}=require("./school-legacy-directory-adoption.js");
 exports.schoolLegacyDirectoryAdoption=onCall(callOptions,safeCallable(
@@ -115,10 +113,15 @@ const {createSchoolRosterSourceService}=require("./school-roster-source.js");
 exports.schoolRosterSource=onCall(callOptions,safeCallable(createSchoolRosterSourceService({db})));
 const {createSchoolAcademicsService}=require("./school-academics.js");
 exports.schoolAcademics=onCall(callOptions,safeCallable(createSchoolAcademicsService({db})));
-const {createSchoolAttendanceService}=require("./school-attendance.js");
-exports.schoolAttendance=onCall(callOptions,safeCallable(createSchoolAttendanceService({db})));
 const {createSchoolAssessmentService}=require("./school-assessments.js");
 exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db})));
+// Teacher Open/Close writes a durable outbox atomically with its exam state.
+// Delivery and roster capture must never block the teacher's callable.
+const {createSchoolStudioExamSessionFanout}=require("./school-studio-exam-fanout.js");
+exports.schoolStudioExamSessionFanout=onDocumentCreated({
+  document:"schools/{schoolId}/studio_exam_session_events/{eventId}",
+  region:"asia-southeast1",retry:true,maxInstances:3,concurrency:1,timeoutSeconds:300
+},createSchoolStudioExamSessionFanout({db}));
 const {createSchoolAssessmentMigrationService}=require("./school-assessment-migration.js");
 exports.schoolAssessmentMigration=onCall(callOptions,safeCallable(createSchoolAssessmentMigrationService({db})));
 const {createSchoolStudentProfileService}=require("./school-student-profile.js");
@@ -175,8 +178,6 @@ const {createSchoolClassRecordAdminService}=require("./school-class-record-admin
 exports.schoolClassRecordAdmin=onCall(callOptions,safeCallable(createSchoolClassRecordAdminService({db})));
 const {createSchoolGradebookService}=require("./school-gradebook.js");
 exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db})));
-const {createSchoolAssessmentConversationService}=require("./school-assessment-conversation.js");
-exports.schoolAssessmentConversation=onCall(callOptions,safeCallable(createSchoolAssessmentConversationService({db})));
 const {createSchoolAssessmentSubmissionService}=require("./school-assessment-submissions.js");
 exports.schoolAssessmentSubmissions=onCall(callOptions,safeCallable(createSchoolAssessmentSubmissionService({db})));
 const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");
@@ -186,8 +187,6 @@ exports.schoolReclaims=onCall(callOptions,safeCallable(createSchoolReclaimServic
 exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationAcceptanceService({db})));
 const {createPlatformSchoolService}=require("./platform-schools.js");
 exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db}),{allowPlatformSchoolWrites:true}));
-const {createPlatformUserService}=require("./platform-users.js");
-exports.platformUsers=onCall(callOptions,safeCallable(createPlatformUserService({db,auth:getAuth()})));
 const {createMcsPilotControlService}=require("./mcs-pilot-control.js");
 exports.mcsPilotControl=onCall(callOptions,safeCallable(createMcsPilotControlService({db,auth:getAuth()})));
 const {createSchoolSupportService}=require("./school-support.js");
