@@ -259,3 +259,24 @@ test("recovered canonical student resolves legacy row through previous server ac
   assert.deepEqual(result.records.map(row=>row.id),["legacy-davis"]);
   assert.equal(authLookupCalled,false);
 });
+
+
+test("People & Access provides explicit reviewed legacy identity reconciliation",async()=>{
+  const [service,html,ui]=await Promise.all([
+    readFile(new URL("../functions/people-directory.js",import.meta.url),"utf8"),
+    readFile(new URL("../people-access.html",import.meta.url),"utf8"),
+    readFile(new URL("../js/school-admin/people-access.mjs",import.meta.url),"utf8")
+  ]);
+  assert.match(service,/input\.action==="search_legacy_student_candidates"/);
+  assert.match(service,/input\.action==="link_legacy_student_identity"/);
+  assert.match(service,/legacyStudentIds:FieldValue\.arrayUnion\(legacyStudentId\)/);
+  assert.match(service,/legacy_student_identity_linked/);
+  assert.match(service,/admin_reconciled_legacy_id/);
+  assert.match(service,/already linked to another school person/);
+  assert.match(html,/id="pa-legacy-identity-card"/);
+  assert.match(html,/Adminerva will never auto-link a candidate by name alone/);
+  assert.match(ui,/legacyIdentityCandidate=null/);
+  assert.match(ui,/radio\.type="radio"/);
+  assert.match(ui,/link_legacy_student_identity/);
+  assert.match(ui,/does not rewrite enrollment, grades, submissions or Studio work/);
+});
