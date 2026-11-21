@@ -51,6 +51,35 @@ if(host){
     #schoolAssessmentStudioHost .tl-section+.tl-section{margin-top:.85rem}
     #schoolAssessmentStudioHost .tl-actions{display:flex;flex-wrap:wrap;gap:.5rem}
     #schoolAssessmentStudioHost [hidden]{display:none!important}
+    #schoolAssessmentStudioHost #tl-list:has(.tl-deploy-overview){display:flex;flex-direction:column;gap:.85rem}
+    #schoolAssessmentStudioHost .tl-deploy-overview{display:flex;flex-wrap:wrap;align-items:baseline;gap:.25rem 1rem}
+    #schoolAssessmentStudioHost .tl-deploy-overview h3{font-weight:800;font-size:1rem;color:#0f172a}
+    #schoolAssessmentStudioHost .tl-deploy-group,#schoolAssessmentStudioHost .tl-deploy-history{
+      min-width:0;border:1px solid #cbd5e1;border-radius:13px;background:#fff;overflow:hidden
+    }
+    #schoolAssessmentStudioHost .tl-deploy-group-header{padding:.85rem 1rem;background:#eaf2ff}
+    #schoolAssessmentStudioHost .tl-deploy-group-header h3{font-size:1rem;font-weight:800;color:#0f172a}
+    #schoolAssessmentStudioHost .tl-deploy-class{padding:.85rem 1rem;border-top:1px solid #e2e8f0}
+    #schoolAssessmentStudioHost .tl-deploy-class-main{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.65rem}
+    #schoolAssessmentStudioHost .tl-deploy-class-info{flex:1 1 230px;min-width:0}
+    #schoolAssessmentStudioHost .tl-deploy-class-info h4{overflow-wrap:anywhere}
+    #schoolAssessmentStudioHost .tl-deploy-quick,#schoolAssessmentStudioHost .tl-deploy-more-actions{display:flex;flex-wrap:wrap;gap:.4rem}
+    #schoolAssessmentStudioHost .tl-deploy-class-more{margin-top:.45rem}
+    #schoolAssessmentStudioHost .tl-deploy-class-more summary{display:inline-block;cursor:pointer;color:#1d4ed8;font-weight:750;font-size:.8rem}
+    #schoolAssessmentStudioHost .tl-deploy-class-more[open] summary{margin-bottom:.65rem}
+    #schoolAssessmentStudioHost .tl-deploy-class-more .tl-muted{margin-top:.5rem}
+    #schoolAssessmentStudioHost .tl-deploy-history>summary{cursor:pointer;padding:1rem;font-weight:800}
+    #schoolAssessmentStudioHost .tl-deploy-history-help{padding:0 1rem 1rem}
+    #schoolAssessmentStudioHost .tl-deploy-legacy-item{border-top:1px solid #e2e8f0}
+    #schoolAssessmentStudioHost .tl-deploy-legacy-item>summary{cursor:pointer;padding:.8rem 1rem;font-weight:750;overflow-wrap:anywhere}
+    #schoolAssessmentStudioHost .tl-deploy-legacy-class{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem;padding:.65rem 1rem;border-top:1px solid #f1f5f9}
+    #schoolAssessmentStudioHost .tl-deploy-legacy-item>.tl-deploy-more-actions{padding:1rem}
+    #schoolAssessmentStudioHost .tl-deploy-notice{padding:.9rem;border-radius:10px;background:#f1f5f9;font-size:.85rem;color:#475569}
+    @media(max-width:520px){
+      #schoolAssessmentStudioHost .tl-deploy-quick{width:100%}
+      #schoolAssessmentStudioHost .tl-deploy-class{padding:.8rem}
+      #schoolAssessmentStudioHost .tl-deploy-quick .tl-action{flex:1 1 auto;text-align:center}
+    }
     #schoolAssessmentStudioHost .tl-empty{
       grid-column:1/-1;border:2px dashed #cbd5e1;border-radius:14px;background:#f8fafc;
       padding:3rem 1rem;text-align:center;color:#64748b;font-size:.9rem
@@ -339,5 +368,5 @@ if(host){
 
   `;
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=20261122-calendar-anchor1");
+  await import("../repo-review/teacher-assessment-library.mjs?v=20261122-deployed-groups1");
 }
