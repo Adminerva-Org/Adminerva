@@ -277,6 +277,8 @@ function createSchoolGradebookService({db}){
     const grade=await tx.get(gradeRef);
     if(grade.exists&&grade.data().gradeSchema==="legacy_scalar_v1")
      deny("failed-precondition","This imported historical grade has no saved rubric breakdown. Reconstruct the breakdown without changing its historical score before editing the draft.");
+    if(input.onlyIfUngraded===true&&grade.exists)
+     deny("failed-precondition","This submission already has a saved grade. Bulk evaluation cannot replace an existing private or published grade.");
     if(grade.exists&&grade.data().status==="published")
      deny("failed-precondition","Published grades require a formal correction workflow.");
     if(!gradeable(submission))

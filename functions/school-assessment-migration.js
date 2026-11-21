@@ -9,6 +9,8 @@
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+const {createSchoolLegacyStudioReview}=require("./school-legacy-studio-review.js");
+const {previewLegacyEvidenceMigration}=require("./school-legacy-migration-readiness.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function clean(value,max=20000){return String(value??"").trim().slice(0,max)}
@@ -68,8 +70,13 @@ function legacySummary(doc,imported=false){
   };
 }
 function createSchoolAssessmentMigrationService({db}){
+ const legacyStudioReview=createSchoolLegacyStudioReview({db,parseLegacyRubric});
  return async request=>{
   const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["teacher"]});
+  if(/^legacy_review_(?:inbox|inspect|save_draft|publish|bulk_publish)$/.test(String(input.action||"")))
+   return legacyStudioReview({ctx,input});
+  if(input.action==="preview_evidence_migration")
+   return previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId:String(input.legacyAssessmentId||"")});
   const prefix="schools/"+ctx.schoolId+"/";
   const blueprints=db.collection(prefix+"assessment_blueprints");
   if(input.action==="list_legacy"){

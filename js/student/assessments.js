@@ -562,7 +562,15 @@ window.viewAssessmentDetails = function (id) {
   document.getElementById("studioAssessmentPanel")?.classList.toggle("hidden",!isStudio);
   document.getElementById("studioExamAdvice")?.classList.toggle("hidden",!isStudio||ass.practicalExam!==true);
 
-  document.getElementById("legacySubmitPanel")?.classList.toggle("hidden",isStudio||ass.schemaVersion===2);
+  // GitHub receipt submission belongs exclusively to repository assessments.
+  // Studio tasks submit immutable source snapshots through the Studio workflow.
+  const repositoryOnly=presentation.mode==="repository"&&ass.schemaVersion!==2;
+  const repositoryPanel=document.getElementById("legacySubmitPanel");
+  if(repositoryPanel){
+    repositoryPanel.hidden=!repositoryOnly;
+    repositoryPanel.classList.toggle("hidden",!repositoryOnly);
+    repositoryPanel.querySelectorAll("input,button").forEach(control=>control.disabled=!repositoryOnly);
+  }
   if(isStudio){
     const head=myStudioSubmissions[id],open=document.getElementById("studioOpenProject");
     document.getElementById("studioAssignmentStatus").textContent=!personalizedReady

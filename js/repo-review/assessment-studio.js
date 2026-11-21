@@ -1,6 +1,6 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: assessment studio. */
 import { app,db,auth } from "../core/firebase-core.js?v=1.3.0";
-import {validateDeploymentDates} from "./assessment-dates.mjs?v=1.3.0";
+import {validateDeploymentDates,rescheduleLegacyDeployment} from "./assessment-dates.mjs?v=20261121-legacy-deploy-restore1";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import {ownedDoc,requireStaffWorkspace,lessonStorage} from "../lesson-review/workspace-session.mjs?v=1.3.0";
 import {scheduleScope,parseScheduleRows} from "../lesson-review/schedule-scope.mjs?v=1.3.0";
@@ -881,12 +881,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   await fetchSectionsFromStudents();
   await loadAssessments();
   void loadBlueprintChoices();
-  const requestedLegacyAssessment=new URL(location.href).searchParams.get("legacyAssessment");
+  const route=new URL(location.href).searchParams;
+  const requestedLegacyAssessment=route.get("legacyAssessment");
   if(requestedLegacyAssessment){
     const requested=assessments.find(item=>item.id===requestedLegacyAssessment);
     if(requested){
       window.openViewModal(requested.id);
-      setTimeout(()=>void window.openEditModal(),0);
+      const deploymentId=route.get("legacyDeployment");
+      if(deploymentId){
+        const deployment=(requested.deployments||[]).find(row=>row.id===deploymentId);
+        if(deployment)window.openDeployModal(deploymentId);
+        else showAssessmentToast("This deployment is no longer in the historical record. No new deployment was created.",{tone:"warning",duration:5200});
+      }else if(route.get("legacyView")==="deployments"){
+        // Keep the original deployment table visible instead of opening the
+        // blueprint authoring form when the teacher only needs a deadline edit.
+      }else setTimeout(()=>void window.openEditModal(),0);
     }else{
       showAssessmentToast("The requested legacy assessment is not available to this teacher account.",{tone:"warning",duration:4200});
     }
@@ -1498,7 +1507,12 @@ window.toggleDeployDeadline = function () {
   const fields = document.getElementById("deployScheduleFields");
   const allowLate = document.getElementById("deployAllowLate");
   const allowLateWrap = document.getElementById("deployAllowLateWrap");
-  if (checkbox && fields) fields.classList.toggle("hidden", !checkbox.checked);
+  const editing=Boolean(document.getElementById("deployId")?.value);
+  // The original assigned date is historical evidence. Editing an existing
+  // deployment changes only its deadline/late policy, not its posted date.
+  if (checkbox && fields) fields.classList.toggle("hidden", !checkbox.checked||editing);
+  const editDeadline=document.getElementById("deployEditDeadline");
+  if(editDeadline)editDeadline.disabled=!checkbox?.checked;
   if (allowLate) {
     allowLate.disabled = !checkbox?.checked;
     if (!checkbox?.checked) allowLate.checked = false;
@@ -1506,6 +1520,20 @@ window.toggleDeployDeadline = function () {
   if (allowLateWrap) allowLateWrap.classList.toggle("opacity-50", !checkbox?.checked);
 };
 
+function legacyLocalDateTime(value){
+  if(!value)return "";
+  const date=new Date(value);
+  if(!Number.isFinite(date.getTime()))return "";
+  return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
+}
+document.getElementById("deployEditDeadline")?.addEventListener("change",event=>{
+  // Changing this field edits only the deadline of the existing deployment.
+  // Historical post dates and every other section remain untouched.
+  if(!document.getElementById("deployId")?.value)return;
+  const date=new Date(event.currentTarget.value);
+  document.getElementById("deployDeadline").value=
+    Number.isFinite(date.getTime())?date.toISOString():"";
+});
 window.openDeployModal = function (deployId = null) {
   const item = assessments.find((a) => a.id === currentAssessmentId);
   if (!item) return;
@@ -1517,8 +1545,14 @@ window.openDeployModal = function (deployId = null) {
   const deployModalBody=document.getElementById("deployModalBody");
   if(deployModalBody)deployModalBody.scrollTop=0;
 
+  const editingBox=document.getElementById("deployExistingSchedule");
+  if(editingBox)editingBox.classList.toggle("hidden",!deployId);
   if (deployId) {
     const deploy = (item.deployments || []).find((d) => d.id === deployId);
+    if(!deploy){
+      alert("The selected class deployment is not in the original assessment. Reload its deployment list.");
+      return;
+    }
     document.getElementById("deployModalTitle").textContent = "Edit Deployment";
     document.getElementById("deploySaveBtn").textContent = "Update";
     document.getElementById("deployId").value = deploy.id;
@@ -1527,9 +1561,18 @@ window.openDeployModal = function (deployId = null) {
     document.getElementById("deployUseDeadline").checked = deploy.deadlineEnabled !== false;
     document.getElementById("deployAllowLate").checked = deploy.allowLateSubmissions === true;
     if (deploy.postDate && deploy.deadline) {
-      fpInstance.setDate([new Date(deploy.postDate), new Date(deploy.deadline)], true);
-    } else fpInstance.clear();
-
+      // false avoids Flatpickr's date-only onChange rewriting historical
+      // post/deadline timestamps as midnight/end-of-day when editing late rules.
+      fpInstance.setDate([new Date(deploy.postDate), new Date(deploy.deadline)], false);
+    } else fpInstance.clear(false);
+    document.getElementById("deployPostDate").value=deploy.postDate||"";
+    document.getElementById("deployDeadline").value=deploy.deadline||"";
+    document.getElementById("deployEditDeadline").value=legacyLocalDateTime(deploy.deadline);
+    document.getElementById("deployOriginalAssigned").textContent=
+      "Section: "+deploy.section+" · Originally assigned: "+
+      (deploy.postDate?new Date(deploy.postDate).toLocaleString():"Not recorded")+
+      " · Current deadline: "+
+      (deploy.deadlineEnabled===false?"Not enforced":deploy.deadline?new Date(deploy.deadline).toLocaleString():"Not recorded");
     document.getElementById("deploySectionSelector").classList.add("hidden");
     document.getElementById("deployEditNotice").classList.remove("hidden");
   } else {
@@ -1540,8 +1583,10 @@ window.openDeployModal = function (deployId = null) {
     deploySelectedSections = [];
     document.getElementById("deployUseDeadline").checked = false;
     document.getElementById("deployAllowLate").checked = false;
-    fpInstance.clear();
-
+    document.getElementById("deployEditDeadline").value="";
+    fpInstance.clear(false);
+    document.getElementById("deployPostDate").value="";
+    document.getElementById("deployDeadline").value="";
     document.getElementById("deploySectionSelector").classList.remove("hidden");
     document.getElementById("deployEditNotice").classList.add("hidden");
   }
@@ -1623,8 +1668,13 @@ window.saveDeployment = async function () {
   const deployId = document.getElementById("deployId").value;
   const deadlineEnabled = document.getElementById("deployUseDeadline").checked;
   const allowLateSubmissions = deadlineEnabled && document.getElementById("deployAllowLate").checked;
-  const postDate = deadlineEnabled ? document.getElementById("deployPostDate").value : null;
-  const deadline = deadlineEnabled ? document.getElementById("deployDeadline").value : null;
+  // Turning deadline enforcement off never erases the original assignment
+  // date. This is used by historic student eligibility checks.
+  const original=deployId
+    ?assessments.find(item=>item.id===currentAssessmentId)?.deployments?.find(item=>item.id===deployId)
+    :null;
+  const postDate=deadlineEnabled?document.getElementById("deployPostDate").value:original?.postDate||null;
+  const deadline=deadlineEnabled?document.getElementById("deployDeadline").value:original?.deadline||null;
 
   if (deploySelectedSections.length === 0) {
     return alert("Choose at least one class section.");
@@ -1641,16 +1691,12 @@ window.saveDeployment = async function () {
   }
   if (deployId) {
     const index = deployments.findIndex((d) => d.id === deployId);
-    if (index > -1) {
-      deployments[index] = {
-        id: deployId,
-        section: deploySelectedSections[0],
-        postDate,
-        deadline,
-        deadlineEnabled,
-        allowLateSubmissions,
-      };
-    }
+    if(index<0)return alert("The original class deployment no longer exists. Refresh before making changes.");
+    try{
+      deployments[index]=rescheduleLegacyDeployment(deployments[index],{
+        deadlineEnabled,allowLateSubmissions,deadline
+      });
+    }catch(error){return alert(error.message);}
   } else {
     deploySelectedSections.forEach((section) => {
       deployments.push({

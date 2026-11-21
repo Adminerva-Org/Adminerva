@@ -987,7 +987,8 @@ get("pa-staff-access-search").addEventListener("click",()=>void searchLinkedStaf
 get("pa-activate-staff-form").addEventListener("submit",event=>{
   event.preventDefault();
   const form=event.currentTarget,data=new FormData(form);
-  const personId=String(data.get("personId")||""),reason=String(data.get("reason")||"").trim();
+  const personId=String(data.get("personId")||""),role=String(data.get("role")||"teacher"),
+    reason=String(data.get("reason")||"").trim();
   if(!personId)return;
   const reviewed=linkedStaffById.get(personId);
   if(!reviewed){get("pa-staff-access-status").textContent="Refresh the linked staff search before activating access.";return;}
@@ -998,8 +999,8 @@ get("pa-activate-staff-form").addEventListener("submit",event=>{
   }).then(result=>{
     if(!result)return;
     get("pa-staff-access-status").textContent=result.status==="already_active"?
-      "This teacher already has active school access.":
-      "Teacher school access activated. Assign a class under Classes to enable Class Record.";
+      "This staff member already has active "+(result.role||role)+" access.":
+      (result.role||role)+" school access activated.";
 
   });
 });

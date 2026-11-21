@@ -34,7 +34,7 @@ function createSchoolStudioSubmissionService({db}){
      task.data().submissionSource!=="studio"||task.data().status!=="deployed")
    deny("not-found","This school's Studio assessment is unavailable.");
   const offeringId=task.data().offeringId;
-  if(input.action==="submit"||input.action==="my_status"){
+  if(["submit","my_status","my_snapshot"].includes(input.action)){
    if(!ctx.roles.includes("student"))deny("permission-denied","Student permission is required.");
    if(task.data().published!==true)
     deny("not-found","This Studio assessment is not published to students.");
@@ -64,6 +64,50 @@ function createSchoolStudioSubmissionService({db}){
        submission.data().revisionRequestMessage||"":"",
       revisionDueAt:submission.exists&&submission.data().status==="reopened"?
        submission.data().revisionDueAt?.toMillis?.()||null:null};
+   }
+   if(input.action==="my_snapshot"){
+    // A student may retrieve only their own latest immutable submission after
+    // verifying current school membership and enrollment. This is a recovery
+    // source, never a substitute for or mutation of the working project.
+    const [school,member,person,enrollment,submission]=await Promise.all([
+      schoolRef.get(),membershipRef.get(),personRef.get(),enrollmentRef.get(),submissionRef.get()
+    ]);
+    if(!school.exists||!["active","pilot"].includes(school.data().state)||
+       !member.exists||member.data().status!=="active"||
+       member.data().schoolId!==ctx.schoolId||
+       !Array.isArray(member.data().roles)||!member.data().roles.includes("student")||
+       member.data().personId!==personId||
+       !person.exists||person.data().schoolId!==ctx.schoolId||
+       person.data().authUid!==ctx.uid||person.data().kind!=="student"||
+       person.data().status!=="active"||
+       !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
+       enrollment.data().personId!==personId||enrollment.data().offeringId!==offeringId||
+       enrollment.data().status!=="active")
+      deny("permission-denied","Student school membership or enrollment could not be verified for recovery.");
+    if(task.data().manualOpenRequired===true&&
+       (task.data().manualAccessState!=="open"||
+        (task.data().lifecycle||"active")!=="active"))
+      deny("failed-precondition","Your teacher must open this section's exam before you can restore submitted project source.");
+    if(!submission.exists)return {taskId,found:false};
+    const current=submission.data(),version=Number(current.currentVersion);
+    if(current.schoolId!==ctx.schoolId||current.studentUid!==ctx.uid||
+       current.personId!==personId||current.offeringId!==offeringId||
+       current.taskId!==taskId||!Number.isInteger(version)||version<1)
+      deny("failed-precondition","The submitted project recovery reference is invalid.");
+    const frozen=await submissionRef.collection("versions").doc(String(version)).get();
+    const data=frozen.exists?frozen.data():null;
+    if(!data||data.schoolId!==ctx.schoolId||data.studentUid!==ctx.uid||
+       data.personId!==personId||data.taskId!==taskId||data.offeringId!==offeringId||
+       data.version!==version||data.projectId!==current.projectId||
+       !Array.isArray(data.files)||!data.files.length||
+       data.contentDigest!==digestProject(data.files,data.artifacts||{})||
+       current.contentDigest!==data.contentDigest)
+      deny("failed-precondition","The submitted project recovery snapshot could not be verified.");
+    // Do not expose private teacher evaluation notes or another learner's
+    // scenario. Return only the student's submitted source and artifacts.
+    return {taskId,found:true,version,projectId:data.projectId,
+      language:data.sourceLanguage,files:data.files,artifacts:data.artifacts||{},
+      contentDigest:data.contentDigest,submittedAt:data.submittedAt?.toMillis?.()||null};
    }
    const projectId=checkId(input.projectId,"Studio project",128);
    const revision=input.projectRevision;

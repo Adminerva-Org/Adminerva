@@ -123,3 +123,30 @@ export function verifyStudioSnapshot(json,expectedHash){
   if(!/^[a-f0-9]{64}$/.test(expectedHash||""))throw Error("Snapshot checksum is invalid.");
   return parsed;
 }
+
+/**
+ * Validate a legacy student's own frozen source without trusting project
+ * titles, the current workspace or a mutable submission-head pointer alone.
+ * This reads submitted evidence only; it never edits/claims any project.
+ */
+export async function verifyLegacyStudioRecovery(head,version,{uid,studentId,assessmentId}={}){
+  if(!head||head.ownerUid!==uid||head.studentId!==studentId||
+    head.assessmentId!==assessmentId||!Number.isInteger(head.revision)||
+    head.revision<1||head.revision>30||typeof head.projectId!=="string"||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(head.projectId))
+    throw Error("The prior submitted Studio project does not match this student account.");
+  if(!version||version.ownerUid!==uid||version.studentId!==studentId||
+    version.assessmentId!==assessmentId||version.projectId!==head.projectId||
+    version.revision!==head.revision||version.snapshotHash!==head.snapshotHash||
+    typeof version.snapshotJson!=="string")
+    throw Error("The frozen Studio source no longer matches its submitted record.");
+  if(await studioDigest(version.snapshotJson)!==head.snapshotHash)
+    throw Error("The frozen Studio source failed its integrity check.");
+  const snapshot=verifyStudioSnapshot(version.snapshotJson,version.snapshotHash);
+  if(!["java","python","web","csharp","cpp","dart"].includes(snapshot.lang)||
+    !Object.keys(snapshot.files||{}).length||
+    Object.values(snapshot.files).every(text=>typeof text!=="string"||!text.trim()))
+    throw Error("The frozen Studio submission contains no recoverable source code.");
+  return {projectId:head.projectId,projectTitle:String(head.projectTitle||"Previous Studio project").slice(0,120),
+    revision:head.revision,snapshot};
+}
