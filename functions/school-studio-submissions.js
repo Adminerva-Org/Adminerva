@@ -361,7 +361,7 @@ function createSchoolStudioSubmissionService({db}){
    if(Date.now()>task.data().dueAt.toMillis()&&!extensionDueAt)
     deny("failed-precondition","The original deadline passed. Set an explicit revision extension before reopening.");
    const auditRef=db.collection(prefix+"submission_audit").doc();
-   let revisionStudentUid=null;
+   let revisionStudentUid=null,revisionNotificationUid=null;
    await db.runTransaction(async tx=>{
     const currentTask=await isAuthorized(tx),lifecycle=currentTask.lifecycle||"active";
     if(["archived","cancelled"].includes(lifecycle))
@@ -374,8 +374,13 @@ function createSchoolStudioSubmissionService({db}){
     // Grade publication is a separate guarded service; if a published grade
     // exists, this operation must fail closed and require formal correction.
     revisionStudentUid=submission.data().studentUid;
-    const gradeRef=db.doc(prefix+"student_grades/"+hash(taskId,submission.data().studentUid));
-    const grade=await tx.get(gradeRef);
+    const gradeRef=db.doc(prefix+"student_grades/"+hash(taskId,submission.data().studentUid)),
+      studentPersonRef=db.doc(prefix+"people/"+checkId(submission.data().personId,"Student person",128)),
+      [grade,studentPerson]=await Promise.all([tx.get(gradeRef),tx.get(studentPersonRef)]);
+    if(studentPerson.exists&&studentPerson.data().schoolId===ctx.schoolId&&
+       studentPerson.data().kind==="student"&&studentPerson.data().status==="active"&&
+       typeof studentPerson.data().authUid==="string")
+      revisionNotificationUid=studentPerson.data().authUid;
     if(grade.exists&&grade.data().status==="published")
      deny("failed-precondition","Published grades cannot be reopened without the correction workflow.");
     const now=FieldValue.serverTimestamp();
@@ -384,8 +389,8 @@ function createSchoolStudioSubmissionService({db}){
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,submissionId,
       actorUid:ctx.uid,action:"studio_revision_requested",createdAt:now});
    });
-   if(revisionStudentUid)await writeSchoolNotification({
-     db,schoolId:ctx.schoolId,uid:revisionStudentUid,
+   if(revisionNotificationUid)await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:revisionNotificationUid,
      id:"studio_revision_"+taskId+"_"+submissionId,
      title:"Studio revision requested",
      body:(task.data().title||"Assessment")+" · your teacher requested changes before grading.",
