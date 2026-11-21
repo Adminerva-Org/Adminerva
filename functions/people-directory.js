@@ -8,6 +8,11 @@ function field(value,max,label) {
   if(typeof value!=="string"||!value.trim()||value.trim().length>max)invalid(label+" is required and must be shorter.");
   return value.trim();
 }
+function invitationIsActivePending(data,now=Date.now()){
+  if(!data||data.status!=="pending")return false;
+  const expires=data.expiresAt?.toMillis?.();
+  return !Number.isFinite(expires)||expires>now;
+}
 function id(value){
   if(typeof value!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(value))invalid("Invalid record identifier.");
   return value;
@@ -422,7 +427,8 @@ function createPeopleDirectoryService({db}) {
         invitations:invites.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>({
           invitationId:doc.id,status:doc.data().status,requestedRole:doc.data().requestedRole,
           expiresAt:doc.data().expiresAt?.toMillis?.()||null,
-          acceptedAt:doc.data().acceptedAt?.toMillis?.()||null
+          acceptedAt:doc.data().acceptedAt?.toMillis?.()||null,
+          revision:Number(doc.data().revision)||1
         })),
         relationships:relationships.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>
           data.kind==="student"?{
@@ -677,8 +683,8 @@ function createPeopleDirectoryService({db}) {
             .where("personId","==",personId).limit(101));
           if(invitations.size===101)
             throw new TenantAccessError("resource-exhausted","Invitation history requires reviewed pagination before archiving.");
-          if(invitations.docs.some(doc=>doc.data().status==="pending"))
-            throw new TenantAccessError("failed-precondition","Resolve or expire this person's pending invitation before archiving.");
+          if(invitations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&invitationIsActivePending(doc.data())))
+            throw new TenantAccessError("failed-precondition","Revoke this person's active pending invitation before archiving.");
           if(data.kind==="student"){
             const [enrollments,registrations]=await Promise.all([
               tx.get(db.collection("schools/"+ctx.schoolId+"/enrollments")
@@ -736,6 +742,34 @@ function createPeopleDirectoryService({db}) {
           action:"create_person",activationEmailPrepared:Boolean(activationEmailHash),createdAt:now});
       });
       return {personId:ref.id,accountLinked:false,activationReady:Boolean(activationEmailHash)};
+    }
+    if(input.action==="revoke_invitation"){
+      const invitationId=id(input.invitationId),expectedRevision=Number(input.expectedRevision),
+        reason=field(input.reason,500,"Invitation revoke reason"),
+        ref=db.doc("schools/"+ctx.schoolId+"/invitations/"+invitationId),
+        audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this invitation before revoking it.");
+      if(reason.length<12)invalid("Explain why this invitation is being revoked in at least 12 characters.");
+      let personId=null;
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const invitation=await tx.get(ref);
+        if(!invitation.exists||invitation.data().schoolId!==ctx.schoolId)
+          throw new TenantAccessError("not-found","The invitation is not in this school.");
+        const data=invitation.data(),revision=Number(data.revision)||1;
+        if(revision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This invitation changed after you opened it. Refresh the person details before revoking it.");
+        if(data.status!=="pending")
+          throw new TenantAccessError("failed-precondition","Only a pending invitation can be revoked.");
+        personId=data.personId||null;
+        const now=FieldValue.serverTimestamp();
+        tx.update(ref,{status:"revoked",revokedByUid:ctx.uid,revokedAt:now,revokeReason:reason,
+          revision:revision+1,updatedByUid:ctx.uid,updatedAt:now});
+        tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
+          invitationId,action:"invitation_revoked",reason,revision:revision+1,createdAt:now});
+      });
+      return {invitationId,personId,status:"revoked",revision:expectedRevision+1};
     }
     if(input.action==="invite") {
       const email=field(input.email,254,"Email").toLowerCase();
