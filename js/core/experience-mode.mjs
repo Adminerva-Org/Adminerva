@@ -15,7 +15,9 @@ if(home){
     document.documentElement.dataset.motion==='reduce'||
     document.documentElement.dataset.adminervaReduceMotion==='true';
   const storageKey='adminerva:experience-mode:'+role;
-  const requested=localStorage.getItem(storageKey);
+  const readMode=()=>{try{return localStorage.getItem(storageKey);}catch{return null;}};
+  const saveMode=value=>{try{localStorage.setItem(storageKey,value);}catch{/* Private browsing/storage denial: session still works. */}};
+  const requested=readMode();
   const initial=requested==='quick'?'quick':'full';
   document.documentElement.dataset.adminervaExperience=initial;
 
@@ -37,7 +39,7 @@ if(home){
   document.body.append(modeSwitch);
   function applyMode(mode,{focus=false}={}){
     document.documentElement.dataset.adminervaExperience=mode;
-    localStorage.setItem(storageKey,mode);
+    saveMode(mode);
     fullButton.setAttribute('aria-pressed',String(mode==='full'));
     quickButton.setAttribute('aria-pressed',String(mode==='quick'));
     if(mode==='quick'&&publicLike){
@@ -104,7 +106,7 @@ if(home){
       title:'One platform. <em>Every school stays distinct.</em>',
       summary:'Enter platform-level school operations without mixing them with school-admin authority.',
       actions:[
-        ['01','School registry','Open and maintain school tenants','owner-schools.html'],
+        ['01','System users','Review platform-level identities and access','system-users.html'],
         ['02','Support reports','Review platform-level issues requiring attention','issues.html'],
         ['03','Release history','Inspect verified public product releases','patch-notes.html']
       ]
@@ -292,7 +294,8 @@ if(home){
     const enter=el('button','avfx-role-enter','↓ Continue into operational dashboard');enter.type='button';
     stage.append(grid,enter);grid.append(copy,consoleEl);home.prepend(stage);
     const scrollDashboard=()=>{
-      const target=[...home.children].find(n=>n!==stage);
+      const target=[...home.children].find(n=>n!==stage&&
+        !((role==='student'||role==='teacher')&&n.classList?.contains('av-home-hero')));
       target?.scrollIntoView({behavior:reduce()?'auto':'smooth',block:'start'});
     };
     dashboard.addEventListener('click',scrollDashboard);enter.addEventListener('click',scrollDashboard);
