@@ -13,12 +13,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="css/lesson-print.css?v=1.4.23" />
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=47eba756913e" />
     <link rel="stylesheet" href="css/teacher-ux.css?v=20261115-nav1" />
 </head>
   <body class="av-teacher-refresh bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="lesson" data-page="planner"></div>
-    <script defer src="js/core/adminerva-nav.js?v=20261120-admin-foundation"></script>
+    <script defer src="js/core/adminerva-nav.js?v=47eba756913e"></script>
 
     <!-- Main Workspace -->
     <main class="w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1">
@@ -143,24 +143,8 @@
           </div>
         </div>
 
-        <section class="mb-4 rounded-xl border border-cyan-200 bg-cyan-50 p-4">
-          <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-            <div>
-              <p class="text-[10px] font-extrabold uppercase tracking-wider text-cyan-800">Teaching context</p>
-              <h3 class="font-extrabold text-cyan-950 mt-1">Prepare once, use in the right classroom</h3>
-              <p class="text-xs text-cyan-900 mt-1">Choosing a class pre-fills verified school context. The lesson remains your reusable preparation resource; it does not become student-visible until you deliberately use or share it in classroom work.</p>
-            </div>
-            <div id="plannerSchoolSwitcher" hidden class="w-full lg:w-auto lg:min-w-[240px]"></div>
-          </div>
-          <label for="lpClassOffering" class="block mt-3 font-semibold text-sm text-cyan-950">Assigned class context
-            <select id="lpClassOffering" class="mt-1 w-full p-3 border border-cyan-300 rounded bg-white">
-              <option value="">Reusable preparation · no single class selected</option>
-            </select>
-          </label>
-          <p id="plannerClassContextStatus" class="mt-2 text-xs text-cyan-900">Loading your verified teaching assignments…</p>
-        </section>
-        <div class="av-form-grid mb-4"><label for="lpSubject" class="font-semibold text-sm">Subject for this lesson<input id="lpSubject" list="plannerSubjectChoices" placeholder="Select or enter the school subject" class="w-full p-3 border rounded"><datalist id="plannerSubjectChoices"></datalist></label><label for="lpProgram" class="font-semibold text-sm">Program / pathway <span class="av-form-hint">Optional school context</span><input id="lpProgram" list="plannerProgramChoices" placeholder="Select or enter the program/pathway" class="w-full p-3 border rounded"><datalist id="plannerProgramChoices"></datalist></label></div><datalist id="plannerSchoolYears"></datalist>
-        <div class="av-button-row mb-4"><p id="plannerCatalogStatus" class="av-form-hint" role="status">Loading canonical school teaching choices…</p><button type="button" class="av-secondary-button" onclick="refreshPlannerSchoolChoices()">Refresh teaching context</button></div>
+        <div class="av-form-grid mb-4"><label for="lpSubject" class="font-semibold text-sm">Subject for this lesson<input id="lpSubject" list="plannerSubjectChoices" placeholder="Select or enter the school subject" class="w-full p-3 border rounded"><datalist id="plannerSubjectChoices"></datalist></label><label for="lpProgram" class="font-semibold text-sm">Track or pathway <span class="av-form-hint">Optional school context</span><input id="lpProgram" list="plannerProgramChoices" placeholder="Choose an offering if relevant" class="w-full p-3 border rounded"><datalist id="plannerProgramChoices"></datalist></label></div><datalist id="plannerSchoolYears"></datalist>
+        <div class="av-button-row mb-4"><p id="plannerCatalogStatus" class="av-form-hint" role="status">Loading school subjects and sections…</p><button type="button" class="av-secondary-button" onclick="refreshPlannerSchoolChoices()">Refresh school choices</button></div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-5">
           <div>
             <label
@@ -888,11 +872,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.min.js"></script>
     <script type="module" src="js/lesson-review/app-ui.js?v=3be69d3763c0"></script>
-    <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
-<script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
-    <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
+    <script defer src="js/core/release-footer.js?v=47eba756913e"></script>
+<script src="js/core/adminerva-loader.js?v=47eba756913e"></script>
+    <script type="module" src="js/core/auth-guard-v4-pilot.js?v=47eba756913e"></script>
     <script type="module" src="js/lesson-review/lesson-firebase.js?v=3be69d3763c0"></script>
-    <script type="module" src="js/lesson-review/planner-school-options.mjs?v=20261120-class-context1"></script>
+    <script type="module" src="js/lesson-review/planner-school-options.mjs?v=1.4.18"></script>
     <script type="module" src="js/lesson-review/ai-engine.js?v=1.4.28"></script>
     <script type="module" src="js/lesson-review/document-exporter.js?v=1.4.28"></script>
     <!-- 🚀 NEW: Importing the existing settings logic so we don't duplicate code -->
