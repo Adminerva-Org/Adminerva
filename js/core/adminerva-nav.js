@@ -74,6 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const isPlatformOwner = userRole === "platformowner" || root.dataset.platformAdmin === "true";
   const hasSchoolTeacher = root.dataset.schoolTeacher === "true";
   const hasSchoolStudent = root.dataset.schoolStudent === "true";
+  const studentSettingsRoute = hasSchoolStudent ? "school-student-settings.html" : "student-settings.html";
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   const platformTestMode = root.dataset.platformTestMode === "true";
@@ -211,7 +212,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
           <div id="av-account-controls" class="av-nav-tools flex items-center gap-2">
             <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-10 min-w-10 rounded-lg border border-slate-600 text-base font-bold hover:bg-slate-800" onclick="const m=document.getElementById('bug-modal');if(m){m.hidden=false;m.classList.remove('hidden')}">?</button>
-            <a href="${isStudent ? "student-settings.html" : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-10 min-w-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
+            <a href="${isStudent ? studentSettingsRoute : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-10 min-w-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
             <div class="flex flex-col items-end border-l border-slate-600 pl-3 min-w-0">
               <button type="button" id="signOutBtn" class="min-h-6 text-[11px] sm:text-xs text-slate-200 hover:text-white font-bold">Sign out</button>
               <details class="av-account-menu relative">
@@ -222,7 +223,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="av-nav-menu-panel absolute right-0 top-full mt-2 w-56 z-[120] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2 text-left">
                   <a href="issues.html" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
                   <a href="wiki.html#privacy" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Privacy</a>
-                  <a data-account-settings href="${isStudent ? "student-settings.html" : "settings.html"}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Settings</a>
+                  <a data-account-settings href="${isStudent ? studentSettingsRoute : "settings.html"}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Settings</a>
                 </div>
               </details>
             </div>
@@ -236,15 +237,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const roleDisplay = accountControls.querySelector(".av-nav-role");
     if (roleDisplay) roleDisplay.textContent = roleLabel;
     const settings = accountControls.querySelector('a[title="Account settings"]');
-    if (settings) settings.href = isStudent ? "student-settings.html" : "settings.html";
+    if (settings) settings.href = isStudent ? studentSettingsRoute : "settings.html";
     const accountSettings=accountControls.querySelector("[data-account-settings]");
-    if(accountSettings)accountSettings.href=isStudent?"student-settings.html":"settings.html";
+    if(accountSettings)accountSettings.href=isStudent?studentSettingsRoute:"settings.html";
   }
   if (informationPanel) root.append(informationPanel);
   const emailDisplay = root.querySelector("#userEmailDisplay");
   if (emailDisplay && root.dataset.accountEmail) emailDisplay.textContent = root.dataset.accountEmail;
   const informationSettings = root.querySelector("[data-information-settings]");
-  if (informationSettings) informationSettings.href = isStudent ? "student-settings.html" : "settings.html";
+  if (informationSettings) informationSettings.href = isStudent ? studentSettingsRoute : "settings.html";
 
   const appendStatus=(row,meta)=>{
     const cluster=document.createElement("span");cluster.className="av-nav-status-cluster";
@@ -348,7 +349,9 @@ document.addEventListener("DOMContentLoaded", () => {
       // The shared support page has data-module="global" for both roles.
       // Its account shortcut must still lead students to student settings.
       const settingsLink = root.querySelector("[data-information-settings]");
-      if (settingsLink) settingsLink.href = currentRole === "student" ? "student-settings.html" : "settings.html";
+      if (settingsLink) settingsLink.href = currentRole === "student"
+        ? (root.dataset.schoolStudent==="true"?"school-student-settings.html":"student-settings.html")
+        : "settings.html";
     })
     .catch(() => {
       reportButton.title = "Report Issue";

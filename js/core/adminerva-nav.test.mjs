@@ -278,6 +278,14 @@ test('verified role changes replace stale student or teacher links without multi
   assert.equal(view.documentEvents.keydown.length,1);
 });
 
+test('verified V4 student settings routes use the canonical school settings surface',()=>{
+  const view=mount('student','assessments','student',false,{dataset:{schoolStudent:'true'}});
+  const routes=links(view.desktop).map(link=>link.href);
+  assert.match(view.root.innerHTML,/href="school-student-settings\.html"/);
+  assert.doesNotMatch(view.root.innerHTML,/title="Account settings"[^>]+href="student-settings\.html"/);
+  assert.ok(routes.includes('school-student-settings.html#connected-services'));
+});
+
 test('verified student access replaces stale teacher navigation in the same tab',()=>{
   const view=mount('student-practice','xml','teacher');
   view.roleReady('student');

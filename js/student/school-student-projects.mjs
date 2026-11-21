@@ -1,7 +1,7 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {GithubAuthProvider,linkWithPopup,reauthenticateWithPopup} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
+import {authorizeGithubSession,getGithubSession} from "./github-session.mjs?v=20261122-settings";
 
 const functions=getFunctions(app,"asia-southeast1");
 const profileApi=httpsCallable(functions,"schoolStudentProfile");
@@ -9,7 +9,7 @@ const assessmentApi=httpsCallable(functions,"schoolAssessments");
 const gradeApi=httpsCallable(functions,"schoolGradebook");
 const studioApi=httpsCallable(functions,"schoolStudioProjects");
 const el=id=>document.getElementById(id);
-let profile=null,assignments=[],grades=new Map(),studioProjects=[],sessionGithubToken="",busy=false,epoch=0,repositoryEpoch=0,studioLimit=12,availability={};
+let profile=null,assignments=[],grades=new Map(),studioProjects=[],busy=false,epoch=0,repositoryEpoch=0,studioLimit=12,availability={};
 const projectParams=new URLSearchParams(location.search);
 const requestedOfferingId=projectParams.get("offeringId")||"";
 const requestedSubjectId=projectParams.get("subjectId")||"";
@@ -101,13 +101,13 @@ function renderAssignments(){
   }
 }
 async function githubJson(url){
-  const headers={Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};
-  if(sessionGithubToken)headers.Authorization="Bearer "+sessionGithubToken;
+  const {token}=getGithubSession(),headers={Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};
+  if(token)headers.Authorization="Bearer "+token;
   const response=await fetch(url,{headers});
-  if(response.status===404&&!sessionGithubToken)
-    throw new Error("Repository is private or unavailable. Authorize GitHub for this session if you have access.");
+  if(response.status===404&&!token)
+    throw new Error("Repository is private or unavailable. Connect GitHub in Settings or authorize it here for this browser session.");
   if(response.status===401||response.status===403)
-    throw new Error("GitHub session authorization expired or lacks repository permission.");
+    throw new Error("GitHub session authorization expired or lacks repository permission. Reconnect GitHub in Settings.");
   if(!response.ok)throw new Error("GitHub returned HTTP "+response.status+".");
   return response.json();
 }
@@ -174,25 +174,23 @@ async function loadRepositoryActivity(){
       stat("Unavailable","Recent commits"),stat("—","Last activity"));
   }
 }
+function renderGithubSession(){
+  const session=getGithubSession();
+  el("projectHubGithubSession").textContent=session.active
+    ?"GitHub session active"+(session.username?" as @"+session.username:"")+". The OAuth credential remains in this browser tab and is not stored in the school profile."
+    :"Private GitHub authorization is not active. Connect GitHub in Settings or authorize it here when a private repository needs access.";
+}
 async function authorizeGithub(){
   if(busy)return;
-  const user=auth.currentUser;if(!user)return;
-  const provider=new GithubAuthProvider();provider.addScope("repo");provider.addScope("read:user");
-  setBusy(true);say("Authorizing GitHub for this browser session…");
+  setBusy(true);say("Connecting GitHub for this browser session…");
   try{
-    const linked=user.providerData.some(item=>item.providerId==="github.com");
-    const result=linked?await reauthenticateWithPopup(user,provider):await linkWithPopup(user,provider);
-    if(auth.currentUser?.uid!==user.uid)throw new Error("Adminerva account changed during GitHub authorization.");
-    const credential=GithubAuthProvider.credentialFromResult(result);
-    if(!credential?.accessToken)throw new Error("GitHub did not return a usable session credential.");
-    sessionGithubToken=credential.accessToken;
-    el("projectHubGithubSession").textContent="Private GitHub access is authorized for this page session only. Reloading or signing out discards the token.";
-    say("GitHub authorized for this session. No OAuth token was written to school Firestore.");
+    const session=await authorizeGithubSession();
+    renderGithubSession();
+    say("GitHub connected"+(session.username?" as @"+session.username:"")+". No OAuth token was written to school Firestore.");
     await loadRepositoryActivity();
   }catch(error){
-    if(error?.code==="auth/credential-already-in-use")
-      say("This GitHub identity is linked to another Adminerva sign-in. No school profile was changed.",true);
-    else say(error?.message||"GitHub authorization did not finish.",true);
+    renderGithubSession();
+    say(error?.message||"GitHub authorization did not finish.",true);
   }finally{setBusy(false);}
 }
 async function refresh(){
@@ -236,6 +234,9 @@ async function refresh(){
   }catch(error){if(current())say(error?.message||"Project Hub could not load.",true);}
   finally{if(current())setBusy(false);}
 }
+renderGithubSession();
+document.addEventListener("adminerva:github-session",renderGithubSession);
+
 const picker=createTenantSchoolPicker({
   host:el("projectHubSchoolSwitcher"),status:el("projectHubStatus"),
   onBeforeChange:async()=>{

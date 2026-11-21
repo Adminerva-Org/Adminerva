@@ -1,6 +1,7 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
+import {authorizeGithubSession,firebaseGithubLinked,getGithubSession} from "./github-session.mjs?v=20261122-settings";
 
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolStudentProfile");
 const el=id=>document.getElementById(id);
@@ -23,8 +24,56 @@ function setBusy(value){
   busy=value;
   for(const control of document.querySelectorAll("#studentSettingsWorkspace input,#studentSettingsWorkspace button"))
     control.disabled=value;
+  const github=el("studentSettingsGithubConnect");if(github)github.disabled=value;
 }
 function classLabel(item){return [item.section,item.subject,item.term,item.year].filter(Boolean).join(" · ");}
+function providerLabel(providerId){
+  if(providerId==="google.com")return "Google";
+  if(providerId==="github.com")return "GitHub";
+  if(providerId==="password")return "Email / password";
+  return providerId||"Unknown";
+}
+function renderAccount(){
+  const user=auth.currentUser,providers=[...new Set((user?.providerData||[]).map(item=>providerLabel(item.providerId)))];
+  el("studentSettingsAccountEmail").textContent=user?.email||"Unavailable";
+  el("studentSettingsProviders").textContent=providers.length?providers.join(" · "):"Primary sign-in";
+  el("studentSettingsAccountBadge").textContent=user?.emailVerified===false?"Email verification needed":"Verified sign-in";
+  el("studentSettingsAccountBadge").className="rounded-full px-3 py-1 text-xs font-bold "+
+    (user?.emailVerified===false?"bg-amber-50 text-amber-700":"bg-emerald-50 text-emerald-700");
+  renderGithub();
+}
+function renderGithub(){
+  const user=auth.currentUser,session=getGithubSession(user?.uid),linked=firebaseGithubLinked(user),
+    state=el("studentSettingsGithubState"),detail=el("studentSettingsGithubDetail"),button=el("studentSettingsGithubConnect");
+  if(session.active){
+    state.textContent="Session active"+(session.username?" · @"+session.username:"");
+    state.className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 text-xs font-bold";
+    detail.textContent="Private repository access is available in this browser tab. Project Hub and repository evidence can reuse this session.";
+    button.textContent="Reconnect GitHub";
+  }else if(linked){
+    state.textContent="Linked · session authorization needed";
+    state.className="rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 text-xs font-bold";
+    detail.textContent="GitHub is linked to your Adminerva login, but private repository access needs a fresh browser-session authorization.";
+    button.textContent="Authorize GitHub";
+  }else{
+    state.textContent="Not connected";
+    state.className="rounded-full bg-slate-100 text-slate-600 px-2 py-1 text-xs font-bold";
+    detail.textContent="Connect GitHub here if a class uses repository evidence or you need access to private repositories.";
+    button.textContent="Connect GitHub";
+  }
+}
+async function connectGithub(){
+  if(busy)return;
+  setBusy(true);say("Connecting GitHub to this browser session…");
+  try{
+    const session=await authorizeGithubSession();
+    renderAccount();render();
+    say("GitHub connected"+(session.username?" as @"+session.username:"")+". Repository configuration and historical school evidence were not rewritten.");
+  }catch(error){
+    renderAccount();
+    say(error?.message||"GitHub connection did not finish.",true);
+  }finally{setBusy(false);}
+}
 function repositoryForm(item){
   const form=make("form","rounded-xl border border-slate-200 p-4");
   form.dataset.offeringId=item.offeringId;
@@ -43,7 +92,8 @@ function repositoryForm(item){
   repoLabel.append(repoInput);
   const userLabel=make("label","text-sm font-bold","GitHub username (optional)");
   const userInput=document.createElement("input");userInput.name="githubUsername";userInput.maxLength=39;
-  userInput.className="mt-1 w-full border rounded-lg p-2.5";userInput.value=item.githubUsername||"";
+  userInput.className="mt-1 w-full border rounded-lg p-2.5";
+  userInput.value=item.githubUsername||getGithubSession().username||"";
   userLabel.append(userInput);grid.append(repoLabel,userLabel);form.append(grid);
   const actions=make("div","mt-3 flex flex-wrap gap-2");
   const save=make("button","rounded-lg bg-cyan-800 text-white px-4 py-2 text-sm font-bold","Save repository");
@@ -59,9 +109,12 @@ function repositoryForm(item){
   return form;
 }
 function render(){
+  const count=profile?.classes?.length||0;
   el("studentSettingsName").textContent=profile?.displayName||"Student";
-  el("studentSettingsIdentity").textContent="Verified person "+(profile?.personId||"—")+" · "+
-    (profile?.classes?.length||0)+" active course offering"+((profile?.classes?.length||0)===1?"":"s");
+  el("studentSettingsIdentity").textContent=count+" active course offering"+(count===1?"":"s")+" linked to this verified school account.";
+  el("studentSettingsPersonId").textContent=profile?.personId||"—";
+  el("studentSettingsClassCount").textContent=String(count);
+  renderAccount();
   const host=el("studentSettingsClasses");host.replaceChildren();
   if(!profile?.classes?.length){
     host.append(make("p","rounded-xl border border-dashed p-4 text-sm text-slate-500",
@@ -101,6 +154,9 @@ async function clearRepository(item){
   }catch(error){say(error?.message||"Repository configuration was not cleared.",true);}
   finally{setBusy(false);}
 }
+el("studentSettingsGithubConnect")?.addEventListener("click",()=>void connectGithub());
+document.addEventListener("adminerva:github-session",()=>{renderAccount();render();});
+
 const picker=createTenantSchoolPicker({
   host:el("studentSettingsSchoolSwitcher"),status:el("studentSettingsStatus"),
   onBeforeChange:async()=>{

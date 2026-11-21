@@ -2,41 +2,134 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Student Settings · Adminerva</title>
+  <title>Settings · Adminerva</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=4d90ddb7ea65">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=65d73915f852">
 </head>
 <body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
 <div id="adminerva-nav" data-module="student" data-page="school-student-settings"></div>
-<main class="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
   <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
-    <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Verified school account</p>
-    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Student settings</h1>
-    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Review your school identity and save a GitHub repository for each active course offering. Provider access tokens are never stored in the school profile.</p>
-    <div id="studentSettingsSchoolSwitcher" hidden class="mt-4 max-w-sm"></div>
-  </header>
-  <p id="studentSettingsStatus" class="text-sm text-slate-600" role="status" aria-live="polite">Checking verified school access…</p>
-  <section id="studentSettingsWorkspace" hidden class="space-y-5">
-    <section class="bg-white border rounded-2xl p-4 sm:p-6 shadow-sm">
-      <p class="text-xs uppercase tracking-wide font-bold text-slate-500">School identity</p>
-      <h2 id="studentSettingsName" class="text-xl font-extrabold mt-1"></h2>
-      <p id="studentSettingsIdentity" class="text-sm text-slate-600 mt-2"></p>
-    </section>
-    <section class="bg-white border rounded-2xl p-4 sm:p-6 shadow-sm">
-      <div class="flex flex-wrap gap-3 justify-between items-start">
-        <div><h2 class="text-xl font-extrabold">Class repositories</h2><p class="text-sm text-slate-600 mt-1">Repository configuration is per course offering, so one project does not leak into another class.</p></div>
-        <a href="school-student-projects.html" class="rounded-lg border px-4 py-2 text-sm font-bold">Open Project Hub</a>
+    <p class="text-xs uppercase tracking-[.16em] font-bold text-cyan-300">My account</p>
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mt-1">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold">Settings &amp; profile</h1>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Manage your school identity, sign-in account, connected services, class repositories, notifications, display preferences and privacy controls from one place.</p>
       </div>
-      <div id="studentSettingsClasses" class="mt-5 grid gap-4"></div>
-    </section>
-    <section class="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
-      GitHub OAuth tokens are session credentials. Adminerva 4.0 does not store them in canonical school Firestore. Private repository access can be authorized temporarily from Project Hub when needed.
-    </section>
-  </section>
+      <div id="studentSettingsSchoolSwitcher" hidden class="w-full lg:w-80"></div>
+    </div>
+  </header>
+
+  <p id="studentSettingsStatus" class="mt-4 text-sm text-slate-600" role="status" aria-live="polite">Checking verified school access…</p>
+
+  <div id="studentSettingsWorkspace" hidden class="mt-5 grid lg:grid-cols-[220px_minmax(0,1fr)] gap-5 items-start">
+    <aside class="lg:sticky lg:top-24 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm overflow-x-auto">
+      <nav aria-label="Settings sections" class="flex lg:flex-col gap-1 min-w-max lg:min-w-0">
+        <a href="#profile" class="rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Profile</a>
+        <a href="#account-access" class="rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Account &amp; access</a>
+        <a href="#connected-services" class="rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Connected services</a>
+        <a href="#preferences" class="rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Notifications &amp; display</a>
+        <a href="#privacy-support" class="rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Privacy &amp; support</a>
+      </nav>
+    </aside>
+
+    <div class="space-y-5 min-w-0">
+      <section id="profile" class="scroll-mt-24 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+        <p class="text-xs uppercase tracking-wide font-bold text-slate-500">Official school profile</p>
+        <div class="mt-2 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <h2 id="studentSettingsName" class="text-xl sm:text-2xl font-extrabold"></h2>
+            <p id="studentSettingsIdentity" class="text-sm text-slate-600 mt-2"></p>
+          </div>
+          <span class="inline-flex w-fit rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 text-xs font-bold">Verified school record</span>
+        </div>
+        <dl class="mt-5 grid sm:grid-cols-2 gap-3">
+          <div class="rounded-xl bg-slate-50 border border-slate-200 p-3">
+            <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">School profile ID</dt>
+            <dd id="studentSettingsPersonId" class="mt-1 text-sm font-semibold break-all">—</dd>
+          </div>
+          <div class="rounded-xl bg-slate-50 border border-slate-200 p-3">
+            <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Active classes</dt>
+            <dd id="studentSettingsClassCount" class="mt-1 text-sm font-semibold">—</dd>
+          </div>
+        </dl>
+        <p class="mt-4 text-xs text-slate-500">Your official name, registration and class placement are school records. If any of these are incorrect, request a correction from your school administrator or registrar rather than editing the academic record yourself.</p>
+      </section>
+
+      <section id="account-access" class="scroll-mt-24 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+        <div class="flex flex-wrap gap-3 justify-between items-start">
+          <div>
+            <p class="text-xs uppercase tracking-wide font-bold text-slate-500">Sign-in identity</p>
+            <h2 class="text-xl font-extrabold mt-1">Account &amp; access</h2>
+            <p class="text-sm text-slate-600 mt-1">Your login identity is separate from your official school-person record.</p>
+          </div>
+          <span id="studentSettingsAccountBadge" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">Checking…</span>
+        </div>
+        <dl class="mt-5 grid sm:grid-cols-2 gap-3">
+          <div class="rounded-xl border border-slate-200 p-3">
+            <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Signed-in email</dt>
+            <dd id="studentSettingsAccountEmail" class="mt-1 text-sm font-semibold break-all">—</dd>
+          </div>
+          <div class="rounded-xl border border-slate-200 p-3">
+            <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Sign-in methods</dt>
+            <dd id="studentSettingsProviders" class="mt-1 text-sm font-semibold">—</dd>
+          </div>
+        </dl>
+        <p class="mt-4 text-xs text-slate-500">Account recovery may change the sign-in identity without changing your historical enrollments, submissions, grades or evidence.</p>
+      </section>
+
+      <section id="connected-services" class="scroll-mt-24 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+        <div class="flex flex-col sm:flex-row gap-3 sm:items-start sm:justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-wide font-bold text-slate-500">Integrations</p>
+            <h2 class="text-xl font-extrabold mt-1">Connected services</h2>
+            <p class="text-sm text-slate-600 mt-1">Connect services once, then configure where each class should use them.</p>
+          </div>
+          <a href="school-student-projects.html" class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-center">Open Project Hub</a>
+        </div>
+
+        <article class="mt-5 rounded-xl border border-slate-200 p-4">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex flex-wrap gap-2 items-center">
+                <h3 class="font-extrabold">GitHub</h3>
+                <span id="studentSettingsGithubState" class="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">Not connected for this session</span>
+              </div>
+              <p id="studentSettingsGithubDetail" class="text-sm text-slate-600 mt-2">Connect GitHub to access private repositories and verify repository activity during this browser session.</p>
+            </div>
+            <button id="studentSettingsGithubConnect" type="button" class="rounded-lg bg-slate-900 text-white px-4 py-2.5 text-sm font-bold shrink-0">Connect GitHub</button>
+          </div>
+          <p class="text-xs text-slate-500 mt-3">OAuth access tokens are temporary browser-session credentials. They are not stored in the canonical school profile.</p>
+        </article>
+
+        <div class="mt-6 flex flex-wrap gap-3 justify-between items-start">
+          <div>
+            <h3 class="font-extrabold text-lg">Class repositories</h3>
+            <p class="text-sm text-slate-600 mt-1">Repository configuration is saved per active course offering so one project does not leak into another class.</p>
+          </div>
+        </div>
+        <div id="studentSettingsClasses" class="mt-4 grid gap-4"></div>
+      </section>
+
+      <section id="preferences" class="scroll-mt-24 av-panel" data-account-preferences="student"></section>
+
+      <section id="privacy-support" class="scroll-mt-24 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+        <p class="text-xs uppercase tracking-wide font-bold text-slate-500">Your controls</p>
+        <h2 class="text-xl font-extrabold mt-1">Privacy &amp; support</h2>
+        <p class="text-sm text-slate-600 mt-2">Review how Adminerva handles data, report account or coursework problems, and understand what resetting interface preferences does not delete.</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a href="wiki.html#privacy" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">Privacy information</a>
+          <a href="issues.html" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">My reports &amp; support</a>
+          <a href="wiki.html" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">Help / Wiki</a>
+        </div>
+      </section>
+    </div>
+  </div>
 </main>
-<script defer src="js/core/release-footer.js?v=4d90ddb7ea65"></script>
-<script src="js/core/adminerva-loader.js?v=4d90ddb7ea65"></script>
-<script src="js/core/adminerva-nav.js?v=4d90ddb7ea65"></script>
-<script type="module" src="js/core/auth-guard-v4-pilot.js?v=4d90ddb7ea65"></script>
-<script type="module" src="js/student/school-student-settings.mjs?v=4.0.0"></script>
+<script defer src="js/core/release-footer.js?v=65d73915f852"></script>
+<script src="js/core/adminerva-loader.js?v=65d73915f852"></script>
+<script src="js/core/adminerva-nav.js?v=65d73915f852"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=65d73915f852"></script>
+<script type="module" src="js/student/school-student-settings.mjs?v=20261122-settings"></script>
+<script type="module" src="js/settings/account-preferences.mjs?v=20261122-settings"></script>
 </body></html>
