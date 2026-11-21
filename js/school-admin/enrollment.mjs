@@ -3,6 +3,10 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 
 const get=id=>document.getElementById(id);
+const endTypeLabel=value=>({
+  withdrawal:"Withdrawal",transfer_out:"Transfer out",
+  registration_cancelled:"Registration cancelled",other:"Other"
+})[value]||"";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
 const requestedPersonId=(()=>{try{
@@ -173,7 +177,10 @@ function renderRegistrations(){
       (item.studentNumber?" · "+item.studentNumber:"")+" · "+identityState+" · "+(item.source==="online"?"online application":"onsite");
     info.append(name,meta);
     const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;justify-content:flex-end";
-    const badge=document.createElement("span");badge.className="en-badge";badge.dataset.state=item.status||"active";badge.textContent=item.status||"active";actions.append(badge);
+    const badge=document.createElement("span");badge.className="en-badge";badge.dataset.state=item.status||"active";
+    badge.textContent=item.status==="ended"&&item.endReasonType
+      ?"ended · "+endTypeLabel(item.endReasonType).toLowerCase()
+      :(item.status||"active");actions.append(badge);
     const identityLink=document.createElement("a");identityLink.className="en-btn secondary";identityLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
     identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identityLink);
     if(item.status==="active"){
@@ -223,12 +230,16 @@ function openRegistrationChange(item,mode){
   if(saving)return;
   registrationChange={item,mode};
   const dialog=get("en-registration-change-dialog"),changeForm=get("en-registration-change-form"),
-    placement=get("en-registration-change-placement"),sectionSelect=changeForm.elements.sectionId,
+    placement=get("en-registration-change-placement"),endTypeSection=get("en-registration-end-type"),
+    sectionSelect=changeForm.elements.sectionId,endTypeSelect=changeForm.elements.endReasonType,
     confirmButton=get("en-registration-change-confirm");
   changeForm.reset();
   placement.hidden=mode!=="move";
+  endTypeSection.hidden=mode!=="end";
   sectionSelect.required=mode==="move";
   sectionSelect.disabled=mode!=="move";
+  endTypeSelect.required=mode==="end";
+  endTypeSelect.disabled=mode!=="end";
   confirmButton.disabled=false;
   get("en-registration-change-title").textContent=mode==="restore"?"Restore registration":
     mode==="move"?"Change official section":"End registration";
@@ -237,7 +248,7 @@ function openRegistrationChange(item,mode){
     ?"Restore only the subject enrollments that were ended with this registration. Restoration is blocked if another active official placement exists or required course offerings are no longer active."
     :mode==="move"
       ?"Move this active registration to another section in the same grade level and academic period. Adminerva ends the superseded official section enrollment, creates a new registration, moves only automatic section classes, and preserves the old registration, submissions, grades and audit history."
-      :"End this official registration and its active registration-owned subject enrollments without deleting the student identity or historical academic records.";
+      :"End this official registration and its active registration-owned subject enrollments without deleting the student identity or historical academic records. Classify the institutional reason so withdrawal, transfer-out and cancellation remain distinguishable later.";
   if(mode==="move"){
     sectionSelect.replaceChildren(new Option("Choose new section",""));
     const candidates=(catalog.sections||[]).filter(section=>section.id!==item.sectionId&&
@@ -272,6 +283,7 @@ get("en-registration-change-form").addEventListener("submit",event=>{
   const {item,mode}=registrationChange,values=new FormData(event.currentTarget),
     reason=String(values.get("reason")||"").trim(),
     sectionId=String(values.get("sectionId")||""),
+    endReasonType=String(values.get("endReasonType")||""),
     action=mode==="restore"?"restore_registration":mode==="move"?"change_registration_section":"end_registration";
   if(mode==="move"&&!automaticOfferings(item,sectionId).length){
     get("en-registration-change-preview").textContent="Choose a section with at least one active automatic-roster class.";return;
@@ -284,7 +296,8 @@ get("en-registration-change-form").addEventListener("submit",event=>{
     try{
       const result=await perform(action,{
         registrationId:item.registrationId,reason,
-        ...(mode==="move"?{sectionId,expectedRevision:item.revision}: {})
+        ...(mode==="move"?{sectionId,expectedRevision:item.revision}: {}),
+        ...(mode==="end"?{endReasonType}: {})
       });
       const targetName=catalog.sections.find(row=>row.id===sectionId)?.name||sectionId;
       const message=mode==="restore"
@@ -292,7 +305,8 @@ get("en-registration-change-form").addEventListener("submit",event=>{
         :mode==="move"
           ?item.displayName+" moved to "+targetName+" · "+result.courseCount+" automatic class"+(result.courseCount===1?"":"es")+
             " active · "+result.endedCourses+" prior official class enrollment"+(result.endedCourses===1?"":"s")+" ended. Historical records were preserved."
-          :item.displayName+" ended · "+result.courseCount+" active subject enrollment"+(result.courseCount===1?"":"s")+" ended.";
+          :item.displayName+" ended · "+endTypeLabel(result.endReasonType)+
+            " · "+result.courseCount+" active official subject enrollment"+(result.courseCount===1?"":"s")+" ended.";
       registrationChange=null;get("en-registration-change-dialog").close();
       await loadRegistrations();
       status.textContent=message;
