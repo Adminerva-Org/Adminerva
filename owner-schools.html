@@ -29,6 +29,10 @@
     .own-onboard-step[data-complete="true"]{background:#ecfdf5;color:#166534;border-color:#86efac}
     .own-onboard-actions{display:flex;gap:.5rem;flex-wrap:wrap}
     .own-helper{display:block;margin:-.65rem 0 .85rem;color:#64748b;font-size:.78rem}
+    .own-section-nav{display:flex;gap:.4rem;overflow-x:auto;padding:.45rem;margin:.8rem 0 1rem;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc;scroll-snap-type:x proximity}
+    .own-section-nav a{flex:0 0 auto;min-height:40px;display:inline-flex;align-items:center;padding:.45rem .7rem;border-radius:8px;color:#334155;text-decoration:none;font-size:.78rem;font-weight:800;white-space:nowrap;scroll-snap-align:start}
+    .own-section-nav a:hover,.own-section-nav a:focus-visible{background:white;color:#1d4ed8;outline:none;box-shadow:0 0 0 2px #93c5fd}
+    #owner-pilot-command,#owner-standard-setup,#owner-admin-list-section,#owner-audit-section,#owner-cutover-readiness-section{scroll-margin-top:8rem}
     [hidden]{display:none!important}
     @media(max-width:740px){.own-grid{grid-template-columns:minmax(0,1fr)}.own-onboard-steps{grid-template-columns:1fr}.own-onboard-actions .own-button{width:100%}}
   </style>
@@ -89,6 +93,13 @@
   <section id="owner-actions" class="own-card" hidden>
    <h2 id="owner-current" style="font-size:1.2rem;font-weight:750"></h2>
    <p id="owner-current-status" class="own-muted"></p>
+   <nav class="own-section-nav" aria-label="Selected institution controls">
+    <a href="#owner-pilot-command">Lifecycle</a>
+    <a href="#owner-standard-setup">Setup</a>
+    <a href="#owner-admin-list-section">Administrators</a>
+    <a href="#owner-audit-section">Audit &amp; governance</a>
+    <a href="#owner-cutover-readiness-section" data-legacy-provisioning>Legacy migration</a>
+   </nav>
    <section id="owner-pilot-command" style="margin-top:1rem;padding:1rem;border:2px solid #0891b2;border-radius:12px;background:#ecfeff">
     <p class="own-muted" style="font-weight:750;text-transform:uppercase;letter-spacing:.04em">School lifecycle</p>
     <h3 style="font-size:1.1rem;font-weight:800;margin:.2rem 0">School state &amp; action</h3>
