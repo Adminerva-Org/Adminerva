@@ -24,7 +24,7 @@ function setWorkflow(id,value,noun){
   node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(!known?"bg-amber-100 text-amber-900":numeric>0?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");
 }
 function applyEnrollmentRoute(scope){
-  const standard=scope.current?.schoolId==="manila-cathedral-school"&&scope.current?.compatibilityMode==="v4_only";
+  const standard=scope.current?.compatibilityMode==="v4_only";
   const href=standard?"school-enrollment.html":"people-access.html#classes";
   enrollmentHref=href;
   const workflow=get("adminWorkflowEnrollmentLink"),shortcut=get("adminEnrollmentShortcut");
@@ -166,8 +166,7 @@ function issueHref(item){
   if(item.source==="record")return item.targetTab==="classes"?"school-classes.html":"school-class-records.html";
   const identityIssue=Boolean(item.personId)&&["access","invites","people"].includes(item.targetTab);
   if(identityIssue)return "people-access.html?personId="+encodeURIComponent(item.personId)+"#people";
-  if(item.type==="student_no_enrollment"&&picker?.scope.current?.schoolId==="manila-cathedral-school"&&
-     picker.scope.current?.compatibilityMode==="v4_only")return "school-enrollment.html";
+  if(item.type==="student_no_enrollment"&&picker?.scope.current?.compatibilityMode==="v4_only")return "school-enrollment.html";
   return "people-access.html#"+(tabs.has(item.targetTab)?item.targetTab:"overview");
 }
 function recordState(record){
