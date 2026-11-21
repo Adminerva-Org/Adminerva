@@ -93,7 +93,7 @@ export function canClearCompletedBulkExchange({referenceMap,staged,rows,savedIds
   return ![...referenceMap.values()].some(original=>{
     const current=(rows||[]).find(row=>
       String(row?.submissionId||row?.recordId||"")===original.key);
-    return current&&!current.gradeStatus&&!savedIds.has(original.key);
+    return !current||(!current.gradeStatus&&!savedIds.has(original.key));
   });
 }
 
