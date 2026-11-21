@@ -5,6 +5,7 @@ const items=[
   {key:"people",label:"People",href:"people-access.html",group:"setup"},
   {key:"classes",label:"Classes",href:"school-classes.html",group:"operate"},
   {key:"enrollment",label:"Enrollment",href:"school-enrollment.html",group:"operate"},
+  {key:"student-records",label:"Student Records",href:"school-student-records.html",group:"operate"},
   {key:"grading",label:"Grading",href:"school-grading-schemes.html",group:"operate"},
   {key:"attendance",label:"Attendance",href:"school-attendance.html",group:"monitor"},
   {key:"records",label:"Records",href:"school-class-records.html",group:"monitor"}
@@ -17,6 +18,7 @@ const aliases={
   "people-access.html":"people",
   "school-classes.html":"classes",
   "school-enrollment.html":"enrollment",
+  "school-student-records.html":"student-records",
   "school-grading-schemes.html":"grading",
   "school-attendance.html":"attendance",
   "school-class-records.html":"records"
