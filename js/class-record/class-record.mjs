@@ -77,6 +77,7 @@ let currentOffering=null;
 let roster=[];
 let assessments=[];
 let collaborators=[];
+let permissions={primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,classRole:"co_teacher",canEditClassRecord:false};
 let columns=[];
 let gradingSchemes=[];
 let pendingSchemeSnapshot=null;
@@ -133,6 +134,7 @@ function scoped(api,action,details={}){
 function selectedOffering(){
   return offerings.find(item=>item.offeringId===currentOfferingId)||currentOffering||null;
 }
+function canEditClassRecord(){return permissions?.canEditClassRecord===true}
 function syncClassRecordUrl(offeringId){
   const url=new URL(location.href);
   if(offeringId)url.searchParams.set("offering",offeringId);else url.searchParams.delete("offering");
@@ -286,11 +288,19 @@ function syncCollaborators(){
     collaboratorsNode.hidden=true;collaboratorsNode.textContent="";return;
   }
   collaboratorsNode.hidden=false;
-  collaboratorsNode.className="text-xs text-slate-500 mt-1";
-  if(collaborators.length===1){
-    collaboratorsNode.hidden=true;collaboratorsNode.textContent="";return;
+  const primary=collaborators.find(row=>row.role==="primary")||null,
+    coTeachers=collaborators.filter(row=>row.role==="co_teacher");
+  if(canEditClassRecord()){
+    collaboratorsNode.className="text-xs font-semibold text-emerald-700 mt-1";
+    collaboratorsNode.textContent="Primary Teacher · formal Class Record editing enabled"+
+      (coTeachers.length?" · "+coTeachers.length+" Co-teacher"+(coTeachers.length===1?"":"s")+" have read access.":"");
+  }else{
+    collaboratorsNode.className="text-xs font-semibold text-amber-800 mt-1";
+    collaboratorsNode.textContent=permissions.primaryNeedsReview?
+      "Read-only Class Record · School Admin must set a valid Primary Teacher before formal-record changes can continue.":
+      "Read-only Class Record · Primary Teacher: "+(primary?.name||"not available")+
+      ". Assessment review remains available only for tasks assigned to you.";
   }
-  collaboratorsNode.textContent="Shared with "+collaborators.length+" assigned teachers.";
 }
 function syncFinalizationBanner(){
   if(!finalization){
@@ -324,15 +334,16 @@ function updateKpis(){
 }
 function setBusy(value,message=""){
   busy=value;
+  const editable=canEditClassRecord();
   offeringSelect.disabled=value||!offerings.length;
-  addButton.disabled=value||!currentOfferingId;
-  setupButton.disabled=value||!currentOfferingId;
+  addButton.disabled=value||!currentOfferingId||!editable;
+  setupButton.disabled=value||!currentOfferingId||!editable;
   refreshButton.disabled=value||!currentOfferingId;
-  saveScoresButton.disabled=value||!dirtyColumns.size;
-  importButton.disabled=value||!currentOfferingId||!activeManualColumns().length;
-  archivedButton.disabled=value||!currentOfferingId;
-  visibilityButton.disabled=value||!currentOfferingId||!activeColumns().length||dirtyColumns.size>0;
-  finalizeButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
+  saveScoresButton.disabled=value||!dirtyColumns.size||!editable;
+  importButton.disabled=value||!currentOfferingId||!activeManualColumns().length||!editable;
+  archivedButton.disabled=value||!currentOfferingId||!editable;
+  visibilityButton.disabled=value||!currentOfferingId||!activeColumns().length||dirtyColumns.size>0||!editable;
+  finalizeButton.disabled=value||!currentOfferingId||dirtyColumns.size>0||!editable;
   exportButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   exportXlsxButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   printButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
@@ -406,11 +417,12 @@ function updateDirtyState(){
     input.dataset.dirty=String(changed);
     if(changed)dirtyColumns.add(input.dataset.columnId);
   });
-  saveScoresButton.disabled=busy||!dirtyColumns.size;
-  importButton.disabled=busy||!currentOfferingId||!activeManualColumns().length;
-  archivedButton.disabled=busy||!currentOfferingId;
-  visibilityButton.disabled=busy||!currentOfferingId||!activeColumns().length||dirtyColumns.size>0;
-  finalizeButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
+  const editable=canEditClassRecord();
+  saveScoresButton.disabled=busy||!dirtyColumns.size||!editable;
+  importButton.disabled=busy||!currentOfferingId||!activeManualColumns().length||!editable;
+  archivedButton.disabled=busy||!currentOfferingId||!editable;
+  visibilityButton.disabled=busy||!currentOfferingId||!activeColumns().length||dirtyColumns.size>0||!editable;
+  finalizeButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0||!editable;
   exportButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   exportXlsxButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   printButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
@@ -480,14 +492,17 @@ function decorateScoreCell(td,column,student){
     dot.setAttribute("aria-label",modified);
     td.append(dot);
   }
-  const menu=make("button","cr-cell-menu","⋯");
-  menu.type="button";
-  menu.title="Change score status";
-  menu.setAttribute("aria-label","Change "+column.label+" status for "+student.name);
-  menu.addEventListener("click",()=>openScoreStatus(column,student));
-  td.append(menu);
+  if(canEditClassRecord()){
+    const menu=make("button","cr-cell-menu","⋯");
+    menu.type="button";
+    menu.title="Change score status";
+    menu.setAttribute("aria-label","Change "+column.label+" status for "+student.name);
+    menu.addEventListener("click",()=>openScoreStatus(column,student));
+    td.append(menu);
+  }
 }
 function openScoreStatus(column,student){
+  if(!canEditClassRecord()){say("Only the Primary Teacher may change formal Class Record score statuses.");return;}
   if(dirtyColumns.size){
     say("Save manual score changes before changing a score status.");return;
   }
@@ -569,27 +584,27 @@ function render(){
     const actions=make("div","mt-2 flex items-center justify-center gap-2 flex-wrap");
     if(index>0){
       const left=make("button","text-xs font-bold text-slate-600 underline","←");
-      left.type="button";left.title="Move column left";
+      left.type="button";left.title="Move column left";left.disabled=!canEditClassRecord();
       left.addEventListener("click",()=>moveColumn(column.columnId,-1));actions.append(left);
     }
     if(index<visibleColumns.length-1){
       const right=make("button","text-xs font-bold text-slate-600 underline","→");
-      right.type="button";right.title="Move column right";
+      right.type="button";right.title="Move column right";right.disabled=!canEditClassRecord();
       right.addEventListener("click",()=>moveColumn(column.columnId,1));actions.append(right);
     }
     const visibility=studentVisibility(column);
     const visibilityButton=make("button",
       "text-xs font-bold underline "+(visibility==="released"?"text-emerald-700":"text-slate-600"),
       visibility==="released"?"Visible":"Hidden");
-    visibilityButton.type="button";
+    visibilityButton.type="button";visibilityButton.disabled=!canEditClassRecord();
     visibilityButton.title=visibility==="released"?
       "Released in students' My Grades view":"Hidden from students' My Grades view";
     visibilityButton.addEventListener("click",()=>void toggleColumnVisibility(column));
     actions.append(visibilityButton);
     const edit=make("button","text-xs font-bold text-blue-700 underline","Edit");
-    edit.type="button";edit.addEventListener("click",()=>openColumnDialog(column));actions.append(edit);
+    edit.type="button";edit.disabled=!canEditClassRecord();edit.addEventListener("click",()=>openColumnDialog(column));actions.append(edit);
     const archive=make("button","text-xs font-bold text-amber-700 underline","Archive");
-    archive.type="button";archive.addEventListener("click",()=>archiveColumn(column));actions.append(archive);
+    archive.type="button";archive.disabled=!canEditClassRecord();archive.addEventListener("click",()=>archiveColumn(column));actions.append(archive);
     if(column.kind==="assessment"){
       const task=columnTask(column);
       if(task?.gradeRoute||task?.reviewRoute){
@@ -659,7 +674,7 @@ function render(){
         input.dataset.columnId=column.columnId;input.dataset.personId=student.personId;
         input.value=saved===null||saved===undefined?"":numberText(saved);
         input.dataset.original=input.value;input.dataset.dirty="false";
-        input.disabled=cellStatusFor(column.columnId,student.personId)!=="normal";
+        input.disabled=cellStatusFor(column.columnId,student.personId)!=="normal"||!canEditClassRecord();
         input.addEventListener("input",updateDirtyState);
         input.addEventListener("keydown",scoreKeydown);
         input.addEventListener("focus",()=>input.select());
@@ -905,6 +920,7 @@ async function saveStudentVisibility(){
   }finally{button.disabled=false;}
 }
 function openColumnDialog(column=null){
+  if(!canEditClassRecord()){say("Only the Primary Teacher may change the formal Class Record layout.");return;}
   if(column?.archived===true)return;
   editingColumnId=column?.columnId||null;
   columnForm.reset();
@@ -933,6 +949,10 @@ function maybeOpenAssessmentDeepLink(){
   const requested=pendingAssessmentDeepLink;
   if(!requested||deepLinkOfferingId&&deepLinkOfferingId!==currentOfferingId)return;
   pendingAssessmentDeepLink=null;clearAssessmentDeepLink();
+  if(!canEditClassRecord()){
+    say("This assessment is visible here, but only the Primary Teacher may link it into the formal Class Record.");
+    return;
+  }
   const task=assessments.find(item=>item.taskId===requested.taskId&&item.sourceType===requested.source);
   if(!task){
     say("The requested assessment is not available to link from this Class Record.");
@@ -960,6 +980,7 @@ function maybeOpenAssessmentDeepLink(){
     "Assessment preselected. Choose the grading category deliberately, then add the column.";
 }
 async function saveLayout(nextColumns,nextSettings=settings,success="Class Record layout saved."){
+  if(!canEditClassRecord())throw Error("Only the Primary Teacher may change the formal Class Record.");
   if(busy||!currentOfferingId)throw Error("Finish the current Class Record operation first.");
   if(dirtyColumns.size)throw Error("Save manual score changes before changing the Class Record layout.");
   setBusy(true,"Saving Class Record…");
@@ -977,6 +998,7 @@ async function saveLayout(nextColumns,nextSettings=settings,success="Class Recor
   }
 }
 async function saveManualScores(){
+  if(!canEditClassRecord()){say("Only the Primary Teacher may save formal Class Record scores.");return;}
   if(busy||!dirtyColumns.size)return;
   const inputs=[...tableWrap.querySelectorAll("input[data-column-id]")];
   const controls=inputs.filter(input=>!input.disabled);
@@ -1113,7 +1135,7 @@ function renderArchivedList(){
     if(column.kind==="assessment"&&column.sourceTitle)
       info.append(make("p","text-xs text-slate-500 mt-1",column.sourceTitle));
     const restore=make("button","cr-button","Restore");
-    restore.type="button";restore.addEventListener("click",()=>restoreColumn(column));
+    restore.type="button";restore.disabled=!canEditClassRecord();restore.addEventListener("click",()=>restoreColumn(column));
     card.append(info,restore);host.append(card);
   }
 }
@@ -1675,6 +1697,7 @@ async function loadWorkspace(){
     roster=result.roster||[];
     assessments=result.assessments||[];
     collaborators=result.collaborators||[];
+    permissions=result.permissions||{primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,classRole:"co_teacher",canEditClassRecord:false};
     columns=(result.columns||[]).map(column=>{
       const normalized=column.kind==="assessment"&&!column.assessmentSource
         ?{...column,assessmentSource:SCHOOL_SOURCE}:column;
@@ -1745,7 +1768,8 @@ offeringSelect.addEventListener("change",async()=>{
   if(dirtyColumns.size&&!confirm("Discard unsaved manual score changes and open another class?")){
     offeringSelect.value=currentOfferingId;return;
   }
-  currentOfferingId=next;syncClassRecordUrl(next);currentOffering=null;roster=[];assessments=[];collaborators=[];columns=[];
+  currentOfferingId=next;syncClassRecordUrl(next);currentOffering=null;roster=[];assessments=[];collaborators=[];
+  permissions={primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,classRole:"co_teacher",canEditClassRecord:false};columns=[];
   finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
   settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
   gradingPolicy=null;pendingSchemeSnapshot=null;
