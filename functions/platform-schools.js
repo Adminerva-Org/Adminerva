@@ -28,33 +28,66 @@ function governanceRoleId(value){
 async function standardSetupStatus({db,schoolId,schoolData}){
   const prefix="schools/"+schoolId+"/";
   const firstAdminUid=schoolData.firstAdminUid||null;
-  const [admin,profile,program,year,term,subject,section,offering]=await Promise.all([
+  const [admin,profile,programs,years,terms,subjects,sections,offerings]=await Promise.all([
     firstAdminUid?db.doc(prefix+"memberships/"+firstAdminUid).get():Promise.resolve(null),
     db.doc(prefix+"configuration/profile").get(),
-    db.collection(prefix+"academic_programs").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"academic_years").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"terms").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"subjects").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"sections").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"course_offerings").where("status","==","active").limit(1).get()
+    db.collection(prefix+"academic_programs").where("status","==","active").limit(101).get(),
+    db.collection(prefix+"academic_years").where("status","==","active").limit(101).get(),
+    db.collection(prefix+"terms").where("status","==","active").limit(201).get(),
+    db.collection(prefix+"subjects").where("status","==","active").limit(201).get(),
+    db.collection(prefix+"sections").where("status","==","active").limit(201).get(),
+    db.collection(prefix+"course_offerings").where("status","==","active").limit(201).get()
   ]);
   const firstAdminActive=Boolean(admin?.exists&&admin.data().schoolId===schoolId&&
     admin.data().status==="active"&&Array.isArray(admin.data().roles)&&
     admin.data().roles.includes("school_admin"));
+  const owned=docs=>docs.filter(doc=>doc.data().schoolId===schoolId),
+    activePrograms=owned(programs.docs),activeYears=owned(years.docs),activeTerms=owned(terms.docs),
+    activeSubjects=owned(subjects.docs),activeSections=owned(sections.docs),activeOfferings=owned(offerings.docs),
+    programMap=new Map(activePrograms.map(doc=>[doc.id,doc.data()])),
+    yearMap=new Map(activeYears.map(doc=>[doc.id,doc.data()])),
+    termMap=new Map(activeTerms.map(doc=>[doc.id,doc.data()])),
+    subjectMap=new Map(activeSubjects.map(doc=>[doc.id,doc.data()])),
+    sectionMap=new Map(activeSections.map(doc=>[doc.id,doc.data()]));
+  const coherentOffering=activeOfferings.find(doc=>{
+    const row=doc.data(),program=programMap.get(row.programId),year=yearMap.get(row.yearId),
+      term=termMap.get(row.termId),subject=subjectMap.get(row.subjectId),section=sectionMap.get(row.sectionId);
+    return Boolean(program&&year&&term&&subject&&section&&
+      term.yearId===row.yearId&&term.programId===row.programId&&
+      section.programId===row.programId);
+  })||null;
+  const catalogCapped=programs.size===101||years.size===101||terms.size===201||
+    subjects.size===201||sections.size===201||offerings.size===201;
+  const profileReady=Boolean(profile?.exists&&profile.data().schoolId===schoolId&&Number(profile.data().revision)>=1);
   const checks=[
     {id:"school_registered",ok:true,label:"School registered",detail:"The institution tenant exists."},
     {id:"school_admin",ok:firstAdminActive,label:"School Administrator assigned",
       detail:firstAdminActive?"The first School Administrator is active.":"Assign a verified School Administrator."},
-    {id:"school_profile",ok:Boolean(profile?.exists&&profile.data().schoolId===schoolId&&Number(profile.data().revision)>=1),
-      label:"School profile saved",detail:profile?.exists?"Canonical institution profile is saved.":"Save the official school profile, contact details and timezone."},
-    {id:"academic_year",ok:!year.empty,label:"School year configured",detail:year.empty?"Create the school year.":"School year is configured."},
-    {id:"program",ok:!program.empty,label:"Division / program configured",detail:program.empty?"Create at least one division or program.":"Division / program is configured."},
-    {id:"period",ok:!term.empty,label:"Academic period configured",detail:term.empty?"Create the current quarter, term or semester.":"Academic period is configured."},
-    {id:"subject",ok:!subject.empty,label:"Subject configured",detail:subject.empty?"Create at least one subject.":"Subject catalog is configured."},
-    {id:"section",ok:!section.empty,label:"Section configured",detail:section.empty?"Create at least one section.":"Section catalog is configured."},
-    {id:"offering",ok:!offering.empty,label:"Course offering configured",detail:offering.empty?"Connect a subject, section and academic period in a course offering.":"At least one course offering is configured."}
+    {id:"school_profile",ok:profileReady,label:"School profile saved",
+      detail:profileReady?"Canonical institution profile is saved.":"Save the official school profile, contact details and timezone."},
+    {id:"academic_year",ok:activeYears.length>0,label:"School year configured",
+      detail:activeYears.length?"At least one active school year is configured.":"Create the school year."},
+    {id:"program",ok:activePrograms.length>0,label:"Division / program configured",
+      detail:activePrograms.length?"At least one active division or program is configured.":"Create at least one division or program."},
+    {id:"period",ok:activeTerms.length>0,label:"Academic period configured",
+      detail:activeTerms.length?"At least one active academic period is configured.":"Create the current quarter, term or semester."},
+    {id:"subject",ok:activeSubjects.length>0,label:"Subject configured",
+      detail:activeSubjects.length?"The active subject catalog is available.":"Create at least one subject."},
+    {id:"section",ok:activeSections.length>0,label:"Section configured",
+      detail:activeSections.length?"The active section catalog is available.":"Create at least one section."},
+    {id:"offering",ok:Boolean(coherentOffering),label:"Coherent course offering configured",
+      detail:coherentOffering
+        ?"At least one active class offering points to an active, matching year, period, program, subject and section."
+        :activeOfferings.length
+          ?"Active class offerings exist, but none of the reviewed offerings has a fully active and internally consistent academic context."
+          :"Connect a subject, section and academic period in a course offering."}
   ];
+  if(catalogCapped)checks.push({
+    id:"setup_review_capacity",ok:false,label:"Setup validation capacity",
+    detail:"The draft school already exceeds the bounded setup-validation sample. Reduce duplicate setup records or use a paginated activation review before production authorization."
+  });
   return {schoolId,ready:checks.every(check=>check.ok),checks,firstAdminUid,firstAdminActive,
+    coherentOfferingId:coherentOffering?.id||null,
     state:schoolData.state,compatibilityMode:schoolData.compatibilityMode||"legacy_allowed",
     provisioningMode:schoolData.provisioningMode||
       ((schoolData.compatibilityMode||"legacy_allowed")==="v4_only"?"standard":"legacy_migration")};
