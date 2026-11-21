@@ -149,7 +149,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const reopened=currentRow?.status==="reopened";
     const loaded=Boolean(currentTask&&currentRow&&currentSnapshot&&!reviewNeedsRefresh);
     const evidenceReady=currentTask?.submissionSource!=="github"||
-      ["approved","reviewed"].includes(currentSnapshot?.status);
+      (["submitted","approved","reviewed"].includes(currentSnapshot?.status)&&
+        currentSnapshot?.hasSubmission!==false&&
+        (currentSnapshot?.selectedCommitShas?.length||0)>0);
     const readThrough=Boolean(currentTask?.legacyCompatibility);
     const historicalGithub=readThrough&&currentTask?.submissionSource==="github";
     const historicalScalar=historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1";
@@ -174,11 +176,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(message)document.getElementById("gbV4ReviewStatus").textContent=message;
   }
   // Shared GitHub evidence preparation for both single and bulk grading.
-  // The exact approved checkpoint, not a moving branch, controls all source.
+  // The student-submitted frozen checkpoint, not a moving branch, controls source.
   let githubClient=null,githubClientOwner="";
   async function prepareGithubEvaluation({task,snapshot}){
-    if(!["approved","reviewed"].includes(snapshot?.status))
-      throw Error("Approve the exact frozen GitHub evidence before AI evaluation.");
+    if(!["submitted","approved","reviewed"].includes(snapshot?.status)||
+       snapshot?.hasSubmission===false||!snapshot?.selectedCommitShas?.length)
+      throw Error("No student-submitted commits are available. Instructor discoveries do not authorize grades.");
     if(!auth.currentUser)throw Error("Sign in again before reviewing repository evidence.");
     const owner=auth.currentUser.uid;
     if(!githubClient||githubClientOwner!==owner){
@@ -192,16 +195,18 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const selected=Array.isArray(snapshot.selectedCommitShas)?snapshot.selectedCommitShas:[];
     const verified=Array.isArray(snapshot.verifiedContributionCommits)?
       snapshot.verifiedContributionCommits:[];
-    if(historical&&(!verified.length||verified.some(sha=>!selected.includes(sha))))
-      throw Error("Historical GitHub evaluation needs teacher-verified individual commits. Use the original contribution approval screen or grade manually.");
-    const evaluationEvidence=historical?
+    if(historical&&verified.some(sha=>!selected.includes(sha)))
+      throw Error("Existing verified commit annotations do not match the frozen student submission.");
+    const evaluationEvidence=historical&&verified.length?
       {...snapshot,selectedCommitShas:verified}:snapshot;
     const result=await buildV4RepositoryEvaluationSnapshot({
       snapshot:evaluationEvidence,client:githubClient
     });
-    if(historical&&verified.length!==selected.length)
+    if(historical&&verified.length&&verified.length!==selected.length)
       result.limitations.push((selected.length-verified.length)+
-        " selected historical commit(s) were excluded because they have no verified individual attribution.");
+        " selected historical commit(s) were excluded by the existing narrower teacher annotation.");
+    if(result.analysis.substantiveChanges===0&&result.analysis.uncertainChanges===0)
+      throw Error("No substantive code changes were detected in this submitted commit selection. Inspect the GitHub diff individually; no bulk grade is inferred.");
     return result;
   }
 
@@ -405,7 +410,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         details.append(make("p","text-xs font-bold mt-1 "+(grade?.status==="published"?"text-emerald-700":grade?"text-amber-700":"text-slate-600"),resultLine));
         const button=make("button","rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5 text-sm",
           view==="results"?(grade?"Open result":"Grade response"):
-            task.submissionSource==="github"?(historicalGithub?"Review repository":"Verify evidence"):"Review response");
+            task.submissionSource==="github"?"Review submitted commits":"Review response");
         button.type="button";
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
@@ -493,10 +498,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       }
       host.append(row);
     }
-    const approved=["approved","reviewed"].includes(snapshot?.status);
-    document.getElementById("gbV4GithubVerifyStatus").textContent=approved?
-      "This exact frozen evidence version already has teacher approval. Re-verification is optional before grading.":
-      "Verify that every selected commit is reachable from the frozen checkpoint, then inspect the diffs before approval.";
+    document.getElementById("gbV4GithubVerifyStatus").textContent=
+      snapshot?.hasSubmission===false?
+      "Historical teacher discovery only: there is no student submission, so no new grade is permitted.":
+      "Student-submitted commit evidence is checked automatically against the frozen checkpoint during evaluation. Git metadata alone does not establish authorship.";
     document.getElementById("gbV4GithubApproval").classList.add("hidden");
     document.getElementById("gbV4GithubApprovalNote").value="";
     githubVerification=null;
@@ -684,7 +689,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4LegacyGithubConfirm").checked=false;
     document.getElementById("gbV4LegacyGithubAttribution").textContent="";
     document.getElementById("gbV4LegacyGithubVerifyLink").hidden=true;
-    document.getElementById("gbV4GithubVerify").hidden=legacyGithub;
+    document.getElementById("gbV4GithubVerify").hidden=true;
     document.getElementById("gbV4LegacyGradePanel").hidden=true;
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
     document.getElementById("gbV4StudioEvidence").classList.toggle("hidden",currentTask.submissionSource!=="studio");
