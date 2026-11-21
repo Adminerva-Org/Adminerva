@@ -173,9 +173,42 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     busy=value;taskSelect.disabled=value;document.getElementById("gbV4Close").disabled=value;refreshReviewControls();
     if(message)document.getElementById("gbV4ReviewStatus").textContent=message;
   }
+  // Shared GitHub evidence preparation for both single and bulk grading.
+  // The exact approved checkpoint, not a moving branch, controls all source.
+  let githubClient=null,githubClientOwner="";
+  async function prepareGithubEvaluation({task,snapshot}){
+    if(!["approved","reviewed"].includes(snapshot?.status))
+      throw Error("Approve the exact frozen GitHub evidence before AI evaluation.");
+    if(!auth.currentUser)throw Error("Sign in again before reviewing repository evidence.");
+    const owner=auth.currentUser.uid;
+    if(!githubClient||githubClientOwner!==owner){
+      const prefs=activateConnectionOwner(owner)||{};
+      githubClient=createGithubEvidenceClient({
+        token:prefs.githubToken||null,maxPages:10,maxCommitFilesPages:10,retryCount:1
+      });
+      githubClientOwner=owner;
+    }
+    const historical=Boolean(task?.legacyCompatibility);
+    const selected=Array.isArray(snapshot.selectedCommitShas)?snapshot.selectedCommitShas:[];
+    const verified=Array.isArray(snapshot.verifiedContributionCommits)?
+      snapshot.verifiedContributionCommits:[];
+    if(historical&&(!verified.length||verified.some(sha=>!selected.includes(sha))))
+      throw Error("Historical GitHub evaluation needs teacher-verified individual commits. Use the original contribution approval screen or grade manually.");
+    const evaluationEvidence=historical?
+      {...snapshot,selectedCommitShas:verified}:snapshot;
+    const result=await buildV4RepositoryEvaluationSnapshot({
+      snapshot:evaluationEvidence,client:githubClient
+    });
+    if(historical&&verified.length!==selected.length)
+      result.limitations.push((selected.length-verified.length)+
+        " selected historical commit(s) were excluded because they have no verified individual attribution.");
+    return result;
+  }
+
   bulkEvaluator=createV4BulkEvaluationController({
     root:document.getElementById("gbV4BulkPanel"),
-    scoped,migrationApi,assessmentApi,submissionApi,gradeApi,verificationApi,
+    scoped,migrationApi,assessmentApi,submissionApi,generalSubmissionApi,githubEvidenceApi,
+    gradeApi,verificationApi,prepareGithubEvidence:prepareGithubEvaluation,
     buildPackage:buildGeneralExternalEvaluationPackage,
     parseResponse:parseGeneralExternalEvaluationResponse,
     generateContent:generateSchoolContent,evaluationJSON,
@@ -577,29 +610,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         throw Error("The assigned personalized scenario is unavailable for this frozen Studio submission. Reload before using AI evaluation.");
       return currentSnapshot;
     }
-    if(!["approved","reviewed"].includes(currentSnapshot?.status))
-      throw Error("Approve the exact frozen GitHub evidence before running AI evaluation.");
-    const prefs=auth.currentUser?activateConnectionOwner(auth.currentUser.uid):{};
-    const client=createGithubEvidenceClient({
-      token:prefs.githubToken||null,maxPages:10,maxCommitFilesPages:10,retryCount:1
-    });
-    const historicalGithub=Boolean(currentTask?.legacyCompatibility);
-    const selected=Array.isArray(currentSnapshot?.selectedCommitShas)?
-      currentSnapshot.selectedCommitShas:[];
-    const verified=Array.isArray(currentSnapshot?.verifiedContributionCommits)?
-      currentSnapshot.verifiedContributionCommits:[];
-    if(historicalGithub&&!verified.length)
-      throw Error("The historical checkpoint has no teacher-verified individual commits. Use the original contribution approval workflow or review and score manually.");
-    // The visible list contains every selected historical commit; only the
-    // original teacher-verified subset may enter an individual AI package.
-    const evaluationEvidence=historicalGithub?
-      {...currentSnapshot,selectedCommitShas:verified}:currentSnapshot;
-    const result=await buildV4RepositoryEvaluationSnapshot({
-      snapshot:evaluationEvidence,client
-    });
-    if(historicalGithub&&verified.length!==selected.length)
-      result.limitations.push((selected.length-verified.length)+
-        " selected historical commit(s) were excluded because individual contribution has not been teacher-verified.");
+    const result=await prepareGithubEvaluation({task:currentTask,snapshot:currentSnapshot});
     const inspection=document.getElementById("gbV4GithubAnalysisStatus");
     if(inspection)inspection.textContent=
       "Repository inspection: "+result.analysis.inspectedCount+"/"+result.analysis.selectedCount+
@@ -608,7 +619,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       " pinned source files loaded."+
       (result.analysis.complete?"":" Coverage is partial; see the evaluator limitations.")+
       " These signals do not independently establish individual authorship."+
-      (historicalGithub?" Only the verified historical commit subset was evaluated.":"");
+      (currentTask.legacyCompatibility?" Only the verified historical commit subset was evaluated.":"");
     return result;
   }
   function applyEvaluationSuggestion(suggestion,label){
