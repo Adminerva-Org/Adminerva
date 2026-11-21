@@ -108,7 +108,7 @@ function empty(message){return make("div","rounded-xl border border-dashed borde
 function renderClasses(rows){
   const host=el("csList");host.replaceChildren();if(!rows.length){host.append(empty("No classes match these filters."));return;}
   const wrap=make("div","overflow-x-auto"),table=make("table","w-full text-sm"),thead=make("thead","bg-slate-50 text-left text-xs uppercase text-slate-500"),tr=make("tr");
-  for(const label of ["Class","Period","Teacher(s)","Schedule","Status",""])tr.append(make("th","px-3 py-3 font-extrabold",label));thead.append(tr);table.append(thead);
+  for(const label of ["Class","Period","Teacher(s)","Roster","Schedule","Status",""])tr.append(make("th","px-3 py-3 font-extrabold",label));thead.append(tr);table.append(thead);
   const body=make("tbody","divide-y divide-slate-200"),teachers=teacherMap();
   for(const row of rows){
     const r=make("tr","align-top hover:bg-slate-50");
@@ -116,13 +116,16 @@ function renderClasses(rows){
     const period=make("td","px-3 py-3 text-slate-600", [row.termName,row.yearName].filter(Boolean).join(" · "));
     const names=(row.teacherUids||[]).map(uid=>teachers.get(uid)?.name||("Teacher "+uid.slice(0,8)));
     const staff=make("td","px-3 py-3",names.length?names.join(", "):"Unassigned");if(!names.length)staff.className+=" font-bold text-amber-700";
+    const rosterLabels={section:"Official section",selective:"Selective",legacy:"Legacy / review"};
+    const roster=make("td","px-3 py-3 font-bold",rosterLabels[row.rosterMode]||"Legacy / review");
+    roster.className+=" "+(row.rosterMode==="section"?"text-emerald-700":row.rosterMode==="selective"?"text-blue-700":"text-amber-700");
     const meetings=scheduleFor(row)?.meetings||[];
     const schedule=make("td","px-3 py-3",meetings.length?meetings.length+" meeting"+(meetings.length===1?"":"s"):"Unscheduled");
     schedule.className+=" "+(meetings.length?"text-violet-700 font-bold":"text-slate-500");
     const status=make("td","px-3 py-3",row.invalidGrantCount?row.invalidGrantCount+" assignment issue"+(row.invalidGrantCount===1?"":"s"):"Ready");
     if(row.invalidGrantCount)status.className+=" text-rose-700 font-bold";else status.className+=" text-emerald-700";
     const action=make("td","px-3 py-3 text-right");action.append(button("Manage",()=>void openClass(row.offeringId),"bg-blue-700 text-white"));
-    r.append(title,period,staff,schedule,status,action);body.append(r);
+    r.append(title,period,staff,roster,schedule,status,action);body.append(r);
   }
   table.append(body);wrap.append(table);host.append(wrap);
 }
