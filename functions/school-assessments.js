@@ -325,6 +325,7 @@ function createSchoolAssessmentService({db}){
      deny("data-loss","The saved project digest does not match the immutable exam checkpoint.");
     return {taskId,sessionEpoch:epoch,studentUid,
       projectId:frozen.projectId,projectRevision:frozen.projectRevision,
+      payloadBytes:Number(frozen.payloadBytes||0),
       title:frozen.title||"Saved Studio project",language:frozen.language||"text",
       files:frozen.files,artifacts:frozen.artifacts||{},sourceDigest:frozen.sourceDigest||"",
       contentDigest:frozen.contentDigest||"",
@@ -336,7 +337,7 @@ function createSchoolAssessmentService({db}){
    const receiptQuery=db.collection(prefix+"studio_exam_close_receipts/"+taskId+
      "/sessions/"+epoch+"/studio_exam_final_checkpoints")
      .select("schoolId","closingEpoch","studentUid","projectId","projectRevision",
-       "contentDigest","sourceDigest","savedAt")
+       "contentDigest","sourceDigest","payloadBytes","savedAt")
      .orderBy(FieldPath.documentId());
    const receipts=[];
    let receiptCursor=null;
@@ -350,6 +351,7 @@ function createSchoolAssessmentService({db}){
      receipts.push({studentUid:data.studentUid,projectId:data.projectId,
        projectRevision:data.projectRevision,
        contentDigest:data.contentDigest||"",sourceDigest:data.sourceDigest||"",
+       payloadBytes:Number(data.payloadBytes||0),
        savedAt:data.savedAt?.toMillis?.()||null});
     }
     if(receipts.length>1500)
@@ -381,6 +383,7 @@ function createSchoolAssessmentService({db}){
        studentUid:uid,checkpointConfirmed:Boolean(receipt),
        projectRevision:receipt?.projectRevision||null,
        contentDigest:receipt?.contentDigest||"",sourceDigest:receipt?.sourceDigest||"",
+       payloadBytes:receipt?.payloadBytes||0,
        savedAt:receipt?.savedAt||null};
    }).sort((a,b)=>a.displayName.localeCompare(b.displayName));
    const confirmed=students.filter(row=>row.checkpointConfirmed).length;
@@ -390,7 +393,9 @@ function createSchoolAssessmentService({db}){
        task.data().manualAccessState!=="open"));
    return {taskId,sessionEpoch:epoch,currentSessionEpoch:currentEpoch,
      sessionClosed,rosterSource:hasCapturedRoster?"close_snapshot":"current_fallback",
-     confirmed,enrolledStudents:students.length,students};
+     confirmed,enrolledStudents:students.length,
+     confirmedPayloadBytes:students.reduce((sum,row)=>sum+Number(row.payloadBytes||0),0),
+     students};
   }
 
   if(["exam_session","exam_close_status"].includes(input.action)){
