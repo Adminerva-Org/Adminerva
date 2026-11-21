@@ -23,7 +23,8 @@ function install(){
  }},{filename:"school-legacy-github-review.js"});
  return module.exports;
 }
-function fixture({published=false,grade=null,approval=true}={}){
+function fixture({published=false,grade=null,approval=true,discovery=false,
+  studentResubmitted=false,zeroCommits=false}={}){
  const map=new Map(),writes=[];
  const put=(path,value)=>map.set(path,value);
  put("assessments/"+taskId,{ownerUid:ctx.uid,title:"Java OOP",
@@ -38,11 +39,13 @@ function fixture({published=false,grade=null,approval=true}={}){
  put("assessment_evidence/"+evidenceId,{
    studentId,assessmentId:taskId,section:"Grade 12 ICT",
    repository:"https://github.com/learner/java-classes",
-   status:approval?"approved":"submitted",revision:7,
+   status:approval?"approved":discovery?"needs_review":"submitted",revision:7,
+   source:discovery?"teacher_discovered":"student_submitted",
    checkpointSha:checkpoint,approvedCheckpointSha:approval?checkpoint:null,
-   selectedCommits:[commit],verifiedContributionCommits:[commit],
+   selectedCommits:zeroCommits?[]:[commit],
+   verifiedContributionCommits:zeroCommits?[]:approval?[commit]:[],
    contributionScope:"Instructor verified this learner's implementation",
-   submittedAt:{toMillis:()=>1234}
+   ...(!discovery||studentResubmitted?{submittedAt:{toMillis:()=>1234}}:{})
  });
  put("students/"+studentId,{name:"Original Student Name"});
  if(grade)put("student_grades/"+evidenceId,{...grade,published});
@@ -117,13 +120,36 @@ test("V4 grade save and publish update ONLY original grade and audit records",as
  assert.equal(f.writes.filter(([,path])=>path.startsWith("schools/")).length,0);
  assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,2);
 });
-test("approval is required; unapproved GitHub evidence remains read-only",async()=>{
+test("student-submitted historical commits can be graded without a teacher contribution approval",async()=>{
  const f=fixture({approval:false});
  const result=await f.service(f.request("legacy_github_inspect",{legacyEvidenceId:evidenceId}));
  assert.equal(result.snapshot.status,"submitted");
- await assert.rejects(f.service(f.request("legacy_github_save_draft",f.gradeArgs)),
-   error=>error.code==="failed-precondition");
- assert.equal(f.writes.length,0);
+ assert.equal(result.snapshot.hasSubmission,true);
+ const saved=await f.service(f.request("legacy_github_save_draft",f.gradeArgs));
+ assert.equal(saved.awarded,35);
+ assert.equal(f.map.get("student_grades/"+evidenceId).gradeVersion,1);
+});
+test("teacher-forced discovery, even if approved or zero-commit, never generates a new grade",async()=>{
+ for(const zeroCommits of [false,true]){
+  const f=fixture({discovery:true,approval:true,zeroCommits});
+  const inbox=await f.service(f.request("legacy_github_inbox"));
+  assert.equal(inbox.evidence[0].hasSubmission,false);
+  assert.equal(inbox.evidence[0].discoveryOnly,true);
+  const inspect=await f.service(f.request("legacy_github_inspect",{
+    legacyEvidenceId:evidenceId
+  }));
+  assert.equal(inspect.snapshot.hasSubmission,false);
+  await assert.rejects(f.service(f.request("legacy_github_save_draft",f.gradeArgs)),
+    error=>error.code==="failed-precondition"&&/No student-submitted/.test(error.message));
+  assert.equal(f.writes.length,0);
+ }
+});
+test("a student's genuine resubmission after force discovery is eligible, even when legacy source remained stale",async()=>{
+ const f=fixture({discovery:true,studentResubmitted:true,approval:false});
+ const inbox=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(inbox.evidence[0].hasSubmission,true);
+ const saved=await f.service(f.request("legacy_github_save_draft",f.gradeArgs));
+ assert.equal(saved.status,"draft");
 });
 test("historical blueprint imports predating origin metadata remain compatible",async()=>{
  const f=fixture();
