@@ -629,7 +629,7 @@ function createSchoolAcademicsService({db}) {
    const kind=input.kind;
    if(!CATALOG.has(kind))deny("invalid-argument","Unknown academic catalog type.");
    const itemId=checkId(input.recordId),expectedRevision=Number(input.expectedRevision),
-    reason=checkName(input.reason,input.action==="archive_catalog"?"Archive reason":"Restore reason"),
+    reason=optionalShortText(input.reason,input.action==="archive_catalog"?"Archive reason":"Restore reason",500)||"",
     ref=schoolRoot.doc(kind+"/"+itemId),restoring=input.action==="restore_catalog";
    if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
     deny("invalid-argument","Refresh this academic record before changing its lifecycle.");
@@ -839,7 +839,7 @@ function createSchoolAcademicsService({db}) {
    requireAdmin();
    const offeringId=checkId(input.offeringId,"Course offering ID",330),
     expectedRevision=Number(input.expectedRevision),
-    reason=checkName(input.reason,input.action==="archive_offering"?"Class archive reason":"Class restore reason"),
+    reason=optionalShortText(input.reason,input.action==="archive_offering"?"Class archive reason":"Class restore reason",500)||"",
     offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
     scheduleRef=schoolRoot.doc("class_schedules/"+offeringId),
     restoring=input.action==="restore_offering",
