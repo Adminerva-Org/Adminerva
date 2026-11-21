@@ -200,14 +200,15 @@ Status definitions:
 | --- | --- | --- |
 | Existing LMS, Studio, assessment and grading base | Operational / evolving | Mature legacy/current functionality exists; school-scoped consolidation is ongoing. |
 | People & Access directory improvements | Merged | PRs #220, #221 and #222 added existing-student placement, legacy section repair, central directory search/profile editing and direct section placement. |
-| System Admin + School Admin workflow consolidation | In development | Draft PR #215 remains the primary administration integration track. The branch has been reconciled with current main without force-resetting newer work; School Admin recommendations now follow verified foundation readiness, while standard-school activation requires an active administrator, saved profile and at least one coherent active academic offering. Preview remains non-mutating and Assist remains explicit/audited. |
+| System Admin + School Admin workflow consolidation | In development | Draft PR #215 is the current major administration integration track. |
 | Classes & Scheduling | In development | PR #215 provides canonical class offerings, staffing, derived load, section coverage, official schedules, adviser assignment and roster authority. |
-| Enrollment & Registration lifecycle | In development | Standard registration exists and PR #215 now adds a history-preserving same-grade/same-period section-correction workflow: the superseded registration and automatic section enrollments are ended, a new official placement is created with optimistic revision checking, selective/elective enrollments remain unchanged, and online-application pointers follow the corrected current placement. |
+| Enrollment & Registration lifecycle | In development | Standard registration exists and PR #215 strengthens registration lifecycle, official placement and automatic whole-section synchronization. |
 | Teacher Classroom consolidation | In development | PR #215 organizes Stream, Classwork, roster, submissions, grades and Class Record around one selected class. |
 | Advisory and school attendance | In development | PR #215 implements adviser authority, daily attendance and School Admin oversight. |
-| Class Record | Operational / evolving | School-scoped Class Record exists; PR #215 improves assessment links and administrator oversight, reports grading-policy coverage/conflicts on the School Admin dashboard, and blocks creation of equal-specificity active grading policies that would ambiguously match an active class. |
+| Class Record | Operational / evolving | School-scoped Class Record exists; PR #215 improves assessment links and administrator oversight. |
 | Practical exam manual open/close | Merged; deployment/operational verification pending | PR #223 merged the backend-first stage; PR #224 fixed first deployment bootstrap behavior; PR #216 then merged the teacher/student UI and complete session workflow. Do not call the workflow operational until the corresponding backend/frontend release state is confirmed in production. |
 | Assessment Studio multi-class deployment and date-range scheduling | Merged; frontend release/operational verification pending | PR #228 merged to `main` on 2026-11-21. The canonical form now supports multiple authorized class offerings and two-click date-range scheduling while preserving independent per-class assessments, teacher-controlled exam sessions and audit history. Production frontend availability and end-to-end operation not yet confirmed. |
+| Assessment Studio deployment-first personalization | Merged to main; backend/frontend release and operational verification pending | PR #231 merged to `main` on 2026-11-21 (commit `2e94339d4adbba13272b706d0675c7494bb4c6f3`). The canonical deployment flow selects assigned classes and dates before determining private variants from authorized active enrollment, recognizes already-deployed blueprints, reuses sufficient activated pools, and removes manual pool sizing from the creation form. Existing school deployments and legacy historical assignments remain preserved. Verify Firebase Functions and frontend production release separately before calling this operational. |
 | System Admin Operations Center | In development | Draft PR #194 contains the first-party observability/incident-management implementation. |
 | V4 verified-school / multi-school foundation | Foundation | PR #113 contains the broad V4 foundation; PR #186 staged selective main-first integration. These are not the roadmap anymore; their architectural invariants remain inputs to this document. |
 | Games / Practice modernization | Evolving | School-scoped progress, challenges, analytics and game UX have been developed through the recent Practice/Games PR series. |
@@ -278,7 +279,6 @@ Required additions:
 - Integrate Operations Center concepts with the current System Admin workflow
 - Keep platform observability separate from private school academic data
 - Establish clear school lifecycle, recovery, Assist, feature rollout and incident operations
-- Keep standard-school activation as a minimum tenant-foundation gate: verified School Administrator + saved profile + coherent active academic offering; staffing, enrollment, grading and daily operations remain School Administration responsibilities after activation
 - Remove remaining confusion between legacy Administration Analytics and canonical School Administration
 
 ### Priority 5 — Build the financial transaction foundation
@@ -347,10 +347,10 @@ The normal setup/operations sequence is:
 2. **Academic Configuration** — establish academic year, periods, programs, sections and subjects.
 3. **People & Access** — establish people, accounts, school roles and access.
 4. **Classes & Scheduling** — create offerings, assign teachers/advisers, schedules and roster authority.
-5. **Enrollment & Registration** — register learners and establish official placement; section corrections create a new official placement and preserve the superseded registration/enrollment history rather than rewriting it.
-6. **Grading Policies** — define school grading structures and ensure every active class resolves to exactly one highest-specificity policy before Class Record finalization.
+5. **Enrollment & Registration** — register learners and establish official placement.
+6. **Grading Policies** — define school grading structures.
 7. **Operate the school** — Classroom, assessments, attendance, Gradebook and Class Record.
-8. **Monitor exceptions** — dashboard should surface incomplete foundation setup, missing staffing, schedule conflicts, unplaced learners, grading-policy gaps/overlaps, attendance gaps and other operational issues.
+8. **Monitor exceptions** — dashboard should surface missing staffing, schedule conflicts, unplaced learners, attendance gaps and other operational issues.
 
 Future departments should join this same action-oriented model rather than adding unrelated dashboard trees.
 
@@ -410,7 +410,7 @@ When useful information from an older plan changes the product direction, move t
 
 1. Continue PR #215 as the primary School Admin/System Admin consolidation workstream.
 2. Confirm the merged practical-exam backend/frontend release state and perform only the focused classroom-readiness check required before ordinary use; do not reopen it as a broad development workstream unless a defect appears.
-3. Keep PR #215 reconciled with current main and finish only the remaining overlapping-file handoffs needed for merge readiness; do not overwrite newer Class Record, Studio, practical-exam, Games or administration work.
+3. Reconcile the useful V4 verified-school foundation into current mainline without overwriting newer Class Record, Studio, Games or administration work.
 4. Finish the standard SIS student lifecycle before building many independent service modules.
 5. Use the canonical school/person/class/enrollment model as the foundation for Finance, Clinic, Cafeteria, Uniforms and the remaining School OS modules.
 6. Keep this file updated whenever a major workstream is merged, deployed, superseded or newly prioritized.
