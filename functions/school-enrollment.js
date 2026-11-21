@@ -146,6 +146,7 @@ function createSchoolEnrollmentService({db}){
         studentEmailRequired:Boolean(doc.data().studentEmailRequired),
         source:doc.data().source||"online",status:doc.data().status||"submitted",
         reviewReason:doc.data().reviewReason||"",
+        revision:Number(doc.data().revision)||1,
         updatedAt:doc.data().updatedAt?.toMillis?.()||doc.data().createdAt?.toMillis?.()||0
       }));
       items.sort((a,b)=>b.updatedAt-a.updatedAt||a.displayName.localeCompare(b.displayName));
@@ -153,7 +154,10 @@ function createSchoolEnrollmentService({db}){
     }
 
     if(input.action==="review_application"){
-      const applicationId=checkId(input.applicationId,"Application ID",128);
+      const applicationId=checkId(input.applicationId,"Application ID",128),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        deny("invalid-argument","Refresh this application before saving a review decision.");
       const status=String(input.status||"").trim().toLowerCase();
       if(!APPLICATION_REVIEW_STATUSES.has(status))
         deny("invalid-argument","Choose Needs information or Rejected.");
@@ -165,13 +169,16 @@ function createSchoolEnrollmentService({db}){
         const application=await tx.get(ref);
         if(!application.exists||application.data().schoolId!==ctx.schoolId)
           deny("not-found","Enrollment application was not found.");
+        const currentRevision=Number(application.data().revision)||1;
+        if(currentRevision!==expectedRevision)
+          deny("failed-precondition","This enrollment application changed after you opened it. Refresh before saving the review.");
         if(["enrolled","withdrawn"].includes(application.data().status))
           deny("failed-precondition","This application already has a final enrollment state.");
         tx.update(ref,{status,reviewReason:reason,reviewedByUid:ctx.uid,
           reviewedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),
-          revision:(Number(application.data().revision)||1)+1});
+          revision:currentRevision+1});
       });
-      return {applicationId,status};
+      return {applicationId,status,revision:expectedRevision+1};
     }
 
     if(input.action==="student_candidate"){
