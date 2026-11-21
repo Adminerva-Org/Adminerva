@@ -110,26 +110,26 @@ window.closeStudentModal = () =>
 function settingsPanelFromLocation() {
   const requested = location.hash.replace(/^#/, "");
   if (requested === "notifications") return "account";
-  return document.getElementById(`panel-${requested}`) ? requested : "security";
+  return document.getElementById(`panel-${requested}`) ? requested : "account";
 }
 function syncSettingsPanelFromLocation() {
   window.switchSettingsCategory(settingsPanelFromLocation(), { updateHistory: false });
 }
 
-// Initialization
+let teachingSettingsInitialized=false;
+window.initializeTeachingSettings=function(){
+  if(teachingSettingsInitialized)return;
+  teachingSettingsInitialized=true;
+  if(window.loadSecuritySettings)window.loadSecuritySettings();
+  if(window.initFirebase)window.initFirebase();
+  if(window.initRubrics)window.initRubrics();
+  const csvInput=document.getElementById("csvFileInput");
+  if(csvInput&&window.handleCsvUpload)
+    csvInput.addEventListener("change",window.handleCsvUpload);
+};
+
 document.addEventListener("DOMContentLoaded", () => {
   syncSettingsPanelFromLocation();
   window.addEventListener("popstate", syncSettingsPanelFromLocation);
   window.addEventListener("hashchange", syncSettingsPanelFromLocation);
-  if (window.loadSecuritySettings) window.loadSecuritySettings();
-
-  // 1. Boot Firebase FIRST so window.db is established
-  if (window.initFirebase) window.initFirebase();
-
-  // 2. Fetch cloud rubrics AFTER Firebase is connected
-  if (window.initRubrics) window.initRubrics();
-
-  const csvInput = document.getElementById("csvFileInput");
-  if (csvInput && window.handleCsvUpload)
-    csvInput.addEventListener("change", window.handleCsvUpload);
 });
