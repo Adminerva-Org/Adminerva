@@ -156,10 +156,28 @@ function compactEvidence(source,snapshot={}){
         status:text(file?.status,40),
         additions:Number(file?.additions||0),
         deletions:Number(file?.deletions||0),
-        patch:String(file?.patch||"").slice(0,24000)
+        patch:String(file?.patch||"").slice(0,24000),
+        diffIncomplete:file?.diffIncomplete===true,
+        mergeContext:file?.mergeContext===true,
+        substance:text(file?.substance,60),
+        substantive:file?.substantive===true?true:file?.substantive===false?false:null
       })):[]
     })):[],
-    limitations:Array.isArray(snapshot.limitations)?snapshot.limitations.slice(0,20).map(value=>text(value,1000)):[]
+    pinnedSource:Array.isArray(snapshot.pinnedSource)?snapshot.pinnedSource.slice(0,18).map(file=>({
+      path:text(file?.path,500),
+      checkpointSha:text(file?.checkpointSha,40),
+      content:String(file?.content||"").slice(0,32000)
+    })):[],
+    analysis:snapshot.analysis&&typeof snapshot.analysis==="object"?{
+      selectedCount:Number(snapshot.analysis.selectedCount||0),
+      inspectedCount:Number(snapshot.analysis.inspectedCount||0),
+      substantiveChanges:Number(snapshot.analysis.substantiveChanges||0),
+      nonSubstantiveChanges:Number(snapshot.analysis.nonSubstantiveChanges||0),
+      uncertainChanges:Number(snapshot.analysis.uncertainChanges||0),
+      pinnedFileCount:Number(snapshot.analysis.pinnedFileCount||0),
+      complete:snapshot.analysis.complete===true
+    }:null,
+    limitations:Array.isArray(snapshot.limitations)?snapshot.limitations.slice(0,80).map(value=>text(value,1000)):[]
   };
   throw Error("This evidence type still uses its specialized evaluation workflow.");
 }
@@ -207,7 +225,7 @@ export function buildGeneralExternalEvaluationData({task={},snapshot={},checking
         "Do not claim facts about linked external content unless the evaluator actually accessed it. The frozen URL/note alone may be insufficient for some criteria.":
         "Evaluate only the frozen content supplied in this package.",
       repositoryBoundary:assessment.submissionSource==="github"?
-        "Credit only the supplied frozen selected-commit evidence. Do not infer unshown repository state, runtime behavior, or authorship beyond the supplied patches.":
+        "Use selected SHA/path diffs for change-specific claims and the pinned checkpoint source for exact present code context. Neither Git authors nor a teacher-approved commit set independently prove individual authorship. Merge-only, missing-diff, omitted, or oversized evidence is not proof of an individual contribution. Static source does not prove compilation, execution or timing; disclose partial coverage. Identify supporting SHA/path references in rationales.":
         "Not applicable."
     }
   };
