@@ -293,7 +293,7 @@ async function rebuildStudentAccess(email,expectedUid=null){
   const sections=[...new Set(profiles.map(record=>record.section))].slice(0,40);
   const studentIds=active.map(record=>record.id).slice(0,50);
   await db.doc("student_access/"+user.uid).set({
-    ownerUid:user.uid,email:normalized,sections,studentIds,
+    ownerUid:user.uid,email:normalized,sections,studentIds,profiles,
     identitySource:resolved.source,updatedAt:FieldValue.serverTimestamp()
   });
   return {sections,studentIds,profiles,identitySource:resolved.source};
@@ -305,8 +305,11 @@ exports.refreshStudentAccess=onCall(callOptions,async request=>{
     throw new HttpsError("unauthenticated","Use a verified school account before loading assignments.");
   const result=await rebuildStudentAccess(email,uid);
   if(!result){
-    await db.doc("student_access/"+uid).set({ownerUid:uid,email,sections:[],studentIds:[],updatedAt:FieldValue.serverTimestamp()});
-    return {sections:[],studentIds:[]};
+    await db.doc("student_access/"+uid).set({
+      ownerUid:uid,email,sections:[],studentIds:[],profiles:[],
+      identitySource:"none",updatedAt:FieldValue.serverTimestamp()
+    });
+    return {sections:[],studentIds:[],profiles:[],identitySource:"none"};
   }
   return result;
 });
