@@ -1032,9 +1032,11 @@ function createSchoolAcademicsService({db}) {
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     const taskQuery=db.collection("schools/"+ctx.schoolId+"/assessments")
+      .where("offeringId","==",offeringId).limit(101),
+     assignmentQuery=db.collection("schools/"+ctx.schoolId+"/staff_assignments")
       .where("offeringId","==",offeringId).limit(101);
-    const [offering,fromAssignment,toAssignment,toMember,tasks]=await Promise.all([
-      tx.get(offeringRef),tx.get(fromRef),tx.get(toRef),tx.get(toMemberRef),tx.get(taskQuery)
+    const [offering,fromAssignment,toAssignment,toMember,tasks,assignmentSnap]=await Promise.all([
+      tx.get(offeringRef),tx.get(fromRef),tx.get(toRef),tx.get(toMemberRef),tx.get(taskQuery),tx.get(assignmentQuery)
     ]);
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId||
        offering.data().status!=="active")
@@ -1050,6 +1052,8 @@ function createSchoolAcademicsService({db}) {
       deny("permission-denied","The replacement account must be an active verified teacher in this school.");
     if(tasks.size===101)
       deny("resource-exhausted","This offering has more than 100 assessment deployments. Use a paginated handover workflow.");
+    if(assignmentSnap.size===101)
+      deny("resource-exhausted","This class has too much teaching-assignment history for handover.");
     if(toAssignment.exists&&
        (toAssignment.data().schoolId!==ctx.schoolId||
         toAssignment.data().teacherUid!==toTeacherUid||
@@ -1060,6 +1064,10 @@ function createSchoolAcademicsService({db}) {
       return data.schoolId===ctx.schoolId&&reviewerUid===fromTeacherUid&&
         data.lifecycle!=="cancelled";
     });
+    const activeUids=[...new Set(assignmentSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+      doc.data().status==="active").map(doc=>doc.data().teacherUid))],
+     lead=teachingLead(offering.data().primaryTeacherUid,activeUids),
+     primaryTransferred=lead.primaryTeacherUid===fromTeacherUid;
     if(!toAssignment.exists||toAssignment.data().status!=="active")
       await ensureTeacherScheduleAvailable(tx,toTeacherUid,offeringId);
     const now=FieldValue.serverTimestamp();
@@ -1081,6 +1089,9 @@ function createSchoolAcademicsService({db}) {
     }else{
       deny("failed-precondition","The replacement teacher assignment is in an unsupported state.");
     }
+    if(primaryTransferred)
+      tx.update(offeringRef,{primaryTeacherUid:toTeacherUid,revision:(Number(offering.data().revision)||1)+1,
+        updatedByUid:uid,updatedAt:now});
     for(const task of applicable){
       const data=task.data(),revision=data.revision||1;
       tx.update(task.ref,{
@@ -1094,7 +1105,7 @@ function createSchoolAcademicsService({db}) {
       });
     }
     tx.create(directoryAudit,audit("teacher_offering_handed_over",{
-      offeringId,fromTeacherUid,toTeacherUid,reason,
+      offeringId,fromTeacherUid,toTeacherUid,reason,primaryTransferred,
       replacementAssignmentState,assessmentCount:applicable.length
     }));
     tx.create(assessmentAudit,{
@@ -1102,7 +1113,7 @@ function createSchoolAcademicsService({db}) {
       offeringId,fromTeacherUid,toTeacherUid,taskIds:applicable.map(doc=>doc.id),
       assessmentCount:applicable.length,reason,createdAt:now
     });
-    result={offeringId,fromTeacherUid,toTeacherUid,
+    result={offeringId,fromTeacherUid,toTeacherUid,primaryTransferred,
       replacementAssignmentState,assessmentCount:applicable.length};
    });
    await writeSchoolNotification({
@@ -1267,18 +1278,24 @@ function createSchoolAcademicsService({db}) {
     deny("resource-exhausted","Class roster exceeds the first page. Use paginated school roster.");
    const rows=snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&(admin||d.data().status==="active"));
    const people=await Promise.all(rows.map(record=>schoolRoot.doc("people/"+record.data().personId).get()));
-   let staff=[];
+   let staff=[],primaryTeacherUid="",primarySource="none",primaryNeedsReview=false;
    if(admin&&staffSnap){
-    const grants=staffSnap.docs.filter(d=>d.data().schoolId===ctx.schoolId);
+    const grants=staffSnap.docs.filter(d=>d.data().schoolId===ctx.schoolId),
+     activeTeacherUids=[...new Set(grants.filter(record=>record.data().status==="active")
+      .map(record=>record.data().teacherUid))],
+     lead=teachingLead(offering.data().primaryTeacherUid,activeTeacherUids);
+    primaryTeacherUid=lead.primaryTeacherUid;primarySource=lead.primarySource;primaryNeedsReview=lead.primaryNeedsReview;
     const memberships=await Promise.all(grants.map(record=>schoolRoot.doc("memberships/"+record.data().teacherUid).get()));
     staff=grants.map((record,i)=>({
       assignmentId:record.id,teacherUid:record.data().teacherUid,status:record.data().status,
+      role:record.data().status==="active"?
+        (record.data().teacherUid===primaryTeacherUid?"primary":"co_teacher"):"ended",
       name:memberships[i].exists&&memberships[i].data().schoolId===ctx.schoolId?
         memberships[i].data().displayName||("Teacher "+record.data().teacherUid.slice(0,8)):
         "Teacher "+record.data().teacherUid.slice(0,8)
     }));
    }
-   return {offeringId,students:rows.map((record,i)=>({
+   return {offeringId,primaryTeacherUid,primarySource,primaryNeedsReview,students:rows.map((record,i)=>({
      personId:record.data().personId,enrollmentId:record.id,status:record.data().status,
      name:people[i].exists&&people[i].data().schoolId===ctx.schoolId?
        people[i].data().displayName:"Unlinked student record",
