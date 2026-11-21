@@ -1313,6 +1313,8 @@ async function openPersonDetail(person){
 function resetRecoveryPreview(message="Preview the account replacement before saving."){
   recoveryPreview=null;
   get("pa-account-recovery-summary").textContent=message;
+  const reconcile=get("pa-account-recovery-reconcile");
+  if(reconcile){reconcile.style.display="none";reconcile.removeAttribute("href");}
   get("pa-account-recovery-confirm").disabled=true;
 }
 get("pa-account-recovery-search")?.addEventListener("input",event=>{
@@ -1357,6 +1359,13 @@ get("pa-account-recovery-preview")?.addEventListener("click",()=>{
     if(preview.blockers?.length)lines.push("Blocked: "+preview.blockers.join(" "));
     else lines.push("No duplicate registration, enrollment, grade, submission, evidence or record-history blockers were found.");
     get("pa-account-recovery-summary").textContent=lines.join(" ");
+    const reconcile=get("pa-account-recovery-reconcile"),
+      enrollmentBlocked=(preview.blockers||[]).some(message=>String(message).toLowerCase().includes("active class enrollment"));
+    if(reconcile){
+      reconcile.style.display=enrollmentBlocked?"inline-flex":"none";
+      if(enrollmentBlocked)reconcile.href="school-enrollment.html?personId="+encodeURIComponent(preview.replacement.personId);
+      else reconcile.removeAttribute("href");
+    }
     get("pa-account-recovery-confirm").disabled=Boolean(preview.blockers?.length);
   }).catch(error=>resetRecoveryPreview(error?.message||"Account recovery preview failed."))
     .finally(()=>{button.disabled=false;});
