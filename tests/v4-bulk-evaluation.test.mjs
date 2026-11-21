@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   BULK_PACKAGE_FORMAT,BULK_RESPONSE_FORMAT,BULK_MAX_BATCH,
-  bulkSuggestionState,readBulkExternalResponse
+  bulkSuggestionState,readBulkExternalResponse,bulkSaveableStages
 } from "../js/repo-review/v4-bulk-evaluation.mjs";
 import {parseGeneralExternalEvaluationResponse} from
   "../js/assessment/general-external-evaluation.mjs";
@@ -74,4 +74,34 @@ test("teacher-confirmation confidence is not eligible for automatic bulk saving"
  assert.equal(stage.saveEligible,false);
  assert.equal(stage.teacherConfirmation,true);
  assert.match(stage.reason,/teacher confirmation/i);
+});
+
+test("external JSON imports remain saveable after the original roster selection is cleared",()=>{
+ const staged=new Map([["student-1",{key:"student-1",version:1,review:{
+   saveEligible:true,awarded:20,pending:0
+ }}]]);
+ const saveSelection=new Set(["student-1"]);
+ const rows=[{submissionId:"student-1",version:1,status:"submitted",gradeStatus:null}];
+ // The original evaluation roster is intentionally not provided. This must
+ // remain saveable even when "Clear selection" was clicked after export.
+ assert.equal(bulkSaveableStages({staged,saveSelection,rows}).length,1);
+ assert.equal(bulkSaveableStages({staged,saveSelection:new Set(),rows}).length,0);
+});
+test("private-draft save selection excludes existing grades, resubmissions and exceptions",()=>{
+ const staged=new Map([
+  ["a",{key:"a",version:1,review:{saveEligible:true}}],
+  ["b",{key:"b",version:1,review:{saveEligible:true}}],
+  ["c",{key:"c",version:1,review:{saveEligible:true}}],
+  ["d",{key:"d",version:1,review:{saveEligible:true}}],
+  ["e",{key:"e",version:1,review:{saveEligible:false}}]
+ ]);
+ const saveSelection=new Set(staged.keys());
+ const rows=[
+  {submissionId:"a",version:1,status:"submitted",gradeStatus:null},
+  {submissionId:"b",version:1,status:"reviewed",gradeStatus:"draft"},
+  {submissionId:"c",version:2,status:"submitted",gradeStatus:null},
+  {submissionId:"d",version:1,status:"reopened",gradeStatus:null},
+  {submissionId:"e",version:1,status:"submitted",gradeStatus:null}
+ ];
+ assert.deepEqual(bulkSaveableStages({staged,saveSelection,rows}).map(x=>x.key),["a"]);
 });
