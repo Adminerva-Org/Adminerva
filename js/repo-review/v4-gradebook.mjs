@@ -337,7 +337,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
         notice.append(make("h3","font-bold text-violet-950","Historical GitHub evidence · V4 review interface"));
         notice.append(make("p","text-violet-900 mt-1",
-          "This class's original approved commits and grades remain in legacy records. V4 can review and save individual approved grades there without creating duplicate school grades. Unapproved evidence requires the original verification workspace until that approval workflow is integrated."));
+          "Actual student-submitted commit selections are eligible for V4 grading. Historical teacher-discovered repository snapshots are retained as context but excluded from new grades, even if previously approved. Existing historical grades are preserved."));
         inbox.append(notice);
       }
       if(historicalStudio){
@@ -376,7 +376,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         notice.append(button,output);inbox.append(notice);
       }
       status.textContent=rows.length?
-        (historical?"Historical "+(historicalStudio?"Studio":"GitHub")+" evidence · ":"")+rows.length+" submitted · "+
+        (historical?"Historical "+(historicalStudio?"Studio":"GitHub")+" evidence · ":"")+
+          (historicalGithub?rows.filter(row=>row.hasSubmission).length+" student-submitted · "+
+            rows.filter(row=>!row.hasSubmission).length+" without student submission · ":
+            rows.length+" submitted · ")+
           published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
         "No student evidence yet for this assessment.";
       if(!rows.length){
@@ -384,12 +387,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           historicalGithub?
             "No historical GitHub evidence receipts were found for this assessment. Older repository-only or unsubmitted work has not been inferred or converted into a V4 grade.":
             "Students will appear here after a verified assessment evidence version is submitted.");
-        if(historicalGithub){
-          const link=make("a","mt-2 inline-flex text-sm font-bold text-indigo-700 underline",
-            "Open original repository review for missing evidence");
-          link.href="repofetch.html?assessment="+encodeURIComponent(task.legacyAssessmentId);
-          blank.append(link);
-        }
+        // No force-gather action: the learner must submit selected commits.
         inbox.append(blank);
         return;
       }
@@ -401,12 +399,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         details.append(
           make("h3","font-extrabold text-slate-900",row.studentName||"Student"),
           make("p","text-xs text-slate-500 mt-1",
-            "Version "+row.version+" · "+row.status+" · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently"))
+            "Version "+row.version+" · "+
+              (historicalGithub&&row.hasSubmission===false?"no student submission (teacher discovery only)":row.status)+
+              " · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently"))
         );
         const resultLine=grade?
           (grade.status==="published"?"Published result":"Grade draft")+" · "+grade.awarded+" / "+grade.total+
             (grade.pending?" · "+grade.pending+" pending":""):
-          "Needs grading";
+          (historicalGithub&&row.hasSubmission===false?
+            "No student submission · excluded from evaluation":"Needs grading");
         details.append(make("p","text-xs font-bold mt-1 "+(grade?.status==="published"?"text-emerald-700":grade?"text-amber-700":"text-slate-600"),resultLine));
         const button=make("button","rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5 text-sm",
           view==="results"?(grade?"Open result":"Grade response"):
@@ -781,15 +782,17 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           link.href="assessment-evidence-review.html?"+
             new URLSearchParams({assessment:currentTask.legacyAssessmentId,
               student:currentRow.studentUid}).toString();
-          link.hidden=approved;
-          document.getElementById("gbV4GithubVerifyStatus").textContent=approved?
-            "Original teacher-approved checkpoint retained; V4 grading uses the verified individual commit subset.":
-            "Original contribution approval is required before V4 can save or evaluate this historical repository.";
+          link.hidden=true;
+          document.getElementById("gbV4GithubVerifyStatus").textContent=
+            currentSnapshot.hasSubmission===false?
+              "Teacher-discovered checkpoint only: no student-submitted commits, so no new grade can be created.":
+              "Student-submitted commits are gradeable without additional contribution approval. Adminerva checks the frozen checkpoint and code changes during evaluation.";
           document.getElementById("gbV4LegacyGithubAttribution").textContent=
-            (currentSnapshot.verifiedContributionCommits||[]).length+" / "+
-            (currentSnapshot.selectedCommitShas||[]).length+
-            " selected commits explicitly verified for individual credit. "+
-            "Unverified commits remain viewable but cannot be used for automatic individual scoring.";
+            (currentSnapshot.selectedCommitShas||[]).length+" selected commit(s) · "+
+            (currentSnapshot.verifiedContributionCommits?.length?
+              currentSnapshot.verifiedContributionCommits.length+
+              " previously teacher-annotated contribution(s) preserved as a narrower evidence scope. ":"")+
+            "Commit metadata does not independently establish authorship.";
         }
       }else renderGeneralEvidence(currentSnapshot);
       renderRubric(currentGrade);
@@ -813,8 +816,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             "This imported historical grade preserves the original total but has no saved rubric breakdown. Reconstruct the breakdown without changing the score before any correction.":
             "This grade is published. Use the correction workflow for changes."):
         reopened?"A revision is already requested. Wait for the student to resubmit.":
-        currentTask.submissionSource==="github"&&!["approved","reviewed"].includes(currentSnapshot.status)?
-          (historicalGithub?"Use original evidence verification for this historical submission before grading.":"Verify and approve the exact frozen GitHub evidence before starting a grade draft."):
+        currentTask.submissionSource==="github"&&
+          (currentSnapshot.hasSubmission===false||
+            !["submitted","approved","reviewed"].includes(currentSnapshot.status))?
+          "No student-submitted GitHub commits are available. Historical teacher discovery does not count as student submission.":
         historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1"?
           "This unpublished historical draft has no trustworthy rubric allocation. Enter a new reviewed criterion breakdown and save a revision of the original grade; no score changes are applied until you save.":
         currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
@@ -978,7 +983,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       if(currentTask.legacyCompatibility&&currentTask.submissionSource==="github"){
         const reviewNote=document.getElementById("gbV4LegacyGithubReviewNote").value.trim();
         if(reviewNote.length<15||!document.getElementById("gbV4LegacyGithubConfirm").checked)
-          throw Error("Inspect the approved commits, confirm the evidence check, and enter a verification note of at least 15 characters.");
+          throw Error("Review the student's submitted commit evidence and enter a grading note of at least 15 characters. No separate contribution approval is required.");
         await scoped(migrationApi,"legacy_github_save_draft",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
           legacyEvidenceId:currentRow.recordId,
