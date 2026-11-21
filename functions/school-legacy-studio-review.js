@@ -277,6 +277,8 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
       if(feedback.length<20||feedback.length>5000)
         deny("invalid-argument","Provide 20–5,000 characters of feedback.");
       const scores=validateCriteria(input.criteria,rubric);
+      const draftSource=["teacher","internal_ai","external_ai"].includes(String(input.draftSource||""))?
+        String(input.draftSource):"teacher";
       const grade=gradeRef(id),audit=db.collection("grade_revisions").doc();
       let saved=false;
       await db.runTransaction(async tx=>{
@@ -301,7 +303,8 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
           score:scores.awarded,maxScore:scores.total,pending:scores.pending,
           criteria:scores.criteria,feedback,reviewRequired:false,published:false,
           reviewedBy:ctx.uid,teacherReviewNote:"Reviewed exact frozen Studio evidence in unified V4 gradebook",
-          manuallyAdjusted:true,gradeVersion:Number(before?.gradeVersion||0)+1,
+          manuallyAdjusted:true,evaluationSource:draftSource,
+          gradeVersion:Number(before?.gradeVersion||0)+1,
           gradedAt:new Date().toISOString()
         };
         tx.set(grade,updated);
