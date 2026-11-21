@@ -37,7 +37,7 @@
         <label class="block text-sm font-bold">Academic year, program and period<select id="schoolTimetablePeriod" class="block w-full border rounded-lg p-3 mt-1"><option value="">Choose academic period</option></select></label>
         <div class="flex flex-wrap gap-2">
           <button id="schoolTimetableRefreshOptions" type="button" class="av-secondary-button">Refresh teaching assignments</button>
-          <button id="schoolTimetableReload" type="button" disabled class="av-secondary-button">Reload saved timetable</button>
+          <button id="schoolTimetableReload" type="button" disabled class="av-secondary-button">Reload personal overlay</button>
         </div>
         <p id="schoolTimetableStatus" role="status" aria-live="polite" class="text-sm text-slate-700">Checking verified school access…</p>
         <p id="schoolTimetableSummary" class="text-sm font-semibold text-slate-800"></p>
@@ -56,9 +56,9 @@
       <fieldset id="schoolTimetableEditor" disabled class="mt-4 space-y-3">
         <legend class="sr-only">Personal weekly timetable editor</legend>
         <div class="flex flex-wrap gap-2">
-          <button id="schoolTimetableAddClass" type="button" class="av-secondary-button">Add class slot</button>
-          <button id="schoolTimetableAddEvent" type="button" class="av-secondary-button">Add daily event</button>
-          <button id="schoolTimetableSave" disabled type="button" class="bg-blue-700 text-white min-h-11 rounded-lg font-bold px-4 py-2 disabled:opacity-50">Save timetable</button>
+          <button id="schoolTimetableAddClass" type="button" class="av-secondary-button">Add personal class row</button>
+          <button id="schoolTimetableAddEvent" type="button" class="av-secondary-button">Add personal event</button>
+          <button id="schoolTimetableSave" disabled type="button" class="bg-blue-700 text-white min-h-11 rounded-lg font-bold px-4 py-2 disabled:opacity-50">Save personal overlay</button>
         </div>
         <p class="text-xs text-slate-600">Personal overlay only: these rows can support planning and lesson context, but they do not change official School Admin meeting times.</p>
         <div id="schoolTimetableRows" class="space-y-3"></div>
