@@ -20,6 +20,8 @@ test('public opportunities require verification, source and freshness',()=>{
   assert.equal(normalizePublicItem({...opportunity,verifiedAt:'2026-08-01'},'opportunities',now),null);
   assert.equal(normalizePublicItem({...opportunity,expiresAt:'2026-11-19T00:00:00+08:00'},'opportunities',now),null);
   assert.equal(normalizePublicItem({...opportunity,status:'draft'},'opportunities',now),null);
+  assert.equal(normalizePublicItem({...opportunity,applicationDeadline:'2026-11-19'},'opportunities',now),null);
+  assert.equal(normalizePublicItem({...opportunity,applicationDeadline:'2026-11-28'},'opportunities',now)?.applicationDeadline,'2026-11-28');
 });
 test('publication and duplicate filters are conservative',()=>{
   const data={schemaVersion:1,channel:'opportunities',items:[
