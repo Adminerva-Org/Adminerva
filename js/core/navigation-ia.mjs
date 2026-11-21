@@ -119,8 +119,7 @@ export function buildNavigationIA(ctx){
         live("school-operations","Operations Dashboard","school-admin.html"),
         live("people-access","People & Access","people-access.html","Identity, account access, invitations and school roles. Teaching load is managed in Classes & Scheduling."),
         live("classes-scheduling","Classes & Scheduling","school-classes.html","Canonical workspace for class offerings, teacher assignments, derived teacher load, section coverage and class rosters."),
-        live("academic-config","Academic Setup","school-academic-configuration.html","Create school years, programs, periods, subjects, sections and class offerings."),
-        live("academic-structure","Academic Structure","school-academic-structure.html","Edit existing years, programs, periods, subjects and sections without changing stable IDs.")
+        live("academic-config","Academic Configuration","school-academic-configuration.html","Create and review school years, programs, periods, subjects, sections and class offerings; existing records are edited from this workspace's structure handoff.")
       ]),
       group("Academic Operations",[
         live("attendance-oversight","Attendance Oversight","school-attendance.html","Daily advisory attendance completion and exact saved roster status."),
