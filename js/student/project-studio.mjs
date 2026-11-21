@@ -358,7 +358,9 @@ export function createProjectStudio({
     try{return await work;}finally{if(cloudWrites.get(id)===work)cloudWrites.delete(id);}
   }
   async function flushCloudSaves({closingSessionEpoch=0}={}){
-    if(!cloudEnabled)return true;
+    // Ordinary guest work can be saved locally, but an exam may never
+    // report finalization without a school-owned cloud receipt.
+    if(!cloudEnabled)return !closingSessionEpoch;
     if(closingSessionEpoch){
       // Finalize only the active assessment project. Do not overwrite a
       // different project or accidentally bless an earlier cloud revision.
