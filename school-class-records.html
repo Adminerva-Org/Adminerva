@@ -41,11 +41,12 @@
     </div>
   </header>
 
-  <section class="grid sm:grid-cols-2 xl:grid-cols-4 gap-3" aria-label="Class Record administration summary">
+  <section class="grid sm:grid-cols-2 xl:grid-cols-5 gap-3" aria-label="Class Record administration summary">
     <article class="cro-panel"><p class="text-xs font-bold uppercase text-slate-500">Class Records</p><strong id="cro-total" class="block text-3xl font-extrabold mt-2">—</strong></article>
     <article class="cro-panel"><p class="text-xs font-bold uppercase text-slate-500">Finalized</p><strong id="cro-finalized" class="block text-3xl font-extrabold mt-2">—</strong></article>
     <article class="cro-panel"><p class="text-xs font-bold uppercase text-slate-500">Final Grade released</p><strong id="cro-released" class="block text-3xl font-extrabold mt-2">—</strong></article>
     <article class="cro-panel"><p class="text-xs font-bold uppercase text-slate-500">Needs layout review</p><strong id="cro-changed" class="block text-3xl font-extrabold mt-2">—</strong></article>
+    <article class="cro-panel"><p class="text-xs font-bold uppercase text-slate-500">Grading policy issues</p><strong id="cro-policy-issues" class="block text-3xl font-extrabold mt-2">—</strong></article>
   </section>
 
   <section class="cro-panel">
@@ -65,6 +66,7 @@
             <option value="finalized">Finalized</option>
             <option value="released">Final Grade released</option>
             <option value="layout_changed">Layout changed after finalization</option>
+            <option value="policy_issue">Grading policy issue</option>
           </select>
         </label>
         <button id="cro-refresh" type="button" class="cro-btn self-end" disabled>Refresh</button>
@@ -93,7 +95,7 @@
 <script src="js/core/adminerva-loader.js?v=20261121-admin-reconciled2"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261121-admin-reconciled2"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261121-admin-reconciled2"></script>
-<script type="module" src="js/school-admin/class-record-oversight.mjs?v=20261121-admin-reconciled2"></script>
+<script type="module" src="js/school-admin/class-record-oversight.mjs?v=20261121-policy-oversight1"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
