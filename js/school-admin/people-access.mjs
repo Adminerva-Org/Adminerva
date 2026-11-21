@@ -114,8 +114,8 @@ const picker=createTenantSchoolPicker({
       workspace.hidden=true;say("This school has not granted you directory administration access.");
       return;
     }
-    canonicalClassMode=scope.current.compatibilityMode==="v4_only";
-    standardEnrollmentMode=scope.current.compatibilityMode==="v4_only";
+    canonicalClassMode=scope.current.enrollmentMode==="canonical";
+    standardEnrollmentMode=scope.current.enrollmentMode==="canonical";
     const classTab=get("pa-tab-classes"),classPanel=get("pa-classes");
     if(classTab)classTab.hidden=canonicalClassMode;
     if(classPanel&&canonicalClassMode)classPanel.hidden=true;
