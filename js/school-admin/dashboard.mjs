@@ -241,6 +241,7 @@ function issueHref(item){
   const identityIssue=Boolean(item.personId)&&["access","invites","people"].includes(item.targetTab);
   if(identityIssue)return "people-access.html?personId="+encodeURIComponent(item.personId)+"#people";
   if(item.type==="student_no_enrollment"&&picker?.scope.current?.enrollmentMode==="canonical")return "school-enrollment.html"+(item.personId?"?personId="+encodeURIComponent(item.personId):"");
+  if(item.type==="student_registration_without_classes"&&picker?.scope.current?.enrollmentMode==="canonical")return "school-classes.html";
   return "people-access.html#"+(tabs.has(item.targetTab)?item.targetTab:"overview");
 }
 function recordState(record){
