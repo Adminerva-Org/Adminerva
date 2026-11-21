@@ -93,6 +93,10 @@ function createSchoolStudioProjectService({db}){
     deny("failed-precondition","This Studio assessment is no longer available.");
    const data=task.data();
    if(data.manualOpenRequired!==true)return {finalSave:false};
+   // A project marked for another offering must not be accepted as evidence
+   // for this task's class, even if an old browser supplies a valid task ID.
+   if(binding.offeringId!==data.offeringId)
+    deny("permission-denied","This assessment project is bound to a different course offering.");
    // Verify the student belongs to this exact section on every protected save,
    // including when a new class session reuses a previously saved project.
    const member=await tx.get(membershipRef),
@@ -231,9 +235,9 @@ function createSchoolStudioProjectService({db}){
      deny("permission-denied","This project ID belongs to a different school account.");
     if(data.status==="archived")
      deny("failed-precondition","Restore this archived school project before synchronizing changes.");
-    const expected=input.expectedRevision;
-    if(!Number.isInteger(expected)||expected<1)
-     deny("failed-precondition","This project already exists in school storage. Reload its school revision before saving.");
+    // A matching payload already exists in the cloud. It is safe to confirm
+    // the same code even when a new device has no local revision marker,
+    // including when that device is creating a final-close receipt.
     if(data.contentDigest===digest&&data.title===title&&data.language===language){
      // Identical cloud content is safe even if another device has already
      // advanced the revision. This is especially important at exam close.
@@ -241,6 +245,9 @@ function createSchoolStudioProjectService({db}){
      result={projectId,revision:data.revision,contentDigest:digest,created:false,unchanged:true,
        examFinalized:Boolean(receiptRef)};return;
     }
+    const expected=input.expectedRevision;
+    if(!Number.isInteger(expected)||expected<1)
+     deny("failed-precondition","This project already exists in school storage. Reload its school revision before saving.");
     if(data.revision!==expected)
      deny("failed-precondition","Project changed in school storage. Reload before overwriting it.");
     const revision=data.revision+1;

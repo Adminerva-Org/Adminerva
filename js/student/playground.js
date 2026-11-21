@@ -202,11 +202,47 @@ let examPolicyPending=Boolean(examLinkId),examPolicy=null;
 // disallow direct browser reads. Lock the editor before the final save begins.
 let watchedExamId="",examSessionTimer=null,examNotificationUnsub=null,examSessionChecking=false,examSessionClosing=false;
 let examLastContact=0,examSessionErrorCount=0,examMonitorPaused=false;
+function clearStudioExamConnectionPause(){
+  document.getElementById("studioExamConnectionOverlay")?.remove();
+  if(!examSessionClosing)document.getElementById("studioShell")?.removeAttribute("inert");
+}
+function pauseStudioExamEditing(message="Exam connection lost · editing paused until reconnected"){
+  if(!watchedExamId||examSessionClosing)return;
+  examMonitorPaused=true;
+  editorInstance?.updateOptions({readOnly:true});
+  document.getElementById("studioShell")?.setAttribute("inert","");
+  executionSequence++;
+  executionController?.abort();
+  if(cheerpjClient)stopLiveBrowserJava(true);
+  let overlay=document.getElementById("studioExamConnectionOverlay");
+  if(!overlay){
+    overlay=document.createElement("div");
+    overlay.id="studioExamConnectionOverlay";
+    overlay.setAttribute("role","alertdialog");
+    overlay.setAttribute("aria-modal","true");
+    overlay.setAttribute("aria-labelledby","studioExamConnectionHeading");
+    overlay.tabIndex=-1;
+    overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:#020617ed;"+
+      "display:flex;align-items:center;justify-content:center;padding:1.25rem;color:#f8fafc";
+    overlay.innerHTML='<section style="width:100%;max-width:490px;background:#0f172a;border:1px solid #475569;border-radius:16px;padding:1.5rem">'+
+      '<h2 id="studioExamConnectionHeading" style="font-size:1.35rem;font-weight:800">Exam connection interrupted</h2>'+
+      '<p id="studioExamConnectionMessage" role="status" style="margin-top:.8rem;line-height:1.6">Editing and execution are paused until Adminerva verifies that this class session is still open.</p>'+
+      '<p style="font-size:.85rem;margin-top:.9rem;color:#cbd5e1">Keep this tab open. Device-only changes are not available from another computer until saved to school cloud storage.</p>'+
+      '</section>';
+    document.body.append(overlay);
+    overlay.focus();
+  }
+  const label=overlay.querySelector("#studioExamConnectionMessage");
+  if(label)label.textContent=message+". Your editor is locked until the server verifies this session is still open.";
+  const badge=document.getElementById("autoSaveIndicator");
+  if(badge)badge.textContent=message;
+}
 function stopStudioExamWatcher(){
   watchedExamId="";
   clearInterval(examSessionTimer);examSessionTimer=null;
   examNotificationUnsub?.();examNotificationUnsub=null;
   examSessionErrorCount=0;examMonitorPaused=false;
+  clearStudioExamConnectionPause();
 }
 function examCloseOverlay(){
   let host=document.getElementById("studioExamClosingOverlay");
@@ -238,6 +274,7 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
     stopStudioExamWatcher();return;
   }
   examSessionClosing=true;
+  document.getElementById("studioExamConnectionOverlay")?.remove();
   clearInterval(examSessionTimer);examSessionTimer=null;
   editorInstance?.updateOptions({readOnly:true});
   const shell=document.getElementById("studioShell");
@@ -314,16 +351,22 @@ async function checkStudioExamSession(taskId=watchedExamId){
       throw Error("The verified school exam session status is temporarily unavailable.");
     if(watchedExamId!==taskId||examSessionClosing)return;
     examLastContact=Date.now();examSessionErrorCount=0;
-    if(examMonitorPaused){
+    const openedEpoch=Number(projectStudio?.getActiveProject?.()?.assessment?.sessionEpoch||0);
+    // A successful response does not automatically mean the exam is OPEN.
+    // Keep the editor frozen until the server verifies the same session epoch.
+    if(examMonitorPaused&&navigator.onLine!==false&&state.manualAccessState==="open"&&
+       state.published===true&&state.lifecycle==="active"&&
+       Number(state.sessionEpoch||0)===openedEpoch){
       examMonitorPaused=false;
+      clearStudioExamConnectionPause();
       editorInstance?.updateOptions({readOnly:Boolean(studioRuntimeIntegration?.locked?.())});
     }
-    const openedEpoch=Number(projectStudio?.getActiveProject?.()?.assessment?.sessionEpoch||0);
     if(Number(state.sessionEpoch||0)!==openedEpoch){
       // Every editor belongs to exactly one teacher-opened class session.
       // An old tab (including older drafts without an epoch) must never
       // join the next session without reentering through My Assessments.
       examSessionClosing=true;clearInterval(examSessionTimer);examSessionTimer=null;
+      document.getElementById("studioExamConnectionOverlay")?.remove();
       editorInstance?.updateOptions({readOnly:true});
       document.getElementById("studioShell")?.setAttribute("inert","");
       const captured=persistWorkspace(),overlay=examCloseOverlay();
@@ -343,12 +386,8 @@ async function checkStudioExamSession(taskId=watchedExamId){
     examSessionErrorCount++;
     // An interrupted network cannot verify that the exam is still open.
     // Freeze input rather than allowing a disconnected student to keep editing.
-    if(Date.now()-examLastContact>10000&&examSessionErrorCount>=3){
-      examMonitorPaused=true;
-      editorInstance?.updateOptions({readOnly:true});
-      const badge=document.getElementById("autoSaveIndicator");
-      if(badge)badge.textContent="Exam connection lost · editing paused until reconnected";
-    }
+    if(Date.now()-examLastContact>10000&&examSessionErrorCount>=3)
+      pauseStudioExamEditing();
   }finally{examSessionChecking=false;}
 }
 async function watchStudioExam(taskId){
@@ -388,6 +427,8 @@ async function watchStudioExam(taskId){
       },error=>console.warn("Realtime exam close signal unavailable; using server checks:",error));
     }
     examSessionTimer=setInterval(()=>void checkStudioExamSession(),5000);
+    // The offline event may have fired before the exam watcher started.
+    if(navigator.onLine===false)pauseStudioExamEditing();
     void checkStudioExamSession(taskId);
   }catch(error){console.warn("Studio exam session monitoring unavailable:",error);}
 }
@@ -407,6 +448,16 @@ window.addEventListener("adminerva:studio-ready",event=>{
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible"&&watchedExamId&&!examSessionClosing)
     void checkStudioExamSession();
+});
+window.addEventListener("offline",()=>{
+  // Do not allow continued local typing while the exam server is unreachable.
+  // This is advisory client-side protection; server write closure is authoritative.
+  pauseStudioExamEditing();
+});
+window.addEventListener("online",()=>{
+  // Do not unlock from the browser's online event alone. The authoritative
+  // session endpoint must verify that the same class session remains open.
+  if(watchedExamId&&!examSessionClosing)void checkStudioExamSession(watchedExamId);
 });
 window.addEventListener("pagehide",()=>stopStudioExamWatcher());
 
