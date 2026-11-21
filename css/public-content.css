@@ -52,6 +52,7 @@
 .av-home-editorial{margin:1.3rem 0;padding:clamp(.9rem,2.2vw,1.4rem);border:1px solid #cfdfeb;border-radius:1.25rem;background:linear-gradient(145deg,#fff,#f5fbff);box-shadow:0 8px 23px #17455f0a}
 .av-home-editorial-head{display:flex;justify-content:space-between;align-items:flex-end;gap:.75rem;flex-wrap:wrap;margin-bottom:.85rem}
 .av-home-editorial-head h2{font-size:clamp(1.16rem,2vw,1.55rem);font-weight:850;color:#183e58;letter-spacing:-.025em}
+.av-home-editorial-links{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap}
 .av-home-editorial-head a{font-size:.8rem;font-weight:850;color:#126978;text-decoration:underline;text-underline-offset:4px}
 .av-home-editorial-items{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem}
 .av-home-editorial-card{display:flex;flex-direction:column;gap:.45rem;min-width:0;border:1px solid #cfe1e9;border-radius:.95rem;background:white;padding:.95rem;text-decoration:none;transition:transform .18s ease,border-color .18s ease}
