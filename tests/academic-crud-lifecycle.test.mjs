@@ -100,3 +100,14 @@ test("section program moves protect active combined section-program grading poli
   assert.match(source,/where\("applicability\.sectionId","==",itemId\)/);
   assert.match(source,/Archive or update grading policy/);
 });
+
+
+test("compatibility People & Access class controls honor canonical lifecycle revisions",()=>{
+  const backend=readFileSync(new URL("../functions/school-academics.js",import.meta.url),"utf8");
+  const frontend=readFileSync(new URL("../js/school-admin/people-access.mjs",import.meta.url),"utf8");
+  assert.match(backend,/offeringRevision:Number\(offering\.data\(\)\.revision\)\|\|1/);
+  assert.match(frontend,/enrollmentId:student\.enrollmentId,expectedRevision:Number\(student\.revision\)\|\|1/);
+  assert.match(frontend,/offeringId,expectedRevision:Number\(teacher\.revision\)\|\|1/);
+  assert.match(frontend,/expectedOfferingRevision:Number\(reviewed\.offeringRevision\)\|\|1/);
+  assert.match(frontend,/expectedFromRevision:Number\(fromAssignment\.revision\)\|\|1/);
+});
