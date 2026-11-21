@@ -41,6 +41,35 @@
       <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Linked accounts</p><strong id="advisoryAccountCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
     </div>
 
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div class="p-4 sm:p-5 border-b border-slate-200">
+        <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+          <div>
+            <p class="text-xs uppercase tracking-wider font-bold text-amber-700">School attendance</p>
+            <h2 class="text-xl font-extrabold mt-1">Daily advisory attendance</h2>
+            <p class="text-sm text-slate-600 mt-1">Official homeroom attendance for this section. It is not inferred from logins, Classroom activity, submissions or subject grades.</p>
+          </div>
+          <div class="flex flex-wrap items-end gap-2">
+            <label class="text-xs font-bold">Date<input id="advisoryAttendanceDate" type="date" class="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm"></label>
+            <button id="advisoryAttendanceLoad" type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold">Load day</button>
+          </div>
+        </div>
+        <div id="advisoryAttendanceSummary" class="mt-4 flex flex-wrap gap-2"></div>
+        <p id="advisoryAttendanceStatus" class="text-xs text-slate-500 mt-2" role="status"></p>
+      </div>
+      <div class="p-4 sm:p-5">
+        <div class="flex flex-wrap gap-2 mb-3">
+          <button id="advisoryAttendanceAllPresent" type="button" class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">Mark all present</button>
+          <button id="advisoryAttendanceClear" type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold">Reset to unmarked</button>
+        </div>
+        <div id="advisoryAttendanceRows" class="space-y-2"></div>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t border-slate-200">
+          <p class="text-xs text-slate-500">Saving creates a new revision of the day. Later corrections preserve the previous revision for audit.</p>
+          <button id="advisoryAttendanceSave" type="button" class="rounded-lg bg-amber-700 text-white px-4 py-2.5 text-sm font-extrabold disabled:opacity-50" disabled>Save attendance</button>
+        </div>
+      </div>
+    </section>
+
     <section class="grid xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)] gap-5 items-start">
       <article class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="p-4 sm:p-5 border-b border-slate-200">
@@ -77,6 +106,6 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261121-advisory1"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
-<script type="module" src="js/teacher/advisory.mjs?v=20261121-advisory1"></script>
+<script type="module" src="js/teacher/advisory.mjs?v=20261121-attendance1"></script>
 </body>
 </html>
