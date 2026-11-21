@@ -330,17 +330,31 @@ function createSchoolAssessmentService({db}){
       contentDigest:frozen.contentDigest||"",
       savedAt:frozen.savedAt?.toMillis?.()||null};
    }
-   const snap=await db.collection(prefix+"studio_exam_close_receipts/"+taskId+
-     "/sessions/"+epoch+"/studio_exam_final_checkpoints").limit(101).get();
-   if(snap.size===101)
-    deny("resource-exhausted","Close checkpoints require pagination for large cohorts.");
-   const receipts=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
-     doc.data().closingEpoch===epoch).map(doc=>({
-       studentUid:doc.data().studentUid,projectId:doc.data().projectId,
-       projectRevision:doc.data().projectRevision,
-       contentDigest:doc.data().contentDigest,
-       savedAt:doc.data().savedAt?.toMillis?.()||null
-     }));
+   // Project source and database/design payloads can be hundreds of KB per
+   // student. Only retrieve checkpoint metadata for the class roster report.
+   // Fetch the full immutable code only when the teacher selects View code.
+   const receiptQuery=db.collection(prefix+"studio_exam_close_receipts/"+taskId+
+     "/sessions/"+epoch+"/studio_exam_final_checkpoints")
+     .select("schoolId","closingEpoch","studentUid","projectId","projectRevision","savedAt")
+     .orderBy(FieldPath.documentId());
+   const receipts=[];
+   let receiptCursor=null;
+   for(;;){
+    let pageQuery=receiptQuery.limit(200);
+    if(receiptCursor)pageQuery=pageQuery.startAfter(receiptCursor);
+    const page=await pageQuery.get();
+    for(const doc of page.docs){
+     const data=doc.data();
+     if(data.schoolId!==ctx.schoolId||data.closingEpoch!==epoch)continue;
+     receipts.push({studentUid:data.studentUid,projectId:data.projectId,
+       projectRevision:data.projectRevision,
+       savedAt:data.savedAt?.toMillis?.()||null});
+    }
+    if(receipts.length>1500)
+     deny("resource-exhausted","This exam's checkpoint history exceeds the supported class report size.");
+    if(page.size<200)break;
+    receiptCursor=page.docs[page.docs.length-1];
+   }
    const rosterDoc=await db.doc(prefix+"studio_exam_session_rosters/"+taskId+
      "/sessions/"+epoch).get();
    const hasCapturedRoster=rosterDoc.exists&&rosterDoc.data().schoolId===ctx.schoolId&&
