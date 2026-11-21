@@ -49,3 +49,16 @@ test("progression final-grade gate requires the released revision to match the s
   assert.match(source,/gradeData\.status==="finalized"/);
   assert.match(source,/Number\(gradeData\.finalizationRevision\)===releasedRevision/);
 });
+
+
+test("student placement history is derived from canonical registrations and registrar audit records",()=>{
+  assert.match(source,/if\(input\.action==="student_history"\)/);
+  assert.match(source,/student_registrations/);
+  assert.match(source,/directory_audit/);
+  assert.match(source,/activeRegistrationCount/);
+  assert.match(source,/progressedToRegistrationId/);
+  assert.doesNotMatch(source.slice(
+    source.indexOf('if(input.action==="student_history")'),
+    source.indexOf('if(input.action==="list_registrations")')
+  ),/student_grades|class_record_period_grades/);
+});
