@@ -129,6 +129,49 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
       author: root.author, commit: root.commit };
   }
 
+  /**
+   * Retrieve bounded text source from the immutable teacher-approved checkpoint,
+   * never from a moving branch HEAD. Deleted, binary and oversized files are
+   * explicitly omitted instead of silently presented as reviewed.
+   */
+  async function loadPinnedSource(repository, checkpointSha, paths = []) {
+    if(!/^[a-f0-9]{40}$/i.test(checkpointSha))
+      throw Error("Pinned source requires a full immutable checkpoint SHA.");
+    if(!Array.isArray(paths)||paths.length>18)
+      throw Error("Pinned source inspection supports at most 18 changed files.");
+    const files=[],omitted=[];
+    let totalBytes=0;
+    for(const path of [...new Set(paths)]){
+      if(typeof path!=="string"||!path||path.length>500||
+         path.startsWith("/")||path.split("/").some(part=>!part||part==="."||part===".."))
+        throw Error("Invalid repository source path.");
+      const encodedPath=path.split("/").map(encodeURIComponent).join("/");
+      const data=await request(`${base(repository)}/contents/${encodedPath}?ref=${encodeURIComponent(checkpointSha)}`,{allow404:true});
+      if(!data){omitted.push({path,reason:"Not present at approved checkpoint"});continue;}
+      if(data.type!=="file"||data.encoding!=="base64"||typeof data.content!=="string"||
+         data.path!==path){
+        omitted.push({path,reason:"GitHub did not return a matching text file"});continue;
+      }
+      const size=Number(data.size);
+      if(!Number.isFinite(size)||size<0||size>32000||totalBytes+size>144000){
+        omitted.push({path,reason:"Source exceeds bounded inspection size"});continue;
+      }
+      try{
+        const bytes=Uint8Array.from(atob(data.content.replace(/\s/g,"")),
+          character=>character.charCodeAt(0));
+        if(bytes.byteLength!==size)
+          throw Error("GitHub source size mismatch");
+        const content=new TextDecoder("utf-8",{fatal:true}).decode(bytes);
+        if(content.includes("\u0000"))throw Error("Binary source");
+        totalBytes+=bytes.byteLength;
+        files.push({path,content});
+      }catch{
+        omitted.push({path,reason:"Source was binary or could not be decoded exactly"});
+      }
+    }
+    return {files,omitted};
+  }
+
   async function getBranchHead(repository, ref = null) {
     const info = await repositoryInfo(repository);
     const branch = ref || info.default_branch;
@@ -155,5 +198,5 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
       historyWarning: history.warning || null };
   }
 
-  return { repositoryInfo, listCommits, loadCommit, getBranchHead, resolveEvidence };
+  return { repositoryInfo, listCommits, loadCommit, loadPinnedSource, getBranchHead, resolveEvidence };
 }
