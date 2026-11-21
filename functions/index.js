@@ -288,7 +288,10 @@ async function rebuildStudentAccess(email,expectedUid=null){
   const profiles=active.map(record=>({
     id:record.id,
     section:String(record.data?.section||"").trim(),
-    name:String(record.data?.name||record.data?.studentName||"Student").slice(0,140)
+    name:String(record.data?.name||record.data?.studentName||"Student").slice(0,140),
+    repoUrl:String(record.data?.repoUrl||"").trim().slice(0,300),
+    githubUsername:String(record.data?.githubUsername||"").trim().replace(/^@/,"").slice(0,100),
+    accountUid:user.uid
   })).filter(record=>record.section);
   const sections=[...new Set(profiles.map(record=>record.section))].slice(0,40);
   const studentIds=active.map(record=>record.id).slice(0,50);
@@ -312,6 +315,52 @@ exports.refreshStudentAccess=onCall(callOptions,async request=>{
     return {sections:[],studentIds:[],profiles:[],identitySource:"none"};
   }
   return result;
+});
+exports.prepareRecoveredGithubLink=onCall(callOptions,async request=>{
+  await requireLegacyMcsCompatibility();
+  const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase().trim(),
+    githubProviderUid=String(request.data?.githubProviderUid||"").trim();
+  if(!uid||request.auth?.token?.email_verified!==true||!email)
+    throw new HttpsError("unauthenticated","Use your verified school account before reconnecting GitHub.");
+  if(!/^[0-9]{1,32}$/.test(githubProviderUid))
+    throw new HttpsError("invalid-argument","Verify the GitHub account again before transferring the recovered connection.");
+  const member=await db.doc("schools/mcs-manila/memberships/"+uid).get();
+  if(!member.exists||member.data()?.status!=="active"||
+     !Array.isArray(member.data()?.roles)||!member.data().roles.includes("student"))
+    throw new HttpsError("permission-denied","This account is not an active recovered student.");
+  const personId=String(member.data()?.personId||"").trim();
+  if(!personId)throw new HttpsError("failed-precondition","The school person link is missing.");
+  const person=await db.doc("schools/mcs-manila/people/"+personId).get();
+  const data=person.data()||{};
+  if(!person.exists||data.status!=="active"||data.kind!=="student"||data.authUid!==uid)
+    throw new HttpsError("failed-precondition","The canonical student identity is not current.");
+  const previous=[...new Set((Array.isArray(data.previousAuthUids)?data.previousAuthUids:[])
+    .map(value=>String(value||"").trim()).filter(value=>value&&value!==uid))].slice(-20);
+  if(!data.accountRecoveredAt||!previous.length)return {released:0,recovered:false};
+  const authAdmin=getAuth();
+  let released=0;
+  for(const oldUid of previous){
+    try{
+      const oldUser=await authAdmin.getUser(oldUid);
+      const github=oldUser.providerData.find(provider=>
+        provider.providerId==="github.com"&&String(provider.uid||"")===githubProviderUid);
+      if(github){
+        await authAdmin.updateUser(oldUid,{providersToUnlink:["github.com"]});
+        released++;
+      }
+    }catch(error){
+      if(error?.code==="auth/user-not-found")continue;
+      throw error;
+    }
+  }
+  if(released){
+    await db.collection("schools/mcs-manila/directory_audit").add({
+      schoolId:"mcs-manila",personId,actorUid:uid,targetUid:uid,
+      action:"recovered_github_provider_released",releasedProviders:released,
+      githubProviderUid,createdAt:FieldValue.serverTimestamp()
+    });
+  }
+  return {released,recovered:true};
 });
 exports.studentAccessChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},async event=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;
