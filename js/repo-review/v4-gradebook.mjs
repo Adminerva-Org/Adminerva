@@ -2,6 +2,7 @@ import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
+import {buildV4RepositoryEvaluationSnapshot} from "./services/v4-repository-evidence.mjs?v=20261121-unified-repo1";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
 import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=20261121-compact-bulk1";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
@@ -404,6 +405,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   function renderGithubEvidence(snapshot,commitMap=null){
     const host=document.getElementById("gbV4GithubCommits");host.replaceChildren();
     const repo=snapshot?.repository?.fullName||"";
+    const commitSummary=document.getElementById("gbV4GithubCommitSummary");
+    if(commitSummary)commitSummary.textContent="Show commits ("+
+      (snapshot?.selectedCommitShas?.length||0)+")";
+    const commitDetails=document.getElementById("gbV4GithubCommitDetails");
+    if(commitDetails)commitDetails.open=false;
     document.getElementById("gbV4GithubMeta").textContent=
       (repo||"Repository unavailable")+" · checkpoint "+String(snapshot?.checkpointSha||"").slice(0,12)+
       " · "+(snapshot?.selectedCommitShas?.length||0)+" selected commit(s)";
@@ -549,35 +555,18 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const client=createGithubEvidenceClient({
       token:prefs.githubToken||null,maxPages:10,maxCommitFilesPages:10,retryCount:1
     });
-    const repository=currentSnapshot?.repository?.fullName;
-    const selected=(currentSnapshot?.selectedCommitShas||[]).map(String);
-    if(!repository||!selected.length)throw Error("Frozen GitHub evidence is incomplete.");
-    const commits=[],limitations=[];
-    for(const sha of selected.slice(0,20)){
-      const detail=await client.loadCommit(repository,sha);
-      if(detail.filesTruncated)limitations.push("Commit "+sha.slice(0,12)+" has more files than could be fully retrieved.");
-      commits.push({
-        sha,
-        files:(detail.files||[]).slice(0,100).map(file=>({
-          path:file.filename||"",
-          status:file.status||"",
-          additions:Number(file.additions||0),
-          deletions:Number(file.deletions||0),
-          patch:file.patch||""
-        }))
-      });
-      if((detail.files||[]).length>100)
-        limitations.push("Commit "+sha.slice(0,12)+" contains additional files omitted from the AI package.");
-    }
-    if(selected.length>20)
-      limitations.push((selected.length-20)+" selected commit(s) were omitted from the AI package because the evidence set is unusually large.");
-    return {
-      version:Number(currentSnapshot.version||0),
-      checkpointSha:currentSnapshot.checkpointSha||"",
-      selectedCommitShas:selected,
-      commits,
-      limitations
-    };
+    const result=await buildV4RepositoryEvaluationSnapshot({
+      snapshot:currentSnapshot,client
+    });
+    const inspection=document.getElementById("gbV4GithubAnalysisStatus");
+    if(inspection)inspection.textContent=
+      "Repository inspection: "+result.analysis.inspectedCount+"/"+result.analysis.selectedCount+
+      " selected commits · "+result.analysis.substantiveChanges+
+      " substantive file changes detected · "+result.analysis.pinnedFileCount+
+      " pinned source files loaded."+
+      (result.analysis.complete?"":" Coverage is partial; see the evaluator limitations.")+
+      " These signals do not independently establish individual authorship.";
+    return result;
   }
   function applyEvaluationSuggestion(suggestion,label){
     if(busy||!dialog.open||!currentSnapshot)return;
@@ -630,6 +619,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4LegacyReason").value="";
     document.getElementById("gbV4ExternalResponse").value="";
     document.getElementById("gbV4ExternalStatus").textContent="";
+    const githubAnalysis=document.getElementById("gbV4GithubAnalysisStatus");
+    if(githubAnalysis)githubAnalysis.textContent="";
     clearEvaluationReview(document.getElementById("gbV4SystemReview"),"Internal AI has not been run for this submission.");
     clearEvaluationReview(document.getElementById("gbV4ExternalReview"),"No External AI review has been imported for this submission.");
     document.getElementById("gbV4ExternalEvaluationPanel").classList.remove("hidden");
