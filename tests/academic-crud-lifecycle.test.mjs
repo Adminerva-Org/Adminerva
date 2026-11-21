@@ -68,3 +68,24 @@ test("class teacher and selective enrollment lifecycle writes use reviewed revis
   assert.match(frontend,/restore_teacher_assignment[\s\S]*expectedRevision:Number\(row\.revision\)\|\|1/);
   assert.match(frontend,/end_enrollment[\s\S]*expectedRevision:Number\(row\.revision\)\|\|1/);
 });
+
+
+test("teacher handover validates the reviewed class and both assignment revisions",()=>{
+  const backend=readFileSync(new URL("../functions/school-academics.js",import.meta.url),"utf8");
+  const frontend=readFileSync(new URL("../js/school-admin/classes-scheduling.mjs",import.meta.url),"utf8");
+  assert.match(backend,/expectedOfferingRevision=Number\(input\.expectedOfferingRevision\)/);
+  assert.match(backend,/expectedFromRevision=Number\(input\.expectedFromRevision\)/);
+  assert.match(backend,/expectedToRevision=Number\(input\.expectedToRevision\)/);
+  assert.match(backend,/replacement teacher assignment changed after you opened this class/);
+  assert.match(frontend,/handover_offering[\s\S]*expectedOfferingRevision:Number\(selected\(\)\?\.revision\)\|\|1/);
+  assert.match(frontend,/expectedFromRevision:Number\(fromAssignment\.revision\)\|\|1/);
+});
+
+test("class restore normalizes stale authority and schedule relationships",()=>{
+  const backend=readFileSync(new URL("../functions/school-academics.js",import.meta.url),"utf8");
+  assert.match(backend,/offering_restore_normalization/);
+  assert.match(backend,/normalizedAssignments=activeRelationshipAssignments\.length/);
+  assert.match(backend,/adoptedActiveEnrollments/);
+  assert.match(backend,/archiveReasonType:"offering_restore_normalization"/);
+  assert.match(backend,/active class enrollment no longer matches this class's official placement metadata/i);
+});
