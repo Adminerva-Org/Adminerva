@@ -5,8 +5,11 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 const get=id=>document.getElementById(id);
 const endTypeLabel=value=>({
   withdrawal:"Withdrawal",transfer_out:"Transfer out",
-  registration_cancelled:"Registration cancelled",other:"Other"
+  registration_cancelled:"Registration cancelled",progression:"Progression",other:"Other"
 })[value]||"";
+const progressionTypeLabel=value=>({
+  promotion:"Promotion",retention:"Retention",graduation:"Graduation"
+})[value]||"Progression";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
 const requestedPersonId=(()=>{try{
@@ -14,9 +17,10 @@ const requestedPersonId=(()=>{try{
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)?value:"";
 }catch{return "";}})();
 let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]},
-  saving=false,draftDirty=false,loadedApplication=null,loadedPerson=null,registrations=[],registrationChange=null;
+  saving=false,draftDirty=false,loadedApplication=null,loadedPerson=null,registrations=[],registrationChange=null,
+  progressionChange=null;
 const requestVersions={catalog:0,applications:0,registrations:0};
-let refreshVersion=0;
+let refreshVersion=0,progressionPreviewRun=0;
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -43,7 +47,7 @@ function setSaving(value){
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
-  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select"))
     control.disabled=value;
   updateCoursePreview();
 }
@@ -73,6 +77,16 @@ function gradeRequiresStudentEmail(level){
 function levelLabel(level){
   const special={nursery_prep:"Nursery / Prep",kinder_1:"Kinder 1",kinder_2:"Kinder 2",sned_elem:"SNED · Elementary",sned_jhs:"SNED · Junior High"};
   return special[level]||(/^\d+$/.test(String(level||""))?"Grade "+level:(level||"Level not specified"));
+}
+function progressionGradeValid(type,sourceLevel,targetLevel){
+  const source=String(sourceLevel||"").trim().toLowerCase(),
+    target=String(targetLevel||"").trim().toLowerCase();
+  if(type==="graduation")return true;
+  if(!source||!target)return false;
+  if(type==="retention")return source===target;
+  if(type!=="promotion"||source===target)return false;
+  if(/^\d+$/.test(source)&&/^\d+$/.test(target))return Number(target)===Number(source)+1;
+  return true;
 }
 function currentSection(){
   return catalog.sections.find(row=>row.id===selected("sectionId"))||null;
@@ -178,17 +192,21 @@ function renderRegistrations(){
     info.append(name,meta);
     const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;justify-content:flex-end";
     const badge=document.createElement("span");badge.className="en-badge";badge.dataset.state=item.status||"active";
-    badge.textContent=item.status==="ended"&&item.endReasonType
-      ?"ended · "+endTypeLabel(item.endReasonType).toLowerCase()
-      :(item.status||"active");actions.append(badge);
+    badge.textContent=item.status==="ended"&&item.progressionType
+      ?"ended · "+progressionTypeLabel(item.progressionType).toLowerCase()
+      :item.status==="ended"&&item.endReasonType
+        ?"ended · "+endTypeLabel(item.endReasonType).toLowerCase()
+        :(item.status||"active");actions.append(badge);
     const identityLink=document.createElement("a");identityLink.className="en-btn secondary";identityLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
     identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identityLink);
     if(item.status==="active"){
+      const progress=document.createElement("button");progress.type="button";progress.className="en-btn";progress.textContent="Progress student";
+      progress.addEventListener("click",()=>openProgression(item));actions.append(progress);
       const move=document.createElement("button");move.type="button";move.className="en-btn";move.textContent="Change section";
       move.addEventListener("click",()=>openRegistrationChange(item,"move"));actions.append(move);
       const end=document.createElement("button");end.type="button";end.className="en-btn secondary";end.textContent="End registration";
       end.addEventListener("click",()=>openRegistrationChange(item,"end"));actions.append(end);
-    }else if(item.status==="ended"){
+    }else if(item.status==="ended"&&!item.progressionType){
       const restore=document.createElement("button");restore.type="button";restore.className="en-btn secondary";restore.textContent="Restore";
       restore.addEventListener("click",()=>openRegistrationChange(item,"restore"));actions.append(restore);
     }
@@ -205,6 +223,115 @@ async function loadRegistrations(){
 function automaticOfferings(item,sectionId){
   return catalog.offerings.filter(row=>row.yearId===item.yearId&&row.programId===item.programId&&
     row.termId===item.termId&&row.sectionId===sectionId&&row.rosterMode!=="selective");
+}
+function progressionFormPayload(){
+  if(!progressionChange)return null;
+  const pform=get("en-progression-form"),type=String(pform.elements.progressionType.value||"");
+  return {
+    registrationId:progressionChange.item.registrationId,
+    expectedRevision:Number(progressionChange.item.revision)||1,
+    progressionType:type,
+    ...(type&&type!=="graduation"?{
+      targetYearId:String(pform.elements.targetYearId.value||""),
+      targetProgramId:String(pform.elements.targetProgramId.value||""),
+      targetTermId:String(pform.elements.targetTermId.value||""),
+      targetSectionId:String(pform.elements.targetSectionId.value||"")
+    }:{})
+  };
+}
+function progressionSignature(payload=progressionFormPayload()){
+  return payload?JSON.stringify(payload):"";
+}
+function refreshProgressionPlacement(){
+  if(!progressionChange)return;
+  const pform=get("en-progression-form"),type=String(pform.elements.progressionType.value||""),
+    placement=get("en-progression-placement"),source=progressionChange.item,
+    targetMode=type==="promotion"||type==="retention";
+  placement.hidden=!targetMode;
+  for(const name of ["targetYearId","targetProgramId","targetTermId","targetSectionId"]){
+    pform.elements[name].required=targetMode;
+    pform.elements[name].disabled=!targetMode;
+  }
+  if(!targetMode){
+    for(const name of ["targetYearId","targetProgramId","targetTermId","targetSectionId"])pform.elements[name].value="";
+    return;
+  }
+  const year=pform.elements.targetYearId,program=pform.elements.targetProgramId,
+    term=pform.elements.targetTermId,section=pform.elements.targetSectionId,
+    prior={year:year.value,program:program.value,term:term.value,section:section.value},
+    years=(catalog.years||[]).filter(row=>row.id!==source.yearId);
+  options(year,years,"Choose target academic year");
+  if(years.some(row=>row.id===prior.year))year.value=prior.year;
+  options(program,catalog.programs||[],"Choose target program / division");
+  if((catalog.programs||[]).some(row=>row.id===prior.program))program.value=prior.program;
+  else if((catalog.programs||[]).some(row=>row.id===source.programId))program.value=source.programId;
+  const terms=(catalog.terms||[]).filter(row=>
+    (!year.value||row.yearId===year.value)&&(!program.value||row.programId===program.value));
+  options(term,terms,"Choose target academic period");
+  if(terms.some(row=>row.id===prior.term))term.value=prior.term;
+  const sections=(catalog.sections||[]).filter(row=>
+    (!program.value||row.programId===program.value)&&
+    progressionGradeValid(type,source.gradeLevel,row.gradeLevel));
+  options(section,sections,"Choose target section");
+  if(sections.some(row=>row.id===prior.section))section.value=prior.section;
+}
+async function updateProgressionPreview(){
+  if(!progressionChange)return;
+  const run=++progressionPreviewRun,payload=progressionFormPayload(),
+    preview=get("en-progression-preview"),blockers=get("en-progression-blockers"),
+    confirm=get("en-progression-confirm");
+  progressionChange.preview=null;progressionChange.previewSignature="";
+  blockers.replaceChildren();confirm.disabled=true;
+  if(!payload?.progressionType){
+    preview.textContent="Choose a progression decision to check released Final Grades and target placement.";return;
+  }
+  if(payload.progressionType!=="graduation"&&
+    (!payload.targetYearId||!payload.targetProgramId||!payload.targetTermId||!payload.targetSectionId)){
+    preview.textContent="Choose the complete target placement to run progression readiness.";return;
+  }
+  preview.textContent="Checking released Final Grades and official placement dependencies…";
+  try{
+    const result=await perform("preview_progression",payload);
+    if(run!==progressionPreviewRun||!progressionChange)return;
+    progressionChange.preview=result;progressionChange.previewSignature=progressionSignature(payload);
+    for(const issue of result.blockers||[]){
+      const row=document.createElement("p");row.className="en-muted";
+      const subject=issue.subjectId?catalog.subjects.find(item=>item.id===issue.subjectId)?.name:"";
+      row.textContent="• "+(subject?subject+": ":"")+(issue.message||"Progression requires review.");
+      blockers.append(row);
+    }
+    if(result.canApply){
+      const destination=result.progressionType==="graduation"
+        ?"student academic completion / graduation"
+        :registrationLabel({...result.target,displayName:""});
+      preview.textContent="Ready · "+result.completion.filter(item=>item.ready).length+
+        " released Final Grade"+(result.completion.length===1?"":"s")+" verified · "+destination+".";
+      confirm.disabled=false;
+    }else{
+      preview.textContent=(result.blockers||[]).length+
+        " progression blocker"+((result.blockers||[]).length===1?"":"s")+" must be resolved before this decision can be applied.";
+    }
+  }catch(error){
+    if(run!==progressionPreviewRun||!progressionChange)return;
+    preview.textContent=error?.message||"Progression readiness could not be checked.";
+  }
+}
+function openProgression(item){
+  if(saving)return;
+  progressionChange={item,preview:null,previewSignature:""};++progressionPreviewRun;
+  const dialog=get("en-progression-dialog"),pform=get("en-progression-form");
+  pform.reset();get("en-progression-blockers").replaceChildren();
+  get("en-progression-target").textContent=item.displayName+" · "+registrationLabel(item)+" · "+levelLabel(item.gradeLevel);
+  get("en-progression-preview").textContent="Choose a progression decision to check released Final Grades and target placement.";
+  get("en-progression-confirm").disabled=true;
+  for(const select of [pform.elements.targetYearId,pform.elements.targetProgramId,pform.elements.targetTermId,pform.elements.targetSectionId])
+    blank(select,"Choose after selecting a decision");
+  refreshProgressionPlacement();dialog.showModal();
+}
+function closeProgression(){
+  if(saving)return;
+  ++progressionPreviewRun;progressionChange=null;
+  get("en-progression-dialog").close();
 }
 function updateRegistrationChangePreview(){
   if(!registrationChange||registrationChange.mode!=="move")return;
@@ -277,6 +404,44 @@ get("en-registration-change-close").addEventListener("click",closeRegistrationCh
 get("en-registration-change-cancel").addEventListener("click",closeRegistrationChange);
 get("en-registration-change-dialog").addEventListener("cancel",event=>{if(saving)event.preventDefault();else registrationChange=null;});
 get("en-registration-change-form").elements.sectionId.addEventListener("change",updateRegistrationChangePreview);
+get("en-progression-close").addEventListener("click",closeProgression);
+get("en-progression-cancel").addEventListener("click",closeProgression);
+get("en-progression-dialog").addEventListener("cancel",event=>{
+  if(saving)event.preventDefault();else{++progressionPreviewRun;progressionChange=null;}
+});
+for(const name of ["progressionType","targetYearId","targetProgramId","targetTermId","targetSectionId"]){
+  get("en-progression-form").elements[name].addEventListener("change",()=>{
+    if(["progressionType","targetYearId","targetProgramId"].includes(name))refreshProgressionPlacement();
+    void updateProgressionPreview();
+  });
+}
+get("en-progression-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(saving||!progressionChange||!event.currentTarget.reportValidity())return;
+  const payload=progressionFormPayload(),signature=progressionSignature(payload),
+    reason=String(new FormData(event.currentTarget).get("reason")||"").trim(),
+    preview=progressionChange.preview;
+  if(!preview?.canApply||progressionChange.previewSignature!==signature){
+    get("en-progression-preview").textContent="The progression selection changed. Run the readiness check again before applying.";
+    get("en-progression-confirm").disabled=true;return;
+  }
+  const item=progressionChange.item;
+  void (async()=>{
+    setSaving(true);status.textContent="Applying "+progressionTypeLabel(payload.progressionType).toLowerCase()+" and preserving completed registration history…";
+    try{
+      const result=await perform("progress_registration",{...payload,reason});
+      progressionChange=null;get("en-progression-dialog").close();
+      await loadRegistrations();
+      status.textContent=result.progressionType==="graduation"
+        ?item.displayName+" graduated · "+result.completedCourseCount+" released class result"+(result.completedCourseCount===1?"":"s")+" preserved."
+        :item.displayName+" · "+progressionTypeLabel(result.progressionType)+" completed · "+
+          result.createdCourseCount+" target class enrollment"+(result.createdCourseCount===1?"":"s")+" created; prior registration preserved.";
+    }catch(error){
+      get("en-progression-preview").textContent=error?.message||"The progression decision was not applied.";
+    }finally{setSaving(false);}
+  })();
+});
+
 get("en-registration-change-form").addEventListener("submit",event=>{
   event.preventDefault();
   if(saving||!registrationChange||!event.currentTarget.reportValidity())return;
@@ -576,10 +741,12 @@ picker=createTenantSchoolPicker({
     if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
     ++refreshVersion;
     for(const source of Object.keys(requestVersions))++requestVersions[source];
-    loadedApplication=null;loadedPerson=null;registrationChange=null;draftDirty=false;registrations=[];
+    loadedApplication=null;loadedPerson=null;registrationChange=null;progressionChange=null;draftDirty=false;registrations=[];
+    ++progressionPreviewRun;
     form.elements.displayName.readOnly=false;
     catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]};
     if(get("en-registration-change-dialog").open)get("en-registration-change-dialog").close();
+    if(get("en-progression-dialog").open)get("en-progression-dialog").close();
     form.reset();clearLoadedApplication({resetIdentity:true});
     get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
     renderActivation("");workspace.hidden=true;
