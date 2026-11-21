@@ -109,17 +109,27 @@ function compactAutomaticVerification(value){
     limitations:Array.isArray(value.limitations)?value.limitations.slice(0,20).map(item=>text(item,1200)):[]
   };
 }
+function compactAssignedTask(snapshot={}){
+ const task=snapshot.personalizedTask;
+ return task&&typeof task==="object"?{
+   variantId:text(task.variantId,120),
+   prompt:text(task.prompt,12000),
+   evaluationNotes:text(task.evaluationNotes,8000)
+ }:null;
+}
 function compactEvidence(source,snapshot={}){
   if(source==="text")return {
     type:"written_response",
     response:text(snapshot.payload?.response,50000),
-    version:Number(snapshot.version||0)
+    version:Number(snapshot.version||0),
+    personalizedTask:compactAssignedTask(snapshot)
   };
   if(source==="link")return {
     type:"submission_link",
     url:text(snapshot.payload?.url,3000),
     studentNote:text(snapshot.payload?.note,10000),
     version:Number(snapshot.version||0),
+    personalizedTask:compactAssignedTask(snapshot),
     limitation:"The URL and note are frozen in Adminerva, but content hosted at the external URL may change after submission."
   };
   if(source==="studio")return {
@@ -138,15 +148,12 @@ function compactEvidence(source,snapshot={}){
     }:{},
     executionEvidence:compactExecutionEvidence(snapshot),
     automaticVerification:compactAutomaticVerification(snapshot.automaticVerification||snapshot.verification),
-    personalizedTask:snapshot.personalizedTask?{
-      variantId:text(snapshot.personalizedTask.variantId,120),
-      prompt:text(snapshot.personalizedTask.prompt,12000),
-      evaluationNotes:text(snapshot.personalizedTask.evaluationNotes,8000)
-    }:null
+    personalizedTask:compactAssignedTask(snapshot)
   };
   if(source==="github")return {
     type:"github_frozen_commit_evidence",
     version:Number(snapshot.version||0),
+    personalizedTask:compactAssignedTask(snapshot),
     checkpointSha:text(snapshot.checkpointSha,40),
     selectedCommitShas:Array.isArray(snapshot.selectedCommitShas)?snapshot.selectedCommitShas.slice(0,100).map(value=>text(value,40)):[],
     commits:Array.isArray(snapshot.commits)?snapshot.commits.slice(0,40).map(commit=>({
@@ -207,9 +214,9 @@ export function buildGeneralExternalEvaluationData({task={},snapshot={},checking
   if(!["text","link","studio","github"].includes(assessment.submissionSource))
     throw Error("This assessment evidence type is not supported by the shared evaluator.");
   const evidence=compactEvidence(assessment.submissionSource,snapshot);
-  if(assessment.submissionSource==="studio"&&assessment.personalized===true&&
+  if(assessment.personalized===true&&
      (!evidence.personalizedTask||!text(evidence.personalizedTask.prompt,12000)))
-    throw Error("This personalized Studio submission is missing its assigned scenario. Reload the submission until the personalized task is available before running or copying AI evaluation.");
+    throw Error("This personalized submission is missing its exact assigned scenario. Reload its frozen task before running or copying AI evaluation.");
   const payload={
     format:GENERAL_EXTERNAL_EVALUATION_FORMAT,
     privacy:"Learner name, email and account identifiers are intentionally omitted.",

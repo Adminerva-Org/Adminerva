@@ -2,21 +2,59 @@ import {
   buildGeneralExternalEvaluationData,
   GENERAL_EXTERNAL_EVALUATION_REQUIRED_RULES,
   responseShape
-} from "../assessment/general-external-evaluation.mjs?v=20261121-compact-bulk1";
+} from "../assessment/general-external-evaluation.mjs?v=20261121-universal-bulk20-1";
 
 /**
- * Bulk assessment review on top of the authoritative Studio submission/grade
- * services. No separate grade store: results remain staged only in this page
- * until the teacher chooses Save eligible drafts.
+ * Bulk assessment review on top of the authoritative V4/historical
+ * submission and grade services. Source-specific adapters load frozen evidence,
+ * while one shared grading contract stages private suggestions.
  *
- * One run is bounded to 10 records. Invalid/zero/pending responses are surfaced
+ * One run is bounded to 20 records. Invalid/zero/pending responses are surfaced
  * as exceptions and never auto-published.
  */
 // The request package is now V2; evaluated replies intentionally remain V1.
 export const BULK_PACKAGE_FORMAT="adminerva-v4-bulk-evaluation-package-v2";
 export const BULK_RESPONSE_FORMAT="adminerva-v4-bulk-evaluation-response-v1";
-export const BULK_MAX_BATCH=10;
+export const BULK_MAX_BATCH=20;
 export const BULK_COMPACT_PACKAGE_FORMAT=BULK_PACKAGE_FORMAT;
+export const BULK_SOURCE_TYPES=Object.freeze(["studio","github","text","link"]);
+// 20 long code projects can exceed an external model's context budget.
+// Refuse oversized packages explicitly rather than silently discard evidence.
+export const BULK_MAX_PACKAGE_CHARACTERS=650000;
+
+export function assertBulkEvidence(source,evidence,{personalized=false}={}){
+  if(!BULK_SOURCE_TYPES.includes(source))throw Error("No V4 evidence adapter exists for "+source+".");
+  if(!evidence||!Number.isInteger(evidence.version)||evidence.version<1)
+    throw Error("A learner has no complete frozen submission version.");
+  if(personalized&&(!evidence.personalizedTask||
+     !String(evidence.personalizedTask.prompt||"").trim()))
+    throw Error("One personalized learner is missing the exact assigned task.");
+  if(source==="studio"){
+    if(evidence.type!=="adminerva_studio_snapshot"||!evidence.contentDigest||
+       !Array.isArray(evidence.files)||!evidence.files.length)
+      throw Error("A student has no complete frozen Studio source to evaluate.");
+
+  }else if(source==="github"){
+    if(evidence.type!=="github_frozen_commit_evidence"||
+       !/^[a-f0-9]{40}$/i.test(String(evidence.checkpointSha||""))||
+       !Array.isArray(evidence.commits)||!evidence.commits.length||
+       !Array.isArray(evidence.selectedCommitShas)||!evidence.selectedCommitShas.length||
+       evidence.commits.some(commit=>!/^[a-f0-9]{40}$/i.test(String(commit.sha||""))))
+      throw Error("An approved GitHub checkpoint and inspected individual commits are required.");
+    if(!evidence.commits.some(commit=>commit.files?.some(file=>file.patch&&!file.mergeContext))&&
+       !evidence.pinnedSource?.length)
+      throw Error("The approved repository has no accessible individual source evidence. Review manually.");
+  }else if(source==="text"){
+    if(evidence.type!=="written_response"||!String(evidence.response||"").trim())
+      throw Error("The frozen essay or written response is unavailable.");
+  }else if(source==="link"){
+    if(evidence.type!=="submission_link"||
+       !/^https:\/\//i.test(String(evidence.url||"")))
+      throw Error("The learner's frozen submission link is unavailable.");
+  }
+  return true;
+}
+
 
 /**
  * V2 transport keeps each immutable submission distinct but hoists published
@@ -29,7 +67,7 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
     throw Error("Expected a valid batch ID and 1–"+BULK_MAX_BATCH+" verified submissions.");
   const first=entries[0]?.evaluationData;
   if(!first||first.format!=="adminerva-general-external-evaluation-v1"||
-     first.assessment?.submissionSource!=="studio"||
+     !BULK_SOURCE_TYPES.includes(first.assessment?.submissionSource)||
      !Array.isArray(first.assessment?.rubric)||!first.assessment.rubric.length)
     throw Error("The canonical shared assessment and rubric are unavailable.");
   const originalAssessment=JSON.stringify(first.assessment);
@@ -48,13 +86,9 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
        JSON.stringify(data.gradingRules)!==originalRules)
       throw Error("The batch mixes different assessment instructions or grading rules. Export separately.");
     const evidence=data.evidence;
-    if(!evidence||evidence.type!=="adminerva_studio_snapshot"||
-       !Number.isInteger(evidence.version)||evidence.version<1||
-       !evidence.contentDigest||!Array.isArray(evidence.files)||!evidence.files.length)
-      throw Error("A student has no complete frozen Studio source to evaluate.");
-    if(first.assessment.personalized&&
-       (!evidence.personalizedTask||!String(evidence.personalizedTask.prompt||"").trim()))
-      throw Error("One personalized learner is missing the exact assigned task.");
+    assertBulkEvidence(first.assessment.submissionSource,evidence,{
+      personalized:first.assessment.personalized
+    });
     const {personalizedTask,...frozenEvidence}=evidence;
     // This interpretation is a fixed instruction, not student evidence;
     // it is already present in shared requiredRules/evidenceBoundary.
@@ -71,7 +105,7 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
       }:{})
     };
   });
-  return {
+  const packageData={
     format:BULK_COMPACT_PACKAGE_FORMAT,
     batchId,
     purpose:"Evaluate each frozen submission independently against the shared assessment. Return only the specified batch JSON.",
@@ -84,7 +118,10 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
       evaluationInstructions:[
         "Apply the shared published rubric, instructions and evaluator rules to every item.",
         "For each item, apply only its own personalizedTask and frozenEvidence. Never mix source files, scenarios, runtime proof or feedback across references.",
-        "Treat a matching platform automaticVerification as authoritative for the submitted source. Do not treat unmatched or historical runs as proof of compilation or execution.",
+        "For Studio projects, treat matching platform automaticVerification as authoritative for the submitted source; unmatched runs are not proof of compilation or execution.",
+        "For GitHub, only cite the approved checkpoint and inspected individual changes. Preserve missing-diff, incomplete-coverage and attribution uncertainty; Git author fields never prove who wrote code.",
+        "For essays, cite the submitted response. For external links, do not invent linked content or claim to have opened it; use pending points or teacher confirmation if the actual artifact is unavailable.",
+        "For objectively scorable questions, honor the official answer key and deterministic scoring when a verified objective-response adapter is available; never guess missing answers or invent a rubric.",
         "Keep each assessment independent; return one result per ref in exactly the expected batch JSON format. No Markdown.",
         "All scores are teacher-private suggestions, never automatically published."
       ]
@@ -99,6 +136,13 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
     },
     items
   };
+  const characters=JSON.stringify(packageData).length;
+  if(characters>BULK_MAX_PACKAGE_CHARACTERS)
+    throw Error("This "+items.length+"-learner package contains "+characters.toLocaleString()+
+      " characters, above the safe external AI context budget ("+
+      BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+
+      "). Select fewer learners or inspect smaller source sets; no frozen evidence was dropped.");
+  return packageData;
 }
 
 
@@ -157,11 +201,11 @@ export function bulkSaveableStages({staged,saveSelection,rows}){
   // A valid imported result stays saveable even after the teacher clears the
   // original selection used to prepare the external package.
   const byId=new Map((rows||[]).map(row=>
-    [String(row.submissionId||row.recordId||""),row]));
+    [String(row.submissionId||row.evidenceId||row.recordId||""),row]));
   return [...staged.values()].filter(item=>{
     const row=byId.get(item.key);
     return saveSelection.has(item.key)&&item.review?.saveEligible===true&&
-      row&&!row.gradeStatus&&
+      row&&!row.gradeStatus&&row.bulkReady!==false&&
       !["reopened","revision_requested"].includes(row.status)&&
       Number(row.version)===Number(item.version);
   });
@@ -171,8 +215,8 @@ export function nextBulkSelection(rows,{excluded=new Set(),limit=BULK_MAX_BATCH}
   const ids=[],maximum=Math.min(BULK_MAX_BATCH,Math.max(0,Math.floor(limit)));
   if(!maximum)return ids;
   for(const row of rows||[]){
-    const id=String(row?.submissionId||row?.recordId||"");
-    if(!id||ids.includes(id)||excluded.has(id)||row.gradeStatus||
+    const id=String(row?.submissionId||row?.evidenceId||row?.recordId||"");
+    if(!id||ids.includes(id)||excluded.has(id)||row.gradeStatus||row.bulkReady===false||
       ["reopened","revision_requested"].includes(row.status))continue;
     ids.push(id);
     if(ids.length>=maximum)break;
@@ -184,13 +228,14 @@ export function canClearCompletedBulkExchange({referenceMap,staged,rows,savedIds
   if(staged.size)return false;
   return ![...referenceMap.values()].some(original=>{
     const current=(rows||[]).find(row=>
-      String(row?.submissionId||row?.recordId||"")===original.key);
+      String(row?.submissionId||row?.evidenceId||row?.recordId||"")===original.key);
     return !current||(!current.gradeStatus&&!savedIds.has(original.key));
   });
 }
 
 export function createV4BulkEvaluationController({
-  root,scoped,migrationApi,assessmentApi,submissionApi,gradeApi,verificationApi,
+  root,scoped,migrationApi,assessmentApi,submissionApi,generalSubmissionApi,
+  githubEvidenceApi,gradeApi,verificationApi,prepareGithubEvidence,
   buildPackage,parseResponse,generateContent,evaluationJSON,
   setBusy,isBusy,onSaved
 }){
@@ -202,20 +247,26 @@ export function createV4BulkEvaluationController({
   const btn=id=>el(id);
   let task=null,rows=[],selection=new Set(),saveSelection=new Set(),staged=new Map(),
     exceptions=new Map(),batchId="",referenceMap=new Map(),stopped=false,
-    running=false,schoolSignature="",scopeGeneration=0,autoSelectNext=true;
-  const isStudio=t=>t?.submissionSource==="studio";
-  const key=row=>String(row.submissionId||row.recordId||"");
+    running=false,schoolSignature="",scopeGeneration=0,autoSelectNext=true,
+    verifiedEvidence=new Set(),evidenceNotes=new Map();
+  const supported=t=>BULK_SOURCE_TYPES.includes(t?.submissionSource);
+  const historicalGithub=()=>Boolean(task?.legacyCompatibility&&task.submissionSource==="github");
+  const requiresArtifactReview=()=>historicalGithub()||task?.submissionSource==="link";
+  const key=row=>String(row.submissionId||row.evidenceId||row.recordId||"");
   const selectedEligible=()=>rows.filter(row=>selection.has(key(row))&&
-    !row.gradeStatus&&!["reopened","revision_requested"].includes(row.status));
+    !row.gradeStatus&&row.bulkReady!==false&&
+    !["reopened","revision_requested"].includes(row.status));
   const candidates=()=>selectedEligible().filter(row=>
     !staged.has(key(row))&&!exceptions.has(key(row)));
-  const saveable=()=>bulkSaveableStages({staged,saveSelection,rows});
+  const saveable=()=>bulkSaveableStages({staged,saveSelection,rows}).filter(item=>
+    !requiresArtifactReview()||(verifiedEvidence.has(item.key)&&
+      String(evidenceNotes.get(item.key)||"").trim().length>=15));
   const appendStatus=(message)=>{status.textContent=message;};
   const taskKey=t=>t?(t.legacyCompatibility?"legacy:":"native:")+
     String(t.legacyAssessmentId||t.taskId):"";
   function render(){
     const ready=selectedEligible(),remaining=candidates(),saveReady=saveable();
-    root.hidden=!isStudio(task);
+    root.hidden=!supported(task);
     if(root.hidden)return;
     el("gbV4BulkCounts").textContent=selection.size+"/"+BULK_MAX_BATCH+
       " selected for this batch · "+ready.length+" ungraded · "+
@@ -238,7 +289,7 @@ export function createV4BulkEvaluationController({
       line.className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm";
       const input=document.createElement("input");input.type="checkbox";
       input.className="mt-1";input.checked=selection.has(id);
-      input.disabled=running||isBusy()||Boolean(row.gradeStatus)||
+      input.disabled=running||isBusy()||Boolean(row.gradeStatus)||row.bulkReady===false||
         ["reopened","revision_requested"].includes(row.status)||
         (!selection.has(id)&&selection.size>=BULK_MAX_BATCH);
       input.addEventListener("change",()=>{
@@ -258,6 +309,7 @@ export function createV4BulkEvaluationController({
       text.textContent=String(row.studentName||"Learner")+" · version "+row.version+
         (row.gradeStatus?" · "+row.gradeStatus+" grade (protected)":
           row.status==="reopened"?" · revision requested":
+          row.bulkReady===false?" · evidence approval required":
           staged.has(id)?" · suggestion staged":" · needs evaluation");
       line.append(input,text);checkboxList.append(line);
     }
@@ -273,10 +325,80 @@ export function createV4BulkEvaluationController({
         (data.review.pending?" · "+data.review.pending+" pending":"")+
         (data.review.reason?" · "+data.review.reason:" · eligible private draft");
       line.append(summary);
+      // External artifacts remain available for actual teacher inspection.
+      // Never replace an exact pinned GitHub SHA with a moving branch URL.
+      const links=data.reviewLinks||{};
+      const addEvidenceLink=(title,url)=>{
+        if(typeof url!=="string"||!url.startsWith("https://"))return;
+        const anchor=document.createElement("a");
+        anchor.textContent=title;
+        anchor.href=url;anchor.target="_blank";anchor.rel="noopener noreferrer";
+        anchor.className="mt-2 mr-3 inline-block font-bold text-indigo-700 underline";
+        line.append(anchor);
+      };
+      if(links.repository&&/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(links.repository)&&
+         /^[a-f0-9]{40}$/i.test(links.checkpointSha||"")){
+        addEvidenceLink("Open approved checkpoint ↗",
+          "https://github.com/"+links.repository+"/tree/"+links.checkpointSha);
+        const commits=(links.commits||[]).filter(sha=>/^[a-f0-9]{40}$/i.test(sha));
+        if(commits.length){
+          const details=document.createElement("details");
+          details.className="mt-2 rounded-lg border border-slate-200 p-2";
+          const summary=document.createElement("summary");
+          summary.className="cursor-pointer font-semibold text-indigo-800";
+          summary.textContent="Show commits ("+commits.length+")";
+          details.append(summary);
+          for(const sha of commits){
+            const anchor=document.createElement("a");
+            anchor.textContent="Commit "+sha.slice(0,12)+" ↗";
+            anchor.href="https://github.com/"+links.repository+"/commit/"+sha;
+            anchor.target="_blank";anchor.rel="noopener noreferrer";
+            anchor.className="mt-2 mr-3 inline-block font-bold text-indigo-700 underline";
+            details.append(anchor);
+          }
+          line.append(details);
+        }
+      }
+      if(links.submissionUrl)addEvidenceLink("Open submitted artifact ↗",links.submissionUrl);
       const submitted=rows.find(row=>key(row)===data.key);
       const stillGradeable=Boolean(submitted&&!submitted.gradeStatus&&
         !["reopened","revision_requested"].includes(submitted.status)&&
         Number(submitted.version)===Number(data.version));
+      if(requiresArtifactReview()&&data.review.saveEligible){
+        const label=document.createElement("label");
+        label.className="mt-2 flex items-start gap-2 text-xs font-semibold text-amber-950";
+        const check=document.createElement("input");check.type="checkbox";
+        check.className="mt-0.5";check.checked=verifiedEvidence.has(data.key);
+        check.disabled=running||isBusy();
+        check.addEventListener("change",()=>{
+          if(check.checked)verifiedEvidence.add(data.key);
+          else verifiedEvidence.delete(data.key);
+          render();
+        });
+        label.append(check,document.createTextNode(
+          historicalGithub()?
+            "I inspected the approved checkpoint, individual contribution evidence and attribution limits.":
+            "I opened this student's external submission and verified its actual contents against the rubric."));
+        const noteLabel=document.createElement("label");
+        noteLabel.className="mt-2 block text-xs font-bold text-amber-950";
+        noteLabel.textContent="Individual teacher review note (at least 15 characters)";
+        const note=document.createElement("textarea");
+        note.rows=2;note.maxLength=3000;note.className="mt-1 w-full border border-amber-300 rounded-lg p-2";
+        note.value=evidenceNotes.get(data.key)||"";
+        note.placeholder=historicalGithub()?
+          "Describe inspected commits and attribution limitations.":
+          "Describe the inspected linked artifact and evidence used for grading.";
+        note.disabled=running||isBusy();
+        note.addEventListener("input",()=>{
+          evidenceNotes.set(data.key,note.value);
+          const ready=saveable();
+          btn("gbV4BulkSave").disabled=running||isBusy()||!ready.length;
+          btn("gbV4BulkSave").textContent="Save "+ready.length+" eligible private draft"+
+            (ready.length===1?"":"s");
+        });
+        noteLabel.append(note);
+        line.append(label,noteLabel);
+      }
       if(data.review.saveEligible){
         const include=document.createElement("label");
         include.className="mt-2 flex items-center gap-2 text-xs font-semibold text-indigo-900";
@@ -320,6 +442,7 @@ export function createV4BulkEvaluationController({
   function reset(){
     scopeGeneration++;stopped=true;
     task=null;rows=[];selection.clear();saveSelection.clear();staged.clear();exceptions.clear();
+    verifiedEvidence.clear();evidenceNotes.clear();
     referenceMap.clear();batchId="";payload.value="";
     el("gbV4BulkResponse").value="";
     stopped=false;running=false;autoSelectNext=true;
@@ -330,12 +453,19 @@ export function createV4BulkEvaluationController({
     if(signature!==schoolSignature){
       scopeGeneration++;stopped=true;
       selection.clear();saveSelection.clear();staged.clear();exceptions.clear();referenceMap.clear();
+      verifiedEvidence.clear();evidenceNotes.clear();
       batchId="";payload.value="";el("gbV4BulkResponse").value="";
       autoSelectNext=true;schoolSignature=signature;
     }
-    task=next;rows=(nextRows||[]).map(row=>({
-      ...row,gradeStatus:gradeMap?.get(row.studentUid)?.status||row.gradeStatus||null
-    }));
+    task=next;rows=(nextRows||[]).map(row=>{
+      const gradeStatus=gradeMap?.get(row.studentUid)?.status||row.gradeStatus||null;
+      const github=next?.submissionSource==="github";
+      const gradeable=github?["approved","reviewed"].includes(row.status):
+        ["submitted","reviewed"].includes(row.status);
+      return {...row,gradeStatus,bulkReady:gradeable&&
+        (!next?.legacyCompatibility||!github||
+          (row.approved===true&&Number(row.verifiedCount||0)>0))};
+    });
     const available=new Set(rows.map(key));
     for(const id of selection)if(!available.has(id)||
       rows.find(row=>key(row)===id)?.gradeStatus)selection.delete(id);
@@ -352,58 +482,93 @@ export function createV4BulkEvaluationController({
       selection=new Set([...selection].slice(0,BULK_MAX_BATCH));
     render();
   }
+  /**
+   * One grading pipeline, different evidence transports. Every inspect call
+   * re-reads the canonical source and current grade; save_draft does it again
+   * transactionally. Historical sources remain in their original collections.
+   */
   async function inspect(row,{forExternal=false}={}){
-    if(!task||!isStudio(task))throw Error("Choose a Studio assessment.");
-    const id=key(row);
+    if(!task||!supported(task))throw Error("Choose a supported deployed assessment.");
+    const id=key(row),source=task.submissionSource;
     if(!id)throw Error("No submitted version was selected.");
     let result;
     if(task.legacyCompatibility){
-      result=await scoped(migrationApi,"legacy_review_inspect",{
-        legacyAssessmentId:task.legacyAssessmentId,legacySubmissionId:id
+      result=await scoped(migrationApi,source==="github"?
+        "legacy_github_inspect":"legacy_review_inspect",{
+        legacyAssessmentId:task.legacyAssessmentId,
+        ...(source==="github"?{legacyEvidenceId:id}:{legacySubmissionId:id})
       });
     }else{
+      const api=source==="studio"?submissionApi:
+        source==="github"?githubEvidenceApi:generalSubmissionApi;
+      if(!api)throw Error("This source does not yet have a V4 evidence adapter.");
       const [snapshot,grade,privateConfig]=await Promise.all([
-        scoped(submissionApi,"inspect",{taskId:task.taskId,submissionId:id}),
+        scoped(api,"inspect",{taskId:task.taskId,
+          ...(source==="github"?{evidenceId:id}:{submissionId:id})}),
         scoped(gradeApi,"get_draft",{taskId:task.taskId,studentUid:row.studentUid}),
         scoped(assessmentApi,"get_private",{taskId:task.taskId})
       ]);
-      result={snapshot,grade:grade.grade,checkingInstructions:privateConfig?.checkingInstructions||""};
+      result={snapshot,grade:grade.grade,
+        checkingInstructions:privateConfig?.checkingInstructions||""};
     }
     if(result.grade||row.gradeStatus)
       throw Error("An existing private or published grade is protected from bulk replacement.");
     let snapshot=result.snapshot;
-    if(!snapshot||Number(snapshot.version)!==Number(row.version)||
-      !snapshot.contentDigest||!Array.isArray(snapshot.files)||!snapshot.files.length)
-      throw Error("Frozen source version or checksum changed; refresh submissions.");
-    if(!["submitted","reviewed"].includes(snapshot.status))
-      throw Error("This learner is not in a gradeable submitted state.");
-    if(!snapshot.automaticVerification&&verificationApi){
-      try{
-        const verified=task.legacyCompatibility?
-          await scoped(verificationApi,"verify_legacy",{
-            submissionId:id,revision:Number(snapshot.version)
-          }):
-          await scoped(verificationApi,"verify_school",{
-            taskId:task.taskId,submissionId:id,version:Number(snapshot.version)
-          });
-        snapshot={...snapshot,automaticVerification:verified?.verification||null};
-      }catch(error){
-        snapshot={...snapshot,automaticVerification:{
-          status:"verification_unavailable",matchesSubmittedSource:false,
-          limitations:[String(error?.message||"Runtime verification could not be established.")]
-        }};
+    if(!snapshot||Number(snapshot.version)!==Number(row.version))
+      throw Error("The frozen submission version changed; refresh submissions.");
+    const gradeable=source==="github"?["approved","reviewed"].includes(snapshot.status):
+      ["submitted","reviewed"].includes(snapshot.status);
+    if(!gradeable)
+      throw Error("This learner has no approved or gradeable frozen evidence.");
+    if(source==="studio"){
+      if(!snapshot.contentDigest||!Array.isArray(snapshot.files)||!snapshot.files.length)
+        throw Error("Frozen Studio source or checksum changed; refresh submissions.");
+      if(!snapshot.automaticVerification&&verificationApi){
+        try{
+          const verified=task.legacyCompatibility?
+            await scoped(verificationApi,"verify_legacy",{
+              submissionId:id,revision:Number(snapshot.version)
+            }):
+            await scoped(verificationApi,"verify_school",{
+              taskId:task.taskId,submissionId:id,version:Number(snapshot.version)
+            });
+          snapshot={...snapshot,automaticVerification:verified?.verification||null};
+        }catch(error){
+          snapshot={...snapshot,automaticVerification:{
+            status:"verification_unavailable",matchesSubmittedSource:false,
+            limitations:[String(error?.message||"Runtime verification could not be established.")]
+          }};
+        }
       }
+    }else if(source==="github"){
+      if(typeof prepareGithubEvidence!=="function")
+        throw Error("The approved GitHub source inspector is unavailable.");
+      snapshot=await prepareGithubEvidence({task,snapshot});
+    }else if(source==="text"){
+      if(!snapshot.submissionDigest||!String(snapshot.payload?.response||"").trim())
+        throw Error("The frozen essay or written response is incomplete.");
+    }else if(source==="link"){
+      if(!snapshot.submissionDigest||!String(snapshot.payload?.url||"").startsWith("https://"))
+        throw Error("The frozen submission link is unavailable.");
     }
+    const digest=snapshot.contentDigest||snapshot.submissionDigest||
+      snapshot.evidenceDigest||(
+        source==="github"?snapshot.checkpointSha+":"+
+          String(snapshot.evidenceRevision??snapshot.version):"");
+    const reviewLinks=source==="github"?{
+      repository:snapshot.repository,
+      checkpointSha:snapshot.checkpointSha,
+      commits:(snapshot.selectedCommitShas||[]).slice(0,20)
+    }:source==="link"?{submissionUrl:snapshot.payload.url}:{};
     const context={
       task,snapshot,checkingInstructions:result.checkingInstructions||""
     };
-    return {key:id,row,version:snapshot.version,digest:snapshot.contentDigest,
+    return {key:id,row,version:snapshot.version,digest,reviewLinks,
+      evidenceRevision:Number(snapshot.evidenceRevision??snapshot.version),
+      checkpointSha:snapshot.checkpointSha||"",
       sourceLanguage:snapshot.sourceLanguage||"",
-      ...(
-        forExternal
-          ?{evaluationData:buildGeneralExternalEvaluationData(context)}
-          :{packageText:buildPackage(context)}
-      )
+      ...(forExternal?{evaluationData:buildGeneralExternalEvaluationData(context)}:
+        {packageText:buildPackage(context)})
     };
   }
   async function execute(title,work){
@@ -533,9 +698,23 @@ export function createV4BulkEvaluationController({
         try{
           const details={
             criteria:item.review.criteria,feedback:item.review.feedback,
-            draftSource:item.source,onlyIfUngraded:true
+            draftSource:item.source,onlyIfUngraded:true,
+            ...(task.submissionSource==="link"?{
+              externalArtifactVerified:verifiedEvidence.has(item.key),
+              artifactReviewNote:String(evidenceNotes.get(item.key)||"").trim()
+            }:{})
           };
-          if(task.legacyCompatibility){
+          if(task.legacyCompatibility&&task.submissionSource==="github"){
+            await scoped(migrationApi,"legacy_github_save_draft",{
+              legacyAssessmentId:task.legacyAssessmentId,
+              legacyEvidenceId:item.key,
+              expectedEvidenceRevision:item.evidenceRevision,
+              expectedCheckpointSha:item.checkpointSha,
+              expectedGradeRevision:0,
+              reviewNote:String(evidenceNotes.get(item.key)||"").trim(),
+              ...details
+            });
+          }else if(task.legacyCompatibility){
             await scoped(migrationApi,"legacy_review_save_draft",{
               legacyAssessmentId:task.legacyAssessmentId,
               legacySubmissionId:item.key,
@@ -551,6 +730,7 @@ export function createV4BulkEvaluationController({
           }
           if(session!==scopeGeneration)break;
           staged.delete(item.key);saveSelection.delete(item.key);
+          verifiedEvidence.delete(item.key);evidenceNotes.delete(item.key);
           exceptions.delete(item.key);selection.delete(item.key);
           savedIds.add(item.key);
           saved++;
@@ -575,7 +755,7 @@ export function createV4BulkEvaluationController({
           if(exchange)exchange.open=false;
         }
         // The actual saved records are reloaded from the server; only then
-        // select the next ten still-ungraded learners. This avoids retrying
+        // select the next 20 still-ungraded learners. This avoids retrying
         // already-saved students and leaves failed evaluations visible.
         selection.clear();autoSelectNext=true;
         await onSaved();

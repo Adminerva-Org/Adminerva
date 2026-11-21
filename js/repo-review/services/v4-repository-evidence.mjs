@@ -99,6 +99,7 @@ export async function buildV4RepositoryEvaluationSnapshot({snapshot,client}={}){
 
   return {
     version:Number(snapshot.version||0),
+    personalizedTask:snapshot.personalizedTask||null,
     evidenceDigest:String(snapshot.evidenceDigest||""),
     repository,checkpointSha,selectedCommitShas:selected,commits,
     pinnedSource:(pinned.files||[]).map(file=>({
