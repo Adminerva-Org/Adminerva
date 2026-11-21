@@ -222,6 +222,8 @@ function renderRegistrations(){
         :(item.status||"active");actions.append(badge);
     const identityLink=document.createElement("a");identityLink.className="en-btn secondary";identityLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
     identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identityLink);
+    const recordsLink=document.createElement("a");recordsLink.className="en-btn secondary";recordsLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
+    recordsLink.textContent="201 file";recordsLink.href="school-student-records.html?personId="+encodeURIComponent(item.personId);actions.append(recordsLink);
     const historyButton=document.createElement("button");historyButton.type="button";historyButton.className="en-btn secondary";historyButton.textContent="History";
     historyButton.addEventListener("click",()=>void openStudentHistory(item));actions.append(historyButton);
     if(item.status==="active"){
