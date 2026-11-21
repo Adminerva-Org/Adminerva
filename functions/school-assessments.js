@@ -790,9 +790,10 @@ function createSchoolAssessmentService({db}){
       manualSessionEpoch:manualExam?Number(task.manualSessionEpoch||0):0,
       allowLateSubmissions:task.allowLateSubmissions===true,
       late:task.allowLateSubmissions===true&&now>due,
-      lifecycle,windowStatus:lifecycle==="closed"?"closed":
+      lifecycle,submissionDeadlinePassed:now>due&&task.allowLateSubmissions!==true,
+      windowStatus:lifecycle==="closed"?"closed":
        waiting?"waiting_for_teacher":(!manualExam&&now<open)?"upcoming":
-       now>due&&task.allowLateSubmissions!==true?"closed":"open"});
+       (!manualExam&&now>due&&task.allowLateSubmissions!==true)?"closed":"open"});
     }
    }
    return {assignments:results.sort((a,b)=>a.dueAt-b.dueAt)};
