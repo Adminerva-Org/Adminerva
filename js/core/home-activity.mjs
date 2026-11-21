@@ -6,6 +6,7 @@
  * Authenticated personal summaries remain in the existing home-pulse service.
  */
 import {loadPublicReleases, releaseNotifications} from './patch-history.mjs?v=1.4.19';
+import {loadPublicChannel} from './public-content.mjs?v=20261121-2';
 
 const home = document.querySelector('main[data-home-experience]');
 const ROLE_SCENES = {
@@ -138,6 +139,26 @@ if (home) {
     stage.querySelector('.av-activity-content').append(latest);
     hero.after(stage);
     select(0);
+    // Content scheduled by Codex can become a selectable scene without any
+    // daily template rewrite. Only public, published, local links are allowed.
+    if (role === 'public' || role === 'guest') {
+      loadPublicChannel('experiences', {role}).then(items => {
+        if (!items.length || !stage.isConnected) return;
+        const featured = items[Math.floor(Date.now() / 86400000) % items.length];
+        const index = config.items.length;
+        config.items.push(['Featured', featured.title, featured.summary, featured.url, featured.label]);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Featured today';
+        button.setAttribute('aria-pressed', 'false');
+        button.addEventListener('click', () => {
+          select(index);
+          pauseUntil = Date.now() + 20000;
+        });
+        choices.append(button);
+        buttons.push(button);
+      }).catch(() => { /* Static default scenes remain usable offline. */ });
+    }
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     if (!reduceMotion?.matches && config.items.length > 1) {
       const timer = window.setInterval(() => {
