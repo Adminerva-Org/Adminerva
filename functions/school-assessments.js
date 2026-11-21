@@ -197,7 +197,8 @@ function createSchoolAssessmentService({db}){
     tx.update(taskRef,{manualAccessState:next,manualSessionEpoch:sessionEpoch,
       revision:revision+1,updatedAt:now,
       ...(opening?{manualOpenedAt:now,manualOpenedByUid:ctx.uid,manualCloseGraceUntil:FieldValue.delete()}:
-        {manualClosedAt:now,manualClosedByUid:ctx.uid,manualCloseGraceUntil:graceUntil})});
+        {manualClosedAt:now,manualClosedByUid:ctx.uid,manualClosedSessionEpoch:sessionEpoch,
+         manualCloseGraceUntil:graceUntil})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:opening?"assessment_exam_opened":"assessment_exam_closed",
       beforeState:before,afterState:next,sessionEpoch,beforeRevision:revision,
@@ -334,8 +335,9 @@ function createSchoolAssessmentService({db}){
    }).sort((a,b)=>a.displayName.localeCompare(b.displayName));
    const confirmed=students.filter(row=>row.checkpointConfirmed).length;
    const sessionClosed=epoch<currentEpoch||
-     ["closed","closing","held"].includes(task.data().manualAccessState)||
-     Boolean(task.data().manualClosedAt);
+     (epoch===currentEpoch&&(["closed","closing","held"].includes(task.data().manualAccessState)||
+       Number(task.data().manualClosedSessionEpoch||0)===epoch&&
+       task.data().manualAccessState!=="open"));
    return {taskId,sessionEpoch:epoch,currentSessionEpoch:currentEpoch,
      sessionClosed,rosterSource:hasCapturedRoster?"close_snapshot":"current_fallback",
      confirmed,enrolledStudents:students.length,students};
@@ -424,6 +426,7 @@ function createSchoolAssessmentService({db}){
         {unpublishedAt:now,unpublishedByUid:ctx.uid}),
       ...(!publish&&data.manualOpenRequired===true&&data.manualAccessState==="open"?
         {manualAccessState:"closed",manualClosedAt:now,manualClosedByUid:ctx.uid,
+         manualClosedSessionEpoch:Number(data.manualSessionEpoch||0),
          manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+60000)}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:publish?"assessment_published":"assessment_unpublished",
@@ -591,6 +594,7 @@ function createSchoolAssessmentService({db}){
       ...(data.manualOpenRequired===true&&data.manualAccessState==="open"&&
          ["close","archive","cancel"].includes(input.action)?
         {manualAccessState:"closed",manualClosedAt:now,manualClosedByUid:ctx.uid,
+         manualClosedSessionEpoch:Number(data.manualSessionEpoch||0),
          manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+60000)}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:"assessment_"+input.action,beforeLifecycle:lifecycle,afterLifecycle:next,
