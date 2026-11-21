@@ -19,6 +19,7 @@ const picker=createTenantSchoolPicker({
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];editing=null;sharing=null;deploying=null;
     deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
+    deployVariantReview=null;deployVariantLoading=false;personalizingOfferings=[];
     lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
@@ -352,8 +353,8 @@ function render(){
     if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
       controls.append(actionButton("Share",()=>void share(item)));
-      if(personalized(item))controls.append(actionButton("Personalization",()=>void loadPersonalization(item)));
-      controls.append(actionButton("Deploy",()=>void prepareDeployment(item),true));
+      if(personalized(item))controls.append(actionButton(item.legacyImport?.assessmentId?"Saved variants":"Personalization",()=>void loadPersonalization(item)));
+      controls.append(actionButton(item.legacyImport?.assessmentId?"Deploy new":"Deploy",()=>void prepareDeployment(item),true));
       controls.append(actionButton("Archive",()=>{
         if(!confirm("Archive this draft? Existing independent copies will remain available."))return;
         void write("archive",{resourceId:item.id,expectedRevision:item.contentRevision},"Assessment archived without deleting student records.").catch(()=>{});
@@ -816,7 +817,7 @@ function updateDeploymentVariantMessage(){
     review.textContent="Checking verified class rosters and existing private variants…";
     return;
   }
-  const plan=deployVariantReview?.key===deploySelectionKey()?deployVariantReview:null;
+  const plan=deployVariantReview&&(deployAttempted||deployVariantReview.key===deploySelectionKey())?deployVariantReview:null;
   if(!plan){
     review.textContent="Deployment settings are ready. Continue to calculate variants for "+ids.length+
       " class(es); no variants will be regenerated if the existing pool is sufficient.";
