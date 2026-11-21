@@ -55,6 +55,14 @@ function harness({locked=false,missing=false,invalidDigest=false,uid=STUDENT}={}
       checkId:value=>{if(typeof value!=="string"||!value)throw Error("Invalid ID");return value;}};
     if(name==="./school-studio-projects.js")return {digestProject:()=> "valid-digest",digestSource:()=> "source-digest"};
     if(name==="./school-notifications.js")return {writeSchoolNotification:async()=>{}};
+    if(name==="./student-account-history.js")return {
+      studentAccountUids:(person,currentUid)=>[...new Set([
+        currentUid,...(Array.isArray(person?.previousAuthUids)?person.previousAuthUids:[])
+      ].filter(Boolean))],
+      studentRecordUidAllowed:(person,currentUid,recordUid)=>[
+        currentUid,...(Array.isArray(person?.previousAuthUids)?person.previousAuthUids:[])
+      ].includes(recordUid)
+    };
     throw Error("Unexpected dependency "+name);
   };
   const module={exports:{}};
