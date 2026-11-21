@@ -311,6 +311,8 @@ test("recovered students retain GitHub evidence ownership and can relink provide
   assert.match(index,/accountUid:user\.uid/);
   assert.match(index,/exports\.prepareRecoveredGithubLink/);
   assert.match(index,/providersToUnlink:\["github\.com"\]/);
+  assert.match(index,/String\(provider\.uid\|\|""\)===githubProviderUid/);
+  assert.match(index,/request\.data\?\.githubProviderUid/);
   assert.match(rules,/studentId in get\(access\)\.data\.get\("studentIds",\[\]\)/);
   assert.match(assignments,/accountUid:String\(profile\.accountUid\|\|user\.uid\)/);
   assert.match(evidence,/projectedOwner\?projectedOwner!==user\.uid:legacyEmail!==currentEmail/);
@@ -318,6 +320,9 @@ test("recovered students retain GitHub evidence ownership and can relink provide
   assert.match(receipts,/projectedOwner\?projectedOwner!==user\.uid:legacyEmail!==currentEmail/);
   assert.match(receipts,/Authorization:"Bearer "\+token/);
   assert.match(dashboard,/prepareRecoveredGithubLink/);
+  assert.match(dashboard,/GithubAuthProvider\.credentialFromError\(error\)/);
+  assert.match(dashboard,/linkWithCredential\(currentUser,pendingCredential\)/);
+  assert.match(dashboard,/https:\/\/api\.github\.com\/user/);
   assert.match(dashboard,/ensureStudentAccessProjection\(\)/);
   assert.match(dashboard,/normalLegacyProfiles/);
   assert.match(dashboard,/sessionStorage\.setItem\(tokenKey,token\)/);
