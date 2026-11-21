@@ -120,24 +120,41 @@ async function loadStudentAssignments(user=auth.currentUser){
     localStorage.getItem("Adminerva_Impersonate") || user.email;
 
   try {
-    // Now that the UI is loading, we can safely do the heavy database queries
-    const q = query(
-      collection(db, "students"),
-      where("email", "==", targetEmail.toLowerCase()),
-    );
-    const snap = await getDocs(q);
+    // Recovered accounts must keep the exact legacy student IDs that own
+    // compatibility assessments, submissions and personalized variants.
+    // The server projection resolves canonical person -> legacyStudentIds first;
+    // direct email lookup remains only for legacy-only/impersonated sessions.
+    const ownEmail=String(user.email||"").toLowerCase().trim();
+    let projectedProfiles=[];
+    if(targetEmail.toLowerCase()===ownEmail){
+      const projection=await ensureStudentAccessProjection();
+      projectedProfiles=Array.isArray(projection?.profiles)?projection.profiles.filter(profile=>
+        profile&&typeof profile.id==="string"&&typeof profile.section==="string"&&profile.section.trim()
+      ):[];
+    }
     if(version!==profileGeneration||auth.currentUser?.uid!==user.uid)return;
-    if (!snap.empty) {
-      userProfiles = [];
+    if(projectedProfiles.length){
+      userProfiles=projectedProfiles.map(profile=>({
+        id:profile.id,section:profile.section,name:profile.name||"Student"
+      }));
+    }else{
+      const q = query(
+        collection(db, "students"),
+        where("email", "==", targetEmail.toLowerCase()),
+      );
+      const snap = await getDocs(q);
+      if(version!==profileGeneration||auth.currentUser?.uid!==user.uid)return;
+      userProfiles=[];
       snap.forEach((d) => userProfiles.push({ id: d.id, ...d.data() }));
-
+    }
+    if(userProfiles.length){
       if (selector) {
         selector.classList.toggle("hidden",userProfiles.length<2);
         selector.innerHTML = "";
         userProfiles.forEach((profile, index) => {
           selector.insertAdjacentHTML(
             "beforeend",
-            `<option value="${index}">${escapeHTML(profile.section)}</option>`,
+            '<option value="'+index+'">'+escapeHTML(profile.section)+'</option>',
           );
         });
         selector.onchange = (e) => {
@@ -145,11 +162,12 @@ async function loadStudentAssignments(user=auth.currentUser){
           assignmentField("assessmentModal").classList.add("hidden");void fetchAssessments();
         };
       }
-      const index=Math.max(0,userProfiles.findIndex(profile=>profile.section===previousSection));selector.value=String(index);currentSection = userProfiles[index].section;
+      const index=Math.max(0,userProfiles.findIndex(profile=>profile.section===previousSection));
+      selector.value=String(index);currentSection=userProfiles[index].section;
       await fetchAssessments();
     }else{
-      assignmentsNotice("Your school email is not linked to a class yet. Ask your teacher to check your email and section in User Directory, then retry.","info",true);
-      assignmentsFeedState("No student class linked","Your teacher needs to add your verified school email and section before assignments can appear.");
+      assignmentsNotice("Your school account has no compatibility class mapping yet. Ask your teacher to check the canonical student record and legacy assessment mapping, then retry.","info",true);
+      assignmentsFeedState("No compatibility class linked","Your verified school enrollment is intact, but older programming assignments still need a linked legacy student record.");
     }
   } catch (error) {
     if(version===profileGeneration&&auth.currentUser?.uid===user.uid){assignmentsNotice("Your class could not load. Check your connection and retry.","error",true);assignmentsFeedState("Unable to load your class","Retry loading assignments when your connection is ready.");}
