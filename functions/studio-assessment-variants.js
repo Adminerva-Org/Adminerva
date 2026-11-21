@@ -44,7 +44,7 @@ function validVariant(data,{variantId,fingerprint}){
   return data;
 }
 
-function createStudioAssessmentVariantService({db,Timestamp}){
+function createStudioAssessmentVariantService({db,Timestamp,resolveUser=null}){
   async function assessmentRecord(assessmentId,{requireCurrentPool=true}={}){
     const record=await db.doc("assessments/"+assessmentId).get();
     if(!record.exists)deny("not-found","This assessment is unavailable.");
@@ -67,7 +67,7 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     if(!actor.uid||actor.token?.email_verified!==true||!email)
       deny("unauthenticated","Use a verified school account before opening a personalized task.");
     const resolved=await legacyStudentRecordsForAccount({
-      db,uid:actor.uid,email,schoolId:"mcs-manila",maxRecords:50
+      db,uid:actor.uid,email,schoolId:"mcs-manila",maxRecords:50,resolveUser
     });
     const matches=resolved.records.filter(record=>{
       const data=record.data;
