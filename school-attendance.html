@@ -52,7 +52,8 @@
         <input id="attendanceSearch" type="search" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Section or adviser">
       </label>
     </div>
-    <div class="overflow-x-auto">
+    <div id="attendanceCards" class="grid gap-3 p-4 sm:hidden"></div>
+    <div class="hidden sm:block overflow-x-auto">
       <table class="w-full text-sm">
         <thead class="bg-slate-50 text-xs uppercase text-slate-500">
           <tr><th class="px-4 py-3 text-left">Section</th><th class="px-4 py-3 text-left">Adviser</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-center">P</th><th class="px-4 py-3 text-center">L</th><th class="px-4 py-3 text-center">A</th><th class="px-4 py-3 text-center">E</th><th class="px-4 py-3 text-center">Unmarked</th><th class="px-4 py-3 text-left">Action</th></tr>
