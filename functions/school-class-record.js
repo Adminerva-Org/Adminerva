@@ -124,13 +124,18 @@ function schemeSpecificity(applicability={}){
   return Number(Boolean(scope.programId))+Number(Boolean(scope.subjectId))+
     Number(Boolean(scope.sectionId))+Number(Boolean(scope.periodTypes.length));
 }
-function schemeScopesOverlap(first={},second={}){
+function schemeScopesOverlap(first={},second={},context={}){
   const a=cleanSchemeApplicability(first),b=cleanSchemeApplicability(second);
   const compatible=(left,right)=>!left||!right||left===right;
   if(!compatible(a.programId,b.programId)||!compatible(a.subjectId,b.subjectId)||
      !compatible(a.sectionId,b.sectionId))return false;
   if(a.periodTypes.length&&b.periodTypes.length&&
      !a.periodTypes.some(value=>b.periodTypes.includes(value)))return false;
+  const sectionPrograms=context.sectionPrograms instanceof Map?context.sectionPrograms:new Map();
+  const aSectionProgram=a.sectionId?sectionPrograms.get(a.sectionId)||null:null,
+    bSectionProgram=b.sectionId?sectionPrograms.get(b.sectionId)||null:null;
+  if(a.sectionId&&b.programId&&aSectionProgram&&aSectionProgram!==b.programId)return false;
+  if(b.sectionId&&a.programId&&bSectionProgram&&bSectionProgram!==a.programId)return false;
   return true;
 }
 async function resolveSchoolGradingPolicy({db,prefix,schoolId,offering,periodType}){
@@ -482,12 +487,21 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           if(activeSchemes.size===51)
             deny("resource-exhausted","Active grading policies require pagination before overlap can be validated safely.");
           const requestedSpecificity=schemeSpecificity(requestedApplicability);
-          const collision=activeSchemes.docs.find(doc=>{
+          const sameSpecificity=activeSchemes.docs.filter(doc=>{
             const data=doc.data();
             return doc.id!==schemeId&&data.schoolId===ctx.schoolId&&data.status==="active"&&
-              schemeSpecificity(data.applicability||{})===requestedSpecificity&&
-              schemeScopesOverlap(requestedApplicability,data.applicability||{});
+              schemeSpecificity(data.applicability||{})===requestedSpecificity;
           });
+          const sectionIds=[...new Set([
+            requestedApplicability.sectionId,
+            ...sameSpecificity.map(doc=>cleanSchemeApplicability(doc.data().applicability||{}).sectionId)
+          ].filter(Boolean))];
+          const sectionDocs=await Promise.all(sectionIds.map(sectionId=>
+            tx.get(db.doc(prefix+"sections/"+sectionId))));
+          const sectionPrograms=new Map(sectionDocs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId)
+            .map(doc=>[doc.id,doc.data().programId||null]));
+          const collision=sameSpecificity.find(doc=>
+            schemeScopesOverlap(requestedApplicability,doc.data().applicability||{},{sectionPrograms}));
           if(collision)
             deny("failed-precondition","This grading policy overlaps active policy “"+
               String(collision.data().name||collision.id).slice(0,120)+
