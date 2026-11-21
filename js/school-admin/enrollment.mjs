@@ -340,7 +340,7 @@ let activation="";
 function renderActivation(schoolId){
   const input=get("en-activation-link"),open=get("en-open-activation");
   if(!schoolId){
-    activation="";input.value="";open.removeAttribute("href");return;
+    activation="";input.value="";open.removeAttribute?.("href");open.href="";return;
   }
   const url=new URL("join-school.html",location.href);
   url.searchParams.set("schoolId",schoolId);
