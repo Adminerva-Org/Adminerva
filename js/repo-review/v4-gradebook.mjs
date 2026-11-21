@@ -342,8 +342,17 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
         "No student evidence yet for this assessment.";
       if(!rows.length){
-        inbox.append(make("div","rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600",
-          "Students will appear here after a verified assessment evidence version is submitted."));
+        const blank=make("div","rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600",
+          historicalGithub?
+            "No historical GitHub evidence receipts were found for this assessment. Older repository-only or unsubmitted work has not been inferred or converted into a V4 grade.":
+            "Students will appear here after a verified assessment evidence version is submitted.");
+        if(historicalGithub){
+          const link=make("a","mt-2 inline-flex text-sm font-bold text-indigo-700 underline",
+            "Open original repository review for missing evidence");
+          link.href="repofetch.html?assessment="+encodeURIComponent(task.legacyAssessmentId);
+          blank.append(link);
+        }
+        inbox.append(blank);
         return;
       }
       let deepLinkRow=null;
