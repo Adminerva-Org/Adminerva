@@ -1,4 +1,4 @@
-
+import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 import {buildExternalPersonalizationPackage,parseExternalPersonalizationResponse} from "./services/external-personalization.mjs";
@@ -6,22 +6,20 @@ const api=httpsCallable(getFunctions(app,"asia-southeast1"),"teacherBlueprints")
 const scopedAssessmentApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessments");
 const schoolAcademicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const migrationApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessmentMigration");
-const classRecordApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolClassRecord");
 const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl-workspace");
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
 const requestedFilter=new URL(location.href).searchParams.get("view");
-const pageParams=new URL(location.href).searchParams;
-const requestedFilter=pageParams.get("view");
-const requestedOfferingId=String(pageParams.get("offeringId")||"");
-let items=[],deployments=[],recordLinks=new Map(),recordPermissions=new Map(),filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
+let items=[],deployments=[],filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,
+  lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
-    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
-    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];recordLinks=new Map();recordPermissions=new Map();editing=null;sharing=null;deploying=null;deployRequestKey=null;
+    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];editing=null;sharing=null;deploying=null;
+    deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
+    lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
     form.reset();togglePersonalizationFields();
@@ -117,7 +115,6 @@ function toggleStudioProjectProfile(){
   if(wrap)wrap.hidden=!active;
   if(form.elements.studioProjectProfile)form.elements.studioProjectProfile.disabled=!active;
 }
-function togglePersonalizationFields(){
 function toggleManualOpening(){
   const deployForm=el("tl-deploy-form"),control=deployForm.elements.manualOpenRequired;
   const isStudio=deployForm.elements.submissionSource.value==="studio";
@@ -125,6 +122,7 @@ function toggleManualOpening(){
   control.disabled=!isStudio;
   if(!isStudio)control.checked=false;
 }
+function togglePersonalizationFields(){
   const active=form.elements.personalizationMode?.value==="personalized";
   el("tl-personalization-fields").hidden=!active;
   if(form.elements.variantTarget)form.elements.variantTarget.required=active;
@@ -202,11 +200,11 @@ function openDeploymentSettings(task){
   if(task.opensAt)form.elements.opensAt.value=localDateInput(new Date(task.opensAt));
   if(task.dueAt)form.elements.dueAt.value=localDateInput(new Date(task.dueAt));
   form.elements.allowLateSubmissions.checked=task.allowLateSubmissions===true;
-  dialog.showModal();
   const manual=el("tl-settings-manual-exam-option");
   manual.hidden=task.submissionSource!=="studio";
   form.elements.manualOpenRequired.disabled=task.submissionSource!=="studio";
   form.elements.manualOpenRequired.checked=task.manualOpenRequired===true;
+  dialog.showModal();
 }
 function showPreview(item){
   el("tl-preview-heading").textContent=item.title;
@@ -247,9 +245,9 @@ function render(){
       meta.className="tl-muted";
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
       meta.textContent=(task.published?"Published":"Private deployment")+" · "+sourceLabel(task.submissionSource)+
-        (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         (task.manualOpenRequired?" · Teacher session: "+(task.manualAccessState==="open"?"OPEN":
           ["closed","closing","held"].includes(task.manualAccessState)?"CLOSED":"WAITING"):"")+
+        (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
         (task.allowLateSubmissions?" · late submissions allowed":"")+
@@ -261,74 +259,19 @@ function render(){
         gradebook.href="school-gradebook.html?view=review&task="+encodeURIComponent(task.taskId);
         gradebook.textContent="Review & Grade";controls.append(gradebook);
         // Navigation only: the teacher still chooses the linked Class Record
-        // Class Record remains the formal consolidation layer. Assessment Studio only
-        // exposes the current link state and routes the teacher into that policy-controlled workflow.
+        // column, and its school-scoped score/release policies remain enforced.
+        if(task.offeringId&&task.taskId){
           const classRecord=document.createElement("a");classRecord.className="tl-action alt";
-          const state=recordLinks.get(task.taskId)||{status:"unlinked"},
-            authority=recordPermissions.get(task.offeringId)||{
-              primaryTeacherUid:"",primaryNeedsReview:false,canEditClassRecord:false
-            };
-          if(state.status==="linked"||state.status==="archived"||authority.canEditClassRecord){
-            const classRecord=document.createElement("a");classRecord.className="tl-action alt";
-            if(state.status==="linked"){
-              classRecord.href="class-record.html?offering="+encodeURIComponent(task.offeringId);
-              classRecord.textContent="Open Class Record";
-              classRecord.title=(state.category||"Uncategorized")+" · "+(state.studentVisibility==="released"?"visible to students":"hidden from students");
-            }else if(state.status==="archived"){
-              classRecord.href="class-record.html?offering="+encodeURIComponent(task.offeringId);
-              classRecord.textContent="Review archived Class Record link";
-            }else{
-              classRecord.href="class-record.html?"+new URLSearchParams({
-                offering:task.offeringId,assessment:task.taskId,source:"school"
-              }).toString();
-              classRecord.textContent="Link to Class Record";
-            }
-            controls.append(classRecord);
-          }else{
-            const recordNote=document.createElement("span");
-            recordNote.className="tl-muted";
-            recordNote.textContent=authority.primaryNeedsReview?
-              "Class Record: Primary Teacher needs School Admin review":
-              "Class Record: Primary Teacher must link";
-            controls.append(recordNote);
-          }
+          classRecord.href="class-record.html?"+new URLSearchParams({
+            offering:task.offeringId,assessment:task.taskId,source:"school"
+          }).toString();
+          classRecord.textContent="Add to Class Record";controls.append(classRecord);
         }
         controls.append(actionButton("Deployment settings",()=>openDeploymentSettings(task),true));
       }
       if(["active","closed"].includes(lifecycle)){
         controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
       }
-      if(lifecycle==="active"){
-        controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
-        controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
-        controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
-      }else if(lifecycle==="closed"){
-        controls.append(actionButton("Reopen",()=>openLifecycle(task,"reopen")));
-        controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
-        controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
-      }else if(lifecycle==="archived"){
-        controls.append(actionButton("Restore",()=>openLifecycle(task,"restore_archive"),true));
-      }
-      row.append(text,controls);list.append(row);
-    }
-    return;
-  }
-  const visible=items.filter(item=>{
-    if(filter==="mine")return item.ownerUid===uid;
-    if(filter==="shared")return item.ownerUid!==uid&&item.visibility==="selected_teachers";
-    return item.ownerUid!==uid&&item.visibility==="school_teachers";
-  });
-  if(!visible.length){
-    const empty=document.createElement("p");empty.className="tl-muted";
-    empty.textContent=filter==="mine"?"You have no private assessments yet.":
-      filter==="shared"?"No assessments have been shared specifically with you.":
-        }
-        controls.append(actionButton("Deployment settings",()=>openDeploymentSettings(task),true));
-      }
-      if(["active","closed"].includes(lifecycle)){
-        controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
-      }
-      if(lifecycle==="active"){
       if(lifecycle==="active"&&task.published&&task.manualOpenRequired&&task.submissionSource==="studio"){
         const isOpen=task.manualAccessState==="open",
           finalSaving=["closed","closing"].includes(task.manualAccessState)&&Number(task.manualCloseGraceUntil||0)>Date.now();
@@ -342,6 +285,7 @@ function render(){
         controls.append(actionButton("Class save history",
           ()=>void showExamCloseReport(task),true));
       }
+      if(lifecycle==="active"){
         controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
         controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
         controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
@@ -576,7 +520,6 @@ async function setPublication(task,publish){
   }catch(error){say(error?.message||"Assessment publication could not be changed.");}
   finally{pendingWrite=false;}
 }
-async function prepareDeployment(item){
 async function showExamCloseSnapshot(task,epoch,student){
   const holder=document.getElementById("schoolAssessmentStudioHost")||document.body;
   let dialog=document.getElementById("tl-closed-exam-source");
@@ -830,6 +773,124 @@ async function setExamOpening(task,opening){
   }catch(error){say(error?.message||"Exam access could not be changed.");}
   finally{pendingWrite=false;}
 }
+const MAX_BULK_DEPLOYMENTS=20;
+let deployOfferings=[],deploySelectedOfferings=new Set(),deploySucceededOfferings=new Set(),
+  deployRequestKeys=new Map(),deployDatePicker=null,deployTimesEdited=false,deployAttempted=false,deployRangePending=false;
+
+function deploymentOfferingLabel(offering){
+  return [offering.subjectName||offering.subjectId||"Subject",
+    offering.sectionName||offering.sectionId||"Section",
+    offering.yearName||offering.yearId,
+    offering.termName||offering.termId].filter(Boolean).join(" · ");
+}
+function previouslyDeployedOfferingIds(){
+  return new Set(deployments.filter(task=>task.blueprintId===deploying?.id &&
+    task.lifecycle!=="cancelled").map(task=>task.offeringId).filter(Boolean));
+}
+function matchingDeployOfferings(){
+  const term=el("tl-deploy-offering-search").value.trim().toLocaleLowerCase();
+  return deployOfferings.filter(offering=>deploymentOfferingLabel(offering).toLocaleLowerCase().includes(term));
+}
+function renderDeploymentOfferings(){
+  const selected=el("tl-deploy-selected"),list=el("tl-deploy-offerings"),
+    status=el("tl-deploy-selection-status"),existing=previouslyDeployedOfferingIds();
+  selected.replaceChildren();list.replaceChildren();
+  const visible=matchingDeployOfferings();
+  if(!deploySelectedOfferings.size){
+    const hint=document.createElement("span");hint.className="text-xs text-slate-500";
+    hint.textContent="No classes selected.";selected.append(hint);
+  }
+  for(const id of deploySelectedOfferings){
+    const offering=deployOfferings.find(entry=>entry.offeringId===id);
+    if(!offering)continue;
+    const chip=document.createElement("span");
+    chip.className="inline-flex max-w-full items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-900";
+    const label=document.createElement("span");label.className="min-w-0 break-words";
+    label.textContent=deploymentOfferingLabel(offering);
+    const remove=document.createElement("button");remove.type="button";remove.className="rounded-full px-1 text-blue-800 hover:bg-blue-100";
+    remove.setAttribute("aria-label","Remove "+deploymentOfferingLabel(offering));
+    remove.textContent="×";remove.disabled=pendingWrite;
+    remove.addEventListener("click",()=>{deploySelectedOfferings.delete(id);deployRequestKeys.delete(id);renderDeploymentOfferings();});
+    chip.append(label,remove);selected.append(chip);
+  }
+  for(const offering of visible){
+    const already=existing.has(offering.offeringId)||deploySucceededOfferings.has(offering.offeringId);
+    const label=document.createElement("label");
+    label.className="flex min-h-11 cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0";
+    if(already)label.className+=" bg-slate-50 text-slate-500";
+    const checkbox=document.createElement("input");checkbox.type="checkbox";
+    checkbox.className="mt-1 h-4 w-4 shrink-0";
+    checkbox.checked=deploySelectedOfferings.has(offering.offeringId);
+    checkbox.disabled=already||pendingWrite;
+    checkbox.addEventListener("change",()=>{
+      if(checkbox.checked){
+        if(deploySelectedOfferings.size>=MAX_BULK_DEPLOYMENTS){
+          checkbox.checked=false;el("tl-deploy-feedback").textContent="Select no more than "+MAX_BULK_DEPLOYMENTS+" classes at a time.";return;
+        }
+        deploySelectedOfferings.add(offering.offeringId);
+      }else{deploySelectedOfferings.delete(offering.offeringId);deployRequestKeys.delete(offering.offeringId);}
+      renderDeploymentOfferings();
+    });
+    const span=document.createElement("span");span.className="min-w-0 break-words";
+    span.textContent=deploymentOfferingLabel(offering)+(already?" · already deployed":"");
+    label.append(checkbox,span);list.append(label);
+  }
+  if(!visible.length){
+    const empty=document.createElement("p");empty.className="p-3 text-xs text-slate-500";
+    empty.textContent=deployOfferings.length?"No classes match this search.":"No active teaching assignments available.";
+    list.append(empty);
+  }
+  status.textContent=deploySelectedOfferings.size+" selected · "+visible.length+" visible · "+MAX_BULK_DEPLOYMENTS+" maximum per operation."+
+    (existing.size?" Classes already deployed from this blueprint cannot be selected again.":"");
+  const submit=el("tl-deploy-submit");
+  submit.disabled=!deployReady||!deploySelectedOfferings.size||pendingWrite||deployRangePending;
+  submit.textContent="Deploy to "+deploySelectedOfferings.size+" class"+(deploySelectedOfferings.size===1?"":"es");
+  el("tl-deploy-select-visible").disabled=!deployReady||pendingWrite;
+  el("tl-deploy-clear").disabled=!deploySelectedOfferings.size||pendingWrite;
+}
+function calendarDateStamp(date){
+  return [date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-");
+}
+function setDeploymentRange(first,second){
+  const dates=[first,second].sort((a,b)=>a.getTime()-b.getTime());
+  const form=el("tl-deploy-form");
+  const opensTime=deployTimesEdited?String(form.elements.opensAt.value).slice(11)||"00:00":"00:00";
+  const dueTime=deployTimesEdited?String(form.elements.dueAt.value).slice(11)||"23:59":"23:59";
+  form.elements.opensAt.value=calendarDateStamp(dates[0])+"T"+opensTime;
+  form.elements.dueAt.value=calendarDateStamp(dates[1])+"T"+dueTime;
+  deployRangePending=false;
+  if(!deployAttempted)deployRequestKeys.clear();
+  renderDeploymentOfferings();
+  el("tl-deploy-feedback").textContent="Schedule set: "+dates[0].toLocaleDateString()+
+    " to "+dates[1].toLocaleDateString()+". Review the exact times below.";
+}
+function ensureDeploymentCalendar(){
+  if(deployDatePicker)return;
+  if(typeof window.flatpickr!=="function"){
+    el("tl-deploy-feedback").textContent="The two-click calendar is unavailable. Enter opening and deadline dates in the fields below.";
+    return;
+  }
+  deployDatePicker=window.flatpickr(el("tl-deploy-date-range"),{
+    mode:"range",dateFormat:"M j, Y",allowInput:false,disableMobile:true,
+    appendTo:el("tl-deploy-dialog"),
+    onChange(selectedDates){
+      if(selectedDates.length===1){
+        deployRangePending=true;el("tl-deploy-feedback").textContent="Choose the second date to complete this range.";
+        renderDeploymentOfferings();
+      }
+      if(selectedDates.length===2)setDeploymentRange(selectedDates[0],selectedDates[1]);
+    }
+  });
+}
+function freezeBulkDeploymentSettings(){
+  const form=el("tl-deploy-form");
+  for(const name of ["submissionSource","manualOpenRequired","opensAt","dueAt","allowLateSubmissions"])
+    form.elements[name].disabled=true;
+  for(const button of form.querySelectorAll("[data-deploy-range-days], #tl-deploy-custom-range"))
+    button.disabled=true;
+  el("tl-deploy-date-range").disabled=true;
+}
+async function prepareDeployment(item){
   if(pendingWrite)return;
   const turn=++deployEpoch;deployReady=false;
   if(personalized(item)){
@@ -843,43 +904,43 @@ async function setExamOpening(task,opening){
     }catch(error){say(error?.message||"Personalization readiness could not be verified.");return;}
   }
   if(turn!==deployEpoch)return;
-  deploying=item;deployRequestKey=crypto.randomUUID();
+  deploying=item;deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();
+  deployRequestKeys.clear();deployAttempted=false;deployTimesEdited=false;deployRangePending=false;
   el("tl-deploy-title").textContent=item.title;
-  const form=el("tl-deploy-form");
-  form.reset();
+  const form=el("tl-deploy-form");form.reset();
   form.elements.submissionSource.disabled=personalized(item);
   form.elements.submissionSource.value=personalized(item)?"studio":(item.defaultSubmissionSource||"text");
-  const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
+  for(const name of ["manualOpenRequired","opensAt","dueAt","allowLateSubmissions"])
+    form.elements[name].disabled=false;
+  for(const button of form.querySelectorAll("[data-deploy-range-days], #tl-deploy-custom-range"))
+    button.disabled=false;
+  el("tl-deploy-date-range").disabled=false;
+  el("tl-deploy-offering-search").value="";
+  el("tl-deploy-feedback").textContent="";
   toggleManualOpening();
-  // Practical-exam deployments default to teacher-controlled class sessions;
-  // ordinary Studio assignments keep their original scheduled behavior.
+  // Practical-exam deployments default to teacher-controlled class sessions.
   form.elements.manualOpenRequired.checked=
     form.elements.submissionSource.value==="studio"&&
     /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(item.assessmentType||""));
+  const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   form.elements.opensAt.value=localDateInput(now);
   form.elements.dueAt.value=localDateInput(tomorrow);
-  const select=el("tl-deploy-offering");
-  select.replaceChildren();
-  const placeholder=document.createElement("option");
-  placeholder.value="";placeholder.textContent="Loading your assigned classes…";
-  select.append(placeholder);select.disabled=true;form.querySelector('button[type="submit"]').disabled=true;
+  ensureDeploymentCalendar();
+  if(deployDatePicker)deployDatePicker.clear(false);
   el("tl-deploy-dialog").showModal();
+  renderDeploymentOfferings();
   try{
     const offerings=(await performScoped(schoolAcademicsApi,"planning_options",{assignmentScope:"teacher"})).offerings||[];
     if(turn!==deployEpoch||!el("tl-deploy-dialog").open||deploying?.id!==item.id)return;
-    select.replaceChildren();
-    const initial=document.createElement("option");
-    initial.value="";initial.textContent=offerings.length?"Choose your assigned class":"No active course offerings assigned";
-    initial.selected=true;initial.disabled=true;select.append(initial);
-    for(const offering of offerings.sort((a,b)=>String(a.subjectName+" "+a.sectionName).localeCompare(String(b.subjectName+" "+b.sectionName)))){
-      const option=document.createElement("option");
-      option.value=offering.offeringId;
-      option.textContent=[offering.subjectName||offering.subjectId,offering.sectionName||offering.sectionId,offering.yearName||offering.yearId,offering.termName||offering.termId].filter(Boolean).join(" · ");
-      select.append(option);
-    }
-    deployReady=select.options.length>1;select.disabled=!deployReady;form.querySelector('button[type="submit"]').disabled=!deployReady;
-    if(!deployReady)say("No active teaching assignments are available for deployment.");
-  }catch(error){say(error.message||"Could not load assigned classes.");}
+    deployOfferings=offerings.filter(o=>o?.offeringId).sort((a,b)=>
+      deploymentOfferingLabel(a).localeCompare(deploymentOfferingLabel(b)));
+    deployReady=deployOfferings.length>0;
+    renderDeploymentOfferings();
+    if(!deployReady)el("tl-deploy-feedback").textContent="No active teaching assignments are available for deployment.";
+  }catch(error){
+    el("tl-deploy-feedback").textContent=error?.message||"Could not load assigned classes.";
+    say("Could not load assigned classes.");
+  }
 }
 el("tl-deployment-settings-cancel").addEventListener("click",()=>{
   deploymentSettingsTask=null;el("tl-deployment-settings-dialog").close();
@@ -896,8 +957,8 @@ el("tl-deployment-settings-form").addEventListener("submit",event=>{
     taskId:task.taskId,expectedRevision:task.revision||1,
     opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
     allowLateSubmissions:form.elements.allowLateSubmissions.checked===true,
-    reason:String(form.elements.reason.value||"")
     manualOpenRequired:form.elements.manualOpenRequired.checked===true,
+    reason:String(form.elements.reason.value||"")
   };
   void (async()=>{
     pendingWrite=true;[...form.elements].forEach(control=>control.disabled=true);
@@ -941,52 +1002,126 @@ el("tl-lifecycle-form").addEventListener("submit",event=>{
     finally{pendingWrite=false;[...form.elements].forEach(control=>control.disabled=false);}
   })();
 });
-el("tl-cancel-deploy").addEventListener("click",()=>{
-  if(pendingWrite)return;
-  el("tl-deploy-form").elements.submissionSource.disabled=false;
-  el("tl-deploy-dialog").close();
-});
+el("tl-cancel-deploy").addEventListener("click",()=>{if(!pendingWrite)el("tl-deploy-dialog").close();});
 el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
-el("tl-deploy-dialog").addEventListener("close",()=>{++deployEpoch;deployReady=false;deploying=null;deployRequestKey=null;});
-el("tl-deploy-form").addEventListener("input",()=>{if(!pendingWrite)deployRequestKey=crypto.randomUUID();});
+el("tl-deploy-dialog").addEventListener("close",()=>{
+  ++deployEpoch;deployReady=false;deploying=null;deployOfferings=[];
+  deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();deployAttempted=false;deployRangePending=false;
+});
+el("tl-deploy-offering-search").addEventListener("input",renderDeploymentOfferings);
+el("tl-deploy-select-visible").addEventListener("click",()=>{
+  const existing=previouslyDeployedOfferingIds();
+  for(const offering of matchingDeployOfferings()){
+    if(existing.has(offering.offeringId)||deploySucceededOfferings.has(offering.offeringId))continue;
+    if(deploySelectedOfferings.size>=MAX_BULK_DEPLOYMENTS)break;
+    deploySelectedOfferings.add(offering.offeringId);
+  }
+  renderDeploymentOfferings();
+});
+el("tl-deploy-clear").addEventListener("click",()=>{
+  for(const id of deploySelectedOfferings)deployRequestKeys.delete(id);
+  deploySelectedOfferings.clear();renderDeploymentOfferings();
+});
+el("tl-deploy-custom-range").addEventListener("click",()=>{
+  ensureDeploymentCalendar();
+  if(deployDatePicker)deployDatePicker.open();
+  else el("tl-deploy-form").elements.opensAt.focus();
+});
+for(const button of document.querySelectorAll("#tl-deploy-form [data-deploy-range-days]")){
+  button.addEventListener("click",()=>{
+    if(deployAttempted)return;
+    const start=new Date();start.setHours(0,0,0,0);
+    const end=new Date(start);end.setDate(start.getDate()+Number(button.dataset.deployRangeDays));
+    ensureDeploymentCalendar();
+    if(deployDatePicker)deployDatePicker.setDate([start,end],false);
+    setDeploymentRange(start,end);
+  });
+}
 el("tl-deploy-form").elements.submissionSource.addEventListener("change",()=>{
+  if(deployAttempted)return;
   toggleManualOpening();
   const form=el("tl-deploy-form");
   if(form.elements.submissionSource.value==="studio"&&
      /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(deploying?.assessmentType||"")))
     form.elements.manualOpenRequired.checked=true;
+  deployRequestKeys.clear();
 });
+for(const name of ["manualOpenRequired","allowLateSubmissions"]){
+  el("tl-deploy-form").elements[name].addEventListener("change",()=>{
+    if(!deployAttempted)deployRequestKeys.clear();
+  });
+}
+for(const name of ["opensAt","dueAt"]){
+  el("tl-deploy-form").elements[name].addEventListener("change",()=>{
+    if(deployAttempted)return;
+    deployTimesEdited=true;deployRangePending=false;deployRequestKeys.clear();
+    renderDeploymentOfferings();
+    const form=el("tl-deploy-form");
+    const opens=new Date(form.elements.opensAt.value),due=new Date(form.elements.dueAt.value);
+    if(deployDatePicker&&Number.isFinite(opens.getTime())&&Number.isFinite(due.getTime())&&due>=opens)
+      deployDatePicker.setDate([opens,due],false);
+  });
+}
 el("tl-deploy-form").addEventListener("submit",event=>{
   event.preventDefault();if(!deploying||pendingWrite||!deployReady)return;
   const form=event.currentTarget;
   if(!form.reportValidity())return;
-  const fields=new FormData(form);
-  const key=deployRequestKey||crypto.randomUUID(),resource=deploying;
-  deployRequestKey=key;
-  const opensAt=new Date(String(fields.get("opensAt")||""));
-  const dueAt=new Date(String(fields.get("dueAt")||""));
-  if(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt){
-    say("Choose a valid opening time and later deadline.");return;
+  if(deployRangePending){el("tl-deploy-feedback").textContent="Choose the second calendar date before deploying.";return;}
+  const ids=[...deploySelectedOfferings];
+  if(!ids.length){el("tl-deploy-feedback").textContent="Select at least one assigned class.";return;}
+  if(ids.length>MAX_BULK_DEPLOYMENTS){
+    el("tl-deploy-feedback").textContent="Choose no more than "+MAX_BULK_DEPLOYMENTS+" classes.";return;
   }
+  const opensAt=new Date(form.elements.opensAt.value),dueAt=new Date(form.elements.dueAt.value);
+  if(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt){
+    el("tl-deploy-feedback").textContent="Choose a valid opening time and a later deadline.";return;
+  }
+  const resource=deploying,settings={
+    blueprintId:resource.id,
+    submissionSource:personalized(resource)?"studio":form.elements.submissionSource.value,
+    opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
+    allowLateSubmissions:form.elements.allowLateSubmissions.checked===true,
+    manualOpenRequired:form.elements.manualOpenRequired.checked===true
+  };
   void (async()=>{
-    pendingWrite=true;
+    pendingWrite=true;deployAttempted=true;
     const controls=[...form.elements].filter(control=>!control.disabled);
     controls.forEach(control=>control.disabled=true);
-    say("Checking your course assignment and deploying a frozen assessment…");
+    const failures=[];let completed=0;
     try{
-      const task=await performScoped(scopedAssessmentApi,"deploy",{
-        blueprintId:resource.id,offeringId:String(fields.get("offeringId")||""),
-        submissionSource:personalized(resource)?"studio":String(fields.get("submissionSource")||""),
-        opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
-        allowLateSubmissions:fields.get("allowLateSubmissions")==="on",requestKey:key
-        allowLateSubmissions:fields.get("allowLateSubmissions")==="on",
-      });
-      const message=task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
-        "Assessment prepared privately for this class. Publish it when you are ready for students to see it.";
-      el("tl-deploy-dialog").close();deploying=null;deployRequestKey=null;
-      await refreshAfterWrite(message);
-    }catch(error){say(error.message||"Deployment could not be completed. Retry the same request safely.");}
-    finally{pendingWrite=false;controls.forEach(control=>control.disabled=false);}
+      for(const offeringId of ids){
+        if(deploySucceededOfferings.has(offeringId))continue;
+        const offering=deployOfferings.find(entry=>entry.offeringId===offeringId);
+        const name=offering?deploymentOfferingLabel(offering):offeringId;
+        const requestKey=deployRequestKeys.get(offeringId)||crypto.randomUUID();
+        deployRequestKeys.set(offeringId,requestKey);
+        const status="Preparing "+(completed+failures.length+1)+" of "+ids.length+" classes: "+name+"…";
+        say(status);el("tl-deploy-feedback").textContent=status;
+        try{
+          await performScoped(scopedAssessmentApi,"deploy",{...settings,offeringId,requestKey});
+          deploySucceededOfferings.add(offeringId);
+          deploySelectedOfferings.delete(offeringId);
+          completed++;
+        }catch(error){
+          failures.push(name+": "+(error?.message||"Request failed"));
+        }
+      }
+      if(!failures.length){
+        el("tl-deploy-dialog").close();
+        await refreshAfterWrite("Prepared "+completed+" independent class deployment"+(completed===1?"":"s")+
+          ". Each remains private until published individually.");
+      }else{
+        const summary="Prepared "+completed+" of "+ids.length+" selected class"+(ids.length===1?"":"es")+
+          ". "+failures.length+" could not be prepared. Retry reuses each class's request ID. "+
+          failures.join(" | ");
+        el("tl-deploy-feedback").textContent=summary;say(summary);
+        if(completed)try{await refresh();}catch{/* successful writes are retained */}
+      }
+    }finally{
+      pendingWrite=false;controls.forEach(control=>control.disabled=false);
+      if(failures.length)freezeBulkDeploymentSettings();
+      if(el("tl-deploy-dialog").open)renderDeploymentOfferings();
+    }
   })();
 });
 form.elements.personalizationMode.addEventListener("change",togglePersonalizationFields);
