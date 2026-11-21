@@ -18,9 +18,9 @@ const requestedPersonId=(()=>{try{
 }catch{return "";}})();
 let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]},
   saving=false,draftDirty=false,loadedApplication=null,loadedPerson=null,registrations=[],registrationChange=null,
-  progressionChange=null;
+  progressionChange=null,cohortPreview=null;
 const requestVersions={catalog:0,applications:0,registrations:0};
-let refreshVersion=0,progressionPreviewRun=0,historyRun=0;
+let refreshVersion=0,progressionPreviewRun=0,historyRun=0,cohortRun=0;
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -47,7 +47,7 @@ function setSaving(value){
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
-  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
 }
@@ -162,6 +162,7 @@ async function loadCatalog(){
     if((catalog.sections||[]).some(row=>row.id===previousSection))sectionFilter.value=previousSection;
   }
   refreshPlacement();
+  refreshCohortOptions();
   return true;
 }
 function registrationLabel(row){
@@ -301,6 +302,186 @@ function closeStudentHistory(){
 }
 get("en-history-close").addEventListener("click",closeStudentHistory);
 get("en-history-dialog").addEventListener("cancel",()=>{++historyRun;});
+
+function cohortForm(){return get("en-cohort-form");}
+function cohortRows(){
+  const form=cohortForm(),yearId=String(form.elements.sourceYearId.value||""),
+    termId=String(form.elements.sourceTermId.value||""),
+    sectionId=String(form.elements.sourceSectionId.value||"");
+  return registrations.filter(row=>row.status==="active"&&row.yearId===yearId&&
+    row.termId===termId&&row.sectionId===sectionId);
+}
+function cohortSelection(){
+  const form=cohortForm(),type=String(form.elements.progressionType.value||"");
+  return {
+    sourceYearId:String(form.elements.sourceYearId.value||""),
+    sourceTermId:String(form.elements.sourceTermId.value||""),
+    sourceSectionId:String(form.elements.sourceSectionId.value||""),
+    progressionType:type,
+    ...(type&&type!=="graduation"?{
+      targetYearId:String(form.elements.targetYearId.value||""),
+      targetProgramId:String(form.elements.targetProgramId.value||""),
+      targetTermId:String(form.elements.targetTermId.value||""),
+      targetSectionId:String(form.elements.targetSectionId.value||"")
+    }:{})
+  };
+}
+function cohortSignature(selection=cohortSelection()){
+  return JSON.stringify(selection);
+}
+function invalidateCohortPreview(message="Selection changed. Preview the cohort again."){
+  ++cohortRun;cohortPreview=null;get("en-cohort-apply").disabled=true;
+  get("en-cohort-results").replaceChildren();
+  if(message)get("en-cohort-status").textContent=message;
+}
+function refreshCohortOptions(){
+  const form=cohortForm();
+  if(!form?.elements?.sourceYearId)return;
+  const sourceYear=form.elements.sourceYearId,sourceTerm=form.elements.sourceTermId,
+    sourceSection=form.elements.sourceSectionId,type=String(form.elements.progressionType.value||""),
+    priorSource={year:sourceYear.value,term:sourceTerm.value,section:sourceSection.value};
+  options(sourceYear,catalog.years||[],"Choose source academic year");
+  if((catalog.years||[]).some(row=>row.id===priorSource.year))sourceYear.value=priorSource.year;
+  const sourceTerms=(catalog.terms||[]).filter(row=>!sourceYear.value||row.yearId===sourceYear.value);
+  options(sourceTerm,sourceTerms,"Choose source academic period");
+  if(sourceTerms.some(row=>row.id===priorSource.term))sourceTerm.value=priorSource.term;
+  options(sourceSection,catalog.sections||[],"Choose source section");
+  if((catalog.sections||[]).some(row=>row.id===priorSource.section))sourceSection.value=priorSource.section;
+
+  const targetMode=type==="promotion"||type==="retention",targetBox=get("en-cohort-target");
+  targetBox.hidden=!targetMode;
+  for(const name of ["targetYearId","targetProgramId","targetTermId","targetSectionId"]){
+    form.elements[name].required=targetMode;form.elements[name].disabled=!targetMode;
+  }
+  if(!targetMode){
+    for(const name of ["targetYearId","targetProgramId","targetTermId","targetSectionId"])form.elements[name].value="";
+    return;
+  }
+  const sourceSectionRow=(catalog.sections||[]).find(row=>row.id===sourceSection.value)||null,
+    targetYear=form.elements.targetYearId,targetProgram=form.elements.targetProgramId,
+    targetTerm=form.elements.targetTermId,targetSection=form.elements.targetSectionId,
+    prior={year:targetYear.value,program:targetProgram.value,term:targetTerm.value,section:targetSection.value},
+    years=(catalog.years||[]).filter(row=>row.id!==sourceYear.value);
+  options(targetYear,years,"Choose target academic year");
+  if(years.some(row=>row.id===prior.year))targetYear.value=prior.year;
+  options(targetProgram,catalog.programs||[],"Choose target program / division");
+  if((catalog.programs||[]).some(row=>row.id===prior.program))targetProgram.value=prior.program;
+  else if(sourceSectionRow&&(catalog.programs||[]).some(row=>row.id===sourceSectionRow.programId))
+    targetProgram.value=sourceSectionRow.programId;
+  const targetTerms=(catalog.terms||[]).filter(row=>
+    (!targetYear.value||row.yearId===targetYear.value)&&(!targetProgram.value||row.programId===targetProgram.value));
+  options(targetTerm,targetTerms,"Choose target academic period");
+  if(targetTerms.some(row=>row.id===prior.term))targetTerm.value=prior.term;
+  const targetSections=(catalog.sections||[]).filter(row=>
+    (!targetProgram.value||row.programId===targetProgram.value)&&
+    progressionGradeValid(type,sourceSectionRow?.gradeLevel,row.gradeLevel));
+  options(targetSection,targetSections,"Choose target section");
+  if(targetSections.some(row=>row.id===prior.section))targetSection.value=prior.section;
+}
+async function mapLimit(items,limit,worker){
+  const results=new Array(items.length);let cursor=0;
+  async function run(){
+    while(cursor<items.length){
+      const index=cursor++;results[index]=await worker(items[index],index);
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(limit,items.length)},()=>run()));
+  return results;
+}
+function renderCohortResults(rows){
+  const host=get("en-cohort-results");host.replaceChildren();
+  for(const row of rows){
+    const card=document.createElement("article");card.className="en-row";card.setAttribute("role","listitem");
+    const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
+    name.textContent=row.item.displayName;meta.className="en-muted";
+    const state=row.applied?"Applied":row.applyError?"Apply failed":row.preview?.canApply?"Ready":"Blocked";
+    meta.textContent=[levelLabel(row.item.gradeLevel),state,
+      row.preview?.completion?.length?row.preview.completion.filter(item=>item.ready).length+"/"+row.preview.completion.length+" Final Grades ready":""]
+      .filter(Boolean).join(" · ");
+    info.append(name,meta);
+    const issues=row.preview?.blockers||[];
+    if(issues.length){
+      const detail=document.createElement("p");detail.className="en-muted";
+      detail.textContent=issues.slice(0,3).map(issue=>{
+        const subject=issue.subjectId?catalog.subjects.find(item=>item.id===issue.subjectId)?.name:"";
+        return (subject?subject+": ":"")+(issue.message||"Requires review");
+      }).join(" • ")+(issues.length>3?" • +"+(issues.length-3)+" more":"");
+      info.append(detail);
+    }
+    if(row.applyError){const error=document.createElement("p");error.className="en-muted";error.textContent=row.applyError;info.append(error);}
+    card.append(info);host.append(card);
+  }
+}
+async function previewCohort(){
+  if(saving)return;
+  const form=cohortForm(),selection=cohortSelection(),message=get("en-cohort-status");
+  if(!form.reportValidity())return;
+  if(!selection.progressionType){message.textContent="Choose Promotion, Retention or Graduation.";return;}
+  if(selection.progressionType!=="graduation"&&
+    (!selection.targetYearId||!selection.targetProgramId||!selection.targetTermId||!selection.targetSectionId)){
+    message.textContent="Choose the complete target placement before previewing the cohort.";return;
+  }
+  const candidates=cohortRows();
+  if(!candidates.length){invalidateCohortPreview("No active registrations match the selected source cohort.");return;}
+  if(candidates.length>100){invalidateCohortPreview("This cohort exceeds 100 active registrations and requires paginated Registrar processing.");return;}
+  const run=++cohortRun,signature=cohortSignature(selection);
+  cohortPreview=null;get("en-cohort-apply").disabled=true;get("en-cohort-results").replaceChildren();
+  message.textContent="Checking "+candidates.length+" learner"+(candidates.length===1?"":"s")+" against released Final Grades and target placement…";
+  const rows=await mapLimit(candidates,4,async item=>{
+    const payload={
+      registrationId:item.registrationId,expectedRevision:Number(item.revision)||1,
+      progressionType:selection.progressionType,
+      ...(selection.progressionType!=="graduation"?{
+        targetYearId:selection.targetYearId,targetProgramId:selection.targetProgramId,
+        targetTermId:selection.targetTermId,targetSectionId:selection.targetSectionId
+      }:{})
+    };
+    try{return {item,payload,preview:await perform("preview_progression",payload)};}
+    catch(error){return {item,payload,preview:{canApply:false,blockers:[{message:error?.message||"Readiness check failed."}]}};}
+  });
+  if(run!==cohortRun)return;
+  const ready=rows.filter(row=>row.preview?.canApply).length;
+  cohortPreview={signature,rows};renderCohortResults(rows);
+  get("en-cohort-apply").disabled=ready===0;
+  message.textContent=ready+" ready · "+(rows.length-ready)+" blocked · "+rows.length+" learner"+(rows.length===1?"":"s")+" reviewed.";
+}
+get("en-cohort-preview").addEventListener("click",()=>void previewCohort());
+for(const name of ["sourceYearId","sourceTermId","sourceSectionId","progressionType","targetYearId","targetProgramId","targetTermId","targetSectionId"]){
+  cohortForm().elements[name].addEventListener("change",()=>{
+    if(["sourceYearId","sourceSectionId","progressionType","targetYearId","targetProgramId"].includes(name))
+      refreshCohortOptions();
+    invalidateCohortPreview();
+  });
+}
+get("en-cohort-apply").addEventListener("click",()=>{
+  if(saving||!cohortPreview)return;
+  const form=cohortForm(),selection=cohortSelection(),reason=String(new FormData(form).get("reason")||"").trim();
+  if(!form.reportValidity())return;
+  if(cohortPreview.signature!==cohortSignature(selection)){
+    invalidateCohortPreview("The cohort selection changed. Preview again before applying progression.");return;
+  }
+  const ready=cohortPreview.rows.filter(row=>row.preview?.canApply&&!row.applied);
+  if(!ready.length)return;
+  if(!confirm("Apply "+progressionTypeLabel(selection.progressionType).toLowerCase()+" to "+ready.length+
+    " ready learner"+(ready.length===1?"":"s")+"? Each registration will be committed and audited independently; blocked learners will remain unchanged."))return;
+  void (async()=>{
+    setSaving(true);const message=get("en-cohort-status");let applied=0,failed=0;
+    try{
+      for(let index=0;index<ready.length;index++){
+        const row=ready[index];
+        message.textContent="Applying "+(index+1)+" of "+ready.length+" · "+row.item.displayName+"…";
+        try{
+          await perform("progress_registration",{...row.payload,reason});row.applied=true;applied++;
+        }catch(error){row.applyError=error?.message||"Progression failed.";failed++;}
+        renderCohortResults(cohortPreview.rows);
+      }
+      await loadRegistrations();
+      get("en-cohort-apply").disabled=true;
+      message.textContent=applied+" progression"+(applied===1?"":"s")+" applied · "+failed+
+        " failed after final server revalidation · blocked learners were unchanged.";
+    }finally{setSaving(false);}
+  })();
+});
 function automaticOfferings(item,sectionId){
   return catalog.offerings.filter(row=>row.yearId===item.yearId&&row.programId===item.programId&&
     row.termId===item.termId&&row.sectionId===sectionId&&row.rosterMode!=="selective");
@@ -822,8 +1003,8 @@ picker=createTenantSchoolPicker({
     if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
     ++refreshVersion;
     for(const source of Object.keys(requestVersions))++requestVersions[source];
-    loadedApplication=null;loadedPerson=null;registrationChange=null;progressionChange=null;draftDirty=false;registrations=[];
-    ++progressionPreviewRun;++historyRun;
+    loadedApplication=null;loadedPerson=null;registrationChange=null;progressionChange=null;cohortPreview=null;draftDirty=false;registrations=[];
+    ++progressionPreviewRun;++historyRun;++cohortRun;
     form.elements.displayName.readOnly=false;
     catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]};
     if(get("en-registration-change-dialog").open)get("en-registration-change-dialog").close();
