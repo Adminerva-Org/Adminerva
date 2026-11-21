@@ -30,6 +30,7 @@ if(home){
   const link=(href,label,cls='avfx-primary')=>{
     const a=el('a',cls,label);a.href=href;return a;
   };
+  let journey=null;
   const modeSwitch=el('div','avfx-mode-switch');
   modeSwitch.setAttribute('aria-label','Homepage experience mode');
   const fullButton=el('button',null,'Full experience');
@@ -113,7 +114,6 @@ if(home){
     }
   };
 
-  let journey=null;
   if(publicLike){
     const config=paths[role];
     journey=el('div','avfx-journey');
