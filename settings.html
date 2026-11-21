@@ -7,7 +7,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Account &amp; Integrations | Adminerva</title>
+    <title>Settings &amp; preferences | Adminerva</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script
       src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"
@@ -33,52 +33,55 @@
     </style>
     <link rel="stylesheet" href="css/adminerva-ui.css?v=f238ef34641f" />
 <link rel="stylesheet" href="css/workspace-navigation.css?v=1.3.0"></head>
-  <body id="pageBody" class="hidden bg-gray-100 font-sans min-h-screen flex flex-col">
+  <body id="pageBody" data-settings-surface="staff" class="hidden av-settings-body font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="settings" data-page="settings"></div>
     <script src="js/core/adminerva-nav.js?v=f238ef34641f"></script>
 
-    <!-- Main Workspace (Responsive Vertical Layout) -->
-    <div
-      class="max-w-screen-2xl mx-auto w-full p-4 sm:p-6 mt-2 sm:mt-4 flex-1 flex flex-col md:flex-row gap-6 md:gap-8"
-    >
+    <main class="av-settings-page">
+      <header class="av-settings-page-head">
+        <div>
+          <p class="av-eyebrow">My account</p>
+          <h1>Settings &amp; preferences</h1>
+          <p id="settingsRoleSummary">Loading the settings available to your current role…</p>
+        </div>
+        <div id="settingsRoleChips" class="av-settings-role-chips" aria-label="Current roles"></div>
+      </header>
+      <div class="av-settings-shell">
       <!-- LEFT SIDEBAR -->
-      <aside aria-label="Settings categories" class="av-settings-nav w-full md:w-60 shrink-0 flex flex-col gap-1 overflow-x-auto md:overflow-visible">
+      <aside aria-label="Settings categories" class="av-settings-nav">
         <div class="mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Personal</div>
         <button type="button" onclick="switchSettingsCategory('account')" id="navBtn-account"
           class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between bg-purple-50 text-purple-700 border-l-4 md:border-l-0 md:border-r-4 border-purple-600">
-          <span>Account &amp; notifications</span><span class="text-lg opacity-60">⚙</span>
+          <span class="av-settings-nav-copy"><strong>Account</strong><small>Notifications, display &amp; privacy</small></span>
         </button>
 
         <div data-teaching-settings class="mt-4 md:mt-5 mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Connected services</div>
         <button data-teaching-settings type="button" onclick="switchSettingsCategory('security')" id="navBtn-security"
           class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100 rounded-lg">
-          <span>Connections &amp; keys</span><span class="text-lg opacity-60">🔒</span>
+          <span class="av-settings-nav-copy"><strong>Connections</strong><small>Integrations &amp; credentials</small></span>
         </button>
 
         <div data-teaching-settings class="mt-4 md:mt-5 mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Teaching defaults</div>
         <button data-teaching-settings type="button" onclick="switchSettingsCategory('rubrics')" id="navBtn-rubrics"
           class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100 rounded-lg">
-          <span>Grading rubrics</span><span class="text-lg opacity-60">📋</span>
+          <span class="av-settings-nav-copy"><strong>Grading rubrics</strong><small>Teacher grading defaults</small></span>
         </button>
         <button data-teaching-settings type="button" onclick="switchSettingsCategory('lesson')" id="navBtn-lesson"
           class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100 rounded-lg">
-          <span>Documents &amp; export</span><span class="text-lg opacity-60">📘</span>
+          <span class="av-settings-nav-copy"><strong>Documents &amp; export</strong><small>Headers, signatories &amp; output</small></span>
         </button>
         <button data-teaching-settings type="button" onclick="switchSettingsCategory('presentation')" id="navBtn-presentation"
           class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100 rounded-lg">
-          <span>Presentation defaults</span><span class="text-lg opacity-60">📽️</span>
+          <span class="av-settings-nav-copy"><strong>Presentations</strong><small>Slide defaults &amp; templates</small></span>
         </button>
       </aside>
 
       <!-- RIGHT MAIN PANEL -->
-      <main
-        class="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[600px] flex flex-col"
-      >
+      <section class="av-settings-content">
         <!-- PANEL: SECURITY -->
-        <header class="px-5 sm:px-8 pt-5"><p class="av-eyebrow">My account</p><h1 class="text-xl font-bold">Settings &amp; preferences</h1><p id="settingsRoleSummary" class="av-form-hint mt-1">Loading settings available to your current role…</p></header>
         <div
           id="panel-security" data-teaching-settings
-          class="settings-panel hidden p-5 sm:p-8 h-full overflow-y-auto"
+          class="settings-panel av-settings-panel hidden"
         >
           <h3
             class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-6"
@@ -172,7 +175,7 @@
         <!-- PANEL: RUBRICS -->
         <div
           id="panel-rubrics" data-teaching-settings
-          class="settings-panel hidden p-5 sm:p-8 h-full overflow-y-auto space-y-6"
+          class="settings-panel av-settings-panel hidden space-y-6"
         >
           <h3
             class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-4 sm:mb-6"
@@ -346,7 +349,7 @@
         <!-- PANEL: LESSON DEFAULTS -->
         <div
           id="panel-lesson" data-teaching-settings
-          class="settings-panel hidden p-5 sm:p-8 h-full overflow-y-auto"
+          class="settings-panel av-settings-panel hidden"
         >
           <h3
             class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-6"
@@ -561,7 +564,7 @@
         <!-- PANEL: PRESENTATIONS -->
         <div
           id="panel-presentation" data-teaching-settings
-          class="settings-panel hidden p-5 sm:p-8 h-full overflow-y-auto"
+          class="settings-panel av-settings-panel hidden"
         >
           <h3
             class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-6"
@@ -673,18 +676,25 @@
             </button>
           </div>
         </div>
-        <section id="panel-account" class="settings-panel block p-5 sm:p-8">
-          <section id="staffAccountSummary" class="rounded-xl border border-slate-200 bg-slate-50 p-4 mb-6">
-            <p class="text-xs uppercase tracking-wide font-bold text-slate-500">Signed-in account</p>
-            <div class="grid sm:grid-cols-2 gap-3 mt-3">
-              <div><span class="text-xs text-slate-500">Email</span><strong id="settingsAccountEmail" class="block text-sm mt-1 break-all">—</strong></div>
-              <div><span class="text-xs text-slate-500">Current role</span><strong id="settingsAccountRole" class="block text-sm mt-1">—</strong></div>
+        <section id="panel-account" class="settings-panel av-settings-panel block">
+          <div class="av-settings-section-head">
+            <div><p class="av-eyebrow">Personal</p><h2>Account, notifications &amp; display</h2><p>Manage your sign-in context and personal interface preferences. School-owned roles and records are shown here but changed through their administrative workflow.</p></div>
+          </div>
+          <section id="staffAccountSummary" class="av-settings-summary-card">
+            <div>
+              <span>Signed-in email</span>
+              <strong id="settingsAccountEmail">—</strong>
+            </div>
+            <div>
+              <span>Active access</span>
+              <strong id="settingsAccountRole">—</strong>
             </div>
           </section>
           <div data-account-preferences="staff"></div>
         </section>
-      </main>
-    </div>
+      </section>
+      </div>
+    </main>
 
     <!-- MODALS & OVERLAYS -->
 
