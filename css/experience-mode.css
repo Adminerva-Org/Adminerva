@@ -299,3 +299,9 @@ html[data-adminerva-experience="quick"] .av-cine>.avfx-cine-progress{display:non
  html[data-adminerva-experience="full"] body.av-cine-page .av-atlas-console,
  html[data-adminerva-experience="full"] body.av-cine-page .av-signal-room{padding:1.1rem 3.4rem}
 }
+
+
+/* For student/teacher Full Experience, the command stage replaces the old hero
+   so users do not pass through two introductory banners before real work. */
+html[data-adminerva-experience="full"] main[data-home-experience="student"]>.av-home-hero,
+html[data-adminerva-experience="full"] main[data-home-experience="teacher"]>.av-home-hero{display:none!important}
