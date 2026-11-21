@@ -328,7 +328,9 @@ function createSchoolEnrollmentService({db}){
         sectionRef=db.doc(root+"sections/"+sectionId),
         yearRef=db.doc(root+"academic_years/"+yearId),
         programRef=db.doc(root+"academic_programs/"+programId),
-        termRef=db.doc(root+"terms/"+termId);
+        termRef=db.doc(root+"terms/"+termId),
+        applicationRef=current.applicationId?
+          db.doc(root+"enrollment_applications/"+checkId(current.applicationId,"Application ID",128)):null;
 
       const [section,year,program,term,offeringSnap,enrollmentSnap]=await Promise.all([
         sectionRef.get(),yearRef.get(),programRef.get(),termRef.get(),
@@ -415,6 +417,10 @@ function createSchoolEnrollmentService({db}){
         if(targetSection.data().programId!==programId||
            currentTerm.data().yearId!==yearId||currentTerm.data().programId!==programId)
           deny("failed-precondition","The target section no longer matches this academic period.");
+        const application=applicationRef?await tx.get(applicationRef):null;
+        if(application&&(!application.exists||application.data().schoolId!==ctx.schoolId||
+           application.data().personId!==personId))
+          deny("failed-precondition","The enrollment application link changed. Refresh before moving the student.");
 
         const oldEnrollments=await Promise.all(currentEnrollmentRefs.map(ref=>tx.get(ref)));
         const liveTargetOfferings=await Promise.all(targetOfferingRefs.map(ref=>tx.get(ref)));
@@ -491,6 +497,13 @@ function createSchoolEnrollmentService({db}){
           tx.set(slotRef,{...placementData,revision:(Number(slot.data().revision)||1)+1},{merge:true});
         else
           tx.create(slotRef,{...placementData,revision:1,createdByUid:ctx.uid,createdAt:now});
+        if(application){
+          tx.update(applicationRef,{registrationId:newRegistrationId,
+            previousRegistrationId:registrationId,officialProgramId:programId,
+            officialTermId:termId,officialSectionId:sectionId,
+            placementChangedByUid:ctx.uid,placementChangedAt:now,updatedAt:now,
+            revision:(Number(application.data().revision)||1)+1});
+        }
 
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
           registrationId:newRegistrationId,previousRegistrationId:registrationId,
