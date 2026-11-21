@@ -245,14 +245,26 @@ function openLifecycle(change){
     ((findCatalog("subjects",item.subjectId)?.name||item.subjectId)+" · "+
       (findCatalog("sections",item.sectionId)?.name||item.sectionId)):
     (item.name||item.id)+" · "+item.id;
+  const dependencyActions=el("ac-lifecycle-actions"),
+    classLink=el("ac-lifecycle-open-classes"),enrollmentLink=el("ac-lifecycle-open-enrollment");
+  dependencyActions.hidden=true;classLink.hidden=false;enrollmentLink.hidden=false;
   if(type==="offering"){
     help.textContent=restoring
       ?"Restoring reactivates the class record. Official-section rosters are rebuilt from current registrations, but teacher assignments and the old schedule stay ended/archived so staffing and conflicts can be reviewed again."
       :"Retiring the class ends its active class enrollments and teacher assignments, archives its official schedule, and preserves assessments, submissions, grades and history. An open or future published assessment blocks retirement.";
+    if(!restoring){dependencyActions.hidden=false;enrollmentLink.hidden=true;}
   }else{
     help.textContent=restoring
       ?"Restoring makes this academic record selectable again. Required parent records must already be active."
       :"Archiving removes this record from normal setup choices without deleting history. Active dependent records must be ended or archived first.";
+    if(!restoring){
+      dependencyActions.hidden=false;
+      if(change.kind==="subjects"){enrollmentLink.hidden=true;}
+      if(change.kind==="academic_years"||change.kind==="academic_programs"||
+         change.kind==="terms"||change.kind==="sections"){
+        classLink.hidden=false;enrollmentLink.hidden=false;
+      }
+    }
   }
   confirm.textContent=restoring?"Restore":"Archive";
   confirm.className="ac-btn "+(restoring?"success":"danger");
