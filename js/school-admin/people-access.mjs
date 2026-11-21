@@ -1255,14 +1255,19 @@ async function openPersonDetail(person){
     get("pa-person-detail-access").textContent=result.membership?
       result.membership.status+" · "+result.membership.roles.join(", "):"No school membership";
     get("pa-person-detail-relationships").textContent=String(result.relationships?.length||0);
-    const classesAction=get("pa-person-detail-classes-action"),enrollmentAction=get("pa-person-detail-enrollment-action");
+    const classesAction=get("pa-person-detail-classes-action"),enrollmentAction=get("pa-person-detail-enrollment-action"),
+      recordsAction=get("pa-person-detail-records-action");
     if(p.kind==="student"&&standardEnrollmentMode){
       classesAction.hidden=true;
       enrollmentAction.href="school-enrollment.html?personId="+encodeURIComponent(p.personId);
       enrollmentAction.style.display="inline-flex";
+      recordsAction.href="school-student-records.html?personId="+encodeURIComponent(p.personId);
+      recordsAction.style.display="inline-flex";
     }else{
       classesAction.hidden=false;classesAction.textContent=p.kind==="student"?"Enrollment relationships":"Teaching & classes";
       enrollmentAction.style.display="none";
+      recordsAction.style.display=p.kind==="student"?"inline-flex":"none";
+      if(p.kind==="student")recordsAction.href="school-student-records.html?personId="+encodeURIComponent(p.personId);
     }
     const placementCard=get("pa-detail-placement-card");
     placementCard.hidden=p.kind!=="student"||standardEnrollmentMode;
