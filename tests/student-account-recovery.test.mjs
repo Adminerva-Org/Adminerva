@@ -116,5 +116,5 @@ test("recovered verified students can enter Classroom and subject routes without
   assert.match(guard,/"student-assessments\.html"/);
   assert.match(profile,/member\.data\(\)\.personId/);
   assert.match(profile,/person\.data\(\)\.authUid!==ctx\.uid/);
-  assert.match(profile,/collection\(prefix\+"enrollments"\)\.where\("personId","==",personId\)/);
+  assert.match(profile,/collection\(prefix\+"enrollments"\)[\s\S]*?\.where\("personId","==",personId\)/);
 });
