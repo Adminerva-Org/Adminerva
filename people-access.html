@@ -183,6 +183,20 @@
             <a id="pa-person-detail-enrollment-action" class="pa-action" href="school-enrollment.html" style="display:none;align-items:center;text-decoration:none;background:#0f766e">Enrollment &amp; Registration</a>
             <a id="pa-person-detail-records-action" class="pa-action" href="school-student-records.html" style="display:none;align-items:center;text-decoration:none;background:#1d4ed8">Student Records / 201 File</a>
           </div>
+          <section id="pa-account-recovery-card" class="pa-card" style="margin-top:1rem" hidden>
+            <h3 style="font-weight:750">Student account recovery</h3>
+            <p class="pa-muted">Use this when an existing student's previous login is unavailable and a newly verified login was accidentally linked to another student record. The existing student record remains canonical; registrations, classes and historical academic records are not copied or recreated.</p>
+            <form id="pa-account-recovery-form" style="display:grid;gap:.65rem;margin-top:.7rem">
+              <input name="personId" type="hidden">
+              <label>Find the newly linked account<input id="pa-account-recovery-search" type="search" class="pa-field" autocomplete="off" placeholder="Search the duplicate student name"></label>
+              <label>Replacement login<select id="pa-account-recovery-replacement" name="replacementPersonId" class="pa-field" required><option value="">Search for a linked student account</option></select></label>
+              <button id="pa-account-recovery-preview" type="button" class="pa-action" style="background:#0f766e">Preview recovery</button>
+              <div id="pa-account-recovery-summary" class="pa-muted" role="status">Preview the account replacement before saving.</div>
+              <label>Recovery reason<textarea name="reason" class="pa-field" minlength="20" maxlength="500" rows="3" required placeholder="Previous login cannot be recovered; move the newly verified login to this existing student record"></textarea></label>
+              <button id="pa-account-recovery-confirm" type="submit" class="pa-action" style="background:#9a3412" disabled>Recover student account</button>
+              <p class="pa-muted">Automatic recovery stops if the duplicate record already has an official registration, active class enrollment, grades, submissions, evidence, repository configuration, Class Record grades or private assessment history. Those cases require reviewed manual reconciliation.</p>
+            </form>
+          </section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Invitations</h3><div id="pa-person-detail-invites"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Enrollments / teaching assignments</h3><div id="pa-person-detail-links"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Recent audit history</h3><div id="pa-person-detail-audit"></div></section>
@@ -459,7 +473,7 @@
 <script defer src="js/core/adminerva-nav.js?v=79d27269538a"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=79d27269538a"></script>
 <script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=20261120-assist-context"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=79d27269538a"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=20261121-student-account-recovery1"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
