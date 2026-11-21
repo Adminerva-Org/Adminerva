@@ -122,9 +122,12 @@ export function buildNavigationIA(ctx){
         live("academic-config","Academic Setup","school-academic-configuration.html","Create school years, programs, periods, subjects, sections and class offerings."),
         live("academic-structure","Academic Structure","school-academic-structure.html","Edit existing years, programs, periods, subjects and sections without changing stable IDs.")
       ]),
+      group("Academic Operations",[
+        live("attendance-oversight","Attendance Oversight","school-attendance.html","Daily advisory attendance completion and exact saved roster status."),
+        live("class-record-oversight","Class Record Oversight","school-class-records.html","Finalization, release and audit oversight without taking over teacher scoring.")
+      ]),
       group("Academic Policy",[
         live("grading-policies","Grading Policies","school-grading-schemes.html","School-controlled weights, transmutation and program/subject/section applicability"),
-        live("class-record-oversight","Class Record Oversight","school-class-records.html"),
         needs("school-calendar-admin","School Calendar","school-academic-structure.html#academic-calendar","Review school years, academic periods and date conflicts."),
         future("grade-approval","Grade Approval"),future("promotion-policy","Promotion / Retention Policy")
       ]),
