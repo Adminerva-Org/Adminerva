@@ -7,8 +7,10 @@ const functions=getFunctions(app,"asia-southeast1");
 const api=httpsCallable(functions,"schoolClassRecord");
 const academicsApi=httpsCallable(functions,"schoolAcademics");
 const list=el("gs-list"),status=el("gs-status"),dialog=el("gs-dialog"),form=el("gs-form"),
+  lifecycleDialog=el("gs-lifecycle-dialog"),lifecycleForm=el("gs-lifecycle-form"),
   weights=el("gs-weights"),total=el("gs-total"),showArchived=el("gs-show-archived");
-let picker=null,schemes=[],programs=[],subjects=[],sections=[],editing=null,busy=false,draftDirty=false,loadRun=0;
+let picker=null,schemes=[],programs=[],subjects=[],sections=[],editing=null,lifecycleChange=null,
+  busy=false,draftDirty=false,loadRun=0;
 
 function platformModePayload(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?{platformMode:"assist"}:{};}catch{return {};}
@@ -67,6 +69,10 @@ function setBusy(value,message=""){
     if(["gs-close","gs-cancel"].includes(control.id))return;
     control.disabled=value;
   });
+  lifecycleForm.querySelectorAll("button,input,select,textarea").forEach(control=>{
+    if(["gs-lifecycle-close","gs-lifecycle-cancel"].includes(control.id))return;
+    control.disabled=value;
+  });
   if(message)status.textContent=message;
 }
 function computationLabel(value){
@@ -101,9 +107,9 @@ function render(){
     const actions=document.createElement("div");actions.className="flex flex-wrap gap-2 mt-4";
     if(scheme.status==="active"){
       const edit=button("Edit");edit.addEventListener("click",()=>openEditor(scheme));actions.append(edit);
-      const archive=button("Archive");archive.addEventListener("click",()=>void changeStatus(scheme,"archive_scheme"));actions.append(archive);
+      const archive=button("Archive");archive.addEventListener("click",()=>openLifecycle(scheme,"archive_scheme"));actions.append(archive);
     }else{
-      const restore=button("Restore","gs-btn");restore.addEventListener("click",()=>void changeStatus(scheme,"restore_scheme"));actions.append(restore);
+      const restore=button("Restore","gs-btn");restore.addEventListener("click",()=>openLifecycle(scheme,"restore_scheme"));actions.append(restore);
     }
     card.append(actions);list.append(card);
   }
@@ -179,17 +185,43 @@ async function load(){
     return false;
   }finally{if(run===loadRun)setBusy(false);}
 }
-async function changeStatus(scheme,action){
+function openLifecycle(scheme,action){
   if(busy)return;
-  const verb=action==="archive_scheme"?"archive":"restore";
-  if(!confirm((verb==="archive"?"Archive ":"Restore ")+scheme.name+"? Existing class records keep the snapshot they already use."))return;
-  setBusy(true,(verb==="archive"?"Archiving ":"Restoring ")+scheme.name+"…");
-  try{
-    await scoped(action,{schemeId:scheme.schemeId,expectedRevision:scheme.revision});
-    await load();
-  }catch(error){status.textContent=error?.message||"Grading policy status was not changed.";}
-  finally{setBusy(false);}
+  const restoring=action==="restore_scheme";
+  lifecycleChange={scheme,action};lifecycleForm.reset();
+  el("gs-lifecycle-heading").textContent=restoring?"Restore grading policy":"Archive grading policy";
+  el("gs-lifecycle-target").textContent=scheme.name+" · revision "+scheme.revision;
+  el("gs-lifecycle-help").textContent=restoring
+    ?"Restore this policy for future matching Class Records. Existing Class Record snapshots are unchanged; current scope dependencies and overlap will be revalidated."
+    :"Archive this policy from future Class Record resolution. Existing Class Records keep the grading-policy snapshot they already use.";
+  el("gs-lifecycle-confirm").textContent=restoring?"Restore policy":"Archive policy";
+  el("gs-lifecycle-status").textContent="";
+  lifecycleDialog.showModal();
 }
+function closeLifecycle(){
+  if(busy)return false;
+  lifecycleChange=null;if(lifecycleDialog.open)lifecycleDialog.close();return true;
+}
+lifecycleForm.addEventListener("submit",event=>{
+  event.preventDefault();
+  if(busy||!lifecycleChange||!lifecycleForm.reportValidity())return;
+  const {scheme,action}=lifecycleChange,reason=String(new FormData(lifecycleForm).get("reason")||"").trim(),
+    restoring=action==="restore_scheme";
+  void (async()=>{
+    setBusy(true,(restoring?"Restoring ":"Archiving ")+scheme.name+"…");
+    try{
+      await scoped(action,{schemeId:scheme.schemeId,expectedRevision:scheme.revision,reason});
+      lifecycleChange=null;lifecycleDialog.close();
+      await load();
+      status.textContent=scheme.name+(restoring?" restored.":" archived.")+" Historical Class Record snapshots were unchanged.";
+    }catch(error){
+      el("gs-lifecycle-status").textContent=error?.message||"Grading policy status was not changed.";
+    }finally{setBusy(false);}
+  })();
+});
+el("gs-lifecycle-close").addEventListener("click",closeLifecycle);
+el("gs-lifecycle-cancel").addEventListener("click",closeLifecycle);
+lifecycleDialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();else lifecycleChange=null;});
 
 el("gs-new").addEventListener("click",()=>openEditor());
 el("gs-refresh").addEventListener("click",()=>void load());
@@ -242,8 +274,9 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(busy)throw new Error("Finish the current grading policy operation before switching schools.");
     if(dialog.open&&!discardDraft())throw new Error("Keep the current school open to finish the unsaved grading policy.");
+    if(lifecycleDialog.open)throw new Error("Close the grading policy lifecycle review before switching schools.");
     ++loadRun;closeEditor({force:true});
-    schemes=[];programs=[];subjects=[];sections=[];editing=null;render();
+    schemes=[];programs=[];subjects=[];sections=[];editing=null;lifecycleChange=null;render();
   },
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
