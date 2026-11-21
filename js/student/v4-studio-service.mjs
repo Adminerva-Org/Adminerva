@@ -247,6 +247,9 @@ export async function listV4StudioAssignments(){
 export async function getV4StudioSubmissionStatus(taskId){
   return scopedCall(submissionsApi,"my_status",{taskId});
 }
+export async function getV4StudioSubmittedRecovery(taskId){
+  return scopedCall(submissionsApi,"my_snapshot",{taskId});
+}
 export async function getV4StudioPersonalizedTask(taskId){
   const tasks=await listV4StudioAssignments();
   const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===taskId):null;
