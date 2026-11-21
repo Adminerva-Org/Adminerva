@@ -10,11 +10,11 @@
 <link rel="stylesheet" href="css/adminerva-ui.css?v=4d90ddb7ea65">
 <link rel="stylesheet" href="css/public-shell.css?v=4d90ddb7ea65">
 <link rel="stylesheet" href="css/editorial-cinematic.css?v=20261122-1">
-</head>
+<link rel="stylesheet" href="css/experience-mode.css?v=20261122-1"></head>
 <body class="av-cine-page">
 <div id="adminerva-public-nav" data-page="opportunities"></div>
 <main id="opportunities-main" class="av-cine av-atlas">
-<section class="av-cine-hero av-atlas-hero" aria-labelledby="atlas-title" data-cine-scene>
+<section class="av-cine-hero av-atlas-hero av-cine-chapter" data-cine-chapter="0" aria-labelledby="atlas-title" data-cine-scene>
   <canvas class="av-cine-particles" data-cine-particles aria-hidden="true"></canvas>
   <div class="av-cine-noise" aria-hidden="true"></div>
   <div class="av-cine-topline"><span><i class="av-cine-light" aria-hidden="true"></i> ADMINERVA / DISCOVERY SYSTEM</span><span>01 — OPPORTUNITY HUNTER</span><button type="button" class="av-cine-motion-toggle" data-cine-motion-toggle aria-pressed="false">Pause motion ⏸</button></div>
@@ -41,7 +41,7 @@
   </div>
   <div class="av-cine-bottomline"><span>DISCOVER → INSPECT → VISIT SOURCE</span><a href="#discover">SCROLL TO THE SIGNALS ↓</a></div>
 </section>
-<section class="av-atlas-console" id="discover" aria-labelledby="atlas-console-title">
+<section class="av-atlas-console av-cine-chapter" data-cine-chapter="1" id="discover" aria-labelledby="atlas-console-title">
   <div class="av-cine-section-heading">
     <p class="av-cine-micro">02 / THE DISCOVERY ENGINE</p>
     <h2 id="atlas-console-title">Follow a <em>signal.</em></h2>
@@ -71,7 +71,7 @@
   </div>
   <p class="av-cine-disclaimer">Independent listings are informational, not endorsements or guaranteed placements. Requirements, costs, availability and application deadlines can change. Always confirm details on the original provider website before applying. Adminerva never takes applications through this directory.</p>
 </section>
-<section class="av-cine-next">
+<section class="av-cine-next av-cine-chapter" data-cine-chapter="2">
   <div class="av-cine-next-mark" aria-hidden="true">↗</div>
   <div><p class="av-cine-micro">KEEP EXPLORING</p><h2>Don't just find a path.<br><em>Make something.</em></h2></div>
   <a href="guest-playground.html" class="av-cine-main-cta">Enter the coding playground ↗</a>
@@ -82,4 +82,4 @@
 <script src="js/core/adminerva-loader.js?v=4d90ddb7ea65"></script>
 <script type="module" src="js/core/editorial-motion.mjs?v=20261122-1"></script>
 <script type="module" src="js/core/opportunities-page.mjs?v=20261122-1"></script>
-</body></html>
+<script type="module" src="js/core/cinematic-navigation.mjs?v=20261122-1"></script></body></html>
