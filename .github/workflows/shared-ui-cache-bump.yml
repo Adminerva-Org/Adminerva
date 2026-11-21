@@ -21,6 +21,15 @@ on:
       - "js/student/dashboard.js"
       - "js/student/assessment-evidence.mjs"
       - "js/student/submission-receipts.mjs"
+      - "js/student/school-student-settings.mjs"
+      - "js/student/school-student-projects.mjs"
+      - "js/student/github-session.mjs"
+      - "js/settings/settings-core.js"
+      - "js/settings/account-preferences.mjs"
+      - "js/settings/role-settings.mjs"
+      - "school-student-settings.html"
+      - "school-student-projects.html"
+      - "settings.html"
       - ".github/workflows/shared-ui-cache-bump.yml"
 
 permissions:
@@ -64,6 +73,21 @@ jobs:
               if updated!=text:
                   nav.write_text(updated,encoding="utf-8")
 
+          for module_path in [
+              "js/student/school-student-settings.mjs",
+              "js/student/school-student-projects.mjs",
+          ]:
+              module=Path(module_path)
+              if module.exists():
+                  text=module.read_text(encoding="utf-8")
+                  updated=re.sub(
+                      r'github-session\.mjs\?v=[^"\']+',
+                      f'github-session.mjs?v={version}',
+                      text
+                  )
+                  if updated!=text:
+                      module.write_text(updated,encoding="utf-8")
+
           assessments=Path("js/student/assessments.js")
           if assessments.exists():
               text=assessments.read_text(encoding="utf-8")
@@ -105,6 +129,11 @@ jobs:
               updated=re.sub(r'js/student/dashboard\.js\?v=[^"\']+', f'js/student/dashboard.js?v={version}', updated)
               updated=re.sub(r'js/student/assessment-evidence\.mjs\?v=[^"\']+', f'js/student/assessment-evidence.mjs?v={version}', updated)
               updated=re.sub(r'js/student/submission-receipts\.mjs\?v=[^"\']+', f'js/student/submission-receipts.mjs?v={version}', updated)
+              updated=re.sub(r'js/student/school-student-settings\.mjs\?v=[^"\']+', f'js/student/school-student-settings.mjs?v={version}', updated)
+              updated=re.sub(r'js/student/school-student-projects\.mjs\?v=[^"\']+', f'js/student/school-student-projects.mjs?v={version}', updated)
+              updated=re.sub(r'js/settings/settings-core\.js\?v=[^"\']+', f'js/settings/settings-core.js?v={version}', updated)
+              updated=re.sub(r'js/settings/account-preferences\.mjs\?v=[^"\']+', f'js/settings/account-preferences.mjs?v={version}', updated)
+              updated=re.sub(r'js/settings/role-settings\.mjs\?v=[^"\']+', f'js/settings/role-settings.mjs?v={version}', updated)
               if 'js/core/adminerva-loader.js' in updated and 'js/core/release-footer.js' not in updated:
                   match=re.search(r'<script[^>]+src=["\']((?:\.\./)*js/core/adminerva-loader\.js\?v=[^"\']+)["\'][^>]*></script>', updated)
                   if match:
@@ -122,13 +151,13 @@ jobs:
       - name: Commit refreshed references
         shell: bash
         run: |
-          if git diff --quiet -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js' 'js/student/dashboard.js'; then
+          if git diff --quiet -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js' 'js/student/dashboard.js' 'js/student/school-student-settings.mjs' 'js/student/school-student-projects.mjs'; then
             echo "No shared shell references needed updating."
             exit 0
           fi
           git config user.name "Adminerva UI Sync"
           git config user.email "actions@users.noreply.github.com"
-          git add -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js' 'js/student/dashboard.js'
+          git add -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js' 'js/student/dashboard.js' 'js/student/school-student-settings.mjs' 'js/student/school-student-projects.mjs'
           git commit -m "chore(ui): refresh shared shell and access assets [skip ci]"
           git pull --rebase origin main
           git push origin HEAD:main
