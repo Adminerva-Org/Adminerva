@@ -9,6 +9,7 @@ const {Timestamp}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {PERSONALIZATION_MODE}=require("./teacher-blueprints.js");
+const {studentAccountUids,studentRecordUidAllowed}=require("./student-account-history.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 const chooseIndex=max=>max>1?randomBytes(4).readUInt32BE(0)%max:0;
@@ -72,9 +73,25 @@ function createSchoolStudioAssessmentVariantService({db}){
      enrollment.data().status!=="active")
     deny("permission-denied","You are not actively enrolled in this assessment's course.");
 
-  const submissionId=hash(ctx.schoolId,taskId,ctx.uid),
-    submissionRef=db.doc(prefix+"studio_submissions/"+submissionId),
-    head=await submissionRef.get(),headData=head.exists?head.data():null;
+  const submissionCandidates=studentAccountUids(person.data(),ctx.uid).map(uid=>{
+    const submissionId=hash(ctx.schoolId,taskId,uid);
+    return {uid,submissionId,ref:db.doc(prefix+"studio_submissions/"+submissionId)};
+  }),submissionDocs=await Promise.all(submissionCandidates.map(row=>row.ref.get())),
+    existingSubmissions=submissionCandidates.map((row,index)=>({...row,doc:submissionDocs[index]}))
+      .filter(row=>row.doc.exists);
+  for(const row of existingSubmissions){
+    const data=row.doc.data();
+    if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||data.personId!==personId||
+       data.offeringId!==task.offeringId||
+       !studentRecordUidAllowed(person.data(),ctx.uid,data.studentUid))
+      deny("data-loss","A personalized Studio submission in recovered account history does not match the canonical student.");
+  }
+  if(existingSubmissions.length>1)
+    deny("failed-precondition","Multiple Studio submissions exist for this personalized assessment across recovered accounts.");
+  const located=existingSubmissions[0]||submissionCandidates[0],
+    submissionId=located.submissionId,submissionRef=located.ref,
+    head=existingSubmissions[0]?.doc||submissionDocs[0],
+    headData=head.exists?head.data():null;
   let attempt=1,readOnly=false;
   if(headData){
     const current=Number(headData.currentVersion)||1;
@@ -100,7 +117,8 @@ function createSchoolStudioAssessmentVariantService({db}){
     existing=await assignmentRef.get();
   if(existing.exists){
     const data=existing.data();
-    if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||data.studentUid!==ctx.uid||
+    if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||
+       !studentRecordUidAllowed(person.data(),ctx.uid,data.studentUid)||
        data.personId!==personId||data.attempt!==attempt||
        data.poolFingerprint!==task.personalizedTask.poolFingerprint||
        !ids.includes(data.variantId)||typeof data.prompt!=="string")
@@ -145,7 +163,14 @@ function createSchoolStudioAssessmentVariantService({db}){
         }
         if(currentAttempt!==attempt)
           deny("failed-precondition","Submission status changed. Reload before opening a new task.");
-        if(current.exists){assigned=current.data();return;}
+        if(current.exists){
+          const saved=current.data();
+          if(saved.schoolId!==ctx.schoolId||saved.taskId!==taskId||
+             saved.personId!==personId||saved.attempt!==attempt||
+             !studentRecordUidAllowed(latestPerson.data(),ctx.uid,saved.studentUid))
+            deny("failed-precondition","The saved personalized assignment belongs to another student identity.");
+          assigned=saved;return;
+        }
         if(reservation.exists){
           const collision=Error("VARIANT_RESERVED");collision.variantReserved=true;throw collision;
         }
