@@ -3,11 +3,11 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
-import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.4.0";
+import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=20261121-compact-bulk1";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
-import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261121-bulk-next-ten1";
+import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261121-compact-bulk1";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");

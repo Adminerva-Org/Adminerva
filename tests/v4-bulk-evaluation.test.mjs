@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 import {
   BULK_PACKAGE_FORMAT,BULK_RESPONSE_FORMAT,BULK_MAX_BATCH,
   bulkSuggestionState,readBulkExternalResponse,bulkSaveableStages,
-  nextBulkSelection,canClearCompletedBulkExchange
+  nextBulkSelection,canClearCompletedBulkExchange,
+  BULK_COMPACT_PACKAGE_FORMAT,buildCompactBulkExternalEvaluationPackage
 } from "../js/repo-review/v4-bulk-evaluation.mjs";
-import {parseGeneralExternalEvaluationResponse} from
-  "../js/assessment/general-external-evaluation.mjs";
+import {
+  buildGeneralExternalEvaluationData,buildGeneralExternalEvaluationPackage,
+  parseGeneralExternalEvaluationResponse
+} from "../js/assessment/general-external-evaluation.mjs";
 
 const task={rubric:[{name:"OOP",points:20},{name:"Correctness",points:20}]};
 const suggestion=({
@@ -32,7 +35,7 @@ test("bulk response validates exact anonymous batch identity and rubric order",(
  assert.equal(rows[0].review.saveEligible,true);
  assert.match(rows[0].review.criteria[0].comment,/Evidence: Source contains derived class/);
  assert.equal(BULK_MAX_BATCH,10);
- assert.match(BULK_PACKAGE_FORMAT,/bulk-evaluation-package-v1/);
+ assert.match(BULK_PACKAGE_FORMAT,/bulk-evaluation-package-v2/);
 });
 test("zero scores and unresolved rubric points are not eligible for saving",()=>{
  const zero={...suggestion,criteria:suggestion.criteria.map(x=>({...x,awardedPoints:0}))};
@@ -171,4 +174,125 @@ test("partial saves preserve original JSON batch mapping and unsaved graded sugg
  assert.equal(canClearCompletedBulkExchange({
    referenceMap,staged:new Map(),rows:[rows[0]],savedIds:new Set(["one"])
  }),false); // A missing historical receipt must not silently discard its reference.
+});
+
+const compactAssessment={
+ title:"Quarter 3 Java OOP individualized performance task",
+ description:"Build a scenario-specific Java console information system.",
+ instructions:"Demonstrate encapsulation, inheritance, polymorphism, abstraction and an interface. Use the assigned scenario. Do not assume a GUI.",
+ personalizedTask:{enabled:true},submissionSource:"studio",
+ rubric:[{name:"OOP principles",points:10},{name:"Program behavior",points:10}],
+ rubricMax:20
+};
+function compactExample(index,{checking="Use the published rubric and inspect all frozen files."}={}){
+ const snapshot={
+   version:1,contentDigest:"c".repeat(64),sourceDigest:"d".repeat(64),
+   sourceLanguage:"java",
+   files:[{path:"Main.java",content:"public class Main { // project "+index+
+     "\n  public static void main(String[] args) { System.out.println("+index+"); }\n}"}],
+   personalizedTask:{
+     variantId:"variant-"+index,
+     prompt:"Build a console management system for scenario "+index+" with the five required OOP skills.",
+     evaluationNotes:"Verify scenario "+index+" applies the published rubric."
+   },
+   automaticVerification:{matchesSubmittedSource:true,status:"success",
+     compile:{attempted:true,succeeded:true,status:"compiled"}},
+   executionEvidence:{runs:[]}
+ };
+ return {ref:"anonymous-ref-"+index,evaluationData:buildGeneralExternalEvaluationData({
+   task:compactAssessment,snapshot,checkingInstructions:checking
+ }),snapshot,checking};
+}
+test("compact batch stores the published rubric and checking rules once while preserving every personalized source",()=>{
+ const originals=Array.from({length:10},(_,i)=>compactExample(i));
+ const pack=buildCompactBulkExternalEvaluationPackage({
+   batchId:"batch-compact",entries:originals,task:compactAssessment
+ });
+ assert.equal(pack.format,BULK_COMPACT_PACKAGE_FORMAT);
+ assert.equal(pack.shared.assessment.instructions,compactAssessment.instructions);
+ assert.deepEqual(pack.shared.assessment.rubric,compactAssessment.rubric);
+ assert.equal(pack.shared.teacherCheckingInstructions,originals[0].checking);
+ assert.equal(pack.shared.requiredRules.length,9);
+ assert.equal(pack.items.length,10);
+ for(let i=0;i<10;i++){
+   assert.equal(pack.items[i].ref,originals[i].ref);
+   assert.match(pack.items[i].personalizedTask.prompt,new RegExp("scenario "+i));
+   assert.match(pack.items[i].frozenEvidence.files[0].content,new RegExp("println\\("+i+"\\)"));
+   assert.equal(pack.items[i].frozenEvidence.contentDigest,"c".repeat(64));
+   assert.equal(pack.items[i].frozenEvidence.automaticVerification.matchesSubmittedSource,true);
+   assert.equal("interpretation" in pack.items[i].frozenEvidence.executionEvidence,false);
+   assert.equal("evaluationInstructions" in pack.items[i],false);
+   assert.equal("assessment" in pack.items[i],false);
+ }
+ const serialized=JSON.stringify(pack);
+ assert.equal(serialized.split(compactAssessment.instructions).length-1,1);
+ assert.equal(serialized.split(originals[0].checking).length-1,1);
+ const formerPackage=JSON.stringify({items:originals.map(item=>({
+   ref:item.ref,evaluationInstructions:buildGeneralExternalEvaluationPackage({
+     task:compactAssessment,snapshot:item.snapshot,checkingInstructions:item.checking
+   })
+ }))});
+ assert.ok(serialized.length<formerPackage.length*0.65,
+   "Batch should be materially shorter than ten repeated single-student packages");
+});
+test("compact package keeps different teacher notes attached to their own student without broadening shared guidance",()=>{
+ const items=[
+  compactExample(1,{checking:"Check scenario one using its original submitted source only."}),
+  compactExample(2,{checking:"Check scenario two independently using its original submitted source."})
+ ];
+ const pack=buildCompactBulkExternalEvaluationPackage({
+   batchId:"batch-different-notes",entries:items,task:compactAssessment
+ });
+ assert.equal(pack.shared.teacherCheckingInstructions,"");
+ assert.equal(pack.items[0].teacherCheckingInstructions,items[0].checking);
+ assert.equal(pack.items[1].teacherCheckingInstructions,items[1].checking);
+ assert.equal(pack.items[0].personalizedTask.prompt.includes("scenario 2"),false);
+});
+test("compact package refuses mixed task/rubric, duplicate refs and missing personalized tasks",()=>{
+ const a=compactExample(1),b=compactExample(2);
+ const options={batchId:"batch-valid",task:compactAssessment};
+ assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
+   ...options,entries:[a,{...b,ref:a.ref}]
+ }),/duplicate anonymous reference/);
+ const modified=JSON.parse(JSON.stringify(b));
+ modified.evaluationData.assessment.rubric[0].points=9;
+ assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
+   ...options,entries:[a,modified]
+ }),/mixes different assessment/);
+ const without=JSON.parse(JSON.stringify(a));
+ without.evaluationData.evidence.personalizedTask=null;
+ assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
+   ...options,entries:[without]
+ }),/missing the exact assigned task/);
+ assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
+   ...options,entries:Array.from({length:11},(_,i)=>compactExample(i))
+ }),/1–10/);
+});
+test("new compact package keeps the original response JSON contract and single-submission export intact",()=>{
+ const item=compactExample(1);
+ const compact=buildCompactBulkExternalEvaluationPackage({
+   batchId:"batch-v2",entries:[item],task:compactAssessment
+ });
+ const compatibleSuggestion={...suggestion,criteria:suggestion.criteria.map((row,i)=>({
+   ...row,name:compactAssessment.rubric[i].name,maximumPoints:10,
+   awardedPoints:i===0?8:7
+ }))};
+ const parsed=readBulkExternalResponse({
+   format:BULK_RESPONSE_FORMAT,batchId:compact.batchId,
+   results:[{ref:item.ref,response:compatibleSuggestion}]
+ },{
+   batchId:compact.batchId,
+   allowedRefs:new Map([[item.ref,{key:"private-student-record"}]]),
+   task:compactAssessment,
+   parseResponse:parseGeneralExternalEvaluationResponse
+ });
+ assert.equal(parsed.length,1);
+ assert.equal(parsed[0].review.awarded,15); // Existing response format preserved.
+ const oldSingle=buildGeneralExternalEvaluationPackage({
+   task:compactAssessment,snapshot:item.snapshot,
+   checkingInstructions:item.checking
+ });
+ assert.match(oldSingle,/ADMINERVA GENERAL ASSESSMENT EXTERNAL EVALUATION PACKAGE/);
+ assert.match(oldSingle,/REQUIRED RESPONSE JSON/);
+ assert.match(oldSingle,/scenario 1/);
 });
