@@ -539,6 +539,22 @@ if(panel&&list&&status&&schoolHost){
       "No unfinished school draft yet. Your response will save as you type.");
     offerArchivedDraftRecovery(session);
   }
+  // Try to synchronize when students move away from the form. If the
+  // browser's storage is blocked and the only copy lives in memory, warn
+  // before navigating away; an asynchronous network request is not a backup.
+  document.addEventListener("visibilitychange",()=>{
+    const session=generalDraft;
+    if(document.visibilityState!=="hidden"||!session||session.loading||
+       session.submitted||!generalDialog.open)return;
+    clearTimeout(session.timer);session.timer=null;
+    void syncGeneralCloudDraft(session);
+  });
+  window.addEventListener("beforeunload",event=>{
+    const session=generalDraft;
+    if(!session||session.submitted||!session.memoryDraft?.pending)return;
+    event.preventDefault();
+    event.returnValue="";
+  });
   window.addEventListener("online",()=>{
     const session=generalDraft;
     if(!session||session.loading||session.submitted||!generalDialog.open)return;
