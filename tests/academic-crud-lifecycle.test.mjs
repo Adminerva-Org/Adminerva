@@ -12,18 +12,21 @@ const {
 
 test("academic catalog archive dependencies protect canonical active relationships",()=>{
   assert.deepEqual(catalogArchiveDependencySpecs("subjects"),[
-    ["course_offerings","subjectId","course offering"]
+    ["course_offerings","subjectId","course offering"],
+    ["grading_schemes","applicability.subjectId","grading policy"]
   ]);
   assert.deepEqual(catalogArchiveDependencySpecs("sections"),[
     ["course_offerings","sectionId","course offering"],
     ["student_registrations","sectionId","student registration"],
-    ["section_advisers","sectionId","section adviser"]
+    ["section_advisers","sectionId","section adviser"],
+    ["grading_schemes","applicability.sectionId","grading policy"]
   ]);
   assert.deepEqual(catalogArchiveDependencySpecs("academic_programs"),[
     ["terms","programId","academic period"],
     ["sections","programId","section"],
     ["course_offerings","programId","course offering"],
-    ["student_registrations","programId","student registration"]
+    ["student_registrations","programId","student registration"],
+    ["grading_schemes","applicability.programId","grading policy"]
   ]);
 });
 
