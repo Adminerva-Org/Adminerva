@@ -125,7 +125,7 @@ function toggleManualOpening(){
 function togglePersonalizationFields(){
   const active=form.elements.personalizationMode?.value==="personalized";
   el("tl-personalization-fields").hidden=!active;
-  if(form.elements.variantTarget)form.elements.variantTarget.required=active;
+  // Variant capacity is calculated after class selection, not authored into the blueprint form.
 }
 async function sha256Text(value){
   const bytes=new TextEncoder().encode(String(value||""));
@@ -135,10 +135,18 @@ async function sha256Text(value){
 function renderPersonalizationState(){
   if(!personalizing||!personalizationState)return;
   const data=personalizationState,count=Number(data.count||0),target=Number(data.variantTarget||0),
-    remaining=Math.max(0,target-count);
-  el("tl-personalization-status").textContent=
-    (data.ready?"Active pool":"Private draft pool")+" · "+count+" of "+target+
-    " variants"+(remaining?" · "+remaining+" remaining":" · target reached")+".";
+    scoped=personalizingOfferings.length>0&&data.calculated===true,
+    remaining=scoped?Math.max(0,target-count):0,
+    existing=deployments.filter(task=>task.blueprintId===personalizing?.id).length;
+  el("tl-personalization-status").textContent=scoped
+    ?(data.ready?"Ready to deploy":"Private pool not ready")+" · "+count+" saved variants · "+target+
+      " required for selected classes"+(remaining?" · "+remaining+" additional variants needed":data.poolActivated?" · no new variants needed":" · activate the existing pool")
+    :count+" private variants already saved"+(existing?" · "+existing+" previous deployment(s) remain valid":"")+".";
+  el("tl-personalization-roster-note").textContent=scoped
+    ?"Current enrollment: "+Number(data.roster?.totalStudents||0)+" student(s) across "+personalizingOfferings.length+
+      " class(es). Largest class: "+Number(data.roster?.largestClass||0)+
+      ". Variants are unique within each class deployment; a minimum pool of 10 is supported."
+    :"Choose classes and dates in Deploy first. Adminerva will calculate the necessary variant count. Existing student assignments and submitted work are not reset.";
   const host=el("tl-personalization-samples");host.replaceChildren();
   for(const sample of data.samples||[]){
     const article=document.createElement("article");article.className="rounded-lg border border-violet-200 bg-white p-3";
@@ -151,21 +159,24 @@ function renderPersonalizationState(){
     const empty=document.createElement("p");empty.className="text-xs text-violet-800";
     empty.textContent="No personalized variants imported for this blueprint revision yet.";host.append(empty);
   }
-  el("tl-personalization-copy").disabled=remaining===0;
-  el("tl-personalization-import").disabled=remaining===0;
-  el("tl-personalization-activate").disabled=data.ready||remaining>0;
+  el("tl-personalization-copy").disabled=!scoped||remaining===0;
+  el("tl-personalization-import").disabled=!scoped||remaining===0;
+  el("tl-personalization-activate").disabled=!scoped||data.ready||remaining>0;
 }
-async function loadPersonalization(item){
-  personalizing=item;personalizationState=null;
+let personalizingOfferings=[];
+async function loadPersonalization(item,offeringIds=[],initialState=null){
+  personalizing=item;personalizingOfferings=[...offeringIds];personalizationState=null;
   for(const id of ["tl-personalization-copy","tl-personalization-import","tl-personalization-activate"])el(id).disabled=true;
   el("tl-personalization-title").textContent=item.title+" · private to your teacher account";
   el("tl-personalization-status").textContent="Loading private pool status…";
   el("tl-personalization-response").value="";
   personalizationDialog.showModal();
   try{
-    const state=await perform("personalization_status",{resourceId:item.id});
+    const state=initialState||await perform("personalization_status",{
+      resourceId:item.id,...(personalizingOfferings.length?{offeringIds:personalizingOfferings}:{})
+    });
     if(personalizing!==item||!personalizationDialog.open)return;
-    personalizationState=state;renderPersonalizationState();
+    personalizationState=state;renderPersonalizationState();syncDeploymentPersonalizationReview();
   }catch(error){
     if(personalizing===item&&personalizationDialog.open)el("tl-personalization-status").textContent=error?.message||"Personalization pool unavailable.";
   }
@@ -221,8 +232,7 @@ function showPreview(item){
     rubric.append(li);
   }
   el("tl-preview-personalization").textContent=personalized(item)
-    ?"Personalized Studio assessment · target "+item.personalization.variantTarget+
-      " private variants. Private prompts/evaluator notes are not included in shared previews."
+    ?"Personalized Studio assessment · variant count calculated when deployment classes are selected. Private prompts/evaluator notes are not included in shared previews."
     :"Standard assessment · one task for the class.";
   previewDialog.showModal();
 }
@@ -365,7 +375,6 @@ function edit(item){
   toggleStudioProjectProfile();
   form.elements.checkingInstructions.value=item.checkingInstructions||"";
   form.elements.personalizationMode.value=personalized(item)?"personalized":"standard";
-  form.elements.variantTarget.value=String(item.personalization?.variantTarget||30);
   form.elements.variationGuidance.value=item.personalization?.variationGuidance||"";
   togglePersonalizationFields();
   form.elements.rubric.value=(item.rubric||[]).map(criterion=>criterion.name+" | "+criterion.points).join("\n");
@@ -443,7 +452,7 @@ form.addEventListener("submit",event=>{
     checkingInstructions:String(data.get("checkingInstructions")||""),rubric:criteria,
     personalization:isPersonalized?{
       enabled:true,mode:"ai_blueprint_pool_v1",
-      variantTarget:Number(data.get("variantTarget")||30),
+      variantTarget:editing?.personalization?.variantTarget||10,
       variationGuidance:String(data.get("variationGuidance")||"")
     }:{enabled:false,mode:"standard"}
   };
