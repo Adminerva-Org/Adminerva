@@ -115,8 +115,7 @@ const picker=createTenantSchoolPicker({
       return;
     }
     canonicalClassMode=scope.current.compatibilityMode==="v4_only";
-    standardEnrollmentMode=scope.current.schoolId==="manila-cathedral-school"&&
-      scope.current.compatibilityMode==="v4_only";
+    standardEnrollmentMode=scope.current.compatibilityMode==="v4_only";
     const classTab=get("pa-tab-classes"),classPanel=get("pa-classes");
     if(classTab)classTab.hidden=canonicalClassMode;
     if(classPanel&&canonicalClassMode)classPanel.hidden=true;
