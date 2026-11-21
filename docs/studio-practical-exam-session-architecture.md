@@ -1,3 +1,5 @@
+> **Planning authority:** This document is retained as a technical specification, implementation note, migration reference, or historical plan. The canonical Adminerva product roadmap, development status and future priorities are maintained only in [Adminerva School OS — Master Development Plan](https://github.com/Adminerva-Org/Adminerva/blob/main/docs/adminerva-school-os-master-plan.md). Do not use this file as a competing roadmap or progress tracker.
+
 # Adminerva Studio — teacher-controlled practical-exam sessions
 
 **Scope:** Canonical V4 school-scoped Studio assessment deployments only. Non-manual Studio assignments and other submission methods retain their existing schedule policies.
