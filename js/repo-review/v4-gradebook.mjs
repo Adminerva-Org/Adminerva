@@ -204,6 +204,41 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           ?zeroDrafts+" zero-score draft"+(zeroDrafts===1?" is":"s are")+" excluded from bulk publication."
           :"Publish every valid non-zero draft for this assessment.";
       }
+      if(historicalStudio){
+        const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
+        notice.append(make("h3","font-bold text-violet-950",
+          "Historical Studio evidence · V4 review interface"));
+        notice.append(make("p","text-violet-900 mt-1",
+          "Frozen code and grades are read from the original submission records. No student files, variants, or grades have been copied into school V4 collections."));
+        const button=make("button",
+          "mt-3 rounded-lg border border-violet-300 px-3 py-2 font-bold text-violet-950 focus-visible:outline-2",
+          "Check migration readiness");
+        button.type="button";
+        const output=make("p","mt-2 text-xs text-violet-900");
+        output.setAttribute("role","status");output.setAttribute("aria-live","polite");
+        button.addEventListener("click",()=>void (async()=>{
+          button.disabled=true;output.textContent="Verifying original student identities, class placements, and submitted source…";
+          try{
+            const result=await scoped(migrationApi,"preview_evidence_migration",{
+              legacyAssessmentId:task.legacyAssessmentId
+            });
+            const counts=result.checked+" historical submission(s) checked · "+
+              result.verified+" currently matched · "+result.needsAttention+
+              " require migration mapping.";
+            const issues=new Map();
+            for(const row of result.rows||[])
+              for(const reason of row.blockers||[])
+                issues.set(reason,(issues.get(reason)||0)+1);
+            output.textContent=counts+" "+
+              ([...issues].map(([reason,count])=>count+" "+reason.replaceAll("_"," ")).join("; ")||
+              "No blocking identity issues found.")+
+              " This is a read-only preview; no historical record is modified.";
+          }catch(error){
+            output.textContent=error?.message||"Migration readiness could not be verified.";
+          }finally{button.disabled=false;}
+        })());
+        notice.append(button,output);inbox.append(notice);
+      }
       status.textContent=rows.length?
         (historicalStudio?"Historical Studio evidence · ":"")+rows.length+" submitted · "+
           published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
@@ -342,6 +377,21 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   function renderRubric(grade){
     const host=document.getElementById("gbV4Rubric");host.replaceChildren();
     const prior=Array.isArray(grade?.criteria)?grade.criteria:[];
+    if(currentTask?.legacyCompatibility&&grade?.status==="published"&&
+       grade?.gradeSchema==="legacy_scalar_v1"){
+      host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
+        "Original published historical grade: "+grade.awarded+" / "+grade.total+
+        ". The original record did not store a criterion-by-criterion breakdown. Empty rubric rows are deliberately not presented as zero scores."));
+      document.getElementById("gbV4Feedback").value=grade.feedback||"";
+      document.getElementById("gbV4ScoreSummary").textContent=
+        "Historical published "+grade.awarded+" / "+grade.total;
+      return;
+    }
+    if(currentTask?.legacyCompatibility&&grade?.gradeSchema==="legacy_scalar_v1"){
+      host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
+        "Original private historical draft: "+grade.awarded+" / "+grade.total+
+        ". Its rubric breakdown was not recorded. Enter and review a fresh breakdown before saving any replacement draft."));
+    }
     (currentTask?.rubric||[]).forEach((criterion,index)=>{
       const saved=prior[index]||{};
       const row=make("div","rounded-xl border border-slate-200 bg-slate-50 p-3");
