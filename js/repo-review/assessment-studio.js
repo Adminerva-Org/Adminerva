@@ -1,6 +1,6 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: assessment studio. */
 import { app,db,auth } from "../core/firebase-core.js?v=1.3.0";
-import {validateDeploymentDates} from "./assessment-dates.mjs?v=1.3.0";
+import {validateDeploymentDates,rescheduleLegacyDeployment} from "./assessment-dates.mjs?v=20261121-legacy-deploy-restore1";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import {ownedDoc,requireStaffWorkspace,lessonStorage} from "../lesson-review/workspace-session.mjs?v=1.3.0";
 import {scheduleScope,parseScheduleRows} from "../lesson-review/schedule-scope.mjs?v=1.3.0";
@@ -1691,16 +1691,12 @@ window.saveDeployment = async function () {
   }
   if (deployId) {
     const index = deployments.findIndex((d) => d.id === deployId);
-    if (index > -1) {
-      deployments[index] = {
-        id: deployId,
-        section: deploySelectedSections[0],
-        postDate,
-        deadline,
-        deadlineEnabled,
-        allowLateSubmissions,
-      };
-    }
+    if(index<0)return alert("The original class deployment no longer exists. Refresh before making changes.");
+    try{
+      deployments[index]=rescheduleLegacyDeployment(deployments[index],{
+        deadlineEnabled,allowLateSubmissions,deadline
+      });
+    }catch(error){return alert(error.message);}
   } else {
     deploySelectedSections.forEach((section) => {
       deployments.push({
