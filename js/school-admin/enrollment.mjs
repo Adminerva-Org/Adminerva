@@ -35,7 +35,7 @@ function setSaving(value){
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
-  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select"))
     control.disabled=value;
   updateCoursePreview();
 }
@@ -97,7 +97,8 @@ function updateCoursePreview(){
     termId=selected("termId"),sectionId=selected("sectionId");
   const section=currentSection(),required=updateStudentEmailPolicy();
   const matched=catalog.offerings.filter(row=>
-    row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.sectionId===sectionId);
+    row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.sectionId===sectionId&&
+    row.rosterMode!=="selective");
   const count=matched.length,grade=section?.gradeLevel?levelLabel(section.gradeLevel):"";
   const subjectNames=[...new Set(matched.map(row=>
     catalog.subjects.find(subject=>subject.id===row.subjectId)?.name||row.subjectId).filter(Boolean))]
@@ -172,7 +173,9 @@ function renderRegistrations(){
     const identityLink=document.createElement("a");identityLink.className="en-btn secondary";identityLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
     identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identityLink);
     if(item.status==="active"){
-      const end=document.createElement("button");end.type="button";end.className="en-btn secondary";end.textContent="End / change placement";
+      const move=document.createElement("button");move.type="button";move.className="en-btn";move.textContent="Change section";
+      move.addEventListener("click",()=>openRegistrationChange(item,"move"));actions.append(move);
+      const end=document.createElement("button");end.type="button";end.className="en-btn secondary";end.textContent="End registration";
       end.addEventListener("click",()=>openRegistrationChange(item,"end"));actions.append(end);
     }else if(item.status==="ended"){
       const restore=document.createElement("button");restore.type="button";restore.className="en-btn secondary";restore.textContent="Restore";
@@ -188,20 +191,66 @@ async function loadRegistrations(){
     registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));
   renderRegistrations();
 }
+function automaticOfferings(item,sectionId){
+  return catalog.offerings.filter(row=>row.yearId===item.yearId&&row.programId===item.programId&&
+    row.termId===item.termId&&row.sectionId===sectionId&&row.rosterMode!=="selective");
+}
+function updateRegistrationChangePreview(){
+  if(!registrationChange||registrationChange.mode!=="move")return;
+  const select=get("en-registration-change-form").elements.sectionId,
+    sectionId=String(select.value||""),preview=get("en-registration-change-preview"),
+    confirm=get("en-registration-change-confirm");
+  if(!sectionId){
+    preview.textContent="Choose a new section to preview its automatic class roster.";
+    confirm.disabled=true;return;
+  }
+  const offerings=automaticOfferings(registrationChange.item,sectionId),
+    subjectNames=[...new Set(offerings.map(row=>
+      catalog.subjects.find(subject=>subject.id===row.subjectId)?.name||row.subjectId).filter(Boolean))]
+      .sort((a,b)=>a.localeCompare(b));
+  preview.textContent=offerings.length
+    ?offerings.length+" automatic class"+(offerings.length===1?"":"es")+" will become the student's official section roster"+
+      (subjectNames.length?": "+subjectNames.join(", "):"")+
+      ". Selective/elective enrollments are left unchanged."
+    :"This section has no active automatic-roster classes for the student's current academic period.";
+  confirm.disabled=offerings.length===0;
+}
 function openRegistrationChange(item,mode){
   if(saving)return;
   registrationChange={item,mode};
-  const dialog=get("en-registration-change-dialog"),form=get("en-registration-change-form");
-  form.reset();
-  get("en-registration-change-title").textContent=mode==="restore"?"Restore registration":"End registration / prepare placement change";
+  const dialog=get("en-registration-change-dialog"),changeForm=get("en-registration-change-form"),
+    placement=get("en-registration-change-placement"),sectionSelect=changeForm.elements.sectionId,
+    confirmButton=get("en-registration-change-confirm");
+  changeForm.reset();
+  placement.hidden=mode!=="move";
+  sectionSelect.required=mode==="move";
+  sectionSelect.disabled=mode!=="move";
+  confirmButton.disabled=false;
+  get("en-registration-change-title").textContent=mode==="restore"?"Restore registration":
+    mode==="move"?"Change official section":"End registration";
   get("en-registration-change-target").textContent=item.displayName+" · "+registrationLabel(item);
   get("en-registration-change-help").textContent=mode==="restore"
     ?"Restore only the subject enrollments that were ended with this registration. Restoration is blocked if another active official placement exists or required course offerings are no longer active."
-    :"This ends the official registration and its currently active subject enrollments without deleting history or the student identity. Afterward, use the enrollment form to create a corrected/new placement if needed.";
-  const confirmButton=get("en-registration-change-confirm");
-  confirmButton.textContent=mode==="restore"?"Restore registration":"End registration";
-  confirmButton.style.background=mode==="restore"?"#166534":"#9a3412";
-  confirmButton.style.borderColor=mode==="restore"?"#166534":"#9a3412";
+    :mode==="move"
+      ?"Move this active registration to another section in the same grade level and academic period. Adminerva ends the superseded official section enrollment, creates a new registration, moves only automatic section classes, and preserves the old registration, submissions, grades and audit history."
+      :"End this official registration and its active registration-owned subject enrollments without deleting the student identity or historical academic records.";
+  if(mode==="move"){
+    sectionSelect.replaceChildren(new Option("Choose new section",""));
+    const candidates=(catalog.sections||[]).filter(section=>section.id!==item.sectionId&&
+      section.programId===item.programId&&
+      (!item.gradeLevel||!section.gradeLevel||String(section.gradeLevel)===String(item.gradeLevel))&&
+      automaticOfferings(item,section.id).length>0)
+      .sort((a,b)=>a.name.localeCompare(b.name));
+    for(const section of candidates)sectionSelect.append(new Option(section.name,section.id));
+    if(!candidates.length){
+      sectionSelect.replaceChildren(new Option("No eligible section with automatic classes",""));
+      confirmButton.disabled=true;
+    }
+    updateRegistrationChangePreview();
+  }
+  confirmButton.textContent=mode==="restore"?"Restore registration":mode==="move"?"Change section":"End registration";
+  confirmButton.style.background=mode==="restore"?"#166534":mode==="move"?"#1d4ed8":"#9a3412";
+  confirmButton.style.borderColor=mode==="restore"?"#166534":mode==="move"?"#1d4ed8":"#9a3412";
   dialog.showModal();
 }
 function closeRegistrationChange(){
@@ -212,19 +261,34 @@ function closeRegistrationChange(){
 get("en-registration-change-close").addEventListener("click",closeRegistrationChange);
 get("en-registration-change-cancel").addEventListener("click",closeRegistrationChange);
 get("en-registration-change-dialog").addEventListener("cancel",event=>{if(saving)event.preventDefault();else registrationChange=null;});
+get("en-registration-change-form").elements.sectionId.addEventListener("change",updateRegistrationChangePreview);
 get("en-registration-change-form").addEventListener("submit",event=>{
   event.preventDefault();
   if(saving||!registrationChange||!event.currentTarget.reportValidity())return;
-  const {item,mode}=registrationChange,reason=String(new FormData(event.currentTarget).get("reason")||"").trim();
-  const action=mode==="restore"?"restore_registration":"end_registration";
+  const {item,mode}=registrationChange,values=new FormData(event.currentTarget),
+    reason=String(values.get("reason")||"").trim(),
+    sectionId=String(values.get("sectionId")||""),
+    action=mode==="restore"?"restore_registration":mode==="move"?"change_registration_section":"end_registration";
+  if(mode==="move"&&!automaticOfferings(item,sectionId).length){
+    get("en-registration-change-preview").textContent="Choose a section with at least one active automatic-roster class.";return;
+  }
   void (async()=>{
     setSaving(true);
-    status.textContent=mode==="restore"?"Restoring official registration…":"Ending official registration and subject enrollments…";
+    status.textContent=mode==="restore"?"Restoring official registration…":
+      mode==="move"?"Changing official section and synchronizing automatic class rosters…":
+      "Ending official registration and subject enrollments…";
     try{
-      const result=await perform(action,{registrationId:item.registrationId,reason});
+      const result=await perform(action,{
+        registrationId:item.registrationId,reason,
+        ...(mode==="move"?{sectionId,expectedRevision:item.revision}: {})
+      });
+      const targetName=catalog.sections.find(row=>row.id===sectionId)?.name||sectionId;
       const message=mode==="restore"
         ?item.displayName+" restored · "+result.courseCount+" subject enrollment"+(result.courseCount===1?"":"s")+" reactivated."
-        :item.displayName+" ended · "+result.courseCount+" active subject enrollment"+(result.courseCount===1?"":"s")+" ended. A corrected placement can now be registered if needed.";
+        :mode==="move"
+          ?item.displayName+" moved to "+targetName+" · "+result.courseCount+" automatic class"+(result.courseCount===1?"":"es")+
+            " active · "+result.endedCourses+" prior official class enrollment"+(result.endedCourses===1?"":"s")+" ended. Historical records were preserved."
+          :item.displayName+" ended · "+result.courseCount+" active subject enrollment"+(result.courseCount===1?"":"s")+" ended.";
       registrationChange=null;get("en-registration-change-dialog").close();
       await loadRegistrations();
       status.textContent=message;
@@ -232,6 +296,7 @@ get("en-registration-change-form").addEventListener("submit",event=>{
     finally{setSaving(false);}
   })();
 });
+
 function applicationMeta(item){
   const year=catalog.years.find(x=>x.id===item.yearId)?.name||item.yearId;
   const program=catalog.programs.find(x=>x.id===item.preferredProgramId)?.name||"No program preference";
