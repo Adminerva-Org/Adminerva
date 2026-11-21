@@ -706,6 +706,55 @@ function createSchoolAssessmentService({db}){
    return {taskId,checkingInstructions:String(data.checkingInstructions||"").slice(0,8000)};
   }
 
+  if(input.action==="list_class_teacher"){
+   if(!ctx.roles.includes("teacher")&&!ctx.platformOverride)
+    deny("permission-denied","Teacher access is required.");
+   const offeringId=checkId(input.offeringId,"Course offering ID",330),
+    offeringRef=db.doc(prefix+"course_offerings/"+offeringId),
+    grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
+   const [offering,grant,snap]=await Promise.all([
+    offeringRef.get(),
+    ctx.platformOverride?Promise.resolve(null):grantRef.get(),
+    tasks.where("offeringId","==",offeringId).limit(201).get()
+   ]);
+   if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
+    deny("not-found","This active class is unavailable.");
+   if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+      grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==offeringId||
+      grant.data().status!=="active"))
+    deny("permission-denied","You are not actively assigned to this class.");
+   if(snap.size===201)deny("resource-exhausted","This class has too many assessment deployments for the current Classroom view.");
+   const docs=snap.docs.filter(doc=>{
+    const data=doc.data(),lifecycle=data.lifecycle||"active";
+    return data.schoolId===ctx.schoolId&&data.status==="deployed"&&
+      !["archived","cancelled"].includes(lifecycle);
+   });
+   return {offeringId,assessments:docs.map(doc=>{
+    const data=doc.data(),reviewerUid=data.reviewerUid||data.ownerUid;
+    return {
+     taskId:doc.id,title:data.title,description:data.description||"",
+     instructions:data.instructions||"",subject:data.subject||data.subjectId||"General",
+     assessmentType:data.assessmentType||"Assessment",rubricMax:data.rubricMax||0,
+     offeringId:data.offeringId,yearId:data.yearId,termId:data.termId,
+     subjectId:data.subjectId,sectionId:data.sectionId,
+     ownerUid:data.ownerUid,reviewerUid,
+     canReview:ctx.platformOverride||reviewerUid===ctx.uid,
+     opensAt:data.opensAt?.toMillis(),dueAt:data.dueAt?.toMillis(),
+     allowLateSubmissions:data.allowLateSubmissions===true,
+     submissionSource:data.submissionSource,
+     studioProjectProfile:data.studioProjectProfile||"auto",
+     personalizedTask:data.personalizedTask?.enabled===true?{
+      enabled:true,mode:data.personalizedTask.mode,poolSize:data.personalizedTask.poolSize
+     }:{enabled:false,mode:"standard"},
+     status:data.status,published:data.published===true,
+     manualOpenRequired:data.manualOpenRequired===true,
+     manualAccessState:data.manualOpenRequired===true?(data.manualAccessState||"waiting"):"scheduled",
+     manualSessionEpoch:Number(data.manualSessionEpoch||0),
+     lifecycle:data.lifecycle||"active",revision:data.revision||1
+    };
+   }).sort((a,b)=>(a.dueAt||0)-(b.dueAt||0))};
+  }
+
   if(input.action==="list_teacher"){
    if(!ctx.roles.includes("teacher"))deny("permission-denied","Teacher access is required.");
    let docs;
