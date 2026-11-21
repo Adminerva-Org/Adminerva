@@ -269,7 +269,7 @@
       <form id="pa-create-invite" class="pa-card" style="max-width:600px">
         <h2 id="pa-invite-title" style="font-weight:750;font-size:1.2rem;margin-bottom:.75rem">Create pending invitation</h2>
         <label>Verified account email<input name="email" type="email" autocomplete="off" maxlength="254" required class="pa-field"></label>
-        <label>Requested role<select name="role" class="pa-field"><option id="pa-invite-role-student" value="student">Student</option><option value="teacher">Teacher</option></select></label>
+        <label>Requested role<select name="role" class="pa-field"><option id="pa-invite-role-student" value="student">Student</option><option value="teacher">Teacher</option><option value="registrar">Registrar</option></select></label>
         <label>School person record<select id="pa-invite-person" name="personId" class="pa-field" required><option value="" disabled selected>Choose an active unlinked person</option></select></label>
         <button type="submit" class="pa-action">Record invitation</button>
         <p id="pa-invite-help" class="pa-muted">The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.</p>
@@ -289,14 +289,15 @@
     </section>
     <section id="pa-access" role="tabpanel" aria-labelledby="pa-tab-access" tabindex="0" hidden>
       <div class="pa-card" style="margin-bottom:1rem">
-        <h2 style="font-size:1.2rem;font-weight:750">Activate linked teacher access</h2>
-        <p class="pa-muted">For teachers who already have a verified account linked to an active school staff record. This activates school membership only; class assignments are managed separately. Suspended access must use Restore access below.</p>
+        <h2 style="font-size:1.2rem;font-weight:750">Activate linked staff access</h2>
+        <p class="pa-muted">For staff who already have a verified account linked to an active school staff record. Grant Teacher or Registrar school access deliberately. Teaching assignments remain separate; Registrar receives only SIS/records authority. Suspended access must use Restore access below.</p>
         <form id="pa-activate-staff-form" style="display:grid;gap:.6rem;max-width:560px">
           <label>Find linked staff<input id="pa-staff-access-query" class="pa-field" type="search" placeholder="Search staff name" autocomplete="off" required></label>
           <button id="pa-staff-access-search" class="pa-action" type="button">Find verified staff</button>
-          <label>Staff record<select id="pa-staff-access-person" name="personId" class="pa-field" required><option value="">Search for a linked teacher first</option></select></label>
+          <label>Staff record<select id="pa-staff-access-person" name="personId" class="pa-field" required><option value="">Search for linked staff first</option></select></label>
+          <label>School role<select name="role" class="pa-field" required><option value="teacher">Teacher</option><option value="registrar">Registrar</option></select></label>
           <label>Activation reason<input name="reason" class="pa-field" minlength="12" maxlength="500" required placeholder="Explain the access approval"></label>
-          <button class="pa-action" type="submit">Activate teacher school access</button>
+          <button class="pa-action" type="submit">Activate staff school access</button>
         </form>
         <p id="pa-staff-access-status" class="pa-muted" role="status" aria-live="polite"></p>
       </div>
