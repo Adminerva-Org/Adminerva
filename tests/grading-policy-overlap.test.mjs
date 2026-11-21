@@ -43,3 +43,16 @@ test("archived grading policies cannot be edited back to active outside restore"
   assert.match(source,/if\(prior&&\(prior\.status\|\|"active"\)!=="active"\)/);
   assert.match(source,/Restore this grading policy before editing it/);
 });
+
+
+test("grading policy archive and restore require and audit an institutional reason",()=>{
+  const backend=readFileSync(new URL("../functions/school-class-record.js",import.meta.url),"utf8");
+  const frontend=readFileSync(new URL("../js/school-admin/grading-policies.mjs",import.meta.url),"utf8");
+  const html=readFileSync(new URL("../school-grading-schemes.html",import.meta.url),"utf8");
+  assert.match(backend,/Grading policy lifecycle reason/);
+  assert.match(backend,/archiveReason:lifecycleReason/);
+  assert.match(backend,/restoreReason:lifecycleReason/);
+  assert.match(frontend,/expectedRevision:scheme\.revision,reason/);
+  assert.match(html,/id="gs-lifecycle-dialog"/);
+  assert.match(html,/name="reason"[\s\S]*minlength="12"/);
+});
