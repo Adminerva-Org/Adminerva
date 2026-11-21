@@ -68,6 +68,15 @@ function scheduleMeetingOverlap(first,second){
   bStart=scheduleMinute(second.startTime),bEnd=scheduleMinute(second.endTime);
  return [aStart,aEnd,bStart,bEnd].every(Number.isFinite)&&aStart<bEnd&&bStart<aEnd;
 }
+function academicPeriodFitsYear(period={},year={}){
+ const start=period.startDate||null,end=period.endDate||null,
+  yearStart=year.startDate||null,yearEnd=year.endDate||null;
+ if(start&&yearStart&&start<yearStart)return false;
+ if(start&&yearEnd&&start>yearEnd)return false;
+ if(end&&yearStart&&end<yearStart)return false;
+ if(end&&yearEnd&&end>yearEnd)return false;
+ return true;
+}
 function catalogArchiveDependencySpecs(kind){
  return {
   academic_years:[
@@ -567,6 +576,8 @@ function createSchoolAcademicsService({db}) {
      const year=await tx.get(schoolRoot.doc("academic_years/"+parentYear));
      if(!year.exists||year.data().schoolId!==ctx.schoolId||year.data().status!=="active")
       deny("failed-precondition","Academic year does not exist or is inactive in this school.");
+     if(!academicPeriodFitsYear({startDate,endDate},year.data()))
+      deny("failed-precondition","Academic period dates must stay within the selected academic year.");
     }
     const now=FieldValue.serverTimestamp();
     tx.create(ref,{schoolId:ctx.schoolId,name,status:"active",
@@ -636,8 +647,22 @@ function createSchoolAcademicsService({db}) {
       const year=await tx.get(schoolRoot.doc("academic_years/"+parentYear));
       if(!year.exists||year.data().schoolId!==ctx.schoolId||year.data().status!=="active")
         deny("failed-precondition","Academic year does not exist or is inactive in this school.");
+      if(!academicPeriodFitsYear({startDate,endDate},year.data()))
+        deny("failed-precondition","Academic period dates must stay within the selected academic year.");
     }
     const currentData=current.data();
+    if(kind==="academic_years"){
+      const childTerms=await tx.get(db.collection("schools/"+ctx.schoolId+"/terms")
+        .where("yearId","==",itemId).limit(51));
+      if(childTerms.size===51)
+        deny("resource-exhausted","Academic-year date validation requires pagination before this change can be saved.");
+      const outside=childTerms.docs.find(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"&&
+        !academicPeriodFitsYear(doc.data(),{startDate,endDate}));
+      if(outside)
+        deny("failed-precondition","The new academic-year dates would place active period “"+
+          String(outside.data().name||outside.id).slice(0,120)+
+          "” outside the school year. Adjust that period first or keep the year dates wide enough to contain it.");
+    }
     const structuralTermChange=kind==="terms"&&
       (currentData.yearId!==parentYear||currentData.programId!==parentProgram);
     const structuralSectionChange=kind==="sections"&&
@@ -1669,4 +1694,4 @@ function createSchoolAcademicsService({db}) {
   deny("invalid-argument","Unknown academic operation.");
  };
 }
-module.exports={createSchoolAcademicsService,checkId,rowKey,catalogArchiveDependencySpecs,assessmentBlocksOfferingArchive};
+module.exports={createSchoolAcademicsService,checkId,rowKey,catalogArchiveDependencySpecs,assessmentBlocksOfferingArchive,academicPeriodFitsYear};
