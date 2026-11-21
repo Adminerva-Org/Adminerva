@@ -1127,20 +1127,29 @@ function createSchoolAcademicsService({db}) {
    const restoring=input.action==="restore_teacher_assignment";
    const reason=(ending||restoring)?checkName(input.reason,restoring?"Restore reason":"Handover reason"):null;
    if(reason&&reason.length<12)deny("invalid-argument","Explain the teaching assignment change in at least 12 characters.");
+   let result;
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     const taskQuery=ending?db.collection("schools/"+ctx.schoolId+"/assessments")
-      .where("offeringId","==",offeringId).limit(101):null;
-    const [offering,staff,prior,responsibilities]=await Promise.all([
+      .where("offeringId","==",offeringId).limit(101):null,
+     assignmentQuery=db.collection("schools/"+ctx.schoolId+"/staff_assignments")
+      .where("offeringId","==",offeringId).limit(101);
+    const [offering,staff,prior,responsibilities,assignmentSnap]=await Promise.all([
       tx.get(offeringRef),tx.get(teacherMemberRef),tx.get(ref),
-      taskQuery?tx.get(taskQuery):Promise.resolve(null)
+      taskQuery?tx.get(taskQuery):Promise.resolve(null),tx.get(assignmentQuery)
     ]);
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId)
       deny("failed-precondition","Course offering is not in this school.");
+    if(assignmentSnap.size===101)
+      deny("resource-exhausted","This class has too much teaching-assignment history for the current workflow.");
     if(!ending&&(!staff.exists||staff.data().schoolId!==ctx.schoolId||
        staff.data().status!=="active"||!Array.isArray(staff.data().roles)||
        !staff.data().roles.includes("teacher")))
       deny("permission-denied","The account is not an active teacher of this school.");
+    const activeUids=[...new Set(assignmentSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+      doc.data().status==="active").map(doc=>doc.data().teacherUid))],
+     lead=teachingLead(offering.data().primaryTeacherUid,activeUids),
+     now=FieldValue.serverTimestamp();
     if(ending) {
       if(!prior.exists||prior.data().status!=="active")
         deny("failed-precondition","There is no active appointment to end.");
@@ -1153,16 +1162,29 @@ function createSchoolAcademicsService({db}) {
       });
       if(outstanding.length)
         deny("failed-precondition","This teacher still has review responsibility for deployed assessments. Use Teacher handover so submissions and Gradebook access are not stranded.");
-      tx.update(ref,{status:"ended",endedByUid:uid,endedAt:FieldValue.serverTimestamp(),
+      const remaining=activeUids.filter(id=>id!==teacherUid);
+      if(lead.primaryTeacherUid===teacherUid&&remaining.length)
+        deny("failed-precondition","This teacher is the class primary teacher. Set another active teacher as primary or use Teacher handover before removing them.");
+      tx.update(ref,{status:"ended",endedByUid:uid,endedAt:now,
         endReason:reason,revision:(prior.data().revision||1)+1});
+      if(offering.data().primaryTeacherUid===teacherUid&&!remaining.length)
+        tx.update(offeringRef,{primaryTeacherUid:null,revision:(Number(offering.data().revision)||1)+1,
+          updatedByUid:uid,updatedAt:now});
+      result={teacherUid,offeringId,status:"ended",role:lead.primaryTeacherUid===teacherUid?"primary":"co_teacher"};
     }else if(restoring){
       if(!prior.exists||prior.data().status!=="ended")
         deny("failed-precondition","Only an ended teaching assignment can be restored.");
       if(offering.data().status!=="active")
         deny("failed-precondition","A teacher cannot be restored to a closed course offering.");
       await ensureTeacherScheduleAvailable(tx,teacherUid,offeringId);
-      tx.update(ref,{status:"active",restoredByUid:uid,restoredAt:FieldValue.serverTimestamp(),
+      tx.update(ref,{status:"active",restoredByUid:uid,restoredAt:now,
         restoreReason:reason,revision:(prior.data().revision||1)+1});
+      const becomesPrimary=!activeUids.length&&
+        (!offering.data().primaryTeacherUid||offering.data().primaryTeacherUid===teacherUid);
+      if(becomesPrimary&&offering.data().primaryTeacherUid!==teacherUid)
+        tx.update(offeringRef,{primaryTeacherUid:teacherUid,revision:(Number(offering.data().revision)||1)+1,
+          updatedByUid:uid,updatedAt:now});
+      result={teacherUid,offeringId,status:"active",role:becomesPrimary?"primary":"co_teacher"};
     }else{
       if(prior.exists)deny("already-exists","A teaching assignment already has history. Restore an ended assignment instead of replacing it.");
       if(offering.data().status!=="active")deny("failed-precondition","Cannot assign a closed course offering.");
@@ -1170,12 +1192,19 @@ function createSchoolAcademicsService({db}) {
       tx.create(ref,{schoolId:ctx.schoolId,teacherUid,offeringId,
         yearId:offering.data().yearId,termId:offering.data().termId,
         subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
-        status:"active",revision:1,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
+        status:"active",revision:1,createdByUid:uid,createdAt:now});
+      const becomesPrimary=!activeUids.length&&!offering.data().primaryTeacherUid;
+      if(becomesPrimary)
+        tx.update(offeringRef,{primaryTeacherUid:teacherUid,revision:(Number(offering.data().revision)||1)+1,
+          updatedByUid:uid,updatedAt:now});
+      result={teacherUid,offeringId,status:"active",role:becomesPrimary?"primary":"co_teacher"};
     }
     tx.create(auditRef,audit(ending?"teacher_assignment_ended":
-      restoring?"teacher_assignment_restored":"teacher_assigned",{teacherUid,offeringId,reason}));
+      restoring?"teacher_assignment_restored":"teacher_assigned",{
+       teacherUid,offeringId,reason,teachingRole:result.role
+      }));
    });
-   return {teacherUid,offeringId,status:ending?"ended":"active"};
+   return result;
   }
   if(["end_enrollment","restore_enrollment"].includes(input.action)){
    requireAdmin();
