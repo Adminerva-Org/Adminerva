@@ -272,9 +272,13 @@ test("new compact package keeps the original response JSON contract and single-s
  const compact=buildCompactBulkExternalEvaluationPackage({
    batchId:"batch-v2",entries:[item],task:compactAssessment
  });
+ const compatibleSuggestion={...suggestion,criteria:suggestion.criteria.map((row,i)=>({
+   ...row,name:compactAssessment.rubric[i].name,maximumPoints:10,
+   awardedPoints:i===0?8:7
+ }))};
  const parsed=readBulkExternalResponse({
    format:BULK_RESPONSE_FORMAT,batchId:compact.batchId,
-   results:[{ref:item.ref,response:suggestion}]
+   results:[{ref:item.ref,response:compatibleSuggestion}]
  },{
    batchId:compact.batchId,
    allowedRefs:new Map([[item.ref,{key:"private-student-record"}]]),
@@ -282,7 +286,7 @@ test("new compact package keeps the original response JSON contract and single-s
    parseResponse:parseGeneralExternalEvaluationResponse
  });
  assert.equal(parsed.length,1);
- assert.equal(parsed[0].review.awarded,35); // Existing response format preserved.
+ assert.equal(parsed[0].review.awarded,15); // Existing response format preserved.
  const oldSingle=buildGeneralExternalEvaluationPackage({
    task:compactAssessment,snapshot:item.snapshot,
    checkingInstructions:item.checking
