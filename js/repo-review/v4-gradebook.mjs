@@ -785,7 +785,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const result=currentTask.legacyCompatibility?
         await scoped(migrationApi,"legacy_review_publish",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
-          legacySubmissionId:currentRow.recordId
+          legacySubmissionId:currentRow.recordId,
+          expectedGradeRevision:currentGrade?.revision
         }):
         await scoped(gradeApi,"publish",{
           taskId:currentTask.taskId,studentUid:currentRow.studentUid
