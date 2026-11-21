@@ -68,10 +68,14 @@ export function mountHelp() {
   });
   document.getElementById("page-help-open").addEventListener("click", () => { dialog.showModal(); window.adminervaActivity?.record("help-open"); });
   const privatePage = hasActivityPreferences(document.scripts);
-  const nav=document.getElementById("adminerva-nav"),studentModule=nav?.dataset.module?.startsWith("student");
-  document.getElementById("help-settings-link").href = studentModule
-    ? (nav?.dataset.schoolStudent==="true"?"school-student-settings.html":"student-settings.html")
-    : "settings.html";
+  const nav=document.getElementById("adminerva-nav"),settingsLink=document.getElementById("help-settings-link");
+  function syncSettingsLink(detail={}){
+    const studentModule=nav?.dataset.module?.startsWith("student")||detail.role==="student",
+      schoolStudent=detail.schoolStudent===true||nav?.dataset.schoolStudent==="true";
+    settingsLink.href=studentModule?(schoolStudent?"school-student-settings.html":"student-settings.html"):"settings.html";
+  }
+  syncSettingsLink();
+  document.addEventListener("adminerva:role-ready",event=>syncSettingsLink(event.detail||{}));
   if (privatePage && window.self === window.top) {
     import("./activity-preferences.mjs?v=1.3.0").then(module => module.mountActivityPreferences()).catch(() => {});
   }
