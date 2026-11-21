@@ -38,7 +38,7 @@ function currentAdviser(item=selected()){
 }
 function enrollmentRoute(){
   const school=picker?.scope?.current;
-  return school?.compatibilityMode==="v4_only"?"school-enrollment.html":"people-access.html#classes";
+  return school?.enrollmentMode==="canonical"?"school-enrollment.html":"people-access.html#classes";
 }
 async function scoped(action,details={}){
   if(!picker?.scope.current)throw Error("Choose a verified school first.");
