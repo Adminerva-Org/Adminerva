@@ -294,25 +294,42 @@ function createSchoolAssessmentService({db}){
        contentDigest:doc.data().contentDigest,
        savedAt:doc.data().savedAt?.toMillis?.()||null
      }));
-   const enrolled=await db.collection(prefix+"enrollments")
-     .where("offeringId","==",task.data().offeringId).limit(101).get();
-   if(enrolled.size===101)
+   const rosterDoc=await db.doc(prefix+"studio_exam_session_rosters/"+taskId+
+     "/sessions/"+epoch).get();
+   let roster=[];
+   if(rosterDoc.exists&&rosterDoc.data().schoolId===ctx.schoolId&&
+      rosterDoc.data().taskId===taskId&&Array.isArray(rosterDoc.data().students)){
+    roster=rosterDoc.data().students;
+   }else{
+    // Compatibility fallback for pre-roster sessions or a partial fanout
+    // failure. Label this as a current roster instead of historical evidence.
+    const enrolled=await db.collection(prefix+"enrollments")
+      .where("offeringId","==",task.data().offeringId).limit(101).get();
+    if(enrolled.size===101)
      deny("resource-exhausted","The class roster requires pagination for close confirmation.");
-   const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
-     doc.data().status==="active"&&typeof doc.data().personId==="string");
-   const people=await Promise.all(active.map(doc=>
-     db.doc(prefix+"people/"+doc.data().personId).get()));
+    const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+      doc.data().status==="active"&&typeof doc.data().personId==="string");
+    const people=await Promise.all(active.map(doc=>
+      db.doc(prefix+"people/"+doc.data().personId).get()));
+    roster=people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
+      person.data().status==="active"&&person.data().kind==="student")
+      .map(person=>({personId:person.id,
+        displayName:String(person.data().displayName||"Student").slice(0,140),
+        studentUid:person.data().authUid||null}));
+   }
    const byUid=new Map(receipts.map(row=>[row.studentUid,row]));
-   const students=people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
-     person.data().status==="active"&&person.data().kind==="student")
-     .map(person=>{
-       const uid=person.data().authUid||null,receipt=uid?byUid.get(uid):null;
-       return {displayName:String(person.data().displayName||"Student").slice(0,140),
-         studentUid:uid,checkpointConfirmed:Boolean(receipt),
-         projectRevision:receipt?.projectRevision||null,savedAt:receipt?.savedAt||null};
-     }).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+   const students=roster.map(person=>{
+     const uid=person.studentUid||null,receipt=uid?byUid.get(uid):null;
+     return {displayName:String(person.displayName||"Student").slice(0,140),
+       studentUid:uid,checkpointConfirmed:Boolean(receipt),
+       projectRevision:receipt?.projectRevision||null,savedAt:receipt?.savedAt||null};
+   }).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+   const confirmed=students.filter(row=>row.checkpointConfirmed).length;
+   const sessionClosed=epoch<currentEpoch||task.data().manualAccessState==="closing"||
+     task.data().manualAccessState==="held";
    return {taskId,sessionEpoch:epoch,currentSessionEpoch:currentEpoch,
-     confirmed:receipts.length,enrolledStudents:students.length,students};
+     sessionClosed,rosterSource:rosterDoc.exists?"close_snapshot":"current_fallback",
+     confirmed,enrolledStudents:students.length,students};
   }
 
   if(["exam_session","exam_close_status"].includes(input.action)){
