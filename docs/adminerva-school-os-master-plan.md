@@ -368,6 +368,8 @@ Future departments should join this same action-oriented model rather than addin
 - Preserve usable mobile layouts from 320 px upward.
 - Use meaningful empty, loading, stale, conflict and permission states.
 - Do not expose future placeholder modules as though they are already functional.
+- Make public/guest and role homepages engaging through progressive, task-oriented visual storytelling and interaction, without turning normal school work into a distracting animation showcase. Respect mobile screens and reduced-motion preferences.
+- Public activity previews must be explicitly illustrative, never masquerade as real user activity. Personal activity is private and role-scoped; future aggregated school activity requires verified authorization, privacy thresholds, retention and deliberate school controls.
 
 ## 9. Security, privacy and audit boundaries
 
@@ -395,6 +397,7 @@ Future departments should join this same action-oriented model rather than addin
    - operationally enabled.
 7. Do not describe a feature as live merely because its PR exists.
 8. Avoid broad release process expansion unless it materially reduces a real production risk.
+9. Scheduled editorial/Codex automation may prepare release-note or feature-spotlight drafts using existing published release history and verified deployment evidence; it must not silently advance the public version, publish an unverified change, or send school-wide notifications.
 
 ## 11. Documents and planning governance
 
