@@ -9,15 +9,13 @@ let schoolPrograms=[],schoolTerms=[],schoolSections=[],schoolOfferings=[];
 let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0,inviteRun=0,staffSearchRun=0,detailRun=0,academicRun=0,membershipRun=0;
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false,peopleReloadQueued=false,peopleRun=0;
-let accessChange=null,personChange=null,lifecycleChange=null,invitationChange=null,currentDetailPerson=null,
-  currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false,
-  linkedStaffById=new Map();
+let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
 const requestedPersonId=String(new URL(location.href).searchParams.get("personId")||"");
 let requestedPersonSchoolId=null;
-let schoolReady=false,canonicalClassMode=false,standardEnrollmentMode=false;
+let schoolReady=false,standardEnrollmentMode=false;
 function rememberedTab(){
   const hash=location.hash.slice(1);
   if(tabNames.has(hash))return hash;
@@ -46,10 +44,6 @@ async function loadSelectedTab(name){
   finally{active?.removeAttribute("aria-busy");}
 }
 function setTab(name,{remember=true}={}) {
-  if(name==="classes"&&canonicalClassMode){
-    if(get("pa-person-detail-dialog")?.open)get("pa-person-detail-dialog").close();
-    location.href="school-classes.html";return;
-  }
   const target=tabNames.has(name)?name:"overview";
   for(const button of document.querySelectorAll("[data-tab]")){
     const active=button.dataset.tab===target;
@@ -95,7 +89,7 @@ const picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
     schoolReady=false;++peopleRun;peopleReloadQueued=false;clearTimeout(peopleSearchTimer);++workloadRun;++rosterRun;++inviteRun;++staffSearchRun;++detailRun;++academicRun;++membershipRun;workload=null;resetWorkload();
-    linkedStaffById=new Map();workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-person-detail-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-person-detail-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
   },
@@ -104,14 +98,8 @@ const picker=createTenantSchoolPicker({
       workspace.hidden=true;say("This school has not granted you directory administration access.");
       return;
     }
-    canonicalClassMode=scope.current.compatibilityMode==="v4_only";
-    standardEnrollmentMode=scope.current.enrollmentMode==="canonical";
-    const classTab=get("pa-tab-classes"),classPanel=get("pa-classes");
-    if(classTab)classTab.hidden=canonicalClassMode;
-    if(classPanel&&canonicalClassMode)classPanel.hidden=true;
-    if(canonicalClassMode&&activeTab()==="classes"){
-      location.replace("school-classes.html");return;
-    }
+    standardEnrollmentMode=scope.current.schoolId==="manila-cathedral-school"&&
+      scope.current.compatibilityMode==="v4_only";
     const studentInvite=get("pa-invite-role-student"),inviteForm=get("pa-create-invite");
     if(studentInvite){
       studentInvite.hidden=standardEnrollmentMode;studentInvite.disabled=standardEnrollmentMode;
@@ -121,22 +109,22 @@ const picker=createTenantSchoolPicker({
     if(get("pa-invite-title"))get("pa-invite-title").textContent=
       standardEnrollmentMode?"Create staff invitation":"Create pending invitation";
     if(get("pa-invite-help"))get("pa-invite-help").textContent=standardEnrollmentMode
-      ?"Students in this canonical school activate from Enrollment & Registration. Use invitations here for verified Teacher or Registrar staff access."
+      ?"Manila Cathedral School students activate from Enrollment & Registration. Use invitations here for verified Teacher or Registrar staff access."
       :"The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.";
     for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card","pa-section-enrollment-card"])
       if(get(id))get(id).hidden=standardEnrollmentMode;
     if(get("pa-classes-help"))get("pa-classes-help").innerHTML=standardEnrollmentMode
-      ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for this canonical school. Teaching assignments, teacher load, schedules and roster review are managed in <a href="school-classes.html" style="font-weight:800;text-decoration:underline">Classes &amp; Scheduling</a>.'
-      :"Legacy class-relationship tools for compatibility schools. Changes preserve earlier grades and term history.";
+      ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for Manila Cathedral School. Teaching assignments and roster review remain available here.'
+      :"School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.";
     const enrollmentSummary=get("pa-enrollment-summary-link");
     if(enrollmentSummary)enrollmentSummary.href=standardEnrollmentMode?"school-enrollment.html":"people-access.html#classes";
     if(get("pa-enrollment-summary-action"))get("pa-enrollment-summary-action").textContent=standardEnrollmentMode
       ?"Open Enrollment & Registration →":"Manage enrollment relationships →";
     if(get("pa-legacy-requests-help"))get("pa-legacy-requests-help").innerHTML=standardEnrollmentMode
-      ?'Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; student registration continues in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>, while teaching assignments are managed in <a href="school-classes.html" style="font-weight:800;text-decoration:underline">Classes &amp; Scheduling</a>.'
-      :"Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; enrollment and teaching relationships remain in this compatibility workflow.";
+      ?'Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; student registration continues in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>, while teaching assignments remain in Teaching &amp; classes.'
+      :"Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; enrollment and teaching relationships are managed in Teaching & classes.";
     if(get("pa-import-course-help"))get("pa-import-course-help").innerHTML=standardEnrollmentMode
-      ?'For this canonical school, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
+      ?'For Manila Cathedral School, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
       :"Section values from the roster are hints only. After the people import is committed, review each matched section, choose the exact active course offering, and explicitly enroll the listed students.";
     workspace.hidden=false;schoolReady=true;
     if(requestedPersonId&&requestedPersonSchoolId!==scope.current.schoolId){
@@ -145,6 +133,8 @@ const picker=createTenantSchoolPicker({
       void openPersonDetail({personId:requestedPersonId,displayName:"Student record"});
       return;
     }
+    // Load only the active section. Large school directories should not fetch
+    // six unrelated panels when the administrator only needs the overview.
     void loadSelectedTab(activeTab());
   }
 });
@@ -856,27 +846,18 @@ get("pa-handover-form").addEventListener("submit",event=>{
     toTeacherUid=String(d.get("toTeacherUid")||""),
     reason=String(d.get("reason")||"").trim();
   if(fromTeacherUid===toTeacherUid){say("Choose a different replacement teacher.");return;}
-  void (async()=>{
-    let reviewed;
-    try{reviewed=await performAcademic("class_roster",{offeringId});}
-    catch(error){say(error?.message||"Refresh the class roster before handover.");return;}
-    const fromAssignment=(reviewed.teachers||[]).find(row=>row.teacherUid===fromTeacherUid&&row.status==="active")||null,
-      toAssignment=(reviewed.teachers||[]).find(row=>row.teacherUid===toTeacherUid)||null;
-    if(!fromAssignment){say("The current teacher assignment changed. Refresh the class roster before handover.");return;}
-    if(!confirm("Transfer this class to the replacement teacher? The current assignment will end and existing deployed assessment review responsibility will move. Private teacher resources will NOT transfer."))return;
-    const result=await submitAcademic(form,"handover_offering",{
-      offeringId,fromTeacherUid,toTeacherUid,
-      expectedOfferingRevision:Number(reviewed.offeringRevision)||1,
-      expectedFromRevision:Number(fromAssignment.revision)||1,
-      expectedToRevision:toAssignment?(Number(toAssignment.revision)||1):0,reason
-    },"Teacher handover completed. Private teacher resources kept their original ownership.");
-    if(!result)return;
-    say("Teacher handover completed · "+Number(result.assessmentCount||0)+
-      " deployed assessment review responsibilit"+(Number(result.assessmentCount||0)===1?"y":"ies")+
-      " transferred. Private resources were not transferred.");
-    if(currentRosterOfferingId===offeringId)
-      void loadClassRoster(offeringId).catch(error=>say(error.message||"Refresh class roster."));
-  })();
+  if(!confirm("Transfer this class to the replacement teacher? The current assignment will end and existing deployed assessment review responsibility will move. Private teacher resources will NOT transfer."))return;
+  void submitAcademic(form,"handover_offering",{
+    offeringId,fromTeacherUid,toTeacherUid,reason
+  },"Teacher handover completed. Private teacher resources kept their original ownership.")
+    .then(result=>{
+      if(!result)return;
+      say("Teacher handover completed · "+Number(result.assessmentCount||0)+
+        " deployed assessment review responsibilit"+(Number(result.assessmentCount||0)===1?"y":"ies")+
+        " transferred. Private resources were not transferred.");
+      if(currentRosterOfferingId===offeringId)
+        void loadClassRoster(offeringId).catch(error=>say(error.message||"Refresh class roster."));
+    });
 });
 function lifecycleButton(label,action,details,targetName){
   const button=document.createElement("button");button.type="button";button.className="pa-action";
@@ -910,12 +891,8 @@ async function loadClassRoster(offeringId){
     name.textContent=student.name;meta.className="pa-muted";meta.textContent="Enrollment · "+student.status;
     info.append(name,meta);row.append(info);
     row.append(student.status==="active"?
-      lifecycleButton("End enrollment","end_enrollment",{
-        enrollmentId:student.enrollmentId,expectedRevision:Number(student.revision)||1
-      },student.name):
-      lifecycleButton("Restore enrollment","restore_enrollment",{
-        enrollmentId:student.enrollmentId,expectedRevision:Number(student.revision)||1
-      },student.name));
+      lifecycleButton("End enrollment","end_enrollment",{enrollmentId:student.enrollmentId},student.name):
+      lifecycleButton("Restore enrollment","restore_enrollment",{enrollmentId:student.enrollmentId},student.name));
     target.append(row);
   }
   const teacherHeading=document.createElement("h3");
@@ -931,10 +908,10 @@ async function loadClassRoster(offeringId){
     info.append(name,meta);row.append(info);
     row.append(teacher.status==="active"?
       lifecycleButton("End assignment","end_teacher_assignment",{
-        teacherUid:teacher.teacherUid,offeringId,expectedRevision:Number(teacher.revision)||1
+        teacherUid:teacher.teacherUid,offeringId
       },teacher.name):
       lifecycleButton("Restore assignment","restore_teacher_assignment",{
-        teacherUid:teacher.teacherUid,offeringId,expectedRevision:Number(teacher.revision)||1
+        teacherUid:teacher.teacherUid,offeringId
       },teacher.name));
     target.append(row);
   }
@@ -975,7 +952,6 @@ async function searchLinkedStaff(){
   catch(error){if(run===staffSearchRun&&schoolReady)throw error;return;}
   if(run!==staffSearchRun||!schoolReady||get("pa-staff-access-query").value.trim()!==query)return;
   const linked=(result.items||[]).filter(person=>person.accountLinked);
-  linkedStaffById=new Map(linked.map(person=>[person.personId,person]));
   for(const person of linked)select.append(new Option(person.displayName,person.personId));
   message.textContent=linked.length?
     linked.length+" linked staff record(s) found. Select the intended account.":
@@ -987,19 +963,15 @@ get("pa-staff-access-search").addEventListener("click",()=>void searchLinkedStaf
 get("pa-activate-staff-form").addEventListener("submit",event=>{
   event.preventDefault();
   const form=event.currentTarget,data=new FormData(form);
-  const personId=String(data.get("personId")||""),reason=String(data.get("reason")||"").trim();
+  const personId=String(data.get("personId")||""),role=String(data.get("role")||"teacher"),
+    reason=String(data.get("reason")||"").trim();
   if(!personId)return;
-  const reviewed=linkedStaffById.get(personId);
-  if(!reviewed){get("pa-staff-access-status").textContent="Refresh the linked staff search before activating access.";return;}
-  if(!confirm("Activate this verified linked teacher for the selected school? Class assignments remain unchanged."))return;
-  void submitForm(form,"activate_linked_staff",{
-    personId,expectedPersonRevision:Number(reviewed.revision)||1,
-    role:String(new FormData(form).get("role")||"teacher"),reason
-  }).then(result=>{
+  if(!confirm("Activate this verified linked staff member as "+(role==="registrar"?"Registrar":"Teacher")+" for the selected school?"))return;
+  void submitForm(form,"activate_linked_staff",{personId,role,reason}).then(result=>{
     if(!result)return;
     get("pa-staff-access-status").textContent=result.status==="already_active"?
-      "This teacher already has active school access.":
-      "Teacher school access activated. Assign a class under Classes to enable Class Record.";
+      "This staff member already has active "+(result.role||role)+" access.":
+      (result.role||role)+" school access activated.";
 
   });
 });
@@ -1024,8 +996,7 @@ async function loadMemberships(){
       button.addEventListener("click",()=>{
         accessChange={
           targetUid:member.uid,action:restoring?"restore_access":"suspend_access",
-          name:member.displayName||member.uid.slice(0,9),
-          expectedRevision:Number(member.revision)||1
+          name:member.displayName||member.uid.slice(0,9)
         };
         get("pa-suspension-title").textContent=restoring?"Restore school access":"Suspend school access";
         get("pa-suspension-member").textContent=accessChange.name;
@@ -1060,9 +1031,7 @@ get("pa-suspension-form").addEventListener("submit",event=>{
   if(!confirm(restoring?
     "Restore this account for the current school after its linked identity is revalidated?":
     "Suspend this account for the current school? Existing grades and evidence will be preserved."))return;
-  void submitForm(form,change.action,{
-    targetUid:change.targetUid,expectedRevision:change.expectedRevision,reason
-  }).then(result=>{
+  void submitForm(form,change.action,{targetUid:change.targetUid,reason}).then(result=>{
     if(!result)return;
     get("pa-suspension-dialog").close();accessChange=null;
 
@@ -1144,29 +1113,18 @@ function openPersonDialog(person,mode){
   nameInput.value=person.displayName||"";
   const studentFields=get("pa-student-profile-fields");
   studentFields.hidden=mode!=="edit"||person.kind!=="student";
-  form.elements.studentNumber.value=person.studentNumber||"";
+  for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
+    form.elements[name].value=person[name]||"";
   get("pa-person-dialog-title").textContent=mode==="edit"?"Edit school person":
     mode==="archive"?"Archive school person":"Restore school person";
   confirm.textContent=mode==="edit"?"Save profile":mode==="archive"?"Archive person":"Restore person";
   confirm.style.background=mode==="archive"?"#9a3412":mode==="restore"?"#166534":"#1d4ed8";
   get("pa-person-dialog-help").textContent=mode==="archive"?
-    "Archiving is blocked until active school access, official registration/class relationships, teaching assignments and active pending invitations are ended. Nothing is deleted.":
-    mode==="restore"?"Restoring the person record does not automatically restore school access, enrollment, invitations or teaching assignments.":
-    "Edit the school identity and student number here. Guardian relationships belong to Student Records; section placement belongs to Enrollment.";
-  const lifecycleActions=get("pa-person-lifecycle-actions"),
-    enrollmentLink=get("pa-person-open-enrollment"),classesLink=get("pa-person-open-classes");
-  lifecycleActions.style.display=mode==="archive"?"flex":"none";
-  enrollmentLink.style.display=mode==="archive"&&person.kind==="student"?"inline-flex":"none";
-  classesLink.style.display=mode==="archive"?"inline-flex":"none";
-  if(person.kind==="student")
-    enrollmentLink.href="school-enrollment.html?personId="+encodeURIComponent(person.personId);
+    "Archiving is blocked until active school access, enrollments or teaching assignments are ended. Nothing is deleted.":
+    mode==="restore"?"Restoring the person record does not automatically restore school access, enrollments or teaching assignments.":
+    "Edit school identity and student guardian details. For section membership use the student details placement panel.";
   get("pa-person-dialog").showModal();
 }
-for(const id of ["pa-person-open-access","pa-person-open-invites"]){
-  get(id)?.addEventListener("click",()=>{if(get("pa-person-dialog").open)get("pa-person-dialog").close();personChange=null;});
-}
-get("pa-person-open-classes")?.addEventListener("click",()=>{personChange=null;});
-get("pa-person-open-enrollment")?.addEventListener("click",()=>{personChange=null;});
 get("pa-person-dialog-cancel").addEventListener("click",()=>{
   if(pendingWrite)return;
   personChange=null;get("pa-person-dialog").close();
@@ -1177,22 +1135,22 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   const action=mode==="edit"?"update_person":mode==="archive"?"archive_person":"restore_person";
   const details={personId:person.personId};
   if(mode==="edit"){
-    details.expectedRevision=Number(person.revision)||1;
     details.displayName=String(values.get("displayName")||"").trim();
-    if(person.kind==="student")
-      details.studentNumber=String(values.get("studentNumber")||"").trim();
+    if(person.kind==="student")for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
+      details[name]=String(values.get(name)||"").trim();
   }
-  else {
-    details.expectedRevision=Number(person.revision)||1;
-    details.reason=String(values.get("reason")||"").trim();
-  }
+  else details.reason=String(values.get("reason")||"").trim();
+  const warning=mode==="archive"?
+    "Archive this school person record? Active access and academic assignments must already be ended.":
+    mode==="restore"?"Restore this school person record without automatically restoring access or enrollment?":null;
+  if(warning&&!confirm(warning))return;
   void submitForm(form,action,details).then(result=>{
     if(!result)return;
     personChange=null;get("pa-person-dialog").close();
   });
 });
 
-for(const id of ["pa-person-dialog","pa-suspension-dialog","pa-academic-lifecycle-dialog","pa-invitation-lifecycle-dialog"]){
+for(const id of ["pa-person-dialog","pa-suspension-dialog","pa-academic-lifecycle-dialog"]){
   get(id)?.addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
 }
 function detailRow(label,value){
@@ -1208,35 +1166,6 @@ function renderDetailList(host,items,formatter,emptyText){
     row.append(formatter(item));host.append(row);
   }
 }
-function openInvitationLifecycle(invitation){
-  invitationChange={invitation,person:currentDetailPerson};
-  const form=get("pa-invitation-lifecycle-form");form.reset();
-  get("pa-invitation-lifecycle-target").textContent=
-    (currentDetailPerson?.displayName||"School person")+" · "+(invitation.requestedRole||"invitation")+
-    " · "+invitation.invitationId;
-  get("pa-invitation-lifecycle-dialog").showModal();
-}
-function renderPersonInvitations(items){
-  const host=get("pa-person-detail-invites");host.replaceChildren();
-  if(!items?.length){host.append(detailRow("Status","No invitation records"));return;}
-  const now=Date.now();
-  for(const item of items){
-    const row=document.createElement("div");row.className="pa-row";
-    const info=document.createElement("div"),title=document.createElement("strong"),meta=document.createElement("p");
-    title.textContent=item.requestedRole||"Invitation";meta.className="pa-muted";
-    const expired=item.status==="pending"&&item.expiresAt&&item.expiresAt<=now;
-    meta.textContent=(expired?"expired":item.status||"unknown")+
-      (item.expiresAt?" · expires "+new Date(item.expiresAt).toLocaleString():"")+
-      " · revision "+(item.revision||1);
-    info.append(title,meta);row.append(info);
-    if(item.status==="pending"){
-      const revoke=document.createElement("button");revoke.type="button";revoke.className="pa-action";
-      revoke.style.background="#9a3412";revoke.textContent=expired?"Revoke expired invite":"Revoke invitation";
-      revoke.addEventListener("click",()=>openInvitationLifecycle(item));row.append(revoke);
-    }
-    host.append(row);
-  }
-}
 async function openPersonDetail(person){
   const run=++detailRun,dialog=get("pa-person-detail-dialog");
   get("pa-person-detail-title").textContent=person.displayName;
@@ -1244,31 +1173,17 @@ async function openPersonDetail(person){
   get("pa-person-detail-access").textContent="—";
   get("pa-person-detail-relationships").textContent="—";
   for(const id of ["pa-person-detail-invites","pa-person-detail-links","pa-person-detail-audit"])get(id).replaceChildren();
-  if(!dialog.open)dialog.showModal();
+  dialog.showModal();
   try{
     const result=await perform("get_person",{personId:person.personId});
     if(!dialog.open||run!==detailRun||!schoolReady)return;
-    const p=result.person;currentDetailPerson=p;
+    const p=result.person;
     get("pa-person-detail-title").textContent=p.displayName;
     get("pa-person-detail-meta").textContent=p.kind+" · "+p.status+" · directory revision "+p.revision+
       (p.accountLinked?" · verified account linked":" · no account linked");
     get("pa-person-detail-access").textContent=result.membership?
       result.membership.status+" · "+result.membership.roles.join(", "):"No school membership";
     get("pa-person-detail-relationships").textContent=String(result.relationships?.length||0);
-    const classesAction=get("pa-person-detail-classes-action"),enrollmentAction=get("pa-person-detail-enrollment-action"),
-      recordsAction=get("pa-person-detail-records-action");
-    if(p.kind==="student"&&standardEnrollmentMode){
-      classesAction.hidden=true;
-      enrollmentAction.href="school-enrollment.html?personId="+encodeURIComponent(p.personId);
-      enrollmentAction.style.display="inline-flex";
-      recordsAction.href="school-student-records.html?personId="+encodeURIComponent(p.personId);
-      recordsAction.style.display="inline-flex";
-    }else{
-      classesAction.hidden=false;classesAction.textContent=p.kind==="student"?"Enrollment relationships":"Teaching & classes";
-      enrollmentAction.style.display="none";
-      recordsAction.style.display=p.kind==="student"?"inline-flex":"none";
-      if(p.kind==="student")recordsAction.href="school-student-records.html?personId="+encodeURIComponent(p.personId);
-    }
     const placementCard=get("pa-detail-placement-card");
     placementCard.hidden=p.kind!=="student"||standardEnrollmentMode;
     if(!placementCard.hidden){
@@ -1280,7 +1195,10 @@ async function openPersonDetail(person){
       updateDetailPlacementPicker();
     }
 
-    renderPersonInvitations(result.invitations);
+    renderDetailList(get("pa-person-detail-invites"),result.invitations,item=>
+      detailRow(item.requestedRole||"Invitation",(item.status||"unknown")+
+        (item.expiresAt?" · expires "+new Date(item.expiresAt).toLocaleString():"")),
+      "No invitation records");
     renderDetailList(get("pa-person-detail-links"),result.relationships,item=>
       detailRow(item.kind==="enrollment"?"Enrollment":"Teaching assignment",
         item.offeringId+" · "+item.status+" · revision "+item.revision),
@@ -1354,31 +1272,6 @@ get("pa-detail-placement-form")?.addEventListener("submit",event=>{
     get("pa-detail-placement-status").textContent=error?.message||"Section assignment failed.";
   }).finally(()=>{pendingWrite=false;button.disabled=false;});
 });
-get("pa-invitation-lifecycle-cancel").addEventListener("click",()=>{
-  if(pendingWrite)return;invitationChange=null;get("pa-invitation-lifecycle-dialog").close();
-});
-get("pa-invitation-lifecycle-dialog").addEventListener("cancel",event=>{
-  if(pendingWrite)event.preventDefault();else invitationChange=null;
-});
-get("pa-invitation-lifecycle-form").addEventListener("submit",event=>{
-  event.preventDefault();
-  if(pendingWrite||!invitationChange||!event.currentTarget.reportValidity())return;
-  const form=event.currentTarget,change=invitationChange,
-    reason=String(new FormData(form).get("reason")||"").trim(),
-    button=get("pa-invitation-lifecycle-confirm");
-  pendingWrite=true;button.disabled=true;say("Revoking school invitation…");
-  void perform("revoke_invitation",{
-    invitationId:change.invitation.invitationId,
-    expectedRevision:Number(change.invitation.revision)||1,reason
-  }).then(async()=>{
-    invitationChange=null;get("pa-invitation-lifecycle-dialog").close();
-    say("Invitation revoked. The record and audit history were preserved.");
-    if(change.person&&get("pa-person-detail-dialog").open)
-      await openPersonDetail(change.person);
-    await Promise.allSettled([loadOverview(),loadInvitePeople()]);
-  }).catch(error=>say(error?.message||"The invitation was not revoked."))
-    .finally(()=>{pendingWrite=false;button.disabled=false;});
-});
 get("pa-person-detail-close").addEventListener("click",()=>get("pa-person-detail-dialog").close());
 
 function directoryFilters(){
@@ -1414,11 +1307,9 @@ async function loadPeople(append) {
       const view=document.createElement("button");view.type="button";view.className="pa-action";view.style.background="#0f766e";view.textContent="View details";
       view.addEventListener("click",()=>void openPersonDetail(person));
       actions.append(view);
-      if(person.status==="active"){
-        const edit=document.createElement("button");edit.type="button";edit.className="pa-action";edit.textContent="Edit";
-        edit.addEventListener("click",()=>void editPersonProfile(person));
-        actions.append(edit);
-      }
+      const edit=document.createElement("button");edit.type="button";edit.className="pa-action";edit.textContent="Edit";
+      edit.addEventListener("click",()=>void editPersonProfile(person));
+      actions.append(edit);
       if(["active","archived"].includes(person.status)){
         const lifecycle=document.createElement("button");lifecycle.type="button";lifecycle.className="pa-action";
         lifecycle.style.background=person.status==="active"?"#9a3412":"#166534";
