@@ -83,14 +83,12 @@
           id="panel-security" data-teaching-settings
           class="settings-panel av-settings-panel hidden"
         >
-          <h3
-            class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-6"
-          >
-            Connections &amp; API keys
-          </h3>
+          <div class="av-settings-section-head">
+            <div><p class="av-eyebrow">Connected services</p><h2>Connections &amp; credentials</h2><p>Configure teacher-scoped external services and content-assistance credentials. These settings are shown only when the verified account has teaching authority.</p></div>
+          </div>
 
           <div class="space-y-6">
-            <div class="p-4 sm:p-5 border rounded-lg bg-gray-50">
+            <div class="av-settings-card">
               <h4
                 class="text-xs sm:text-sm font-bold text-gray-800 uppercase tracking-wider mb-3 flex items-center gap-2"
               >
@@ -104,7 +102,7 @@
               <p id="firebase-connection-hint" class="av-form-hint">Read-only details for the application currently connected to your school. The connection is configured by the site deployment.</p>
             </div>
 
-            <div class="p-4 sm:p-5 border rounded-lg bg-gray-50">
+            <div class="av-settings-card">
               <h4
                 class="text-xs sm:text-sm font-bold text-gray-800 uppercase tracking-wider mb-3 flex items-center gap-2"
               >
@@ -167,7 +165,7 @@
               onclick="saveSecuritySettings()"
               class="w-full bg-green-600 text-white py-3.5 sm:py-3 rounded font-bold hover:bg-green-700 transition shadow text-sm"
             >
-              Save connections &amp; keys
+              Save connection settings
             </button>
           </div>
         </div>
@@ -177,14 +175,12 @@
           id="panel-rubrics" data-teaching-settings
           class="settings-panel av-settings-panel hidden space-y-6"
         >
-          <h3
-            class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-4 sm:mb-6"
-          >
-            Grading Rubrics
-          </h3>
+          <div class="av-settings-section-head">
+            <div><p class="av-eyebrow">Teaching defaults</p><h2>Grading rubrics</h2><p>Manage reusable teacher grading criteria and choose the default rubric used by supported grading workflows.</p></div>
+          </div>
 
           <div
-            class="bg-purple-50 border-l-4 border-purple-600 p-4 rounded-r-lg flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2"
+            class="av-settings-card flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2"
           >
             <div>
               <span
@@ -205,7 +201,7 @@
           </div>
 
           <div
-            class="flex flex-col md:flex-row md:items-end gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200"
+            class="av-settings-card flex flex-col md:flex-row md:items-end gap-4"
           >
             <div class="flex-1 w-full">
               <label
@@ -224,19 +220,19 @@
                 onclick="equipCurrentTemplate()"
                 class="flex-1 sm:flex-none bg-green-600 text-white px-4 py-3 sm:py-2 rounded text-sm font-bold shadow-sm hover:bg-green-700 transition"
               >
-                🎯 Equip
+                Use as default
               </button>
               <button
                 onclick="createNewTemplate()"
                 class="flex-1 sm:flex-none bg-white border border-gray-300 text-gray-700 px-3 py-3 sm:py-2 rounded text-sm font-bold hover:bg-gray-100"
               >
-                ➕ New
+                New rubric
               </button>
               <button
                 onclick="deleteCurrentTemplate()"
                 class="flex-1 sm:flex-none bg-white border border-red-200 text-red-600 px-3 py-3 sm:py-2 rounded text-sm font-bold hover:bg-red-50"
               >
-                🗑️ Delete
+                Delete
               </button>
             </div>
           </div>
@@ -332,7 +328,7 @@
                 onclick="addCriterion()"
                 class="w-full py-3 sm:py-2 border-2 border-dashed border-gray-300 rounded font-semibold text-sm hover:bg-gray-50 transition"
               >
-                ➕ Add Criterion
+                Add criterion
               </button>
             </div>
           </div>
@@ -351,13 +347,11 @@
           id="panel-lesson" data-teaching-settings
           class="settings-panel av-settings-panel hidden"
         >
-          <h3
-            class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-6"
-          >
-            Document Export & Signatories
-          </h3>
+          <div class="av-settings-section-head">
+            <div><p class="av-eyebrow">Teaching defaults</p><h2>Documents &amp; export</h2><p>Set personal document headers, teacher display defaults and signatories used by supported teaching exports.</p></div>
+          </div>
 
-          <div class="mb-6 sm:mb-8 p-4 bg-gray-50 border rounded-lg">
+          <div class="av-settings-card mb-5">
             <h4
               class="text-[10px] sm:text-xs font-bold text-gray-700 uppercase mb-1"
             >
@@ -397,14 +391,14 @@
                 onclick="document.getElementById('settingsHeaderFile').click()"
                 class="flex-1 bg-gray-800 text-white font-bold px-4 py-3 sm:py-2 rounded text-sm sm:text-xs hover:bg-gray-700 transition"
               >
-                📁 Select Image File
+                Select image
               </button>
               <button
                 type="button"
                 onclick="clearHeaderImage()"
                 class="flex-1 bg-red-100 text-red-600 font-bold px-3 py-3 sm:py-2 rounded text-sm sm:text-xs hover:bg-red-200 transition"
               >
-                🗑️ Remove Header
+                Remove header
               </button>
             </div>
             <input type="hidden" id="settingsHeaderBase64" />
@@ -566,13 +560,11 @@
           id="panel-presentation" data-teaching-settings
           class="settings-panel av-settings-panel hidden"
         >
-          <h3
-            class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-6"
-          >
-            Presentation Defaults & Templates
-          </h3>
+          <div class="av-settings-section-head">
+            <div><p class="av-eyebrow">Teaching defaults</p><h2>Presentation defaults</h2><p>Choose personal slide backgrounds and reusable presentation structure for teacher-created lesson materials.</p></div>
+          </div>
 
-          <div class="mb-6 sm:mb-8 p-4 sm:p-5 bg-gray-50 border rounded-lg">
+          <div class="av-settings-card mb-5">
             <h4
               class="text-xs sm:text-sm font-bold text-gray-800 uppercase tracking-wider mb-2 sm:mb-4"
             >
@@ -614,14 +606,14 @@
                     onclick="document.getElementById('slideLogoFile').click()"
                     class="flex-1 bg-gray-800 text-white font-bold px-4 py-3 sm:py-2 rounded text-sm sm:text-xs hover:bg-gray-700 transition"
                   >
-                    📁 Select Image
+                    Select image
                   </button>
                   <button
                     type="button"
                     onclick="clearSlideBackground()"
                     class="flex-1 bg-red-100 text-red-600 font-bold px-3 py-3 sm:py-2 rounded text-sm sm:text-xs hover:bg-red-200 transition"
                   >
-                    🗑️ Remove
+                    Remove
                   </button>
                 </div>
               </div>
