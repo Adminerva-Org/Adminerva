@@ -938,6 +938,18 @@ function createSchoolAcademicsService({db}) {
       if(catalog[4].data().programId!==data.programId)
         deny("failed-precondition","The class section no longer matches its program.");
 
+      const [relationshipEnrollments,relationshipAssignments,existingSchedule]=await Promise.all([
+        tx.get(db.collection("schools/"+ctx.schoolId+"/enrollments").where("offeringId","==",offeringId).limit(201)),
+        tx.get(db.collection("schools/"+ctx.schoolId+"/staff_assignments").where("offeringId","==",offeringId).limit(101)),
+        tx.get(scheduleRef)
+      ]);
+      if(relationshipEnrollments.size===201||relationshipAssignments.size===101)
+        deny("resource-exhausted","Class relationship history requires pagination before this offering can be restored safely.");
+      const activeRelationshipEnrollments=relationshipEnrollments.docs.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"),
+       activeRelationshipAssignments=relationshipAssignments.docs.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+
       let registrations=[],enrollmentRefs=[],enrollments=[];
       const mode=ROSTER_MODES.has(data.rosterMode)?data.rosterMode:"legacy";
       if(mode==="section"){
@@ -960,7 +972,47 @@ function createSchoolAcademicsService({db}) {
           deny("failed-precondition","A currently placed student has class enrollment history ended for another reason. Review that student before restoring the official class roster.");
       }
 
-      const now=FieldValue.serverTimestamp();let restoredEnrollments=0,createdEnrollments=0,alreadyActive=0;
+      const now=FieldValue.serverTimestamp(),
+       currentRegistrationByPerson=new Map(registrations.map(doc=>[doc.data().personId,doc])),
+       normalizedAssignments=activeRelationshipAssignments.length;
+      let normalizedEnrollments=0,adoptedActiveEnrollments=0,normalizedSchedule=false,
+       restoredEnrollments=0,createdEnrollments=0,alreadyActive=0;
+
+      for(const assignment of activeRelationshipAssignments)
+        tx.update(assignment.ref,{status:"ended",endedByUid:uid,endedAt:now,endReason:reason,
+          endReasonType:"offering_restore_normalization",endedByOfferingId:offeringId,
+          revision:(Number(assignment.data().revision)||1)+1});
+
+      for(const enrollment of activeRelationshipEnrollments){
+        const row=enrollment.data(),registration=currentRegistrationByPerson.get(row.personId);
+        const currentOfficial=mode==="section"&&registration&&
+          row.yearId===data.yearId&&row.programId===data.programId&&
+          row.termId===data.termId&&row.sectionId===data.sectionId;
+        if(currentOfficial){
+          if(row.registrationId&&row.registrationId!==registration.id)
+            deny("failed-precondition","An active class enrollment is linked to a different official registration. Review the student before restoring this class.");
+          if(!row.registrationId){
+            tx.update(enrollment.ref,{registrationId:registration.id,enrollmentSource:"official_section_placement",
+              placementAdoptedByUid:uid,placementAdoptedAt:now,
+              revision:(Number(row.revision)||1)+1});
+            adoptedActiveEnrollments++;
+          }
+          continue;
+        }
+        tx.update(enrollment.ref,{status:"ended",endedByUid:uid,endedAt:now,endReason:reason,
+          endReasonType:"offering_restore_normalization",endedByOfferingId:offeringId,
+          revision:(Number(row.revision)||1)+1});
+        normalizedEnrollments++;
+      }
+
+      if(existingSchedule.exists&&existingSchedule.data().schoolId===ctx.schoolId&&
+         existingSchedule.data().status!=="archived"){
+        tx.update(scheduleRef,{status:"archived",archivedByUid:uid,archivedAt:now,archiveReason:reason,
+          archiveReasonType:"offering_restore_normalization",
+          revision:(Number(existingSchedule.data().revision)||1)+1,updatedAt:now});
+        normalizedSchedule=true;
+      }
+
       registrations.forEach((registration,index)=>{
         const prior=enrollments[index],registrationData=registration.data();
         if(prior.exists&&prior.data().status==="active"){alreadyActive++;return;}
@@ -987,10 +1039,13 @@ function createSchoolAcademicsService({db}) {
       tx.update(offeringRef,{status:"active",restoredByUid:uid,restoredAt:now,restoreReason:reason,
         revision:nextRevision,updatedByUid:uid,updatedAt:now});
       tx.create(auditRef,audit("course_offering_restored",{
-        offeringId,reason,rosterMode:mode,restoredEnrollments,createdEnrollments,alreadyActive,revision:nextRevision
+        offeringId,reason,rosterMode:mode,restoredEnrollments,createdEnrollments,alreadyActive,
+        normalizedEnrollments,normalizedAssignments,adoptedActiveEnrollments,normalizedSchedule,
+        revision:nextRevision
       }));
       result={offeringId,status:"active",revision:nextRevision,rosterMode:mode,
-        restoredEnrollments,createdEnrollments,alreadyActive};
+        restoredEnrollments,createdEnrollments,alreadyActive,
+        normalizedEnrollments,normalizedAssignments,adoptedActiveEnrollments,normalizedSchedule};
     }else{
       const [enrollmentSnap,assignmentSnap,assessmentSnap,schedule]=await Promise.all([
         tx.get(db.collection("schools/"+ctx.schoolId+"/enrollments").where("offeringId","==",offeringId).limit(201)),
