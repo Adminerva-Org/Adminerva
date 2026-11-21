@@ -181,9 +181,9 @@ function createSchoolAssessmentService({db}){
       deny("failed-precondition","Publish this assessment and set a future deadline, or explicitly allow late submissions, before opening the exam.");
     const before=data.manualAccessState||"waiting",
       closeGraceUntil=data.manualCloseGraceUntil?.toMillis?.()||0;
-    if(opening&&before==="closing"&&Date.now()<closeGraceUntil)
+    if(opening&&["closed","closing"].includes(before)&&Date.now()<closeGraceUntil)
       deny("failed-precondition","The previous session is still saving. Open the next class session after the closing grace period.");
-    const next=opening?"open":"closing",epoch=Number(data.manualSessionEpoch||0);
+    const next=opening?"open":"closed",epoch=Number(data.manualSessionEpoch||0);
     if(before===next){
       result={taskId,manualAccessState:next,sessionEpoch:epoch,revision,alreadyCurrent:true,
         offeringId:data.offeringId,title:data.title||"Practical exam"};return;
@@ -325,8 +325,8 @@ function createSchoolAssessmentService({db}){
        projectRevision:receipt?.projectRevision||null,savedAt:receipt?.savedAt||null};
    }).sort((a,b)=>a.displayName.localeCompare(b.displayName));
    const confirmed=students.filter(row=>row.checkpointConfirmed).length;
-   const sessionClosed=epoch<currentEpoch||task.data().manualAccessState==="closing"||
-     task.data().manualAccessState==="held";
+   const sessionClosed=epoch<currentEpoch||
+     ["closed","closing","held"].includes(task.data().manualAccessState);
    return {taskId,sessionEpoch:epoch,currentSessionEpoch:currentEpoch,
      sessionClosed,rosterSource:rosterDoc.exists?"close_snapshot":"current_fallback",
      confirmed,enrolledStudents:students.length,students};
@@ -414,7 +414,7 @@ function createSchoolAssessmentService({db}){
       ...(publish?{publishedAt:now,publishedByUid:ctx.uid}:
         {unpublishedAt:now,unpublishedByUid:ctx.uid}),
       ...(!publish&&data.manualOpenRequired===true&&data.manualAccessState==="open"?
-        {manualAccessState:"closing",manualClosedAt:now,manualClosedByUid:ctx.uid,
+        {manualAccessState:"closed",manualClosedAt:now,manualClosedByUid:ctx.uid,
          manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+60000)}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:publish?"assessment_published":"assessment_unpublished",
@@ -485,7 +485,7 @@ function createSchoolAssessmentService({db}){
     if(manualOpenRequired&&data.submissionSource!=="studio")
       deny("invalid-argument","Teacher-controlled opening requires an Adminerva Studio deployment.");
     if(data.manualOpenRequired===true&&!manualOpenRequired&&
-       ["open","closing"].includes(data.manualAccessState)&&
+       ["open","closed","closing"].includes(data.manualAccessState)&&
        (data.manualAccessState==="open"||Date.now()<(data.manualCloseGraceUntil?.toMillis?.()||0)))
       deny("failed-precondition","Close the current exam session and allow its final saves to finish before disabling manual opening.");
     const accessChanged=(data.manualOpenRequired===true)!==manualOpenRequired;
@@ -581,7 +581,7 @@ function createSchoolAssessmentService({db}){
       lastLifecycleReason:reason,lastLifecycleByUid:ctx.uid,...extra,
       ...(data.manualOpenRequired===true&&data.manualAccessState==="open"&&
          ["close","archive","cancel"].includes(input.action)?
-        {manualAccessState:"closing",manualClosedAt:now,manualClosedByUid:ctx.uid,
+        {manualAccessState:"closed",manualClosedAt:now,manualClosedByUid:ctx.uid,
          manualCloseGraceUntil:Timestamp.fromMillis(Date.now()+60000)}:{})});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:"assessment_"+input.action,beforeLifecycle:lifecycle,afterLifecycle:next,
