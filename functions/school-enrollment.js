@@ -63,7 +63,15 @@ function standardSchool(data){
     (data?.provisioningMode||"standard")==="standard";
 }
 function publicReference(applicationId){
-  return "ENR-"+String(applicationId||"").slice(0,10).toUpperCase();
+  return "APP-"+String(applicationId||"").slice(0,10).toUpperCase();
+}
+function applicationReference(doc){
+  const stored=typeof doc.data().reference==="string"?doc.data().reference.trim():"";
+  if(stored)return stored.slice(0,80);
+  // Public applications created before references were persisted came only
+  // from the historical MCS intake adapter. Preserve what those applicants saw.
+  if(doc.data().source==="online")return "MCS-"+String(doc.id||"").slice(0,10).toUpperCase();
+  return publicReference(doc.id);
 }
 function guardianPersonId({displayName,birthDate,guardianEmail}){
   return "reg_"+createHash("sha256")
@@ -119,7 +127,7 @@ function createSchoolEnrollmentService({db}){
       const snap=await db.collection(root+"enrollment_applications").limit(201).get();
       if(snap.size===201)deny("resource-exhausted","Enrollment application queue requires pagination.");
       const items=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>({
-        applicationId:doc.id,reference:publicReference(doc.id),
+        applicationId:doc.id,reference:applicationReference(doc),
         applicationType:doc.data().applicationType||"new",
         displayName:doc.data().displayName||"Student",
         birthDate:doc.data().birthDate||"",incomingLevel:doc.data().incomingLevel||"",
