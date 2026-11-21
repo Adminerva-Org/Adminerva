@@ -291,6 +291,25 @@
       </div>
     </form>
   </dialog>
+
+  <dialog id="en-history-dialog" class="en-dialog" aria-labelledby="en-history-title">
+    <section class="en-card">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-extrabold uppercase tracking-wider text-slate-600">Student placement history</p>
+          <h2 id="en-history-title" class="text-lg font-extrabold mt-1">Registration history</h2>
+          <p id="en-history-target" class="en-muted mt-1"></p>
+        </div>
+        <button id="en-history-close" type="button" class="en-btn secondary">Close</button>
+      </div>
+      <p id="en-history-status" class="en-notice mt-4" role="status" aria-live="polite">Loading placement history…</p>
+      <div id="en-history-list" class="en-list mt-4" role="list"></div>
+      <section class="en-summary mt-4">
+        <strong class="text-sm">Registrar audit trail</strong>
+        <div id="en-history-events" class="en-list mt-3"></div>
+      </section>
+    </section>
+  </dialog>
 </main>
 
 <script defer src="js/core/release-footer.js"></script>
