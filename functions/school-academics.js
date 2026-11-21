@@ -10,6 +10,7 @@ const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 const CATALOG=new Set(["academic_years","academic_programs","terms","subjects","sections"]);
 const PERIOD_TYPES=new Set(["term","semester","quarter","trimester","custom"]);
+const ROSTER_MODES=new Set(["section","selective"]);
 const DEFAULT_ACADEMIC_YEAR_START_MONTH=7;
 const DEFAULT_ACADEMIC_YEAR_END_MONTH=5;
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -287,7 +288,9 @@ function createSchoolAcademicsService({db}) {
    const teacherIds=new Set(teachers.map(row=>row.uid));
    const classes=offerings.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>{
     const row=doc.data();
-    return {offeringId:doc.id,sectionId:row.sectionId||"",subjectId:row.subjectId||"",yearId:row.yearId||"",termId:row.termId||"",programId:row.programId||"",teacherUids:[],invalidGrantCount:0};
+    return {offeringId:doc.id,sectionId:row.sectionId||"",subjectId:row.subjectId||"",yearId:row.yearId||"",termId:row.termId||"",programId:row.programId||"",
+      rosterMode:ROSTER_MODES.has(row.rosterMode)?row.rosterMode:"legacy",revision:Number(row.revision)||1,
+      teacherUids:[],invalidGrantCount:0};
    });
    const byId=new Map(classes.map(row=>[row.offeringId,row]));
    let unmatchedGrants=0;
@@ -561,7 +564,9 @@ function createSchoolAcademicsService({db}) {
    requireAdmin();
    const programId=checkId(input.programId,"Academic program/division"),
     yearId=checkId(input.yearId,"Academic year"),termId=checkId(input.termId,"Academic period"),
-    subjectId=checkId(input.subjectId,"Subject"),sectionId=checkId(input.sectionId,"Section");
+    subjectId=checkId(input.subjectId,"Subject"),sectionId=checkId(input.sectionId,"Section"),
+    rosterMode=String(input.rosterMode||"section").trim().toLowerCase();
+   if(!ROSTER_MODES.has(rosterMode))deny("invalid-argument","Choose Official section placement or Selective/manual roster.");
    const offeringId=rowKey(programId,yearId,termId,sectionId,subjectId);
    const ref=schoolRoot.doc("course_offerings/"+offeringId);
    const refs=[
@@ -578,7 +583,8 @@ function createSchoolAcademicsService({db}) {
     const registrationQuery=db.collection("schools/"+ctx.schoolId+"/student_registrations")
       .where("sectionId","==",sectionId).limit(201);
     const [catalog,existingOffering,registrationSnap]=await Promise.all([
-      Promise.all(refs.map(ref=>tx.get(ref))),tx.get(ref),tx.get(registrationQuery)
+      Promise.all(refs.map(ref=>tx.get(ref))),tx.get(ref),
+      rosterMode==="section"?tx.get(registrationQuery):Promise.resolve({docs:[],size:0})
     ]);
     if(catalog.some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active"))
       deny("failed-precondition","Offering references must be active catalog records at this school.");
@@ -604,7 +610,7 @@ function createSchoolAcademicsService({db}) {
 
     const now=FieldValue.serverTimestamp();let autoEnrolled=0,alreadyActive=0;
     tx.create(ref,{schoolId:ctx.schoolId,programId,yearId,termId,subjectId,sectionId,
-      status:"active",revision:1,createdByUid:uid,createdAt:now});
+      rosterMode,status:"active",revision:1,createdByUid:uid,createdAt:now});
     registrations.forEach((registration,index)=>{
       const personId=registration.data().personId,prior=existingEnrollments[index];
       if(prior.exists){
@@ -626,10 +632,10 @@ function createSchoolAcademicsService({db}) {
       });
     });
     tx.create(auditRef,audit("course_offering_created",{
-      offeringId,sectionId,yearId,termId,subjectId,
+      offeringId,sectionId,yearId,termId,subjectId,rosterMode,
       officialRegistrationCount:registrations.length,autoEnrolled,alreadyActive
     }));
-    result={offeringId,status:"active",officialRegistrationCount:registrations.length,autoEnrolled,alreadyActive};
+    result={offeringId,status:"active",rosterMode,officialRegistrationCount:registrations.length,autoEnrolled,alreadyActive};
    });
    return result;
   }
@@ -647,8 +653,84 @@ function createSchoolAcademicsService({db}) {
    return {offerings:snap.docs.filter(doc=>admin||allowed.has(doc.id))
     .map(doc=>({offeringId:doc.id,programId:doc.data().programId,
       yearId:doc.data().yearId,termId:doc.data().termId,
-      subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,status:doc.data().status}))};
+      subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,status:doc.data().status,
+      rosterMode:ROSTER_MODES.has(doc.data().rosterMode)?doc.data().rosterMode:"legacy",
+      revision:Number(doc.data().revision)||1}))};
   }
+  if(input.action==="set_offering_roster_mode"){
+   requireAdmin();
+   const offeringId=checkId(input.offeringId,"Course offering ID",330),
+    requestedMode=String(input.rosterMode||"").trim().toLowerCase(),
+    expectedRevision=Number(input.expectedRevision),
+    reason=checkName(input.reason,"Roster source change reason");
+   if(!ROSTER_MODES.has(requestedMode))deny("invalid-argument","Choose Official section placement or Selective/manual roster.");
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)deny("invalid-argument","Current class revision is required.");
+   if(reason.length<12)deny("invalid-argument","Explain the roster-source change in at least 12 characters.");
+   const offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
+    auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const offering=await tx.get(offeringRef);
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
+     deny("not-found","This active class offering is unavailable.");
+    const data=offering.data(),revision=Number(data.revision)||1;
+    if(revision!==expectedRevision)deny("failed-precondition","A newer class revision exists. Reload before changing its roster source.");
+    let registrations=[],enrollmentRefs=[],existing=[];
+    if(requestedMode==="section"){
+     const registrationQuery=db.collection("schools/"+ctx.schoolId+"/student_registrations")
+      .where("sectionId","==",data.sectionId).limit(201);
+     const registrationSnap=await tx.get(registrationQuery);
+     if(registrationSnap.size===201)
+      deny("resource-exhausted","This section has more than 200 active/historical registrations. Roster synchronization requires pagination.");
+     registrations=registrationSnap.docs.filter(doc=>{
+      const row=doc.data();return row.schoolId===ctx.schoolId&&row.status==="active"&&
+       row.sectionId===data.sectionId&&row.yearId===data.yearId&&row.programId===data.programId&&
+       row.termId===data.termId&&row.personId;
+     });
+     enrollmentRefs=registrations.map(registration=>
+      schoolRoot.doc("enrollments/"+rowKey(registration.data().personId,offeringId)));
+     existing=await Promise.all(enrollmentRefs.map(ref=>tx.get(ref)));
+     const ended=existing.find(record=>record.exists&&record.data().status!=="active");
+     if(ended)
+      deny("failed-precondition","At least one officially placed student has ended enrollment history for this class. Review that history before adopting the official section roster.");
+    }
+    const now=FieldValue.serverTimestamp();let added=0,alreadyActive=0;
+    registrations.forEach((registration,index)=>{
+     const personId=registration.data().personId,prior=existing[index];
+     if(prior.exists){
+      if(prior.data().schoolId!==ctx.schoolId||prior.data().personId!==personId||
+         prior.data().offeringId!==offeringId)
+       deny("failed-precondition","A student enrollment key collision requires review.");
+      alreadyActive++;return;
+     }
+     added++;
+     tx.create(enrollmentRefs[index],{
+      schoolId:ctx.schoolId,personId,offeringId,
+      programId:data.programId,yearId:data.yearId,termId:data.termId,sectionId:data.sectionId,subjectId:data.subjectId,
+      status:"active",revision:1,enrollmentSource:"official_section_placement",
+      registrationId:registration.id,createdByUid:uid,createdAt:now
+     });
+     const registrationData=registration.data();
+     tx.update(registration.ref,{
+      courseCount:(Number(registrationData.courseCount)||0)+1,
+      updatedByUid:uid,updatedAt:now,revision:(Number(registrationData.revision)||1)+1
+     });
+    });
+    const currentMode=ROSTER_MODES.has(data.rosterMode)?data.rosterMode:"legacy",
+     changed=currentMode!==requestedMode||added>0,
+     nextRevision=changed?revision+1:revision;
+    if(changed)tx.update(offeringRef,{rosterMode:requestedMode,revision:nextRevision,updatedByUid:uid,updatedAt:now});
+    tx.create(auditRef,audit(currentMode===requestedMode?"class_roster_synchronized":"class_roster_mode_changed",{
+     offeringId,fromRosterMode:currentMode,toRosterMode:requestedMode,reason,
+     officialRegistrationCount:registrations.length,added,alreadyActive,revision:nextRevision
+    }));
+    result={offeringId,rosterMode:requestedMode,revision:nextRevision,
+     officialRegistrationCount:registrations.length,added,alreadyActive,changed};
+   });
+   return result;
+  }
+
   if(input.action==="bulk_enroll_students"){
    requireAdmin();
    const offeringId=checkId(input.offeringId,"Course offering ID",330);
