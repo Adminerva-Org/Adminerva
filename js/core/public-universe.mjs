@@ -2,6 +2,8 @@
  * Public/guest entry portal. A real interactive constellation, not simulated
  * learner activity. Nodes link only to public existing destinations.
  */
+import {loadPublicChannel} from './public-content.mjs?v=20261121-1';
+
 const home=document.querySelector('main[data-home-experience="public"],main[data-home-experience="guest"]');
 if(home){
   const role=home.dataset.homeExperience;
@@ -87,6 +89,17 @@ if(home){
     },{passive:true});
     panel.addEventListener('pointerleave',()=>{panel.style.setProperty('--universe-x',0);panel.style.setProperty('--universe-y',0);});
     choose(0);
+    // The selected daily Codex experience can drive this actual interactive
+    // spotlight without changing the site template or fabricating activity.
+    loadPublicChannel('experiences',{role}).then(entries=>{
+      if(!entries.length||!panel.isConnected)return;
+      const featured=entries[Math.floor(Date.now()/86400000)%entries.length];
+      nodes[0]=['TODAY',featured.title,featured.summary,featured.url,'✦'];
+      buttons[0].querySelector('span').textContent='TODAY';
+      buttons[0].querySelector('b').textContent='✦';
+      buttons[0].setAttribute('aria-label','Preview featured experience: '+featured.title);
+      if(index===0)choose(0);
+    }).catch(()=>{ /* Default public destinations remain available. */ });
     const timer=window.setInterval(()=>{
       if(!panel.isConnected||document.hidden||Date.now()<manualUntil||panel.matches(':hover')||panel.contains(document.activeElement))return;
       if(window.matchMedia('(prefers-reduced-motion: reduce)').matches||
