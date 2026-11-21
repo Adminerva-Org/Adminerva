@@ -1,4 +1,4 @@
-import {app,auth} from "../core/firebase-core.js?v=1.3.0";
+
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 import {buildExternalPersonalizationPackage,parseExternalPersonalizationResponse} from "./services/external-personalization.mjs";
@@ -6,19 +6,22 @@ const api=httpsCallable(getFunctions(app,"asia-southeast1"),"teacherBlueprints")
 const scopedAssessmentApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessments");
 const schoolAcademicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const migrationApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessmentMigration");
+const classRecordApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolClassRecord");
 const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl-workspace");
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
 const requestedFilter=new URL(location.href).searchParams.get("view");
-let items=[],deployments=[],filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
-  lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
+const pageParams=new URL(location.href).searchParams;
+const requestedFilter=pageParams.get("view");
+const requestedOfferingId=String(pageParams.get("offeringId")||"");
+let items=[],deployments=[],recordLinks=new Map(),recordPermissions=new Map(),filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
-    lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
+    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];recordLinks=new Map();recordPermissions=new Map();editing=null;sharing=null;deploying=null;deployRequestKey=null;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
     form.reset();togglePersonalizationFields();
@@ -114,6 +117,7 @@ function toggleStudioProjectProfile(){
   if(wrap)wrap.hidden=!active;
   if(form.elements.studioProjectProfile)form.elements.studioProjectProfile.disabled=!active;
 }
+function togglePersonalizationFields(){
 function toggleManualOpening(){
   const deployForm=el("tl-deploy-form"),control=deployForm.elements.manualOpenRequired;
   const isStudio=deployForm.elements.submissionSource.value==="studio";
@@ -121,7 +125,6 @@ function toggleManualOpening(){
   control.disabled=!isStudio;
   if(!isStudio)control.checked=false;
 }
-function togglePersonalizationFields(){
   const active=form.elements.personalizationMode?.value==="personalized";
   el("tl-personalization-fields").hidden=!active;
   if(form.elements.variantTarget)form.elements.variantTarget.required=active;
@@ -199,11 +202,11 @@ function openDeploymentSettings(task){
   if(task.opensAt)form.elements.opensAt.value=localDateInput(new Date(task.opensAt));
   if(task.dueAt)form.elements.dueAt.value=localDateInput(new Date(task.dueAt));
   form.elements.allowLateSubmissions.checked=task.allowLateSubmissions===true;
+  dialog.showModal();
   const manual=el("tl-settings-manual-exam-option");
   manual.hidden=task.submissionSource!=="studio";
   form.elements.manualOpenRequired.disabled=task.submissionSource!=="studio";
   form.elements.manualOpenRequired.checked=task.manualOpenRequired===true;
-  dialog.showModal();
 }
 function showPreview(item){
   el("tl-preview-heading").textContent=item.title;
@@ -244,9 +247,9 @@ function render(){
       meta.className="tl-muted";
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
       meta.textContent=(task.published?"Published":"Private deployment")+" · "+sourceLabel(task.submissionSource)+
+        (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         (task.manualOpenRequired?" · Teacher session: "+(task.manualAccessState==="open"?"OPEN":
           ["closed","closing","held"].includes(task.manualAccessState)?"CLOSED":"WAITING"):"")+
-        (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
         (task.allowLateSubmissions?" · late submissions allowed":"")+
@@ -258,19 +261,74 @@ function render(){
         gradebook.href="school-gradebook.html?view=review&task="+encodeURIComponent(task.taskId);
         gradebook.textContent="Review & Grade";controls.append(gradebook);
         // Navigation only: the teacher still chooses the linked Class Record
-        // column, and its school-scoped score/release policies remain enforced.
-        if(task.offeringId&&task.taskId){
+        // Class Record remains the formal consolidation layer. Assessment Studio only
+        // exposes the current link state and routes the teacher into that policy-controlled workflow.
           const classRecord=document.createElement("a");classRecord.className="tl-action alt";
-          classRecord.href="class-record.html?"+new URLSearchParams({
-            offering:task.offeringId,assessment:task.taskId,source:"school"
-          }).toString();
-          classRecord.textContent="Add to Class Record";controls.append(classRecord);
+          const state=recordLinks.get(task.taskId)||{status:"unlinked"},
+            authority=recordPermissions.get(task.offeringId)||{
+              primaryTeacherUid:"",primaryNeedsReview:false,canEditClassRecord:false
+            };
+          if(state.status==="linked"||state.status==="archived"||authority.canEditClassRecord){
+            const classRecord=document.createElement("a");classRecord.className="tl-action alt";
+            if(state.status==="linked"){
+              classRecord.href="class-record.html?offering="+encodeURIComponent(task.offeringId);
+              classRecord.textContent="Open Class Record";
+              classRecord.title=(state.category||"Uncategorized")+" · "+(state.studentVisibility==="released"?"visible to students":"hidden from students");
+            }else if(state.status==="archived"){
+              classRecord.href="class-record.html?offering="+encodeURIComponent(task.offeringId);
+              classRecord.textContent="Review archived Class Record link";
+            }else{
+              classRecord.href="class-record.html?"+new URLSearchParams({
+                offering:task.offeringId,assessment:task.taskId,source:"school"
+              }).toString();
+              classRecord.textContent="Link to Class Record";
+            }
+            controls.append(classRecord);
+          }else{
+            const recordNote=document.createElement("span");
+            recordNote.className="tl-muted";
+            recordNote.textContent=authority.primaryNeedsReview?
+              "Class Record: Primary Teacher needs School Admin review":
+              "Class Record: Primary Teacher must link";
+            controls.append(recordNote);
+          }
         }
         controls.append(actionButton("Deployment settings",()=>openDeploymentSettings(task),true));
       }
       if(["active","closed"].includes(lifecycle)){
         controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
       }
+      if(lifecycle==="active"){
+        controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
+        controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
+        controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
+      }else if(lifecycle==="closed"){
+        controls.append(actionButton("Reopen",()=>openLifecycle(task,"reopen")));
+        controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
+        controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
+      }else if(lifecycle==="archived"){
+        controls.append(actionButton("Restore",()=>openLifecycle(task,"restore_archive"),true));
+      }
+      row.append(text,controls);list.append(row);
+    }
+    return;
+  }
+  const visible=items.filter(item=>{
+    if(filter==="mine")return item.ownerUid===uid;
+    if(filter==="shared")return item.ownerUid!==uid&&item.visibility==="selected_teachers";
+    return item.ownerUid!==uid&&item.visibility==="school_teachers";
+  });
+  if(!visible.length){
+    const empty=document.createElement("p");empty.className="tl-muted";
+    empty.textContent=filter==="mine"?"You have no private assessments yet.":
+      filter==="shared"?"No assessments have been shared specifically with you.":
+        }
+        controls.append(actionButton("Deployment settings",()=>openDeploymentSettings(task),true));
+      }
+      if(["active","closed"].includes(lifecycle)){
+        controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
+      }
+      if(lifecycle==="active"){
       if(lifecycle==="active"&&task.published&&task.manualOpenRequired&&task.submissionSource==="studio"){
         const isOpen=task.manualAccessState==="open",
           finalSaving=["closed","closing"].includes(task.manualAccessState)&&Number(task.manualCloseGraceUntil||0)>Date.now();
@@ -284,7 +342,6 @@ function render(){
         controls.append(actionButton("Class save history",
           ()=>void showExamCloseReport(task),true));
       }
-      if(lifecycle==="active"){
         controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
         controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
         controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
@@ -519,6 +576,7 @@ async function setPublication(task,publish){
   }catch(error){say(error?.message||"Assessment publication could not be changed.");}
   finally{pendingWrite=false;}
 }
+async function prepareDeployment(item){
 async function showExamCloseSnapshot(task,epoch,student){
   const holder=document.getElementById("schoolAssessmentStudioHost")||document.body;
   let dialog=document.getElementById("tl-closed-exam-source");
@@ -772,7 +830,6 @@ async function setExamOpening(task,opening){
   }catch(error){say(error?.message||"Exam access could not be changed.");}
   finally{pendingWrite=false;}
 }
-async function prepareDeployment(item){
   if(pendingWrite)return;
   const turn=++deployEpoch;deployReady=false;
   if(personalized(item)){
@@ -792,13 +849,13 @@ async function prepareDeployment(item){
   form.reset();
   form.elements.submissionSource.disabled=personalized(item);
   form.elements.submissionSource.value=personalized(item)?"studio":(item.defaultSubmissionSource||"text");
+  const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   toggleManualOpening();
   // Practical-exam deployments default to teacher-controlled class sessions;
   // ordinary Studio assignments keep their original scheduled behavior.
   form.elements.manualOpenRequired.checked=
     form.elements.submissionSource.value==="studio"&&
     /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(item.assessmentType||""));
-  const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   form.elements.opensAt.value=localDateInput(now);
   form.elements.dueAt.value=localDateInput(tomorrow);
   const select=el("tl-deploy-offering");
@@ -839,8 +896,8 @@ el("tl-deployment-settings-form").addEventListener("submit",event=>{
     taskId:task.taskId,expectedRevision:task.revision||1,
     opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
     allowLateSubmissions:form.elements.allowLateSubmissions.checked===true,
-    manualOpenRequired:form.elements.manualOpenRequired.checked===true,
     reason:String(form.elements.reason.value||"")
+    manualOpenRequired:form.elements.manualOpenRequired.checked===true,
   };
   void (async()=>{
     pendingWrite=true;[...form.elements].forEach(control=>control.disabled=true);
@@ -891,6 +948,7 @@ el("tl-cancel-deploy").addEventListener("click",()=>{
 });
 el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
 el("tl-deploy-dialog").addEventListener("close",()=>{++deployEpoch;deployReady=false;deploying=null;deployRequestKey=null;});
+el("tl-deploy-form").addEventListener("input",()=>{if(!pendingWrite)deployRequestKey=crypto.randomUUID();});
 el("tl-deploy-form").elements.submissionSource.addEventListener("change",()=>{
   toggleManualOpening();
   const form=el("tl-deploy-form");
@@ -898,7 +956,6 @@ el("tl-deploy-form").elements.submissionSource.addEventListener("change",()=>{
      /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(deploying?.assessmentType||"")))
     form.elements.manualOpenRequired.checked=true;
 });
-el("tl-deploy-form").addEventListener("input",()=>{if(!pendingWrite)deployRequestKey=crypto.randomUUID();});
 el("tl-deploy-form").addEventListener("submit",event=>{
   event.preventDefault();if(!deploying||pendingWrite||!deployReady)return;
   const form=event.currentTarget;
@@ -921,8 +978,8 @@ el("tl-deploy-form").addEventListener("submit",event=>{
         blueprintId:resource.id,offeringId:String(fields.get("offeringId")||""),
         submissionSource:personalized(resource)?"studio":String(fields.get("submissionSource")||""),
         opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
+        allowLateSubmissions:fields.get("allowLateSubmissions")==="on",requestKey:key
         allowLateSubmissions:fields.get("allowLateSubmissions")==="on",
-        manualOpenRequired:fields.get("manualOpenRequired")==="on",requestKey:key
       });
       const message=task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
         "Assessment prepared privately for this class. Publish it when you are ready for students to see it.";
