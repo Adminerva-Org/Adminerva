@@ -249,7 +249,7 @@ export function buildNavigationIA(ctx){
         ]),
         group("Advisory / Homeroom",[
           live("advisory-overview","Advisory Overview","teacher-advisory.html","Official advisory section roster and subject-teacher coverage, separate from instructional class authority."),
-          future("advisory-attendance","Attendance","Advisory attendance will use a school-authoritative attendance record rather than classroom activity."),
+          live("advisory-attendance","Attendance","teacher-advisory.html#attendance","School-authoritative daily advisory attendance, revisioned and independent from Classroom activity."),
           future("advisory-conduct","Conduct / Student Notes","Reserved for school-governed advisory records.")
         ])
       ]),
