@@ -302,6 +302,31 @@ if(home){
     dashboard.addEventListener('click',scrollDashboard);enter.addEventListener('click',scrollDashboard);
   }
 
+
+  if(publicLike&&requested===null){
+    const gate=document.createElement('dialog');
+    gate.className='avfx-gate';
+    gate.setAttribute('aria-labelledby','avfx-gate-title');
+    const shell=el('div','avfx-gate-shell');
+    const mark=el('div','avfx-gate-mark');mark.setAttribute('aria-hidden','true');
+    const owl=document.createElement('img');owl.src='assets/adminerva-owl.png';owl.width=76;owl.height=76;owl.alt='';
+    mark.append(owl);
+    const copy=el('div','avfx-gate-copy');
+    copy.innerHTML='<p class="avfx-kicker">ADMINERVA / ENTRY MODE</p><h2 id="avfx-gate-title">How do you want to enter?</h2><p>Full Experience moves through Adminerva one scene at a time. Quick Mode keeps the familiar fast-scrolling page. You can switch any time.</p>';
+    const actions=el('div','avfx-gate-actions');
+    const fullChoice=el('button','avfx-primary','Enter Full Experience →');fullChoice.type='button';
+    const quickChoice=el('button','avfx-secondary','Use Quick Mode');quickChoice.type='button';
+    actions.append(fullChoice,quickChoice);copy.append(actions);shell.append(mark,copy);gate.append(shell);document.body.append(gate);
+    const choose=mode=>{applyMode(mode);if(typeof gate.close==='function'&&gate.open)gate.close();else gate.remove();};
+    fullChoice.addEventListener('click',()=>choose('full'));
+    quickChoice.addEventListener('click',()=>choose('quick'));
+    gate.addEventListener('cancel',event=>{event.preventDefault();choose('quick');});
+    queueMicrotask(()=>{
+      try{gate.showModal();}catch{gate.setAttribute('open','');}
+      fullChoice.focus();
+    });
+  }
+
   function buildOrbit(items,seed){
     const orbit=el('div','avfx-orbit');
     orbit.append(el('div','avfx-orbit-ring avfx-orbit-ring--one'),el('div','avfx-orbit-ring avfx-orbit-ring--two'),el('div','avfx-orbit-ring avfx-orbit-ring--three'));
