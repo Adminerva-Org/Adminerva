@@ -311,7 +311,17 @@ function createSchoolEnrollmentService({db}){
           if(slot.exists)tx.set(slotRef,{...slotData,revision:(slot.data().revision||1)+1},{merge:true});
           else tx.create(slotRef,{...slotData,revision:1,createdByUid:ctx.uid,createdAt:now});
         }else{
-          const active=enrollments.filter(doc=>doc.exists&&doc.data().status==="active");
+          const offeringDocs=await Promise.all(enrollments.map(doc=>doc.exists&&doc.data().offeringId
+            ?tx.get(db.doc(root+"course_offerings/"+checkId(doc.data().offeringId,"Course offering ID",330)))
+            :Promise.resolve(null)));
+          const active=enrollments.filter((doc,index)=>{
+            if(!doc.exists||doc.data().status!=="active")return false;
+            const row=doc.data();
+            if(row.registrationId)return row.registrationId===registrationId;
+            const offering=offeringDocs[index];
+            return Boolean(offering?.exists&&offering.data().schoolId===ctx.schoolId&&
+              offering.data().rosterMode!=="selective");
+          });
           const now=FieldValue.serverTimestamp();
           for(const doc of active){
             tx.update(doc.ref,{status:"ended",endedByUid:ctx.uid,endedAt:now,endReason:reason,
