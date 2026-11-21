@@ -13,7 +13,8 @@
         "all"
       ],
       "url": "guest-playground.html",
-      "label": "TODAY'S EXPLORATION"
+      "label": "TODAY'S EXPLORATION",
+      "sceneTone": "sky"
     },
     {
       "id": "discover-practice-2026",
@@ -26,7 +27,8 @@
         "all"
       ],
       "url": "guest-practice.html",
-      "label": "DISCOVERY MISSION"
+      "label": "DISCOVERY MISSION",
+      "sceneTone": "amber"
     }
   ]
 }

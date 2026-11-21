@@ -25,7 +25,7 @@ For opportunities the reader additionally requires `category` (`Training`, `Scho
 
 For announcements and weekly summaries, require a `sourceUrl` for traceability. Releases must continue using the established `docs/release-notes-style-guide.md`, `patch-history.json` and `site-release.json`. Existing release notifications must not be duplicated or published before the relevant backend/frontend release is confirmed.
 
-For experiences, only use illustrative public demos with explicit public links and a short `label`. Do not invent actual user events, imply school-wide activity is live, or render data from student, teacher, or guardian records. Use existing interaction components; do not rewrite core homepage templates daily.
+For experiences, use an optional `sceneTone` set to `mint`, `amber`, `violet`, or `sky`. The public and guest home portals use this approved value to change their visual atmosphere without editing site templates. For experiences, only use illustrative public demos with explicit public links and a short `label`. Do not invent actual user events, imply school-wide activity is live, or render data from student, teacher, or guardian records. Use existing interaction components; do not rewrite core homepage templates daily.
 
 ## Copy into Codex Automations
 

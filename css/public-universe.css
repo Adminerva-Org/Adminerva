@@ -1,0 +1,99 @@
+/* Adminerva constellation landing experience.
+   Turns the existing public/guest hero into a spatial interface,
+   preserves ordinary links, text and accessible navigation below. */
+main[data-home-experience="public"],main[data-home-experience="guest"]{--portal-teal:#9dfbd8;--portal-ink:#071425}
+main[data-home-experience="public"]{width:min(1570px,100%);max-width:1570px;padding-inline:clamp(.75rem,2.5vw,2.7rem)}
+main[data-home-experience="guest"]{width:min(1570px,100%);max-width:1570px;padding-inline:clamp(.75rem,2.5vw,2.7rem)}
+main[data-home-experience="public"] .av-universe-hero,
+main[data-home-experience="guest"] .av-universe-hero{
+  display:grid!important;
+  grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr)!important;
+  gap:clamp(1rem,2vw,2.3rem)!important;
+  align-items:center;
+  min-height:clamp(550px,77svh,850px);
+  padding:clamp(1.25rem,4.6vw,5.8rem)!important;
+  position:relative;isolation:isolate;overflow:hidden;
+  color:#f2fdff!important;
+  background:radial-gradient(ellipse at 77% 40%,#1d607d8c,transparent 46%),radial-gradient(ellipse at 12% 95%,#2474653a,transparent 52%),#061426!important;
+  border:1px solid #4f8e9945;border-radius:clamp(.85rem,2vw,1.8rem);
+  box-shadow:0 35px 90px #06192b38;
+}
+main[data-home-experience="public"] .av-universe-hero::before,
+main[data-home-experience="guest"] .av-universe-hero::before{content:"";position:absolute;z-index:0;pointer-events:none;inset:0;width:auto;height:auto;aspect-ratio:auto;border:0;border-radius:0;background:linear-gradient(90deg,#8ee9db08 1px,transparent 1px),linear-gradient(#8ee9db08 1px,transparent 1px);background-size:62px 62px;transform:none;opacity:.85;mask-image:linear-gradient(120deg,#000,transparent 80%);}
+main[data-home-experience="public"] .av-universe-hero::after,
+main[data-home-experience="guest"] .av-universe-hero::after{content:"";position:absolute;right:-10%;top:-25%;width:55%;aspect-ratio:1;border:1px solid #74edd334;border-radius:50%;pointer-events:none;box-shadow:0 0 80px #63dbb31f,inset 0 0 80px #63dbb31d}
+.av-universe-hero >div:first-child{min-width:0;position:relative;z-index:2}
+.av-universe-hero .av-eyebrow{font-size:.74rem!important;letter-spacing:.19em!important;color:#adffe3!important;font-weight:850}
+.av-universe-hero h1{max-width:11ch;color:#f5fdff!important;font-size:clamp(2.8rem,5.6vw,6.5rem)!important;line-height:.99!important;letter-spacing:-.07em!important;font-weight:900!important;margin:1.1rem 0 1.5rem!important}
+.av-universe-hero .av-motion-hero-copy h1{font-size:clamp(2.8rem,5.4vw,6.2rem)!important}
+.av-universe-hero p{color:#bdd5df!important;line-height:1.7!important;max-width:55ch}
+.av-universe-hero p:last-child{font-size:.76rem}
+.av-universe-hero .av-primary-button{background:#acffe1!important;border-color:#acffe1!important;color:#082839!important;min-height:50px;box-shadow:0 12px 40px #a5f4dc2e}
+.av-universe-hero .av-secondary-link{color:#d5fff1!important;border-color:#a0f7d35c!important}
+.av-universe-hero .av-primary-button:hover{transform:translateY(-2px);background:#d0ffe9!important}
+.av-universe-hero .av-button-row{gap:.7rem}
+.av-universe{position:relative;min-width:0;width:100%;aspect-ratio:1;max-width:690px;max-height:690px;justify-self:center;isolation:isolate;z-index:2;perspective:850px;transform:rotateY(calc(var(--universe-x,0)*3deg)) rotateX(calc(var(--universe-y,0)*-3deg));transition:transform .36s ease}
+.av-universe-grid{position:absolute;inset:8%;border-radius:50%;background:radial-gradient(circle,#157a8766 0,#13314b33 40%,transparent 73%);filter:blur(8px)}
+.av-universe-ring{position:absolute;left:50%;top:45%;border-radius:50%;pointer-events:none}
+.av-universe-ring--outer{width:85%;aspect-ratio:1;border:1px dashed #a7ffdc80;transform:translate(-50%,-50%);animation:av-universe-spin 65s linear infinite;box-shadow:0 0 75px #39d4b51a}
+.av-universe-ring--inner{width:59%;aspect-ratio:1;border:1px solid #77d8d14d;transform:translate(-50%,-50%);box-shadow:0 0 55px #61e7cd24,inset 0 0 70px #3bcab11f}
+.av-universe-halo{position:absolute;left:50%;top:45%;width:34%;aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,#1a7b7a73,#102d4b5e 60%,transparent 72%);box-shadow:0 0 100px #7aebc92d}
+.av-universe-core{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);width:29%;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.45rem;border-radius:50%;border:1px solid #d4fff0a6;background:radial-gradient(circle at 30% 30%,#277e85,#0b2c46 64%,#061a31);box-shadow:0 0 65px #8df6d35c,inset 0 0 35px #79c3c73d}
+.av-universe-core img{width:47%;height:auto;filter:drop-shadow(0 0 14px #c3ffee9c)}
+.av-universe-core span{font-size:clamp(.38rem,.7vw,.65rem);letter-spacing:.1em;font-weight:900;color:#d5ffeb}
+.av-universe-nodes{position:absolute;inset:0}
+.av-universe-node{position:absolute;left:var(--nx);top:var(--ny);transform:translate(-50%,-50%);display:flex;gap:.45rem;align-items:center;border:1px solid #89eddbac;background:#0a2b43eb;color:#dffff6;min-width:90px;max-width:35%;padding:.65rem .72rem;border-radius:99px;font-size:clamp(.6rem,.85vw,.83rem);letter-spacing:.05em;box-shadow:0 0 0 7px #a5ffe113,0 16px 33px #0615219e;cursor:pointer;z-index:3;transition:transform .2s ease,background .2s ease}
+.av-universe-node b{display:grid;place-items:center;flex:0 0 25px;width:25px;height:25px;font-size:.88rem;border-radius:50%;background:#b0ffe6;color:#11364c}
+.av-universe-node span{font-weight:900}
+.av-universe-node:hover,.av-universe-node[aria-pressed="true"]{background:#c2ffe9;color:#063c46;transform:translate(-50%,-50%) scale(1.08)}
+.av-universe-node:hover b,.av-universe-node[aria-pressed="true"] b{background:#13516b;color:#e6ffee}
+.av-universe-spotlight{position:absolute;right:0;bottom:5%;width:min(85%,330px);padding:1rem 1.1rem;border:1px solid #99dddb85;border-radius:1rem;background:linear-gradient(135deg,#0b3348f2,#0a2238fa);box-shadow:0 16px 40px #031324a6;z-index:4;backdrop-filter:blur(12px);display:flex;flex-direction:column;gap:.35rem}
+.av-universe-spotlight-kicker{font-size:.61rem;font-weight:900;letter-spacing:.09em;color:#9bf7d7}
+.av-universe-spotlight strong{font-size:clamp(1rem,1.5vw,1.4rem);font-weight:900;line-height:1.2;color:#f2ffff}
+.av-universe-spotlight p{font-size:.77rem;line-height:1.5!important;color:#b2d4db!important;margin:0}
+.av-universe-open{display:inline-flex;align-self:flex-start;margin-top:.35rem;color:#b2ffe2!important;font-size:.79rem;text-decoration:underline;text-underline-offset:4px;font-weight:900}
+.av-universe-bottom{position:absolute;left:4%;bottom:4%;display:flex;align-items:center;gap:.6rem;flex-direction:column;z-index:4}
+.av-universe-bottom small{display:block;max-width:150px;font-size:.52rem;letter-spacing:.1em;color:#88abb5;font-weight:800;text-align:center}
+.av-universe-bottom button{background:transparent;border:1px solid #a5e5d66d;color:#c7f9eb;border-radius:99px;padding:.45rem .7rem;font-size:.66rem;font-weight:850;cursor:pointer}
+.av-universe-bottom button:hover{background:#1b4f5d}
+.av-universe :is(a,button):focus-visible{outline:3px solid #d8ff95;outline-offset:3px}
+@keyframes av-universe-spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+@media(max-width:1050px){
+ main[data-home-experience="public"] .av-universe-hero,main[data-home-experience="guest"] .av-universe-hero{grid-template-columns:1fr!important;padding:clamp(1.25rem,4.2vw,2.3rem)!important}
+ .av-universe-hero h1{max-width:15ch!important;font-size:clamp(3rem,7vw,5rem)!important}
+ .av-universe{width:min(88vw,590px);margin:0 auto}
+ main[data-home-experience="guest"] .av-universe-hero .av-motion-hero-copy{z-index:2}
+}
+@media(max-width:600px){
+ .av-universe-hero h1,.av-universe-hero .av-motion-hero-copy h1{font-size:clamp(2.55rem,12vw,4rem)!important}
+ .av-universe{width:min(91vw,430px)}
+ .av-universe-node{min-width:0;max-width:40%;padding:.4rem .5rem;font-size:.59rem;gap:.25rem}
+ .av-universe-node b{flex-basis:20px;width:20px;height:20px;font-size:.72rem}
+ .av-universe-spotlight{width:70%;padding:.75rem .8rem}
+ .av-universe-spotlight strong{font-size:.96rem}
+ .av-universe-spotlight p{font-size:.66rem}
+ .av-universe-spotlight-kicker{font-size:.48rem}
+ .av-universe-bottom small{display:none}
+ .av-universe-bottom button{padding:.3rem .45rem;font-size:.55rem}
+ main[data-home-experience="public"],main[data-home-experience="guest"]{padding-inline:.55rem}
+}
+@media(max-width:380px){
+ .av-universe-node span{font-size:.5rem}
+ .av-universe-core span{font-size:.38rem}
+ .av-universe-spotlight{width:75%}
+ .av-universe-bottom{bottom:3%;left:1%}
+}
+@media(prefers-reduced-motion:reduce){.av-universe,.av-universe *{animation:none!important;transition:none!important}.av-universe{transform:none!important}}
+html[data-motion="reduce"] .av-universe,html[data-motion="reduce"] .av-universe *,html[data-adminerva-reduce-motion="true"] .av-universe,html[data-adminerva-reduce-motion="true"] .av-universe *{animation:none!important;transition:none!important;transform-style:flat}
+
+
+/* Approved daily experience changes the spatial atmosphere, not the template. */
+.av-universe[data-scene-tone="sky"] .av-universe-ring--inner{border-color:#88d8ff;box-shadow:0 0 70px #38aaf247,inset 0 0 60px #38aaf222}
+.av-universe[data-scene-tone="sky"] .av-universe-core{border-color:#aee6ff;box-shadow:0 0 65px #54c5ff60}
+.av-universe[data-scene-tone="sky"] .av-universe-spotlight-kicker,.av-universe[data-scene-tone="sky"] .av-universe-open{color:#a5e9ff!important}
+.av-universe[data-scene-tone="amber"] .av-universe-ring--inner{border-color:#ffe2a5;box-shadow:0 0 70px #ffc45e48,inset 0 0 60px #ffc45e25}
+.av-universe[data-scene-tone="amber"] .av-universe-core{border-color:#ffe2aa;box-shadow:0 0 65px #ffb85756}
+.av-universe[data-scene-tone="amber"] .av-universe-spotlight-kicker,.av-universe[data-scene-tone="amber"] .av-universe-open{color:#ffe4b4!important}
+.av-universe[data-scene-tone="violet"] .av-universe-ring--inner{border-color:#cdb6ff;box-shadow:0 0 70px #a27dfa4a,inset 0 0 60px #a27dfa2c}
+.av-universe[data-scene-tone="violet"] .av-universe-core{border-color:#e2d4ff;box-shadow:0 0 65px #b19bff59}
+.av-universe[data-scene-tone="violet"] .av-universe-spotlight-kicker,.av-universe[data-scene-tone="violet"] .av-universe-open{color:#e2d4ff!important}

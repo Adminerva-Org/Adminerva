@@ -63,7 +63,10 @@ export function normalizePublicItem(item,channel,now=Date.now()){
   }
   if(channel==='experiences'){
     if(!link.match(/^[a-z0-9][a-z0-9-]*\.html/i))return null;
-    return {...common,label:trim(item.label,45)||'EXPLORE ADMINERVA'};
+    const tone=trim(item.sceneTone,16).toLowerCase();
+    if(tone&&!['mint','amber','violet','sky'].includes(tone))return null;
+    return {...common,label:trim(item.label,45)||'EXPLORE ADMINERVA',
+      sceneTone:tone||'mint'};
   }
   if(channel==='announcements'||channel==='weekly-pulse'){
     const sourceUrl=url(item.sourceUrl);
