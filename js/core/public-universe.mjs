@@ -2,7 +2,7 @@
  * Public/guest entry portal. A real interactive constellation, not simulated
  * learner activity. Nodes link only to public existing destinations.
  */
-import {loadPublicChannel} from './public-content.mjs?v=20261121-1';
+import {loadPublicChannel} from './public-content.mjs?v=20261122-1';
 
 const home=document.querySelector('main[data-home-experience="public"],main[data-home-experience="guest"]');
 if(home){
