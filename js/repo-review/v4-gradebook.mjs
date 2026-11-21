@@ -155,7 +155,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const historicalScalar=historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1";
     const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1"&&!readThrough;
     document.getElementById("gbV4SaveDraft").disabled=
-      busy||!loaded||!evidenceReady||published||reopened||legacyScalar||historicalScalar;
+      busy||!loaded||!evidenceReady||published||reopened||legacyScalar;
     document.getElementById("gbV4Publish").disabled=
       busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar;
     document.getElementById("gbV4RequestRevision").disabled=
@@ -791,7 +791,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         currentTask.submissionSource==="github"&&!["approved","reviewed"].includes(currentSnapshot.status)?
           (historicalGithub?"Use original evidence verification for this historical submission before grading.":"Verify and approve the exact frozen GitHub evidence before starting a grade draft."):
         historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1"?
-          "An existing historical grade has no trusted rubric allocation. Its score is preserved; review or correct it through the original audited workflow.":
+          "This unpublished historical draft has no trustworthy rubric allocation. Enter a new reviewed criterion breakdown and save a revision of the original grade; no score changes are applied until you save.":
         currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
