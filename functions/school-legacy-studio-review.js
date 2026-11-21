@@ -8,7 +8,7 @@
  * identity from a name/email guess. Native V4 deployments are unchanged.
  */
 const {createHash}=require("node:crypto");
-const {FieldValue}=require("firebase-admin/firestore");
+const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {TenantAccessError}=require("./tenant-access.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message);};
 const digest=text=>createHash("sha256").update(text,"utf8").digest("hex");
@@ -153,15 +153,38 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
       };
     };
     const gradeRef=id=>db.doc("student_grades/"+id);
+    async function submissionPage(cursor="",pageSize=80){
+      const base=db.collection("studio_submissions")
+        .where("assessmentId","==",legacyAssessmentId)
+        .orderBy(FieldPath.documentId());
+      const query=cursor?base.startAfter(cursor).limit(pageSize):base.limit(pageSize);
+      const snap=await query.get();
+      return {docs:snap.docs,nextCursor:snap.size===pageSize?
+        snap.docs[snap.docs.length-1].id:null};
+    }
+    async function allSubmissionHeads(){
+      let cursor="",rows=[];
+      for(;;){
+        const page=await submissionPage(cursor);
+        rows.push(...page.docs.filter(doc=>allowedHead(doc.data())));
+        if(rows.length>1000)
+          deny("resource-exhausted","Historical Studio review exceeds 1,000 submissions and needs a narrower indexed view.");
+        if(!page.nextCursor)return rows;
+        cursor=page.nextCursor;
+      }
+    }
     if(input.action==="legacy_review_inbox"){
-      const snap=await db.collection("studio_submissions")
-        .where("assessmentId","==",legacyAssessmentId).limit(101).get();
-      if(snap.size===101)deny("resource-exhausted","Historical inbox requires pagination.");
-      const rows=snap.docs.filter(doc=>allowedHead(doc.data()));
-      const [students,grades]=await Promise.all([
-        Promise.all(rows.map(row=>db.doc("students/"+safeId(row.data().studentId,"Student",160)).get())),
-        Promise.all(rows.map(row=>gradeRef(row.id).get()))
-      ]);
+      const rows=await allSubmissionHeads();
+      const students=[],grades=[];
+      for(let start=0;start<rows.length;start+=80){
+        const batch=rows.slice(start,start+80);
+        const [names,scores]=await Promise.all([
+          Promise.all(batch.map(row=>db.doc("students/"+
+            safeId(row.data().studentId,"Student",160)).get())),
+          Promise.all(batch.map(row=>gradeRef(row.id).get()))
+        ]);
+        students.push(...names);grades.push(...scores);
+      }
       const submissions=rows.map((doc,index)=>{
         const data=doc.data(),grade=grades[index].exists?grades[index].data():null,
           student=students[index].exists?students[index].data():null;
@@ -234,18 +257,18 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
       return published;
     }
     if(input.action==="legacy_review_bulk_publish"){
-      const snap=await db.collection("studio_submissions").where("assessmentId","==",legacyAssessmentId)
-        .limit(101).get();
-      if(snap.size===101)deny("resource-exhausted","Bulk publication requires pagination.");
+      const cursor=input.cursor?safeId(input.cursor,"Pagination cursor",300):"";
+      const page=await submissionPage(cursor,40);
       let published=0,failed=0,zeroSkipped=0;
-      for(const row of snap.docs.filter(d=>allowedHead(d.data()))){
+      for(const row of page.docs.filter(d=>allowedHead(d.data()))){
         const grade=await gradeRef(row.id).get();
         if(!grade.exists||grade.data().published===true)continue;
         if(Number(grade.data().score)===0){zeroSkipped++;continue;}
         try{if(await publishOne(row.id))published++;else failed++;}
         catch{failed++;}
       }
-      return {published,failed,zeroSkipped};
+      return {published,failed,zeroSkipped,nextCursor:page.nextCursor,
+        hasMore:Boolean(page.nextCursor)};
     }
     const raw=await inspectRaw(input.legacySubmissionId),id=raw.id;
     if(input.action==="legacy_review_save_draft"){
