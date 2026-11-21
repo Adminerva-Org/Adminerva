@@ -29,6 +29,7 @@ test("bulk response validates exact anonymous batch identity and rubric order",(
  assert.equal(rows[0].review.awarded,35);
  assert.equal(rows[0].review.pending,0);
  assert.equal(rows[0].review.saveEligible,true);
+ assert.match(rows[0].review.criteria[0].comment,/Evidence: Source contains derived class/);
  assert.equal(BULK_MAX_BATCH,10);
  assert.match(BULK_PACKAGE_FORMAT,/bulk-evaluation-package-v1/);
 });
@@ -61,4 +62,16 @@ test("feedback and score validation fail closed without writing grades",()=>{
  assert.throws(()=>bulkSuggestionState(bad,task),/20 characters/);
  const over={...suggestion,criteria:[{awardedPoints:22,pendingPoints:0},suggestion.criteria[1]]};
  assert.throws(()=>bulkSuggestionState(over,task),/Invalid evaluation score/);
+});
+
+test("teacher-confirmation confidence is not eligible for automatic bulk saving",()=>{
+ const needsReview={...suggestion,criteria:[
+  {...suggestion.criteria[0],confidence:"teacher_confirmation"},
+  suggestion.criteria[1]
+ ]};
+ const parsed=parseGeneralExternalEvaluationResponse(JSON.stringify(needsReview),{task});
+ const stage=bulkSuggestionState(parsed,task);
+ assert.equal(stage.saveEligible,false);
+ assert.equal(stage.teacherConfirmation,true);
+ assert.match(stage.reason,/teacher confirmation/i);
 });
