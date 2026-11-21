@@ -247,6 +247,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      const priorVersion=before?Number(before.gradeVersion||1):0;
      if(priorVersion!==expectedGradeVersion)
        deny("failed-precondition","Historical grade changed. Reload before saving or publishing.");
+     if(input.action==="legacy_github_save_draft"&&input.onlyIfUngraded===true&&prior.exists)
+       deny("failed-precondition","An original historical grade already exists. Bulk evaluation cannot replace a draft or published result.");
      if(before?.published===true)
        deny("failed-precondition","A published historical grade is protected from ordinary edits.");
      if(input.action==="legacy_github_save_draft"){
