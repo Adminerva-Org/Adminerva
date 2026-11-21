@@ -251,7 +251,9 @@ export function createV4BulkEvaluationController({
     verifiedEvidence=new Set(),evidenceNotes=new Map();
   const supported=t=>BULK_SOURCE_TYPES.includes(t?.submissionSource);
   const historicalGithub=()=>Boolean(task?.legacyCompatibility&&task.submissionSource==="github");
-  const requiresArtifactReview=()=>historicalGithub()||task?.submissionSource==="link";
+  // Submission eligibility is a frozen student receipt, not an approval toggle.
+  // Only external links still need a separate human artifact inspection.
+  const requiresArtifactReview=()=>task?.submissionSource==="link";
   const key=row=>String(row.submissionId||row.evidenceId||row.recordId||"");
   const selectedEligible=()=>rows.filter(row=>selection.has(key(row))&&
     !row.gradeStatus&&row.bulkReady!==false&&
@@ -309,7 +311,7 @@ export function createV4BulkEvaluationController({
       text.textContent=String(row.studentName||"Learner")+" · version "+row.version+
         (row.gradeStatus?" · "+row.gradeStatus+" grade (protected)":
           row.status==="reopened"?" · revision requested":
-          row.bulkReady===false?" · evidence approval required":
+          row.bulkReady===false?" · no qualifying student submission":
           staged.has(id)?" · suggestion staged":" · needs evaluation");
       line.append(input,text);checkboxList.append(line);
     }
@@ -460,11 +462,11 @@ export function createV4BulkEvaluationController({
     task=next;rows=(nextRows||[]).map(row=>{
       const gradeStatus=gradeMap?.get(row.studentUid)?.status||row.gradeStatus||null;
       const github=next?.submissionSource==="github";
-      const gradeable=github?["approved","reviewed"].includes(row.status):
+      const gradeable=github?["submitted","approved","reviewed"].includes(row.status):
         ["submitted","reviewed"].includes(row.status);
       return {...row,gradeStatus,bulkReady:gradeable&&
-        (!next?.legacyCompatibility||!github||
-          (row.approved===true&&Number(row.verifiedCount||0)>0))};
+        (!github||((row.selectedCount||0)>0&&
+          (!next?.legacyCompatibility||row.hasSubmission===true)))};
     });
     const available=new Set(rows.map(key));
     for(const id of selection)if(!available.has(id)||
@@ -516,10 +518,12 @@ export function createV4BulkEvaluationController({
     let snapshot=result.snapshot;
     if(!snapshot||Number(snapshot.version)!==Number(row.version))
       throw Error("The frozen submission version changed; refresh submissions.");
-    const gradeable=source==="github"?["approved","reviewed"].includes(snapshot.status):
+    const gradeable=source==="github"?
+      (["submitted","approved","reviewed"].includes(snapshot.status)&&
+        snapshot.hasSubmission!==false&&snapshot.selectedCommitShas?.length>0):
       ["submitted","reviewed"].includes(snapshot.status);
     if(!gradeable)
-      throw Error("This learner has no approved or gradeable frozen evidence.");
+      throw Error("No student-submitted GitHub commits or other gradeable frozen evidence were found.");
     if(source==="studio"){
       if(!snapshot.contentDigest||!Array.isArray(snapshot.files)||!snapshot.files.length)
         throw Error("Frozen Studio source or checksum changed; refresh submissions.");
@@ -711,7 +715,7 @@ export function createV4BulkEvaluationController({
               expectedEvidenceRevision:item.evidenceRevision,
               expectedCheckpointSha:item.checkpointSha,
               expectedGradeRevision:0,
-              reviewNote:String(evidenceNotes.get(item.key)||"").trim(),
+              reviewNote:"Teacher bulk-reviewed this student-submitted checkpoint and rubric suggestions; Git commit metadata is not independent authorship proof.",
               ...details
             });
           }else if(task.legacyCompatibility){
