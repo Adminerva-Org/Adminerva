@@ -75,6 +75,28 @@ export function bulkSaveableStages({staged,saveSelection,rows}){
   });
 }
 
+export function nextBulkSelection(rows,{excluded=new Set(),limit=BULK_MAX_BATCH}={}){
+  const ids=[],maximum=Math.min(BULK_MAX_BATCH,Math.max(0,Math.floor(limit)));
+  if(!maximum)return ids;
+  for(const row of rows||[]){
+    const id=String(row?.submissionId||row?.recordId||"");
+    if(!id||ids.includes(id)||excluded.has(id)||row.gradeStatus||
+      ["reopened","revision_requested"].includes(row.status))continue;
+    ids.push(id);
+    if(ids.length>=maximum)break;
+  }
+  return ids;
+}
+
+export function canClearCompletedBulkExchange({referenceMap,staged,rows,savedIds}){
+  if(staged.size)return false;
+  return ![...referenceMap.values()].some(original=>{
+    const current=(rows||[]).find(row=>
+      String(row?.submissionId||row?.recordId||"")===original.key);
+    return !current||(!current.gradeStatus&&!savedIds.has(original.key));
+  });
+}
+
 export function createV4BulkEvaluationController({
   root,scoped,migrationApi,assessmentApi,submissionApi,gradeApi,verificationApi,
   buildPackage,parseResponse,generateContent,evaluationJSON,
@@ -88,7 +110,7 @@ export function createV4BulkEvaluationController({
   const btn=id=>el(id);
   let task=null,rows=[],selection=new Set(),saveSelection=new Set(),staged=new Map(),
     exceptions=new Map(),batchId="",referenceMap=new Map(),stopped=false,
-    running=false,schoolSignature="",scopeGeneration=0;
+    running=false,schoolSignature="",scopeGeneration=0,autoSelectNext=true;
   const isStudio=t=>t?.submissionSource==="studio";
   const key=row=>String(row.submissionId||row.recordId||"");
   const selectedEligible=()=>rows.filter(row=>selection.has(key(row))&&
@@ -103,10 +125,10 @@ export function createV4BulkEvaluationController({
     const ready=selectedEligible(),remaining=candidates(),saveReady=saveable();
     root.hidden=!isStudio(task);
     if(root.hidden)return;
-    el("gbV4BulkCounts").textContent=selection.size+" selected · "+
-      ready.length+" not graded selected for evaluation · "+staged.size+
-      " suggestions staged · "+saveReady.length+" ready to save · "+
-      exceptions.size+" exceptions";
+    el("gbV4BulkCounts").textContent=selection.size+"/"+BULK_MAX_BATCH+
+      " selected for this batch · "+ready.length+" ungraded · "+
+      staged.size+" suggestions staged · "+saveReady.length+
+      " ready to save · "+exceptions.size+" exceptions";
     for(const id of ["gbV4BulkRun","gbV4BulkExport"])
       btn(id).disabled=running||isBusy()||remaining.length===0;
     btn("gbV4BulkImport").disabled=running||isBusy()||!batchId;
@@ -125,9 +147,19 @@ export function createV4BulkEvaluationController({
       const input=document.createElement("input");input.type="checkbox";
       input.className="mt-1";input.checked=selection.has(id);
       input.disabled=running||isBusy()||Boolean(row.gradeStatus)||
-        ["reopened","revision_requested"].includes(row.status);
+        ["reopened","revision_requested"].includes(row.status)||
+        (!selection.has(id)&&selection.size>=BULK_MAX_BATCH);
       input.addEventListener("change",()=>{
-        if(input.checked)selection.add(id);else selection.delete(id);
+        if(input.checked){
+          if(selection.size>=BULK_MAX_BATCH){
+            appendStatus("A batch can contain at most "+BULK_MAX_BATCH+
+              " learners. Deselect one before adding another.");
+            input.checked=false;
+            return;
+          }
+          selection.add(id);
+        }else selection.delete(id);
+        autoSelectNext=false;
         render();
       });
       const text=document.createElement("span");text.className="min-w-0";
@@ -196,7 +228,9 @@ export function createV4BulkEvaluationController({
   function reset(){
     scopeGeneration++;stopped=true;
     task=null;rows=[];selection.clear();saveSelection.clear();staged.clear();exceptions.clear();
-    referenceMap.clear();batchId="";payload.value="";stopped=false;running=false;
+    referenceMap.clear();batchId="";payload.value="";
+    el("gbV4BulkResponse").value="";
+    stopped=false;running=false;autoSelectNext=true;
     schoolSignature="";status.textContent="";render();
   }
   function onInbox({task:next,rows:nextRows,gradeMap,schoolId}){
@@ -204,20 +238,26 @@ export function createV4BulkEvaluationController({
     if(signature!==schoolSignature){
       scopeGeneration++;stopped=true;
       selection.clear();saveSelection.clear();staged.clear();exceptions.clear();referenceMap.clear();
-      batchId="";payload.value="";schoolSignature=signature;
+      batchId="";payload.value="";el("gbV4BulkResponse").value="";
+      autoSelectNext=true;schoolSignature=signature;
     }
     task=next;rows=(nextRows||[]).map(row=>({
       ...row,gradeStatus:gradeMap?.get(row.studentUid)?.status||row.gradeStatus||null
     }));
     const available=new Set(rows.map(key));
-    for(const id of selection)if(!available.has(id))selection.delete(id);
+    for(const id of selection)if(!available.has(id)||
+      rows.find(row=>key(row)===id)?.gradeStatus)selection.delete(id);
     for(const id of staged)if(!available.has(id)){
       staged.delete(id);saveSelection.delete(id);
     }
-    if(!selection.size&&!staged.size)
-      for(const row of rows)
-        if(!row.gradeStatus&&!["reopened","revision_requested"].includes(row.status))
-          selection.add(key(row));
+    if(autoSelectNext){
+      selection=new Set(nextBulkSelection(rows,{
+        excluded:new Set([...staged.keys(),...exceptions.keys()])
+      }));
+      autoSelectNext=false;
+    }
+    if(selection.size>BULK_MAX_BATCH)
+      selection=new Set([...selection].slice(0,BULK_MAX_BATCH));
     render();
   }
   async function inspect(row){
@@ -403,6 +443,7 @@ export function createV4BulkEvaluationController({
       "You may review results individually before publishing."))return;
     await execute("Bulk save",async()=>{
       let saved=0,skipped=0;
+      const savedIds=new Set();
       for(const item of eligible){
         if(stopped||session!==scopeGeneration)break;
         appendStatus("Saving verified draft "+(saved+skipped+1)+"/"+eligible.length+"…");
@@ -428,6 +469,7 @@ export function createV4BulkEvaluationController({
           if(session!==scopeGeneration)break;
           staged.delete(item.key);saveSelection.delete(item.key);
           exceptions.delete(item.key);selection.delete(item.key);
+          savedIds.add(item.key);
           saved++;
         }catch(error){
           if(session!==scopeGeneration)break;
@@ -436,9 +478,36 @@ export function createV4BulkEvaluationController({
         if(session!==scopeGeneration)break;
         render();
       }
-      appendStatus(saved+" private draft(s) saved; "+skipped+" failed or changed. "+
-        "Nothing was published. Review results before Publish all drafts.");
-      if(saved&&session===scopeGeneration)await onSaved();
+      if(saved&&session===scopeGeneration){
+        // Do not throw away a partial external response or an unsaved staged
+        // evaluation. Only retire the package after every export reference has
+        // been saved (or already appears graded in the current inbox).
+        const clearedExchange=canClearCompletedBulkExchange({
+          referenceMap,staged,rows,savedIds
+        });
+        if(clearedExchange){
+          batchId="";referenceMap.clear();payload.value="";
+          el("gbV4BulkResponse").value="";
+          const exchange=payload.closest("details");
+          if(exchange)exchange.open=false;
+        }
+        // The actual saved records are reloaded from the server; only then
+        // select the next ten still-ungraded learners. This avoids retrying
+        // already-saved students and leaves failed evaluations visible.
+        selection.clear();autoSelectNext=true;
+        await onSaved();
+        if(session===scopeGeneration){
+          appendStatus(saved+" private draft(s) saved; "+skipped+
+            " failed or changed. Nothing was published. "+
+            selection.size+" next ungraded learner(s) selected."+
+            (clearedExchange?" The completed JSON exchange was cleared.":
+              " Unfinished evaluation data was retained for recovery."));
+          render();
+        }
+      }else{
+        appendStatus(saved+" private draft(s) saved; "+skipped+
+          " failed or changed. Nothing was published.");
+      }
     });
   }
   btn("gbV4BulkRun").addEventListener("click",()=>void processBatch());
@@ -449,12 +518,17 @@ export function createV4BulkEvaluationController({
     stopped=true;appendStatus("Stop requested. Finishing the current evaluation before stopping.");
   });
   btn("gbV4BulkSelect").addEventListener("click",()=>{
-    for(const row of rows)
-      if(!row.gradeStatus&&!["reopened","revision_requested"].includes(row.status))
-        selection.add(key(row));
+    selection=new Set(nextBulkSelection(rows,{
+      excluded:new Set([...staged.keys(),...exceptions.keys()])
+    }));
+    autoSelectNext=false;
+    appendStatus(selection.size?selection.size+" ungraded learners selected (maximum "+
+      BULK_MAX_BATCH+").":"No additional ungraded learners are available.");
     render();
   });
-  btn("gbV4BulkClear").addEventListener("click",()=>{selection.clear();render();});
+  btn("gbV4BulkClear").addEventListener("click",()=>{
+    selection.clear();autoSelectNext=false;render();
+  });
   btn("gbV4BulkRetry").addEventListener("click",()=>{
     exceptions.clear();
     appendStatus("Exceptions cleared. Failed submissions may now be retried.");
