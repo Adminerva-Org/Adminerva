@@ -246,6 +246,11 @@ export function buildNavigationIA(ctx){
         group("Class Insights",[
           needs("assessment-results","Results","school-gradebook.html?view=results","Per-assessment outcomes and published results."),
           needs("class-analytics","Class Analytics","teacher-analytics.html","Teaching and learning analytics across assigned classes.")
+        ]),
+        group("Advisory / Homeroom",[
+          live("advisory-overview","Advisory Overview","teacher-advisory.html","Official advisory section roster and subject-teacher coverage, separate from instructional class authority."),
+          future("advisory-attendance","Attendance","Advisory attendance will use a school-authoritative attendance record rather than classroom activity."),
+          future("advisory-conduct","Conduct / Student Notes","Reserved for school-governed advisory records.")
         ])
       ]),
       ws("preparation","Preparation","lesson-planner.html","Reusable teaching plans, learning materials and assessment design before deployment to a class",[
