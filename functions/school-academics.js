@@ -1207,6 +1207,97 @@ function createSchoolAcademicsService({db}) {
    return result;
   }
 
+  if(input.action==="review_student_section_placement"){
+   requireAdmin();
+   const personId=checkId(input.personId,"Student ID",128);
+   const base="schools/"+ctx.schoolId+"/";
+   const [person,registrations,enrollments]=await Promise.all([
+    schoolRoot.doc("people/"+personId).get(),
+    db.collection(base+"student_registrations").where("personId","==",personId).limit(51).get(),
+    db.collection(base+"enrollments").where("personId","==",personId).limit(101).get()
+   ]);
+   if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student")
+    deny("not-found","The student is not in this school directory.");
+   if(registrations.size===51||enrollments.size===101)
+    deny("resource-exhausted","This student has too much placement history for compatibility review.");
+   const activeRegistrations=registrations.docs.filter(doc=>{
+    const row=doc.data();return row.schoolId===ctx.schoolId&&(row.status||"active")==="active";
+   }).map(doc=>({
+    registrationId:doc.id,sectionId:doc.data().sectionId||null,yearId:doc.data().yearId||null,
+    termId:doc.data().termId||null,programId:doc.data().programId||null,
+    revision:Number(doc.data().revision)||1
+   }));
+   const activeLegacyEnrollments=enrollments.docs.filter(doc=>{
+    const row=doc.data();return row.schoolId===ctx.schoolId&&row.status==="active";
+   }).map(doc=>({
+    enrollmentId:doc.id,expectedRevision:Number(doc.data().revision)||1,
+    offeringId:doc.data().offeringId||null,sectionId:doc.data().sectionId||null,
+    yearId:doc.data().yearId||null,termId:doc.data().termId||null,
+    subjectId:doc.data().subjectId||null,registrationId:doc.data().registrationId||null
+   }));
+   return {
+    person:{personId,displayName:person.data().displayName||"Student"},
+    activeRegistrations,activeLegacyEnrollments
+   };
+  }
+
+  if(input.action==="end_student_section_placement"){
+   requireAdmin();
+   const personId=checkId(input.personId,"Student ID",128),
+    reason=checkName(input.reason,"Placement change reason"),
+    expected=Array.isArray(input.enrollments)?input.enrollments.map(row=>({
+      enrollmentId:checkId(row?.enrollmentId,"Enrollment ID",128),
+      expectedRevision:Number(row?.expectedRevision)
+    })):[];
+   if(reason.length<12)deny("invalid-argument","Explain the placement change in at least 12 characters.");
+   if(!expected.length||expected.length>80)
+    deny("invalid-argument","Review between 1 and 80 active class enrollments before ending placement.");
+   if(expected.some(row=>!Number.isSafeInteger(row.expectedRevision)||row.expectedRevision<1))
+    deny("invalid-argument","Refresh the placement review before saving.");
+   if(new Set(expected.map(row=>row.enrollmentId)).size!==expected.length)
+    deny("invalid-argument","Placement review contains duplicate enrollment records.");
+   const base="schools/"+ctx.schoolId+"/",
+    personRef=schoolRoot.doc("people/"+personId),
+    refs=expected.map(row=>schoolRoot.doc("enrollments/"+row.enrollmentId)),
+    auditRef=db.collection(base+"directory_audit").doc();
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const [person,registrations,...records]=await Promise.all([
+     tx.get(personRef),
+     tx.get(db.collection(base+"student_registrations").where("personId","==",personId).limit(51)),
+     ...refs.map(ref=>tx.get(ref))
+    ]);
+    if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
+       person.data().status!=="active")
+     deny("failed-precondition","The student directory record must remain active.");
+    if(registrations.size===51)
+     deny("resource-exhausted","This student has too much registration history for compatibility placement cleanup.");
+    if(registrations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&(doc.data().status||"active")==="active"))
+     deny("failed-precondition","This student has an active official registration. Use Enrollment & Registration instead.");
+    const now=FieldValue.serverTimestamp();
+    records.forEach((record,index)=>{
+     const reviewed=expected[index];
+     if(!record.exists||record.data().schoolId!==ctx.schoolId||record.data().personId!==personId||
+        record.data().status!=="active")
+      deny("failed-precondition","A reviewed class enrollment changed. Refresh before saving.");
+     const revision=Number(record.data().revision)||1;
+     if(revision!==reviewed.expectedRevision)
+      deny("failed-precondition","A reviewed class enrollment changed. Refresh before saving.");
+     if(record.data().registrationId)
+      deny("failed-precondition","A reviewed class enrollment is linked to registration history. Use Enrollment & Registration instead.");
+     tx.update(record.ref,{
+      status:"ended",endedByUid:uid,endedAt:now,endReason:reason,
+      endedByReconciliation:true,reconciliationType:"compatibility_section_placement",
+      revision:revision+1
+     });
+    });
+    tx.create(auditRef,audit("student_section_placement_ended",{
+     personId,reason,enrollmentIds:expected.map(row=>row.enrollmentId),enrollmentCount:expected.length
+    }));
+   });
+   return {personId,status:"ended",courseCount:expected.length};
+  }
+
   if(input.action==="enroll_student_section"){
    requireAdmin();
    const personId=checkId(input.personId,"Student ID",128);
