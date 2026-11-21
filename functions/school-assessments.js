@@ -35,7 +35,8 @@ async function activeOfferingPeople(db,prefix,offeringId){
    const data=row.data();
    if(data.schoolId===prefix.split("/")[1]&&data.status==="active"&&
       typeof data.personId==="string"&&data.personId)
-    personIds.add(checkId(data.personId,"Student person",128));
+    {try{personIds.add(checkId(data.personId,"Student person",128));}
+     catch(error){console.warn("Skipping malformed school enrollment person ID",{schoolId:prefix.split("/")[1],code:error.code||"invalid"});}}
   }
   if(personIds.size>1500)
    deny("resource-exhausted","This class roster exceeds the supported 1,500-student session fanout.");
@@ -238,52 +239,17 @@ function createSchoolAssessmentService({db}){
       action:opening?"assessment_exam_opened":"assessment_exam_closed",
       beforeState:before,afterState:next,sessionEpoch,beforeRevision:revision,
       afterRevision:revision+1,createdAt:now});
+    // Durable outbox: this transaction changes access immediately. A separate
+    // retryable trigger handles roster capture and student notifications.
+    const kind=opening?"opened":"closed";
+    tx.create(db.doc(prefix+"studio_exam_session_events/"+kind+"_"+taskId+"_"+sessionEpoch),{
+      schoolId:ctx.schoolId,taskId,offeringId:data.offeringId,sessionEpoch,
+      kind,title:data.title||"Practical exam",actorUid:ctx.uid,createdAt:now
+    });
     result={taskId,manualAccessState:next,sessionEpoch,
       revision:revision+1,alreadyCurrent:false,
       offeringId:data.offeringId,title:data.title||"Practical exam"};
    });
-   if(!result.alreadyCurrent){
-    try{
-    const people=await activeOfferingPeople(db,prefix,result.offeringId);
-    {
-      if(!opening){
-       // Retain the class roster as it existed at closing, rather than rebuilding
-       // historical reports from memberships that may change next semester.
-       const roster=[...new Map(people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
-         person.data().status==="active"&&person.data().kind==="student").map(person=>[
-           person.id,{personId:person.id,
-             displayName:String(person.data().displayName||"Student").slice(0,140),
-             studentUid:person.data().authUid||null}
-         ])).values()];
-       try{
-        await db.doc(prefix+"studio_exam_session_rosters/"+taskId+"/sessions/"+result.sessionEpoch)
-          .create({schoolId:ctx.schoolId,taskId,offeringId:result.offeringId,
-            sessionEpoch:result.sessionEpoch,students:roster,capturedAt:FieldValue.serverTimestamp()});
-       }catch(error){
-        if(error.code!==6&&error.code!=="already-exists")
-         console.warn("Exam close roster capture unavailable",taskId,result.sessionEpoch,error);
-       }
-      }
-      await Promise.allSettled(people.map(person=>{
-        const uid=person.exists&&person.data().schoolId===ctx.schoolId&&person.data().status==="active"?
-          person.data().authUid:null;
-        return uid?writeSchoolNotification({
-          db,schoolId:ctx.schoolId,uid,
-          id:(opening?"studio_exam_opened_":"studio_exam_closed_")+taskId+"_"+result.sessionEpoch,
-          title:opening?"Studio practical exam is open":"Studio exam session closed",
-          body:opening?result.title+" · your teacher opened your section's exam.":
-            "Exam session "+result.sessionEpoch+" has ended. Your editor is locked and the final project save is starting.",
-          type:"assessment",sourceId:taskId,target:"student-assessments.html"
-        }):Promise.resolve();
-      }));
-    }
-    }catch(error){
-      // The teacher's authoritative open/close transaction has committed.
-      // A bad roster row or notification failure must not falsely report
-      // that the exam remained open or closed to the teacher.
-      console.warn("Exam session post-commit roster/notification fanout failed",taskId,error);
-    }
-   }
    return result;
   }
 
