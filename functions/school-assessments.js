@@ -176,8 +176,9 @@ function createSchoolAssessmentService({db}){
       deny("failed-precondition","This deployment is not configured for teacher-controlled Studio opening.");
     if((data.lifecycle||"active")!=="active")
       deny("failed-precondition","Restore or reopen this assessment before opening its Studio exam.");
-    if(opening&&(data.published!==true||data.dueAt.toMillis()<=Date.now()))
-      deny("failed-precondition","Publish this assessment and ensure its deadline is in the future before opening the exam.");
+    if(opening&&(data.published!==true||
+       (data.dueAt.toMillis()<=Date.now()&&data.allowLateSubmissions!==true)))
+      deny("failed-precondition","Publish this assessment and set a future deadline, or explicitly allow late submissions, before opening the exam.");
     const before=data.manualAccessState||"waiting",
       closeGraceUntil=data.manualCloseGraceUntil?.toMillis?.()||0;
     if(opening&&before==="closing"&&Date.now()<closeGraceUntil)
