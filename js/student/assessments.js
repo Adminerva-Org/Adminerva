@@ -140,7 +140,12 @@ async function loadStudentAssignments(user=auth.currentUser){
     if(version!==profileGeneration||auth.currentUser?.uid!==user.uid)return;
     if(projectedProfiles.length){
       userProfiles=projectedProfiles.map(profile=>({
-        id:profile.id,section:profile.section,name:profile.name||"Student"
+        id:profile.id,
+        section:profile.section,
+        name:profile.name||"Student",
+        repoUrl:String(profile.repoUrl||""),
+        githubUsername:String(profile.githubUsername||""),
+        accountUid:String(profile.accountUid||user.uid)
       }));
     }else{
       const q = query(
@@ -150,7 +155,7 @@ async function loadStudentAssignments(user=auth.currentUser){
       const snap = await getDocs(q);
       if(version!==profileGeneration||auth.currentUser?.uid!==user.uid)return;
       userProfiles=[];
-      snap.forEach((d) => userProfiles.push({ id: d.id, ...d.data() }));
+      snap.forEach((d) => userProfiles.push({ id: d.id, ...d.data(), accountUid:user.uid }));
     }
     if(userProfiles.length){
       if (selector) {
