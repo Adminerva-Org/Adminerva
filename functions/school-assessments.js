@@ -260,7 +260,8 @@ function createSchoolAssessmentService({db}){
     return {taskId,sessionEpoch:epoch,studentUid,
       projectId:frozen.projectId,projectRevision:frozen.projectRevision,
       title:frozen.title||"Saved Studio project",language:frozen.language||"text",
-      files:frozen.files,sourceDigest:frozen.sourceDigest||"",
+      files:frozen.files,artifacts:frozen.artifacts||{},sourceDigest:frozen.sourceDigest||"",
+      contentDigest:frozen.contentDigest||"",
       savedAt:frozen.savedAt?.toMillis?.()||null};
    }
    const snap=await db.collection(prefix+"studio_exam_close_receipts/"+taskId+
