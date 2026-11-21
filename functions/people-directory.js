@@ -603,7 +603,10 @@ function createPeopleDirectoryService({db}) {
         .map(person=>({personId:person.id,displayName:person.data().displayName,kind}))};
     }
     if(input.action==="update_person"){
-      const personId=id(input.personId),displayName=field(input.displayName,140,"Person name");
+      const personId=id(input.personId),displayName=field(input.displayName,140,"Person name"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this person record before saving profile changes.");
       const clean=(value,max,label)=>{
         const result=String(value??"").trim();
         if(result.length>max)invalid(label+" is too long.");
@@ -621,7 +624,12 @@ function createPeopleDirectoryService({db}) {
         const person=await tx.get(ref);
         if(!person.exists||person.data().schoolId!==ctx.schoolId)
           throw new TenantAccessError("not-found","The person is not in this school directory.");
-        const now=FieldValue.serverTimestamp(),revision=(person.data().revision||0)+1;
+        if(person.data().status!=="active")
+          throw new TenantAccessError("failed-precondition","Restore this person record before editing its profile.");
+        const currentRevision=Number(person.data().revision)||1;
+        if(currentRevision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This person record changed after you opened it. Refresh the directory and review the latest profile before saving.");
+        const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         const change={displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+personId,
           revision,updatedAt:now,updatedByUid:ctx.uid};
         if(person.data().kind==="student"){
