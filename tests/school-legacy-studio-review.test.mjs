@@ -183,3 +183,13 @@ test("historical inbox pages through more than 100 learner receipts without drop
  const keys=new Set(result.submissions.map(row=>row.submissionId));
  assert.equal(keys.size,195);
 });
+
+test("previously submitted code remains listed when a historical section is no longer deployed",async()=>{
+ const {service,map}=dbHarness();
+ map.set("studio_submissions/"+submittedId,{
+   ...map.get("studio_submissions/"+submittedId),section:"Previously Archived ICT Section"
+ });
+ const result=await service(input("legacy_review_inbox"));
+ assert.equal(result.submissions.length,1);
+ assert.equal(result.submissions[0].historicSectionUnlisted,true);
+});
