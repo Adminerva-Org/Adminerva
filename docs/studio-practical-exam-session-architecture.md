@@ -25,7 +25,7 @@ The due date applies to formal submission policy. Teacher opening after the due 
 
 1. Student enters through My Assessments; the server returns the deployment's current epoch. The client creates/resumes the assessment-bound named project with that epoch.
 2. Normal editor changes are locally debounced, then synchronised with the school server using optimistic project revisions. A version mismatch does not silently overwrite a different cloud revision.
-3. Teacher **Close exam** atomically changes the server deployment state to `closed`, records the epoch, closes ordinary writes and notifies students through their private notification feed. Active clients also recheck the authoritative session state periodically and on tab visibility changes.
+3. Teacher **Close exam** atomically changes the server deployment state to `closed`, records the epoch, closes ordinary writes, and creates a durable session-event outbox record. A retryable Firestore trigger captures the class roster and sends private student notifications asynchronously; it cannot delay the teacher's authoritative Close response. Active clients independently recheck the authoritative session state periodically and on tab visibility changes.
 4. On receiving closure, the client locks code editing and execution, captures all live Monaco models, and sends an epoch-bound **final checkpoint**. A full/disabled device storage does not prevent trying the upload from memory.
 5. The backend verifies active school/student/section, matching assessment binding and epoch, checkpoint grace, revision and ownership. Project update (if necessary) and **one immutable final receipt** are committed in the same Firestore transaction. The first receipt for that student/session wins; different replayed contents cannot replace it.
 6. The student is redirected out of Studio only on confirmed school server acknowledgment. The Assessments page independently checks the receipt before claiming it was saved. Failure leaves a locked and accurately labelled recovery state.
@@ -40,7 +40,8 @@ The due date applies to formal submission policy. Teacher opening after the due 
 | Assessment deployment, manual state, epoch, due policy | `assessments/{taskId}` | Audited teacher callable; optimistic revision |
 | Live Studio project, source/design/database/evidence | `student_code_projects/{authUid}/projects/{projectId}` | Student callable; ownership, enrollment, epoch and revision checks |
 | Immutable final exam checkpoint | `studio_exam_close_receipts/{taskId}/sessions/{epoch}/studio_exam_final_checkpoints/{authUid}` | Created once, in same transaction as final cloud revision |
-| Roster captured at explicit close | `studio_exam_session_rosters/{taskId}/sessions/{epoch}` | Best-effort create once; never edited |
+| Roster captured after explicit close | `studio_exam_session_rosters/{taskId}/sessions/{epoch}` | Async, create once; never edited |
+| Durable session fanout outbox | `studio_exam_session_events/{opened\|closed}_{taskId}_{epoch}` | Created in the same teacher transaction; trigger processes with retries |
 | Assessment audit trail | `assessment_audit/{eventId}` | Backend-authored |
 | Close/open notifications | `notifications/{authUid}/items/{eventId}` | Backend-authored, recipient-readable |
 
@@ -59,7 +60,7 @@ The teacher's Class save history uses **the roster frozen at the time of explici
 
 - Server-held close is immediate; client lock depends on receipt of a realtime notification or the fallback session check. Offline tabs cannot be forcibly terminated.
 - Final checkpoint creation is **not** formal exam submission and does not calculate grades. The class close report shows who received an acknowledged checkpoint, not who completed all exam requirements.
-- Offering enrollments and checkpoint metadata are paged in bounded batches; school-person reads are batched. The current synchronous notification fanout and class report have an explicit **1,500-person limit**. For larger sections, job-queued notification fanout and separately paged reports remain future work.
+- Offering enrollments and checkpoint metadata are paged in bounded batches; school-person reads are batched. Notification fanout now runs in a retryable **background outbox trigger** with deterministic, idempotent receipt IDs. Class rosters and reports currently have a **1,500-person limit**; larger deployments need separately paged roster snapshots and reports.
 - The teacher roster report projects **only small receipt metadata**; full source/database/diagram payloads are fetched solely for the selected student's View code action.
 - Immutable Firestore documents are bounded by the existing source (600 KB) and artifacts (180 KB) limits. A `payloadBytes` estimate supports capacity planning but excludes billed Firestore document/index overhead.
 
@@ -71,3 +72,10 @@ The teacher's Class save history uses **the roster frozen at the time of explici
 - Any future archival or deletion operation needs a separately authorized school-admin policy, a recorded decision, confirmation that grade disputes and appeals are resolved, an integrity-preserving archive/export process, and an auditable purge log. No automatic purge function is installed by this PR.
 - Recipients must treat exported CSVs as confidential school records; the export escapes spreadsheet-formula-leading values to avoid executing untrusted student names in spreadsheet applications.
 - Deploy backend Firebase Functions and Firestore index exclusions before publishing cache-versioned GitHub Pages frontend. No production readiness claim follows from syntax checks; a focused teacher+student online/offline exercise is still required.
+
+### Release-readiness caveats
+
+- The close transaction is immediate; roster capture is eventually consistent. Its `capturedAt` time can be later than the teacher's `manualClosedAt`; the teacher UI labels a pending capture and may temporarily show the current enrolled roster. The roster should not be treated as a cryptographic proof of enrollment at the exact millisecond of closing.
+- Final cloud-save replay is idempotent after the grace period **only when the same immutable receipt already exists and matches the submitted project digest/source/title**. This never permits late new code writes.
+- If the server receives two conflicting device versions, an optimistic revision conflict deliberately remains unconfirmed rather than silently overwriting the newer cloud revision. The teacher can inspect confirmed checkpoints and any previously saved project revision.
+- The backend, the outbox trigger and Firestore index exclusions must be deployed before making new exam controls visible on the public student/teacher site. The PR merge does not by itself verify backend deployment.
