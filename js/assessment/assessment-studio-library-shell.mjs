@@ -231,9 +231,18 @@ if(host){
         <header class="bg-slate-800 px-5 py-5 text-white"><p class="text-[10px] font-extrabold uppercase tracking-[.18em] text-cyan-300">Deployment</p><h2 class="mt-1 text-xl font-extrabold">Deploy Assessment</h2><p id="tl-deploy-title" class="mt-1 text-xs text-slate-300"></p></header>
         <div class="tl-dialog-body">
           <section class="tl-section">
-            <label class="text-sm font-bold">Assigned class / subject
-              <select name="offeringId" class="tl-input" id="tl-deploy-offering" required></select>
-            </label>
+            <div>
+              <label for="tl-deploy-offering-search" class="text-sm font-bold">Assigned classes / subjects *</label>
+              <p class="mt-1 text-xs text-slate-600">Select one or more classes. Each class receives an independent deployment with these same settings.</p>
+              <input id="tl-deploy-offering-search" type="search" class="tl-input" placeholder="Search subject, section, year or term" autocomplete="off">
+              <div class="mb-2 flex flex-wrap gap-2">
+                <button id="tl-deploy-select-visible" type="button" class="tl-action alt">Select visible</button>
+                <button id="tl-deploy-clear" type="button" class="tl-action alt">Clear selection</button>
+              </div>
+              <div id="tl-deploy-selected" class="mb-2 flex min-h-10 flex-wrap items-center gap-2" aria-live="polite"></div>
+              <div id="tl-deploy-offerings" class="max-h-52 overflow-y-auto rounded-lg border border-slate-300 bg-white" role="group" aria-label="Assigned classes"></div>
+              <p id="tl-deploy-selection-status" class="mt-2 text-xs text-slate-600" role="status">Loading your assigned classes…</p>
+            </div>
             <label class="text-sm font-bold">How will learners respond?
               <select name="submissionSource" class="tl-input" required>
                 <option value="text">Written response in Adminerva</option>
@@ -247,18 +256,33 @@ if(host){
               <span><strong>Teacher-controlled class sessions</strong><span class="mt-1 block text-xs">Publish the Studio exam in advance, but keep its instructions and project locked until you select Open exam for this section. Select Close exam at the end of class to lock active editors and initiate final cloud checkpoints. Open again at the next class session.</span></span>
             </label>
             <p class="text-xs text-slate-600">For retroactive deployments, enter the original date it was assigned in class as the opening reference time. Set a later deadline. For scheduled assessments, the opening time controls availability; for teacher-controlled Studio exams, the teacher's Open exam action controls the start. Deadline enforcement continues in both modes. Students cannot submit before publication.</p>
-            <div class="grid sm:grid-cols-2 gap-3">
-              <label class="text-sm font-bold">Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
-              <label class="text-sm font-bold">Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
+            <div class="mt-4">
+              <label for="tl-deploy-date-range" class="text-sm font-bold">Duration &amp; schedule</label>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button type="button" class="tl-action alt" data-deploy-range-days="3">3 days</button>
+                <button type="button" class="tl-action alt" data-deploy-range-days="7">7 days</button>
+                <button type="button" class="tl-action alt" data-deploy-range-days="14">14 days</button>
+                <button type="button" class="tl-action alt" data-deploy-range-days="30">30 days</button>
+                <button type="button" id="tl-deploy-custom-range" class="tl-action alt">Choose dates</button>
+              </div>
+              <input id="tl-deploy-date-range" class="tl-input" type="text" readonly
+                placeholder="Choose the opening and deadline dates" aria-label="Select opening and deadline dates">
+              <p class="text-xs text-slate-600">Select any two dates in the calendar. The earlier becomes the opening date and the later becomes the deadline. Past opening dates are allowed for historical assignments.</p>
+              <div class="mt-3 grid sm:grid-cols-2 gap-3">
+                <label class="text-sm font-bold">Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
+                <label class="text-sm font-bold">Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
+              </div>
+              <p class="text-xs text-slate-500">Edit the exact opening and deadline times above if necessary. Teacher-controlled Studio exams still require the teacher to open each class session.</p>
             </div>
             <label class="mt-3 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
               <input name="allowLateSubmissions" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
               <span><strong>Allow late submissions</strong><span class="mt-1 block text-xs">Students may submit after the deadline while this deployment remains active. Adminerva still records the original deadline and submission time.</span></span>
             </label>
-            <p class="text-xs text-slate-500">The current instructions, rubric and private checking guidance are frozen for this deployment. Deployment remains private until you publish it.</p>
+            <p class="text-xs text-slate-500">The current instructions, rubric and private checking guidance are frozen for each deployment. Every class remains private until its deployment is published individually.</p>
+            <p id="tl-deploy-feedback" class="text-sm text-slate-700" role="status" aria-live="polite"></p>
           </section>
         </div>
-        <footer class="tl-dialog-footer"><button type="button" id="tl-cancel-deploy" class="tl-action alt">Cancel</button><button type="submit" class="tl-action">Deploy Assessment</button></footer>
+        <footer class="tl-dialog-footer"><button type="button" id="tl-cancel-deploy" class="tl-action alt">Cancel</button><button type="submit" class="tl-action" id="tl-deploy-submit">Deploy to selected classes</button></footer>
       </form>
     </dialog>
 
