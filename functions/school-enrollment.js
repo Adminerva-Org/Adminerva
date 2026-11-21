@@ -149,13 +149,14 @@ function createSchoolEnrollmentService({db}){
         personRef=db.doc(root+"people/"+personId),
         enrollmentQuery=db.collection(root+"enrollments").where("personId","==",personId).limit(251),
         offeringQuery=db.collection(root+"course_offerings").limit(251),
-        [person,enrollmentSnap,offeringSnap]=await Promise.all([
-          read(personRef),read(enrollmentQuery),read(offeringQuery)
+        termQuery=db.collection(root+"terms").where("yearId","==",source.yearId).limit(51),
+        [person,enrollmentSnap,offeringSnap,termSnap]=await Promise.all([
+          read(personRef),read(enrollmentQuery),read(offeringQuery),read(termQuery)
         ]);
       if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
          person.data().status!=="active")
         deny("failed-precondition","The student directory record must be active before progression.");
-      if(enrollmentSnap.size===251||offeringSnap.size===251)
+      if(enrollmentSnap.size===251||offeringSnap.size===251||termSnap.size===51)
         deny("resource-exhausted","Progression review requires pagination before this student can be processed safely.");
       const offeringMap=new Map(offeringSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId)
         .map(doc=>[doc.id,doc])),
@@ -166,6 +167,11 @@ function createSchoolEnrollmentService({db}){
             registrationOwnsEnrollment(registrationId,row,offering?.data());
         });
       const blockers=[],
+        sourceTerms=termSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+          doc.data().status==="active"&&doc.data().programId===source.programId),
+        sourceTerm=sourceTerms.find(doc=>doc.id===source.termId)||null,
+        sourceSequence=Number(sourceTerm?.data().sequence)||0,
+        finalSequence=sourceTerms.reduce((max,doc)=>Math.max(max,Number(doc.data().sequence)||0),0),
         sourceCourseCount=Number(source.courseCount)||0,
         misplacedOwned=enrollmentSnap.docs.filter(doc=>{
           const row=doc.data();
@@ -173,6 +179,12 @@ function createSchoolEnrollmentService({db}){
             row.registrationId===registrationId&&
             !sourceEnrollments.some(owned=>owned.id===doc.id);
         });
+      if(!sourceTerm)
+        blockers.push({type:"source_period_unavailable",
+          message:"The registration's academic period is no longer an active configured period for its year and program."});
+      else if(finalSequence>0&&sourceSequence<finalSequence)
+        blockers.push({type:"source_period_not_final",
+          message:"Year-end progression is available only from the last active academic period configured for this year and program."});
       if(misplacedOwned.length)
         blockers.push({type:"registration_roster_mismatch",
           message:"One or more active class enrollments owned by this registration no longer match its official placement. Reconcile the class roster before progression."});
