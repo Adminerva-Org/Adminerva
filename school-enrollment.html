@@ -175,7 +175,7 @@
           <div class="flex justify-between gap-3 items-start">
             <div>
               <h2 class="text-lg font-extrabold">Current registrations</h2>
-              <p class="en-muted mt-1">School-scoped registration records for this standard enrollment system. End a registration before correcting its official placement; history and identity remain preserved.</p>
+              <p class="en-muted mt-1">School-scoped official placements. Change a student's section here without rewriting prior registration or subject-enrollment history; use End only when the registration itself should stop.</p>
             </div>
             <button id="en-refresh" class="en-btn secondary" type="button">Refresh</button>
           </div>
@@ -213,6 +213,12 @@
         <button id="en-registration-change-close" type="button" class="en-btn secondary">Close</button>
       </div>
       <p id="en-registration-change-help" class="en-notice mt-4"></p>
+      <section id="en-registration-change-placement" class="en-summary mt-4" hidden>
+        <label class="text-sm font-bold">New section
+          <select name="sectionId" class="en-input mt-1"></select>
+        </label>
+        <p id="en-registration-change-preview" class="en-muted mt-2">Choose a new section to preview its automatic class roster.</p>
+      </section>
       <label class="text-sm font-bold block mt-4">Reason
         <textarea name="reason" class="en-input mt-1" rows="3" minlength="12" maxlength="500" required placeholder="Explain the institutional reason for this registration change."></textarea>
       </label>
@@ -228,7 +234,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261120-pr215-merged"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-placement-change1"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
