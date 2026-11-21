@@ -156,13 +156,19 @@ function createSchoolGradebookService({db}){
          submission.data().currentVersion!==grade.submissionVersion||
          digestOf(submission.data())!==grade.submissionDigest)
        deny("failed-precondition","Draft no longer matches the current frozen student evidence.");
-      const version=await tx.get(submissionRef.collection("versions").doc(String(grade.submissionVersion)));
+      const version=await tx.get(submissionRef.collection("versions").doc(String(grade.submissionVersion))),
+        studentPerson=await tx.get(db.doc(prefix+"people/"+checkId(grade.personId,"Student person",128)));
       if(!version.exists||version.data().schoolId!==ctx.schoolId||
          version.data().taskId!==taskId||version.data().offeringId!==offeringId||
          version.data().studentUid!==grade.studentUid||version.data().personId!==grade.personId||
          version.data().version!==grade.submissionVersion||
          digestOf(version.data())!==grade.submissionDigest||!frozenValid(version))
        deny("failed-precondition","Frozen evidence validation failed.");
+      if(!studentPerson.exists||studentPerson.data().schoolId!==ctx.schoolId||
+         studentPerson.data().kind!=="student"||studentPerson.data().status!=="active"||
+         typeof studentPerson.data().authUid!=="string")
+       deny("failed-precondition","The student's current verified account is unavailable for grade publication.");
+      studentUidForNotification=studentPerson.data().authUid;
       const now=FieldValue.serverTimestamp(),revision=(grade.revision||0)+1;
       tx.update(record.ref,{status:"published",publishedAt:now,publishedByUid:ctx.uid,
         revision,updatedAt:now});
@@ -176,7 +182,6 @@ function createSchoolGradebookService({db}){
         schoolId:ctx.schoolId,taskId,studentUid:grade.studentUid,actorUid:ctx.uid,
         action:"grade_bulk_published",revision,createdAt:now
       });
-      studentUidForNotification=grade.studentUid;
      });
      published++;
      if(studentUidForNotification)await writeSchoolNotification({
@@ -321,7 +326,7 @@ function createSchoolGradebookService({db}){
    if(reason.length<12||reason.length>2000)
     deny("invalid-argument","Explain the historical rubric reconstruction in 12–2,000 characters.");
    const auditRef=db.collection(prefix+"grade_audit").doc();
-   let result;
+   let result,notificationUid=null;
    await db.runTransaction(async tx=>{
     const {task,submission}=await authorize(tx);
     const grade=await tx.get(gradeRef);
@@ -389,9 +394,15 @@ function createSchoolGradebookService({db}){
        previous.submissionDigest!==evidenceDigest(submission)||
        submission.status!=="reviewed")
      deny("failed-precondition","The published grade is no longer bound to the current reviewed submission.");
-    const snapshot=await tx.get(submissionRef.collection("versions").doc(String(previous.submissionVersion)));
+    const snapshot=await tx.get(submissionRef.collection("versions").doc(String(previous.submissionVersion))),
+      studentPerson=await tx.get(db.doc(prefix+"people/"+checkId(submission.personId,"Student person",128)));
     if(!verifyFrozenBinding(snapshot,submission,previous.submissionVersion))
      deny("failed-precondition","The frozen student evidence could not be verified against its submission context.");
+    if(!studentPerson.exists||studentPerson.data().schoolId!==ctx.schoolId||
+       studentPerson.data().kind!=="student"||studentPerson.data().status!=="active"||
+       typeof studentPerson.data().authUid!=="string")
+     deny("failed-precondition","The student's current verified account is unavailable for grade correction.");
+    notificationUid=studentPerson.data().authUid;
     const scores=validateScores(input.criteria,task.rubric);
     if(scores.pending>0)
      deny("failed-precondition","Published-grade corrections cannot leave pending rubric points.");
@@ -409,7 +420,7 @@ function createSchoolGradebookService({db}){
       awarded:scores.awarded,total:scores.total,corrected:true};
    });
    await writeSchoolNotification({
-     db,schoolId:ctx.schoolId,uid:studentUid,
+     db,schoolId:ctx.schoolId,uid:notificationUid,
      id:"grade_corrected_"+taskId+"_"+String(result.revision),
      title:"Published grade updated",
      body:(task.data().title||"Assessment")+" · your teacher recorded a reviewed grade correction.",
@@ -419,7 +430,7 @@ function createSchoolGradebookService({db}){
   }
   if(input.action==="publish"){
    const auditRef=db.collection(prefix+"grade_audit").doc();
-   let result;
+   let result,notificationUid=null;
    await db.runTransaction(async tx=>{
     const {task,submission}=await authorize(tx);
     const grade=await tx.get(gradeRef);
@@ -433,9 +444,15 @@ function createSchoolGradebookService({db}){
        data.studentUid!==studentUid||data.taskId!==taskId)
      deny("failed-precondition","The grade draft is stale relative to the student's frozen submission.");
     if(data.pending>0)deny("failed-precondition","Resolve pending rubric points before publishing a final grade.");
-    const snapshot=await tx.get(submissionRef.collection("versions").doc(String(data.submissionVersion)));
+    const snapshot=await tx.get(submissionRef.collection("versions").doc(String(data.submissionVersion))),
+      studentPerson=await tx.get(db.doc(prefix+"people/"+checkId(submission.personId,"Student person",128)));
     if(!verifyFrozenBinding(snapshot,submission,data.submissionVersion))
      deny("failed-precondition","The frozen student evidence could not be verified against its submission context.");
+    if(!studentPerson.exists||studentPerson.data().schoolId!==ctx.schoolId||
+       studentPerson.data().kind!=="student"||studentPerson.data().status!=="active"||
+       typeof studentPerson.data().authUid!=="string")
+     deny("failed-precondition","The student's current verified account is unavailable for grade publication.");
+    notificationUid=studentPerson.data().authUid;
     const now=FieldValue.serverTimestamp(),revision=data.revision+1;
     tx.update(gradeRef,{status:"published",publishedAt:now,publishedByUid:ctx.uid,
       revision,updatedAt:now});
@@ -450,7 +467,7 @@ function createSchoolGradebookService({db}){
     result={taskId,studentUid,status:"published",awarded:data.awarded,total:data.total};
    });
    await writeSchoolNotification({
-     db,schoolId:ctx.schoolId,uid:studentUid,
+     db,schoolId:ctx.schoolId,uid:notificationUid,
      id:"grade_published_"+taskId+"_"+String(result.awarded)+"_"+String(result.total),
      title:"Grade published",
      body:(task.data().title||"Assessment")+" · your reviewed result is now available.",
