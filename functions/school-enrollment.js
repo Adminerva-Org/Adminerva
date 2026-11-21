@@ -11,7 +11,6 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rosterEmailHash,normalizedRosterEmail}=require("./school-roster-identity.js");
 
-const STANDARD_MCS_SCHOOL_ID="manila-cathedral-school";
 const EMAIL_TYPES=new Set(["personal","institutional"]);
 const APPLICATION_REVIEW_STATUSES=new Set(["needs_information","rejected"]);
 
@@ -64,7 +63,7 @@ function standardSchool(data){
     (data?.provisioningMode||"standard")==="standard";
 }
 function publicReference(applicationId){
-  return "MCS-"+String(applicationId||"").slice(0,10).toUpperCase();
+  return "ENR-"+String(applicationId||"").slice(0,10).toUpperCase();
 }
 function guardianPersonId({displayName,birthDate,guardianEmail}){
   return "reg_"+createHash("sha256")
@@ -78,17 +77,13 @@ function createSchoolEnrollmentService({db}){
     const ctx=await getSchoolContext({
       db,request,schoolId:input.schoolId,roles:["school_admin"],allowDraftAdmin:true
     });
-    if(ctx.schoolId!==STANDARD_MCS_SCHOOL_ID)
-      deny("failed-precondition",
-        "This Enrollment workspace is currently enabled only for Manila Cathedral School standard onboarding.");
-
     const root="schools/"+ctx.schoolId+"/";
     const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
     const adminRef=db.doc(root+"memberships/"+ctx.uid);
     const school=await schoolRef.get();
     if(!school.exists||!["draft","pilot","active"].includes(school.data().state)||!standardSchool(school.data()))
       deny("failed-precondition",
-        "Enrollment requires the Manila Cathedral School standard v4 tenant. The legacy-compatible pilot is unchanged.");
+        "Enrollment & Registration requires a standard canonical school workspace. This school's compatibility workflow remains unchanged.");
 
     async function requireCurrentAdmin(tx){
       if(ctx.platformOverride)return;
@@ -541,7 +536,6 @@ function createSchoolEnrollmentService({db}){
 
 module.exports={
   createSchoolEnrollmentService,
-  STANDARD_MCS_SCHOOL_ID,
   standardSchool,
   gradeRequiresStudentEmail
 };
