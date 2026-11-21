@@ -68,6 +68,17 @@ function scheduleMeetingOverlap(first,second){
   bStart=scheduleMinute(second.startTime),bEnd=scheduleMinute(second.endTime);
  return [aStart,aEnd,bStart,bEnd].every(Number.isFinite)&&aStart<bEnd&&bStart<aEnd;
 }
+function teachingLead(configured,teacherUids){
+ const ids=[...new Set((teacherUids||[]).filter(Boolean))],
+  configuredUid=typeof configured==="string"?configured:"";
+ if(configuredUid&&ids.includes(configuredUid))
+  return {primaryTeacherUid:configuredUid,primarySource:"explicit",primaryNeedsReview:false};
+ if(ids.length===1)
+  return {primaryTeacherUid:ids[0],primarySource:configuredUid?"inferred_stale":"inferred",
+   primaryNeedsReview:Boolean(configuredUid)};
+ return {primaryTeacherUid:"",primarySource:configuredUid?"stale":ids.length?"missing":"none",
+  primaryNeedsReview:ids.length>0||Boolean(configuredUid)};
+}
 function createSchoolAcademicsService({db}) {
  const root=id=>({doc:path=>db.doc("schools/"+id+"/"+path)});
  return async request=>{
@@ -290,6 +301,8 @@ function createSchoolAcademicsService({db}) {
     const row=doc.data();
     return {offeringId:doc.id,sectionId:row.sectionId||"",subjectId:row.subjectId||"",yearId:row.yearId||"",termId:row.termId||"",programId:row.programId||"",
       rosterMode:ROSTER_MODES.has(row.rosterMode)?row.rosterMode:"legacy",revision:Number(row.revision)||1,
+      configuredPrimaryTeacherUid:typeof row.primaryTeacherUid==="string"?row.primaryTeacherUid:"",
+      primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,
       teacherUids:[],invalidGrantCount:0};
    });
    const byId=new Map(classes.map(row=>[row.offeringId,row]));
@@ -302,6 +315,12 @@ function createSchoolAcademicsService({db}) {
      offering.invalidGrantCount++;continue;
     }
     if(!offering.teacherUids.includes(row.teacherUid))offering.teacherUids.push(row.teacherUid);
+   }
+   for(const offering of classes){
+    const lead=teachingLead(offering.configuredPrimaryTeacherUid,offering.teacherUids);
+    offering.primaryTeacherUid=lead.primaryTeacherUid;
+    offering.primarySource=lead.primarySource;
+    offering.primaryNeedsReview=lead.primaryNeedsReview;
    }
    const catalogFields=[["sections","sectionId","sectionName"],["subjects","subjectId","subjectName"],["academic_years","yearId","yearName"],["terms","termId","termName"],["academic_programs","programId","programName"]];
    const refs=[];
@@ -327,6 +346,44 @@ function createSchoolAcademicsService({db}) {
     yearId:doc.data().yearId,status:"active",revision:Number(doc.data().revision)||1
    }));
    return {schoolId:ctx.schoolId,teachers,offerings:classes,advisories,unmatchedGrants};
+  }
+
+  if(input.action==="set_primary_teacher"){
+   requireAdmin();
+   const offeringId=checkId(input.offeringId,"Course offering ID",330),
+    teacherUid=checkId(input.teacherUid,"Primary teacher UID",128),
+    expectedRevision=Number(input.expectedRevision),
+    reason=checkName(input.reason,"Primary teacher reason");
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","Current class revision is required.");
+   if(reason.length<12)deny("invalid-argument","Explain the primary-teacher change in at least 12 characters.");
+   const offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
+    assignmentRef=schoolRoot.doc("staff_assignments/"+rowKey(teacherUid,offeringId)),
+    auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const [offering,assignment]=await Promise.all([tx.get(offeringRef),tx.get(assignmentRef)]);
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
+     deny("not-found","This active class offering is unavailable.");
+    const data=offering.data(),revision=Number(data.revision)||1;
+    if(revision!==expectedRevision)
+     deny("failed-precondition","A newer class revision exists. Reload before changing the primary teacher.");
+    if(!assignment.exists||assignment.data().schoolId!==ctx.schoolId||
+       assignment.data().teacherUid!==teacherUid||assignment.data().offeringId!==offeringId||
+       assignment.data().status!=="active")
+     deny("failed-precondition","The primary teacher must already have an active teaching assignment in this class.");
+    const prior=typeof data.primaryTeacherUid==="string"?data.primaryTeacherUid:"",now=FieldValue.serverTimestamp();
+    if(prior===teacherUid){
+     result={offeringId,teacherUid,revision,alreadyCurrent:true};return;
+    }
+    tx.update(offeringRef,{primaryTeacherUid:teacherUid,revision:revision+1,updatedByUid:uid,updatedAt:now});
+    tx.create(auditRef,audit("class_primary_teacher_changed",{
+     offeringId,fromTeacherUid:prior||null,toTeacherUid:teacherUid,reason,revision:revision+1
+    }));
+    result={offeringId,teacherUid,revision:revision+1,priorTeacherUid:prior||null,alreadyCurrent:false};
+   });
+   return result;
   }
 
   if(["set_section_adviser","end_section_adviser"].includes(input.action)){
