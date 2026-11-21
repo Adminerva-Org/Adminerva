@@ -51,7 +51,7 @@ function safeCallable(handler,options={}){return async request=>{try{
     }).catch(error=>console.warn("System Admin assist audit write failed",{code:error.code||"unknown"}));
   }
   return result;
-}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
 async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
   return !school.exists||school.data().compatibilityMode!=="v4_only";
@@ -115,6 +115,13 @@ const {createSchoolAcademicsService}=require("./school-academics.js");
 exports.schoolAcademics=onCall(callOptions,safeCallable(createSchoolAcademicsService({db})));
 const {createSchoolAssessmentService}=require("./school-assessments.js");
 exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db})));
+// Teacher Open/Close writes a durable outbox atomically with its exam state.
+// Delivery and roster capture must never block the teacher's callable.
+const {createSchoolStudioExamSessionFanout}=require("./school-studio-exam-fanout.js");
+exports.schoolStudioExamSessionFanout=onDocumentCreated({
+  document:"schools/{schoolId}/studio_exam_session_events/{eventId}",
+  region:"asia-southeast1",retry:true,maxInstances:3,concurrency:1,timeoutSeconds:300
+},createSchoolStudioExamSessionFanout({db}));
 const {createSchoolAssessmentMigrationService}=require("./school-assessment-migration.js");
 exports.schoolAssessmentMigration=onCall(callOptions,safeCallable(createSchoolAssessmentMigrationService({db})));
 const {createSchoolStudentProfileService}=require("./school-student-profile.js");

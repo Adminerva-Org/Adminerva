@@ -61,9 +61,17 @@ test("deployable server curriculum matches the client curriculum exactly",()=>{
 
 test("practice expiry policies include the required index configuration and never target earned progress",()=>{
  const configuration=JSON.parse(readFileSync("firestore.indexes.json","utf8"));
- assert.deepEqual(configuration.fieldOverrides.map(field=>field.collectionGroup),["practice_attempts","practice_sessions","practice_browser_sessions","practice_security_events","practice_season_attempts","school_ai_results"]);
- for(const field of configuration.fieldOverrides){
+ const ttlPolicies=configuration.fieldOverrides.filter(field=>field.ttl===true);
+ assert.deepEqual(ttlPolicies.map(field=>field.collectionGroup),["practice_attempts","practice_sessions","practice_browser_sessions","practice_security_events","practice_season_attempts","school_ai_results"]);
+ for(const field of ttlPolicies){
   assert.equal(field.fieldPath,"expiresAt");assert.equal(field.ttl,true);assert.deepEqual(field.indexes,[]);
+ }
+ const examIndexExemptions=configuration.fieldOverrides.filter(field=>
+   field.collectionGroup==="studio_exam_final_checkpoints");
+ assert.deepEqual(examIndexExemptions.map(field=>field.fieldPath),["files","artifacts"]);
+ for(const field of examIndexExemptions){
+  assert.notEqual(field.ttl,true,"academic exam evidence must never inherit a TTL policy");
+  assert.deepEqual(field.indexes,[]);
  }
  const service=readFileSync("functions/practice-service.js","utf8");
  assert.doesNotMatch(service,/\.where\(["']expiresAt["']/);
