@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>School Registry · System Admin · Adminerva</title>
+  <title>School registry | Adminerva Owner Console</title>
   
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
   <script defer src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d">
+<link rel="stylesheet" href="css/adminerva-ui.css?v=47eba756913e">
   <style>
     .own-shell{max-width:1100px;margin:0 auto;padding:1rem}
     .own-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem}
@@ -29,23 +29,19 @@
     .own-onboard-step[data-complete="true"]{background:#ecfdf5;color:#166534;border-color:#86efac}
     .own-onboard-actions{display:flex;gap:.5rem;flex-wrap:wrap}
     .own-helper{display:block;margin:-.65rem 0 .85rem;color:#64748b;font-size:.78rem}
-    .own-section-nav{display:flex;gap:.4rem;overflow-x:auto;padding:.45rem;margin:.8rem 0 1rem;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc;scroll-snap-type:x proximity}
-    .own-section-nav a{flex:0 0 auto;min-height:40px;display:inline-flex;align-items:center;padding:.45rem .7rem;border-radius:8px;color:#334155;text-decoration:none;font-size:.78rem;font-weight:800;white-space:nowrap;scroll-snap-align:start}
-    .own-section-nav a:hover,.own-section-nav a:focus-visible{background:white;color:#1d4ed8;outline:none;box-shadow:0 0 0 2px #93c5fd}
-    #owner-pilot-command,#owner-standard-setup,#owner-admin-list-section,#owner-audit-section,#owner-cutover-readiness-section{scroll-margin-top:8rem}
     [hidden]{display:none!important}
     @media(max-width:740px){.own-grid{grid-template-columns:minmax(0,1fr)}.own-onboard-steps{grid-template-columns:1fr}.own-onboard-actions .own-button{width:100%}}
   </style>
-<link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1"></head>
+</head>
 <body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
 <div id="adminerva-nav" data-module="admin" data-page="owner-schools"></div>
 <main class="own-shell">
  <header style="margin-bottom:1.25rem">
-  <p class="own-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#0e7490">System Administration · Institutions</p>
-  <h1 style="font-size:clamp(1.6rem,4vw,2rem);font-weight:800">School Registry</h1>
-  <p class="own-muted">Platform-level institution provisioning and lifecycle management. School student, grade and private teacher records are not exposed here; school-scoped changes require explicit Preview or Assist context.</p>
+  <a href="index.html">Adminerva home</a>
+  <h1 style="font-size:clamp(1.6rem,4vw,2rem);font-weight:800">Platform school registry</h1>
+  <p class="own-muted">Owner-only institution provisioning. No school student, grade or private teacher records are available in this console.</p>
  </header>
- <p id="owner-status" role="status" aria-live="polite">Verifying System Administrator access…</p>
+ <p id="owner-status" role="status" aria-live="polite">Verifying platform owner access…</p>
  <div class="own-grid" id="owner-content" hidden>
   <section class="own-card">
    <h2 style="font-size:1.2rem;font-weight:750">Schools</h2>
@@ -71,7 +67,7 @@
     </form>
     <form id="owner-onboarding-admin" data-onboard-step="2" hidden>
       <p class="own-muted">Assign the first verified School Administrator now, or continue and assign one later from this school's controls.</p>
-      <label>Existing verified account email or UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" autocomplete="off" required></label>
+      <label>Existing verified account UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" autocomplete="off" required></label>
       <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required value="Initial school administrator designation"></label>
       <div class="own-onboard-actions">
         <button type="submit" class="own-button">Assign administrator &amp; continue</button>
@@ -93,13 +89,6 @@
   <section id="owner-actions" class="own-card" hidden>
    <h2 id="owner-current" style="font-size:1.2rem;font-weight:750"></h2>
    <p id="owner-current-status" class="own-muted"></p>
-   <nav class="own-section-nav" aria-label="Selected institution controls">
-    <a href="#owner-pilot-command">Lifecycle</a>
-    <a href="#owner-standard-setup">Setup</a>
-    <a href="#owner-admin-list-section">Administrators</a>
-    <a href="#owner-audit-section">Audit &amp; governance</a>
-    <a href="#owner-cutover-readiness-section" data-legacy-provisioning>Legacy migration</a>
-   </nav>
    <section id="owner-pilot-command" style="margin-top:1rem;padding:1rem;border:2px solid #0891b2;border-radius:12px;background:#ecfeff">
     <p class="own-muted" style="font-weight:750;text-transform:uppercase;letter-spacing:.04em">School lifecycle</p>
     <h3 style="font-size:1.1rem;font-weight:800;margin:.2rem 0">School state &amp; action</h3>
@@ -107,9 +96,9 @@
     <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.75rem">
       <button id="owner-pilot-jump" type="button" class="own-button">Review school state</button>
       <a href="#owner-grant" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#1d4ed8">Assign school administrator</a>
-      <button type="button" class="own-button" data-owner-assist-target="people-access.html#access" style="background:#0f766e">Assist teacher access</button>
-      <button type="button" class="own-button" data-owner-assist-target="people-access.html#overview" style="background:#0f766e">Assist People &amp; Access</button>
-      <button type="button" class="own-button" data-owner-assist-target="school-admin.html" style="background:#475569">Assist School Administration</button>
+      <a href="people-access.html#access" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">Manage teacher access</a>
+      <a href="people-access.html#overview" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">Open People &amp; Access</a>
+      <a href="school-admin.html" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#475569">School administration</a>
     </div>
    </section>
    <section id="owner-standard-setup" hidden style="margin-top:1rem;padding:1rem;border:1px solid #bfdbfe;border-radius:12px;background:#f8fbff">
@@ -124,10 +113,9 @@
     <div id="owner-setup-readiness" class="own-muted" style="margin-top:.75rem">Loading setup status…</div>
     <div class="own-onboard-actions" style="margin-top:1rem">
       <a href="#owner-grant" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center">1 · Administrator</a>
-      <button type="button" class="own-button" data-owner-assist-target="school-profile.html" style="background:#0f766e">2 · Assist school profile</button>
-      <button type="button" class="own-button" data-owner-assist-target="school-academic-configuration.html" style="background:#0f766e">3 · Assist academic configuration</button>
-      <button type="button" class="own-button" data-owner-assist-target="people-access.html#overview" style="background:#0f766e">4 · Assist People &amp; Access</button>
-      <button type="button" class="own-button" data-owner-assist-target="school-admin.html" style="background:#475569">Assist School Administration</button>
+      <a href="school-academic-configuration.html" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">2 · Academic configuration</a>
+      <a href="people-access.html#overview" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">3 · People &amp; Access</a>
+      <a href="school-admin.html" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#475569">Open school administration</a>
     </div>
     <form id="owner-activate-standard" hidden style="margin-top:1rem;border-top:1px solid #dbeafe;padding-top:1rem">
       <h4 style="font-weight:800">Activate school</h4>
@@ -167,15 +155,6 @@
       <button type="submit" class="own-button">Record successful cutover package</button>
     </form>
    </section>
-   <details id="owner-audit-section" style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
-    <summary style="font-weight:750;cursor:pointer">Recent platform audit history</summary>
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
-      <p class="own-muted">Recent System Admin lifecycle, access, governance and compatibility actions for this institution. School-private academic content is not included.</p>
-      <button id="owner-audit-refresh" type="button" class="own-button" style="min-height:38px;padding:.45rem .75rem">Refresh history</button>
-    </div>
-    <div id="owner-audit-list" style="display:grid;gap:.55rem;margin-top:.75rem"></div>
-    <p id="owner-audit-status" class="own-muted" role="status" aria-live="polite">Select a school to load platform audit history.</p>
-   </details>
    <details style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
     <summary style="font-weight:750;cursor:pointer">Platform governance roles</summary>
     <p class="own-muted">Governance roles document policy responsibility only. They do not grant teacher, School Admin, or Platform Admin permissions.</p>
@@ -226,21 +205,10 @@
       <button type="submit" class="own-button">Save cutover decisions</button>
     </form>
    </section>
-   <section id="owner-admin-list-section" style="margin-top:1.25rem;border:1px solid #cbd5e1;border-radius:12px;padding:1rem;background:#fff">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;flex-wrap:wrap">
-      <div>
-        <h3 style="font-weight:800">Current School Administrators</h3>
-        <p class="own-muted">Use the current membership records below instead of copying account IDs manually. Access changes remain reasoned and audited.</p>
-      </div>
-      <button id="owner-admin-list-refresh" type="button" class="own-button" style="min-height:38px;padding:.45rem .75rem">Refresh administrators</button>
-    </div>
-    <div id="owner-admin-list" style="display:grid;gap:.55rem;margin-top:.75rem"></div>
-    <p id="owner-admin-list-status" class="own-muted" role="status" aria-live="polite">Select a school to load its administrators.</p>
-   </section>
    <form id="owner-grant" style="scroll-margin-top:1.5rem;border:2px solid #93c5fd;border-radius:12px;padding:1rem;margin-top:1.25rem">
     <h3 style="font-weight:750;margin:0 0 .5rem">Designate or repair school administrator access</h3>
     <p class="own-muted">For an existing verified Firebase user, including an administrator who also teaches. Grants school_admin without removing existing teacher roles. Choose the correct school above. Suspended administrators must use the recovery control below.</p>
-    <label>Existing verified Firebase account email or UID<input class="own-field" name="targetUid" maxlength="128" minlength="8" required autocomplete="off"></label>
+    <label>Existing verified Firebase account UID<input class="own-field" name="targetUid" maxlength="128" minlength="8" required autocomplete="off"></label>
     <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
     <button type="submit" class="own-button">Grant school administrator</button>
     <p class="own-muted">Only this school is granted. This does not grant Platform Administrator access.</p>
@@ -249,12 +217,12 @@
     <summary style="font-weight:750;cursor:pointer">School administrator access recovery</summary>
     <p class="own-muted">Platform-owner review only. Suspending a school administrator pauses all V4 access for that school membership. The last active school administrator cannot be suspended.</p>
     <form id="owner-admin-suspend" style="margin-top:.75rem">
-      <label>Administrator email or UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
+      <label>Administrator UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
       <label>Suspension reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
       <button type="submit" class="own-button warn">Suspend school administrator</button>
     </form>
     <form id="owner-admin-restore" style="margin-top:1rem">
-      <label>Suspended administrator email or UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
+      <label>Suspended administrator UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
       <label>Recovery reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
       <button type="submit" class="own-button">Restore school administrator</button>
     </form>
@@ -291,21 +259,13 @@
     <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
     <button type="submit" class="own-button warn">Suspend school</button>
    </form>
-   <form id="owner-resume" hidden>
-    <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Restore suspended school</h3>
-    <p class="own-muted">Restores institution-level access after review. Existing membership suspensions, school policies and compatibility settings remain unchanged.</p>
-    <div id="owner-resume-readiness" class="own-muted" role="status" aria-live="polite">Checking recovery requirements…</div>
-    <button id="owner-resume-refresh" type="button" class="own-button" style="margin:.65rem 0">Refresh recovery checks</button>
-    <label>Recovery reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
-    <button id="owner-resume-submit" type="submit" class="own-button">Restore school access</button>
-   </form>
   </section>
  </div>
 </main>
-<script defer src="js/core/adminerva-nav.js?v=20261120-admin-foundation"></script>
-<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
-<script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
-<script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
-<script type="module" src="js/core/owner-school-registry.mjs?v=20261120-admin-list"></script>
-<script type="module" src="js/core/platform-admin-workflow.mjs?v=20261121-platform-flow1"></script></body>
+<script defer src="js/core/adminerva-nav.js?v=47eba756913e"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=47eba756913e"></script>
+<script defer src="js/core/release-footer.js?v=47eba756913e"></script>
+<script src="js/core/adminerva-loader.js?v=47eba756913e"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=47eba756913e"></script>
+</body>
 </html>
