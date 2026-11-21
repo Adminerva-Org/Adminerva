@@ -10,3 +10,24 @@ export function validateDeploymentDates({postDate,deadline,deadlineEnabled}={}){
     return "The post date must be on or before the deadline.";
   return null;
 }
+
+/**
+ * Apply a deadline extension or late-submission policy to a previously
+ * deployed legacy assessment without changing the original section, issue
+ * time or any additional immutable deployment metadata.
+ */
+export function rescheduleLegacyDeployment(previous,{deadlineEnabled,allowLateSubmissions,deadline}={}){
+  if(!previous||typeof previous.id!=="string"||!previous.id||
+     typeof previous.section!=="string"||!previous.section)
+    throw Error("The original class deployment was not found.");
+  const enforcing=deadlineEnabled===true;
+  const next={
+    ...previous,
+    deadlineEnabled:enforcing,
+    allowLateSubmissions:enforcing&&allowLateSubmissions===true,
+    deadline:enforcing?deadline:previous.deadline||null
+  };
+  const problem=validateDeploymentDates({postDate:previous.postDate,deadline:next.deadline,deadlineEnabled:enforcing});
+  if(problem)throw Error(problem);
+  return next;
+}
