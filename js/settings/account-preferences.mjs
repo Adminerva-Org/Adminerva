@@ -10,7 +10,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 const root=document.querySelector("[data-account-preferences]");
 if(root){
   const staff=root.dataset.accountPreferences==="staff";
-  root.innerHTML=\`
+  root.innerHTML=`
     <div class="av-settings-section-head">
       <div>
         <p class="av-eyebrow">Personal preferences</p>
@@ -47,11 +47,10 @@ if(root){
         <legend>Device notifications</legend>
         <p class="av-settings-muted">Push is controlled per account and per device. Browser permission may also be required.</p>
         <label class="av-settings-preference-row mt-3">
-          <span><strong>\${staff?"Push important work alerts":"Push important student alerts"}</strong><small>Master switch for this account's supported push categories.</small></span>
+          <span><strong>Push important alerts</strong><small>Master switch for the notification categories available to your current role.</small></span>
           <input type="checkbox" data-push-master checked>
         </label>
         <div class="av-settings-list mt-3" data-push-options>
-          \${pushChoices.map(([value,label])=>\`<label class="av-preference-option"><input type="checkbox" value="\${value}" checked> \${label}</label>\`).join('')}
         </div>
         <div class="av-settings-actions mt-3">
           <button type="button" data-enable-push class="av-primary-button">Enable on this device</button>
@@ -94,7 +93,7 @@ if(root){
         <p data-preference-status role="status" class="av-settings-status" hidden></p>
         <button type="submit" class="av-primary-button">Save preferences</button>
       </div>
-    </form>\`;
+    </form>`;
   let settingsRole={role:staff?"staff":"student",canTeach:false};
   function supportedChoices(){
     if(!staff)return [["assessment","Assignments"],["submission","Submission updates"],["grade","Published grades"],["issue","Reports & replies"],["release","Website updates"]];
