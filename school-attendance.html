@@ -28,6 +28,7 @@
     <div class="flex flex-col sm:flex-row sm:items-end gap-3">
       <label class="text-sm font-bold flex-1 max-w-sm">Attendance date
         <input id="attendanceDate" type="date" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5">
+        <span id="attendanceTimezone" class="block text-xs font-normal text-slate-500 mt-1">Using device date until school timezone is loaded.</span>
       </label>
       <button id="attendanceRefresh" type="button" class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold">Load date</button>
     </div>
@@ -82,7 +83,7 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261121-attendance-oversight1"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
-<script type="module" src="js/school-admin/attendance-oversight.mjs?v=20261121-attendance-oversight1"></script>
+<script type="module" src="js/school-admin/attendance-oversight.mjs?v=20261121-school-timezone1"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
