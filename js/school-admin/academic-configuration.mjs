@@ -724,6 +724,14 @@ el("ac-offering-form").addEventListener("submit",event=>{
   if(busy||!catalogReady)return;
   if(!form.reportValidity()){notify("Complete all course-offering fields before saving.","error");return;}
   const data=payload(form);
+  const existing=offerings.find(item=>item.programId===data.programId&&item.yearId===data.yearId&&
+    item.termId===data.termId&&item.sectionId===data.sectionId&&item.subjectId===data.subjectId);
+  if(existing){
+    const message=existing.status==="archived"
+      ?"This class offering already exists as an archived record. Restore it instead of creating a duplicate."
+      :"This class offering already exists. Open the existing class instead of creating a duplicate.";
+    say(message);notify(message,"error");return;
+  }
   if(inSystemAdminPreview()&&document.getElementById("adminerva-nav")?.dataset.platformAssistMode!=="true"){
     offerings.push({offeringId:"preview_"+Date.now(),...data,status:"active",preview:true});
     form.reset();clearManual(form);renderCatalog();
@@ -798,6 +806,53 @@ for(const name of ["termId","sectionId","subjectId","rosterMode"]){
 for(const button of document.querySelectorAll("[data-reset-auto]")){
   button.addEventListener("click",()=>resetAuto(button.dataset.resetAuto));
 }
+el("ac-lifecycle-close").addEventListener("click",closeLifecycle);
+el("ac-lifecycle-cancel").addEventListener("click",closeLifecycle);
+el("ac-lifecycle-dialog").addEventListener("cancel",event=>{if(busy)event.preventDefault();else lifecycleChange=null;});
+el("ac-lifecycle-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(busy||!lifecycleChange||!event.currentTarget.reportValidity())return;
+  const change=lifecycleChange,reason=String(new FormData(event.currentTarget).get("reason")||"").trim(),
+    restoring=change.mode==="restore",
+    action=change.type==="offering"
+      ?(restoring?"restore_offering":"archive_offering")
+      :(restoring?"restore_catalog":"archive_catalog"),
+    details=change.type==="offering"
+      ?{offeringId:change.item.offeringId,expectedRevision:change.item.revision,reason}
+      :{kind:change.kind,recordId:change.item.id,expectedRevision:change.item.revision,reason};
+  if(inSystemAdminPreview()&&document.getElementById("adminerva-nav")?.dataset.platformAssistMode!=="true"){
+    if(change.type==="offering"){
+      const target=offerings.find(item=>item.offeringId===change.item.offeringId);
+      if(target){target.status=restoring?"active":"archived";target.revision=(Number(target.revision)||1)+1;target.preview=true;}
+    }else{
+      const target=findCatalog(change.kind,change.item.id);
+      if(target){target.status=restoring?"active":"archived";target.revision=(Number(target.revision)||1)+1;target.preview=true;}
+      syncActiveCatalog();
+    }
+    lifecycleChange=null;el("ac-lifecycle-dialog").close();renderCatalog();
+    const message=(restoring?"Restored ":"Archived ")+(change.type==="offering"?"class offering":catalogLabel(change.kind).toLowerCase())+
+      " for this temporary System Admin preview. Reloading or exiting the preview will discard the change.";
+    say(message);notify(message,"success");return;
+  }
+  setBusy(true,(restoring?"Restoring ":"Archiving ")+(change.type==="offering"?"class…":"academic record…"));
+  void scoped(action,details).then(async result=>{
+    lifecycleChange=null;el("ac-lifecycle-dialog").close();
+    if(editingCatalog&&change.type==="catalog"&&editingCatalog.kind===change.kind&&editingCatalog.item.id===change.item.id)
+      editingCatalog=null;
+    const refreshed=await load({afterWrite:true});
+    const message=change.type==="offering"
+      ?restoring
+        ?"Class offering restored. Current official-section registrations were synchronized where applicable. Reassign teachers and review the schedule before normal use."
+        :"Class offering retired. Active class roster/teacher relationships and its schedule were ended or archived; assessments, submissions, grades and history were preserved."
+      :(catalogLabel(change.kind)+" "+(restoring?"restored":"archived")+". Historical references were preserved.");
+    say(refreshed?message:message+" Refresh failed; reload before another lifecycle change.");
+    notify(message+(refreshed?"":" Refresh required."),refreshed?"success":"info");
+  }).catch(error=>{
+    const message=friendlyError(error,"The lifecycle change was not saved.");
+    say(message);notify(message,"error");
+  }).finally(()=>setBusy(false));
+});
+
 el("ac-refresh").addEventListener("click",()=>void load());
 
 for(const button of document.querySelectorAll("[data-wizard-go]")){
@@ -815,7 +870,12 @@ el("ac-wizard-next")?.addEventListener("click",()=>{
 picker=createTenantSchoolPicker({
   host:el("ac-school-switcher"),
   status,
-  onBeforeChange:async()=>{if(busy||loading)throw Error("Finish the academic operation before switching schools.");catalogReady=false;years=[];programs=[];terms=[];subjects=[];sections=[];offerings=[];currentStep=1;wizardInitialized=false;setBusy(false);},
+  onBeforeChange:async()=>{
+    if(busy||loading)throw Error("Finish the academic operation before switching schools.");
+    catalogReady=false;years=[];programs=[];terms=[];subjects=[];sections=[];offerings=[];
+    allCatalog={academic_years:[],academic_programs:[],terms:[],subjects:[],sections:[]};
+    editingCatalog=null;lifecycleChange=null;currentStep=1;wizardInitialized=false;setBusy(false);
+  },
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
       say("School administrator access is required to configure academics.");return;
