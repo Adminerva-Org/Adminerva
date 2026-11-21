@@ -229,6 +229,35 @@ function renderPreparation(){
     link.href="lesson-planner.html?"+q.toString();row.append(text,link);host.append(row);
   }
 }
+function renderMaterials(){
+  const host=el("teacherClassroomMaterials"),count=el("teacherClassroomMaterialCount");host.replaceChildren();
+  const materials=posts.filter(post=>post.kind==="material").sort((a,b)=>Number(b.pinned)-Number(a.pinned)||Number(b.createdAt||0)-Number(a.createdAt||0));
+  count.textContent=loadedOffering?materials.length+" material"+(materials.length===1?"":"s"):"";
+  if(!loadedOffering){host.append(make("p","text-xs text-sky-900","Choose a classroom to load materials."));return;}
+  if(!materials.length){
+    const row=make("div","rounded-lg border border-dashed border-sky-200 bg-white/70 p-3");
+    row.append(make("p","text-xs text-sky-950","No student-facing materials have been posted to this class."));
+    const link=make("a","inline-block mt-2 text-xs font-extrabold text-sky-800 underline","Post a material in the Stream ↓");
+    link.href="#class-stream";row.append(link);host.append(row);return;
+  }
+  for(const material of materials.slice(0,6)){
+    const row=make("article","rounded-lg border border-sky-100 bg-white p-3"),top=make("div","flex items-start justify-between gap-2"),text=make("div","min-w-0");
+    text.append(make("strong","block text-sm text-slate-900",material.title||"Class material"),
+      make("span","block text-[11px] text-slate-500 mt-1",[material.authorName||"Teacher",date(material.createdAt),material.pinned?"Pinned":""].filter(Boolean).join(" · ")));
+    const edit=make("a","shrink-0 text-xs font-extrabold text-sky-800 underline","Manage in Stream");edit.href="#class-stream";
+    top.append(text,edit);row.append(top);
+    if(material.body)row.append(make("p","mt-2 text-xs text-slate-600 whitespace-pre-wrap break-words",material.body.length>260?material.body.slice(0,260)+"…":material.body));
+    if(material.linkUrl)try{
+      const url=new URL(material.linkUrl);
+      if(["http:","https:"].includes(url.protocol)){
+        const link=make("a","inline-block mt-2 text-xs font-extrabold text-indigo-700 underline break-all","Open shared resource ↗");
+        link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";row.append(link);
+      }
+    }catch{}
+    host.append(row);
+  }
+  if(materials.length>6)host.append(make("p","text-xs text-sky-900","Showing 6 of "+materials.length+" materials. Use the Stream to review older posts."));
+}
 function renderClasswork(){
   const host=el("teacherClassroomClasswork"),summaryHost=el("teacherClassroomClassworkSummary"),healthStatus=el("teacherClassroomClassworkHealthStatus");
   host.replaceChildren();summaryHost.replaceChildren();summaryHost.hidden=true;healthStatus.textContent="";
@@ -314,7 +343,7 @@ function beginEdit(post){
 async function loadPosts(){
   const item=current(),turn=++epoch;loadedOffering="";canPost=false;canComment=false;posts=[];classwork=[];rosterStudents=[];mutedPersonIds=new Set();
   classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];officialMeetings=[];classroomSettings={participationMode:"teacher_only",revision:0};
-  renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();
+  renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();
   if(!item)return false;
   try{
     const results=await Promise.allSettled([
@@ -338,9 +367,9 @@ async function loadPosts(){
       classworkSummary=results[3].value.summary?.classwork||null;
       preparationPlans=results[3].value.preparation||[];
     }else classworkHealthError="Submission and grading counts are temporarily unavailable. Classwork links still work.";
-    renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();return true;
+    renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();return true;
   }catch(error){
-    if(turn===epoch){say(error?.message||"Classroom could not load.",true);renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();}
+    if(turn===epoch){say(error?.message||"Classroom could not load.",true);renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();}
     return false;
   }
 }
@@ -353,9 +382,9 @@ async function refresh(){
     for(const item of offerings)select.add(new Option(label(item),item.offeringId));
     if(offerings.some(item=>item.offeringId===previous))select.value=previous;
     else if(initialOfferingId&&offerings.some(item=>item.offeringId===initialOfferingId))select.value=initialOfferingId;
-    if(!offerings.length){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];officialMeetings=[];renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();say("No active class is assigned to this teacher account.",true);return;}
+    if(!offerings.length){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];officialMeetings=[];renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();say("No active class is assigned to this teacher account.",true);return;}
     restoreDraft(select.value);if(await loadPosts())say("Classroom ready for "+label(current())+".");
-  }catch(error){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();say(error?.message||"Classroom could not load.",true);}
+  }catch(error){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();say(error?.message||"Classroom could not load.",true);}
   finally{setBusy(false);}
 }
 async function writeStream(action,details,success,{after=null}={}){
@@ -420,7 +449,7 @@ picker=createTenantSchoolPicker({host:el("teacherClassroomSchoolSwitcher"),statu
   if(busy||editing)throw Error("Finish or cancel the current classroom action before switching schools.");
   keepDraft();++epoch;offerings=[];posts=[];classwork=[];rosterStudents=[];loadedOffering="";canPost=false;canComment=false;composerOffering="";
   classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];officialMeetings=[];mutedPersonIds=new Set();classroomSettings={participationMode:"teacher_only",revision:0};
-  select.replaceChildren();fillComposer();renderPosts();renderPreparation();renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
+  select.replaceChildren();fillComposer();renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
 },onReady:scope=>{if(scope.current?.roles.includes("teacher"))void refresh();else say("Teacher access is required.",true);}});
 renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
 await auth.authStateReady();
