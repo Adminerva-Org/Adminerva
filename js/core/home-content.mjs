@@ -23,8 +23,14 @@ if(main){
   titleWrap.append(eyebrow,heading);
   const explore=document.createElement('a');
   explore.href='opportunities.html';
-  explore.textContent='Explore all opportunities ↗';
-  head.append(titleWrap,explore);
+  explore.textContent='Explore opportunities ↗';
+  const pulse=document.createElement('a');
+  pulse.href='pulse.html';
+  pulse.textContent='Read Adminerva Pulse ↗';
+  const links=document.createElement('div');
+  links.className='av-home-editorial-links';
+  links.append(pulse,explore);
+  head.append(titleWrap,links);
   const cards=document.createElement('div');
   cards.className='av-home-editorial-items';
   cards.setAttribute('aria-live','off');
