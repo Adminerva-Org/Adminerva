@@ -82,13 +82,6 @@ function createSchoolStudentRecordsService({db}){
         deny("not-found","The student record was not found in this school.");
       return {ref,doc,data:doc.data()};
     }
-    async function relationDocs(personId){
-      const snap=await db.collection(root+"guardian_relationships")
-        .where("studentPersonId","==",personId).limit(51).get();
-      if(snap.size===51)deny("resource-exhausted","Guardian relationship history requires pagination.");
-      return snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
-    }
-
     if(input.action==="search_students"){
       const query=String(input.query||"").trim().toLocaleLowerCase("en");
       const snap=await db.collection(root+"people").where("kind","==","student").limit(251).get();
@@ -240,13 +233,16 @@ function createSchoolStudentRecordsService({db}){
       const contactId=guardianContactIdForEmail(email),
         relationshipId=guardianRelationshipId(personId,contactId),
         contactRef=db.doc(root+"guardian_contacts/"+contactId),
-        relationshipRef=db.doc(root+"guardian_relationships/"+relationshipId),
-        other=await relationDocs(personId);
+        relationshipRef=db.doc(root+"guardian_relationships/"+relationshipId);
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
-        const [person,contact,relationship,...others]=await Promise.all([
-          tx.get(initial.ref),tx.get(contactRef),tx.get(relationshipRef),...other.map(doc=>tx.get(doc.ref))
+        const [person,contact,relationship,relationships]=await Promise.all([
+          tx.get(initial.ref),tx.get(contactRef),tx.get(relationshipRef),
+          tx.get(db.collection(root+"guardian_relationships").where("studentPersonId","==",personId).limit(51))
         ]);
+        if(relationships.size===51)
+          deny("resource-exhausted","Guardian relationship history requires pagination.");
+        const others=relationships.docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
         if(!person.exists||person.data().schoolId!==ctx.schoolId||
            Number(person.data().revision||1)!==expectedPersonRevision)
           deny("failed-precondition","The student identity or guardian snapshot changed. Refresh before adoption.");
@@ -321,15 +317,18 @@ function createSchoolStudentRecordsService({db}){
         mobile=optional(input.mobile,40)||"",
         email=normalizeGuardianEmail(input.email);
       if(!email)deny("invalid-argument","Enter a valid guardian email.");
-      const other=await relationDocs(personId);
       let result;
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
         const a=await student(personId,ref=>tx.get(ref));
         if(a.data.status!=="active")deny("failed-precondition","Guardian relationships can be changed only for an active student record.");
-        const [contact,relationship,...others]=await Promise.all([
-          tx.get(contactRef),tx.get(relationshipRef),...other.map(doc=>tx.get(doc.ref))
+        const [contact,relationship,relationships]=await Promise.all([
+          tx.get(contactRef),tx.get(relationshipRef),
+          tx.get(db.collection(root+"guardian_relationships").where("studentPersonId","==",personId).limit(51))
         ]);
+        if(relationships.size===51)
+          deny("resource-exhausted","Guardian relationship history requires pagination.");
+        const others=relationships.docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
         if(contact.exists&&contact.data().schoolId!==ctx.schoolId)
           deny("failed-precondition","Guardian contact identity collision requires review.");
         if(relationship.exists&&relationship.data().schoolId!==ctx.schoolId)
