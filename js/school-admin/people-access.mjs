@@ -1142,15 +1142,12 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   const action=mode==="edit"?"update_person":mode==="archive"?"archive_person":"restore_person";
   const details={personId:person.personId};
   if(mode==="edit"){
+    details.expectedRevision=Number(person.revision)||1;
     details.displayName=String(values.get("displayName")||"").trim();
     if(person.kind==="student")for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
       details[name]=String(values.get(name)||"").trim();
   }
   else details.reason=String(values.get("reason")||"").trim();
-  const warning=mode==="archive"?
-    "Archive this school person record? Active access and academic assignments must already be ended.":
-    mode==="restore"?"Restore this school person record without automatically restoring access or enrollment?":null;
-  if(warning&&!confirm(warning))return;
   void submitForm(form,action,details).then(result=>{
     if(!result)return;
     personChange=null;get("pa-person-dialog").close();
@@ -1323,9 +1320,11 @@ async function loadPeople(append) {
       const view=document.createElement("button");view.type="button";view.className="pa-action";view.style.background="#0f766e";view.textContent="View details";
       view.addEventListener("click",()=>void openPersonDetail(person));
       actions.append(view);
-      const edit=document.createElement("button");edit.type="button";edit.className="pa-action";edit.textContent="Edit";
-      edit.addEventListener("click",()=>void editPersonProfile(person));
-      actions.append(edit);
+      if(person.status==="active"){
+        const edit=document.createElement("button");edit.type="button";edit.className="pa-action";edit.textContent="Edit";
+        edit.addEventListener("click",()=>void editPersonProfile(person));
+        actions.append(edit);
+      }
       if(["active","archived"].includes(person.status)){
         const lifecycle=document.createElement("button");lifecycle.type="button";lifecycle.className="pa-action";
         lifecycle.style.background=person.status==="active"?"#9a3412":"#166534";
