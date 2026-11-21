@@ -129,6 +129,7 @@ function createSchoolEnrollmentService({db}){
       if(snap.size===201)deny("resource-exhausted","Enrollment application queue requires pagination.");
       const items=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>({
         applicationId:doc.id,reference:applicationReference(doc),
+        personId:doc.data().personId||null,
         applicationType:doc.data().applicationType||"new",
         displayName:doc.data().displayName||"Student",
         birthDate:doc.data().birthDate||"",incomingLevel:doc.data().incomingLevel||"",
@@ -165,6 +166,45 @@ function createSchoolEnrollmentService({db}){
           revision:(Number(application.data().revision)||1)+1});
       });
       return {applicationId,status};
+    }
+
+    if(input.action==="student_candidate"){
+      const personId=checkId(input.personId,"Person ID",128),
+        personRef=db.doc(root+"people/"+personId);
+      const [person,registrations]=await Promise.all([
+        personRef.get(),
+        db.collection(root+"student_registrations").where("personId","==",personId).limit(51).get()
+      ]);
+      if(!person.exists||person.data().schoolId!==ctx.schoolId)
+        deny("not-found","The student is not in this school directory.");
+      const data=person.data();
+      if(data.kind!=="student"||data.status!=="active")
+        deny("failed-precondition","Only an active student directory record can be placed through Enrollment & Registration.");
+      if(registrations.size===51)
+        deny("resource-exhausted","This student has too many registration records for a safe enrollment handoff.");
+      const activeRegistrations=registrations.docs.filter(doc=>{
+        const row=doc.data();
+        return row.schoolId===ctx.schoolId&&row.status==="active";
+      }).map(doc=>({
+        registrationId:doc.id,yearId:doc.data().yearId||null,programId:doc.data().programId||null,
+        termId:doc.data().termId||null,sectionId:doc.data().sectionId||null,
+        gradeLevel:doc.data().gradeLevel||null,revision:Number(doc.data().revision)||1
+      }));
+      return {
+        person:{
+          personId,displayName:data.displayName||"Student",birthDate:data.birthDate||"",
+          studentNumber:data.studentNumber||"",
+          guardianName:data.primaryGuardianName||"",
+          guardianRelationship:data.primaryGuardianRelationship||"",
+          guardianEmail:data.primaryGuardianEmail||"",
+          guardianMobile:data.primaryGuardianMobile||"",
+          studentEmailType:data.studentEmailType||"personal",
+          accountResponsibility:data.accountResponsibility||"student",
+          accountLinked:Boolean(data.authUid),activationReady:Boolean(data.activationEmailHash),
+          revision:Number(data.revision)||1
+        },
+        activeRegistrations
+      };
     }
 
     if(input.action==="list_registrations"){
@@ -529,6 +569,7 @@ function createSchoolEnrollmentService({db}){
       const termId=checkId(input.termId,"Academic period");
       const sectionId=checkId(input.sectionId,"Section");
       const applicationId=input.applicationId?checkId(input.applicationId,"Application ID",128):null;
+      const explicitPersonId=input.personId?checkId(input.personId,"Person ID",128):null;
       const applicationRef=applicationId?db.doc(root+"enrollment_applications/"+applicationId):null;
 
       const [year,program,term,section,offeringSnap,application]=await Promise.all([
@@ -598,11 +639,12 @@ function createSchoolEnrollmentService({db}){
         deny("failed-precondition","Duplicate student identity records require People & Access review before enrollment.");
 
       const candidateIds=new Set();
+      if(explicitPersonId)candidateIds.add(explicitPersonId);
       if(application?.exists&&application.data().personId)candidateIds.add(String(application.data().personId));
       if(activeEmailMatches[0])candidateIds.add(activeEmailMatches[0].id);
       if(activeNumberMatches[0])candidateIds.add(activeNumberMatches[0].id);
       if(candidateIds.size>1)
-        deny("failed-precondition","Student email, number and application point to different records. Resolve the identity before enrolling.");
+        deny("failed-precondition","The selected directory student, student email/number and online application point to different records. Resolve the identity before enrolling.");
 
       let personRef;
       const candidateId=[...candidateIds][0];
@@ -759,7 +801,8 @@ function createSchoolEnrollmentService({db}){
           createdCourses,createdAt:now
         });
         result={registrationId,personId,displayName,gradeLevel,studentEmailRequired,
-          accountResponsibility,courseCount:activeCourses,createdCourses,accountLinked,source};
+          accountResponsibility,courseCount:activeCourses,createdCourses,accountLinked,source,
+          reusedDirectoryPerson:Boolean(explicitPersonId)};
       });
       return result;
     }
