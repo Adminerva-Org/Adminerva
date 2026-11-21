@@ -90,12 +90,16 @@ function createSchoolTeacherAnalyticsService({db}){
    if(includeDrafts&&!isTeacher)
     deny("permission-denied","Private teacher drafts are unavailable to school-administrator-only accounts.");
 
-   const [enrollments,assessmentSnap,gradeSnap]=await Promise.all([
+   const [enrollments,assessmentSnap,gradeSnap,studioSnap,generalSnap,githubSnap]=await Promise.all([
     db.collection(prefix+"enrollments").where("offeringId","==",offeringId).limit(501).get(),
     db.collection(prefix+"assessments").where("offeringId","==",offeringId).limit(201).get(),
-    db.collection(prefix+"student_grades").where("offeringId","==",offeringId).limit(1001).get()
+    db.collection(prefix+"student_grades").where("offeringId","==",offeringId).limit(1001).get(),
+    db.collection(prefix+"studio_submissions").where("offeringId","==",offeringId).limit(1001).get(),
+    db.collection(prefix+"assessment_submissions").where("offeringId","==",offeringId).limit(1001).get(),
+    db.collection(prefix+"github_evidence").where("offeringId","==",offeringId).limit(1001).get()
    ]);
-   if(enrollments.size===501||assessmentSnap.size===201||gradeSnap.size===1001)
+   if(enrollments.size===501||assessmentSnap.size===201||gradeSnap.size===1001||
+      studioSnap.size===1001||generalSnap.size===1001||githubSnap.size===1001)
     deny("resource-exhausted","This class exceeds the current analytics page limits.");
 
    const activeEnrollments=enrollments.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
@@ -124,6 +128,21 @@ function createSchoolTeacherAnalyticsService({db}){
      submissionSource:doc.data().submissionSource||"",dueAt:millis(doc.data().dueAt)}));
    const taskMap=new Map(tasks.map(task=>[task.taskId,task]));
    const rosterUids=new Set([...personMap.values()].map(person=>person.uid).filter(Boolean));
+   const submissionRows=[];
+   const addSubmissions=(snapshot,source)=>{
+    for(const doc of snapshot.docs){
+     const data=doc.data(),task=taskMap.get(data.taskId);
+     if(!task||task.submissionSource!==source||data.schoolId!==ctx.schoolId||
+        data.offeringId!==offeringId||!rosterUids.has(data.studentUid))continue;
+     submissionRows.push({
+      taskId:data.taskId,studentUid:data.studentUid,status:String(data.status||"submitted"),source
+     });
+    }
+   };
+   addSubmissions(studioSnap,"studio");
+   addSubmissions(generalSnap,"text");
+   addSubmissions(generalSnap,"link");
+   addSubmissions(githubSnap,"github");
    const grades=[];
    for(const doc of gradeSnap.docs){
     const data=doc.data(),task=taskMap.get(data.taskId);
@@ -162,11 +181,25 @@ function createSchoolTeacherAnalyticsService({db}){
    const assessments=tasks.map(task=>{
     const rows=grades.filter(grade=>grade.taskId===task.taskId),
      published=rows.filter(grade=>grade.status==="published"),
-     visible=includeDrafts&&isTeacher?rows:published;
+     visible=includeDrafts&&isTeacher?rows:published,
+     submissions=submissionRows.filter(row=>row.taskId===task.taskId),
+     submittedStudents=new Set(submissions.map(row=>row.studentUid)),
+     revisionStudents=new Set(submissions.filter(row=>row.status==="reopened").map(row=>row.studentUid)),
+     completedSubmissionStudents=new Set(submissions.filter(row=>row.status!=="reopened").map(row=>row.studentUid)),
+     anyGradeStudents=new Set(rows.map(row=>row.studentUid)),
+     draftGradeStudents=new Set(rows.filter(row=>row.status==="draft").map(row=>row.studentUid)),
+     publishedGradeStudents=new Set(published.map(row=>row.studentUid)),
+     awaitingGrade=[...completedSubmissionStudents].filter(uid=>!anyGradeStudents.has(uid)).length;
     return {
      taskId:task.taskId,title:task.title,submissionSource:task.submissionSource,
      dueAt:task.dueAt,rubricMax:task.rubricMax,
-     publishedGrades:published.length,
+     rosterStudents:rosterUids.size,
+     submittedStudents:submittedStudents.size,
+     revisionRequested:revisionStudents.size,
+     notSubmitted:Math.max(0,rosterUids.size-submittedStudents.size),
+     awaitingGrade,
+     draftGrades:draftGradeStudents.size,
+     publishedGrades:publishedGradeStudents.size,
      visibleGrades:visible.length,
      averagePercentage:visible.length?
       Math.round(visible.reduce((sum,row)=>sum+row.percentage,0)/visible.length*10)/10:null
@@ -175,19 +208,27 @@ function createSchoolTeacherAnalyticsService({db}){
 
    const published=grades.filter(grade=>grade.status==="published");
    const visible=includeDrafts&&isTeacher?grades:published;
+   const classworkSummary=assessments.reduce((sum,row)=>({
+    notSubmitted:sum.notSubmitted+row.notSubmitted,
+    revisionRequested:sum.revisionRequested+row.revisionRequested,
+    awaitingGrade:sum.awaitingGrade+row.awaitingGrade,
+    draftGrades:sum.draftGrades+row.draftGrades,
+    publishedGrades:sum.publishedGrades+row.publishedGrades
+   }),{notSubmitted:0,revisionRequested:0,awaitingGrade:0,draftGrades:0,publishedGrades:0});
    return {
     schoolId:ctx.schoolId,offeringId,offering:offeringLabels,
     scope:includeDrafts&&isTeacher?"published_and_my_drafts":"published",
     summary:{
-     students:students.length,assessments:tasks.length,
+     students:students.length,studentsWithAccounts:rosterUids.size,assessments:tasks.length,
      publishedGrades:published.length,
      visibleGrades:visible.length,
      averagePercentage:visible.length?
       Math.round(visible.reduce((sum,row)=>sum+row.percentage,0)/visible.length*10)/10:null,
-     studentsWithPublishedGrade:new Set(published.map(row=>row.studentUid)).size
+     studentsWithPublishedGrade:new Set(published.map(row=>row.studentUid)).size,
+     classwork:classworkSummary
     },
     assessments,students,
-    note:"Missing grades are excluded from averages and are not treated as zero. Repository commit counts are not used as mastery or effort metrics."
+    note:"Not submitted counts only active enrolled students with linked accounts. Revision requests are tracked separately. Missing grades are excluded from averages and are not treated as zero. Repository commit counts are not used as mastery or effort metrics."
    };
   }
   deny("invalid-argument","Unknown school teacher analytics operation.");
