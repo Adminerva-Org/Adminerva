@@ -114,6 +114,8 @@ if(panel&&list&&status&&schoolHost){
       className:"bg-amber-100 text-amber-900"
     };
     if(task.windowStatus==="upcoming")return {label:"Upcoming",className:"bg-slate-100 text-slate-700"};
+    if(task.manualOpenRequired===true&&task.manualAccessState==="open"&&task.submissionDeadlinePassed)
+      return {label:"Class open · Submission past due",className:"bg-amber-100 text-amber-900"};
     if(task.windowStatus==="closed")return {label:"Past due",className:"bg-rose-100 text-rose-800"};
     if(task.late===true)return {label:"Late submission allowed",className:"bg-amber-100 text-amber-900"};
     return {label:"Ready to work",className:"bg-indigo-100 text-indigo-800"};
@@ -223,7 +225,10 @@ if(panel&&list&&status&&schoolHost){
         }
         const actions=node("div","mt-4 flex flex-wrap gap-2");
         if(submission?.error)article.append(node("p","mt-3 text-sm text-amber-900","Submission status could not be confirmed. Refresh this page before starting a new submission."));
-        const canSubmit=!submission?.error&&(submission?.status==="reopened"?Number(submission.revisionDueAt||0)>Date.now():!submission?.submitted&&!grade&&!["upcoming","closed","waiting_for_teacher"].includes(task.windowStatus));
+        const canSubmit=!submission?.error&&(submission?.status==="reopened"?
+          Number(submission.revisionDueAt||0)>Date.now():
+          !submission?.submitted&&!grade&&!task.submissionDeadlinePassed&&
+          !["upcoming","closed","waiting_for_teacher"].includes(task.windowStatus));
         if(task.submissionSource==="studio"&&task.manualOpenRequired===true&&task.manualAccessState!=="open"){
           article.append(node("p","mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-950",
             ["closed","closing","held"].includes(task.manualAccessState)
