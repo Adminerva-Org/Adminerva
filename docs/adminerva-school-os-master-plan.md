@@ -215,6 +215,7 @@ Status definitions:
 | System Admin Operations Center | In development | Draft PR #194 contains the first-party observability/incident-management implementation. |
 | V4 verified-school / multi-school foundation | Foundation | PR #113 contains the broad V4 foundation; PR #186 staged selective main-first integration. These are not the roadmap anymore; their architectural invariants remain inputs to this document. |
 | Games / Practice modernization | Evolving | School-scoped progress, challenges, analytics and game UX have been developed through the recent Practice/Games PR series. |
+| Public editorial and Opportunity Hunter | In development (draft PR #235); not merged, released or operational | One public-only, review-before-publish content system with separate channels for immersive discovery scenes, product announcements, Friday Pulse and verified external learning/career opportunities. The Opportunities directory and role-home highlights are implemented on a branch. Codex scheduling and actual publication are not configured or deployed; school-private announcements require a separate authorized backend workflow. |
 | Cloudflare edge services | Foundation / optional | Worker/R2/Queues/CheerpJ work exists. Firebase remains authoritative for school identity, academics, grades and evidence unless a separately approved change is made. |
 | Registrar full SIS lifecycle | Planned / partial | Registration exists; full admissions, transfers, promotion, graduation, records and credentials remain to be completed. |
 | Parent/Guardian services | Planned / partial | Guardian data is used in enrollment; dedicated parent accounts/portal and broader guardian workflows remain future work. |
@@ -370,6 +371,7 @@ Future departments should join this same action-oriented model rather than addin
 - Do not expose future placeholder modules as though they are already functional.
 - Make public/guest and role homepages engaging through progressive, task-oriented visual storytelling and interaction, without turning normal school work into a distracting animation showcase. Respect mobile screens and reduced-motion preferences.
 - Public activity previews must be explicitly illustrative, never masquerade as real user activity. Personal activity is private and role-scoped; future aggregated school activity requires verified authorization, privacy thresholds, retention and deliberate school controls.
+- Public Opportunity Hunter should present source-checked scholarships, training, competitions, internships and career opportunities with clear provenance, eligibility qualifications, recheck/expiry handling and no fabricated deadlines. Do not publish school-private records or school announcements to the public editorial channel.
 
 ## 9. Security, privacy and audit boundaries
 
@@ -398,6 +400,7 @@ Future departments should join this same action-oriented model rather than addin
 7. Do not describe a feature as live merely because its PR exists.
 8. Avoid broad release process expansion unless it materially reduces a real production risk.
 9. Scheduled editorial/Codex automation may prepare release-note or feature-spotlight drafts using existing published release history and verified deployment evidence; it must not silently advance the public version, publish an unverified change, or send school-wide notifications.
+10. Selected editorial cadence: daily immersive homepage experience, daily release notes/announcements, daily Opportunity Hunter, Friday Weekly Adminerva Pulse. Codex automations produce reviewable drafts in separate public content channels; approved content appears only after review and normal frontend publication. Run instructions are in `ops/public-editorial-automation.md`. Their existence on a PR is not evidence that schedules are configured.
 
 ## 11. Documents and planning governance
 
