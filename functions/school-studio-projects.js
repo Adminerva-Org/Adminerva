@@ -117,9 +117,12 @@ function createSchoolStudioProjectService({db}){
     return {finalSave:false,taskId,personId};
    }
    if(["closed","closing"].includes(data.manualAccessState)&&closingEpoch>0&&
-      Number(binding.sessionEpoch||0)===closingEpoch&&epoch===closingEpoch&&
-      Date.now()<=(data.manualCloseGraceUntil?.toMillis?.()||0)){
-    return {finalSave:true,taskId,closingEpoch,personId};
+      Number(binding.sessionEpoch||0)===closingEpoch&&epoch===closingEpoch){
+    // Expired closure permits a read-only replay of a checkpoint that was
+    // already committed, never creation of a new checkpoint or project write.
+    const graceEnd=data.manualCloseGraceUntil?.toMillis?.()||0;
+    return {finalSave:true,taskId,closingEpoch,personId,
+      receiptLookupOnly:Date.now()>graceEnd};
    }
    deny("failed-precondition","The Studio exam is closed to edits. Only an authorized final closing checkpoint may be saved.");
   }
@@ -194,11 +197,16 @@ function createSchoolStudioProjectService({db}){
         "/sessions/"+closingEpoch+"/studio_exam_final_checkpoints/"+ctx.uid):null;
     const priorReceipt=receiptRef?await tx.get(receiptRef):null;
     if(priorReceipt?.exists){
-      if(priorReceipt.data().projectId!==projectId||priorReceipt.data().contentDigest!==digest)
-       deny("failed-precondition","This exam session already has a final saved checkpoint.");
+      if(priorReceipt.data().projectId!==projectId||
+         priorReceipt.data().contentDigest!==digest||
+         priorReceipt.data().sourceDigest!==digestSource(files,language)||
+         priorReceipt.data().title!==title)
+       deny("failed-precondition","This exam session already has a different final saved checkpoint.");
       result={projectId,revision:priorReceipt.data().projectRevision,
         contentDigest:digest,created:false,unchanged:true,examFinalized:true};return;
     }
+    if(access.receiptLookupOnly)
+     deny("failed-precondition","The final save window expired without a confirmed checkpoint. Contact your teacher with your device draft.");
     const now=FieldValue.serverTimestamp();
     // Freeze the exact source files once per student/class session. The live
     // project may be edited next week; this immutable receipt is the evidence
@@ -226,13 +234,15 @@ function createSchoolStudioProjectService({db}){
     const expected=input.expectedRevision;
     if(!Number.isInteger(expected)||expected<1)
      deny("failed-precondition","This project already exists in school storage. Reload its school revision before saving.");
-    if(data.revision!==expected)
-     deny("failed-precondition","Project changed in school storage. Reload before overwriting it.");
     if(data.contentDigest===digest&&data.title===title&&data.language===language){
+     // Identical cloud content is safe even if another device has already
+     // advanced the revision. This is especially important at exam close.
      if(receiptRef)tx.create(receiptRef,{...frozenReceipt,projectRevision:data.revision});
      result={projectId,revision:data.revision,contentDigest:digest,created:false,unchanged:true,
        examFinalized:Boolean(receiptRef)};return;
     }
+    if(data.revision!==expected)
+     deny("failed-precondition","Project changed in school storage. Reload before overwriting it.");
     const revision=data.revision+1;
     tx.update(ref,{title,language,files,artifacts,contentDigest:digest,
       sourceDigest:digestSource(files,language),revision,updatedAt:now});
