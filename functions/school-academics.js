@@ -606,6 +606,28 @@ function createSchoolAcademicsService({db}) {
       if(!year.exists||year.data().schoolId!==ctx.schoolId||year.data().status!=="active")
         deny("failed-precondition","Academic year does not exist or is inactive in this school.");
     }
+    const currentData=current.data();
+    const structuralTermChange=kind==="terms"&&
+      (currentData.yearId!==parentYear||currentData.programId!==parentProgram);
+    const structuralSectionChange=kind==="sections"&&
+      (currentData.programId!==parentProgram||String(currentData.gradeLevel||"")!==String(gradeLevel||""));
+    if(structuralTermChange||structuralSectionChange){
+      const fieldName=kind==="terms"?"termId":"sectionId";
+      const [offeringDeps,registrationDeps]=await Promise.all([
+        tx.get(db.collection("schools/"+ctx.schoolId+"/course_offerings").where(fieldName,"==",itemId).limit(51)),
+        tx.get(db.collection("schools/"+ctx.schoolId+"/student_registrations").where(fieldName,"==",itemId).limit(51))
+      ]);
+      if(offeringDeps.size===51||registrationDeps.size===51)
+        deny("resource-exhausted","Academic dependency review requires pagination before this structural change can be saved.");
+      const activeOfferings=offeringDeps.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active").length,
+        activeRegistrations=registrationDeps.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active").length;
+      if(activeOfferings||activeRegistrations)
+        deny("failed-precondition","This structural change would rewrite the context of "+
+          (activeOfferings?activeOfferings+" active class"+(activeOfferings===1?"":"es"):"")+
+          (activeOfferings&&activeRegistrations?" and ":"")+
+          (activeRegistrations?activeRegistrations+" active student registration"+(activeRegistrations===1?"":"s"):"")+
+          ". End or move those relationships first; names and non-structural details can still be edited.");
+    }
     const now=FieldValue.serverTimestamp();
     tx.update(ref,{
       name,
