@@ -356,6 +356,14 @@ function render(){
           link.textContent="Edit deadline / late submissions";
           detail.append(line,link);row.append(detail);
         }
+        if(historical.submissionSource==="studio"){
+          const review=document.createElement("a");review.className="tl-action";
+          review.href="school-gradebook.html?"+new URLSearchParams({
+            view:"review",task:"legacy:"+historical.legacyAssessmentId
+          }).toString();
+          review.textContent="Review submissions in V4";
+          row.append(review);
+        }
         const origin=document.createElement("a");origin.className="tl-action alt";
         origin.href="repository-assessment-studio.html?"+new URLSearchParams({
           legacyAssessment:historical.legacyAssessmentId,legacyView:"deployments"
