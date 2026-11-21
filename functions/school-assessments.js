@@ -329,6 +329,8 @@ function createSchoolAssessmentService({db}){
      "/sessions/"+epoch).get();
    const hasCapturedRoster=rosterDoc.exists&&rosterDoc.data().schoolId===ctx.schoolId&&
       rosterDoc.data().taskId===taskId&&Array.isArray(rosterDoc.data().students);
+   const closeEvent=hasCapturedRoster?null:await db.doc(prefix+
+     "studio_exam_session_events/closed_"+taskId+"_"+epoch).get();
    let roster=[];
    if(hasCapturedRoster){
     roster=rosterDoc.data().students;
@@ -361,7 +363,8 @@ function createSchoolAssessmentService({db}){
        Number(task.data().manualClosedSessionEpoch||0)===epoch&&
        task.data().manualAccessState!=="open"));
    return {taskId,sessionEpoch:epoch,currentSessionEpoch:currentEpoch,
-     sessionClosed,rosterSource:hasCapturedRoster?"close_snapshot":"current_fallback",
+     sessionClosed,rosterSource:hasCapturedRoster?"close_snapshot":
+       (closeEvent?.exists&&closeEvent.data()?.status!=="processed"?"capture_pending":"current_fallback"),
      confirmed,enrolledStudents:students.length,
      confirmedPayloadBytes:students.reduce((sum,row)=>sum+Number(row.payloadBytes||0),0),
      students};
