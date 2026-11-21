@@ -263,6 +263,7 @@ Canonical administrator-owned records must expose the lifecycle needed for real 
 - Teacher CRUD means lifecycle management of the canonical **staff person**, school membership/access and teaching assignments; do not create a separate competing teacher-person table.
 - Course CRUD distinguishes the reusable **subject/course catalog record** from the year/period/section-specific **class offering**.
 - Continue this lifecycle audit across campuses, grading policies, schedules, departments, facilities/assets, inventory/catalog items and future School OS master data **as those modules become canonical**; do not create placeholder CRUD stores ahead of the authoritative domain model.
+- Keep teacher-owned artifact lifecycle separate from administrator master-data CRUD. Assessment blueprints currently support create/update/archive; add an explicit reviewed Restore path in the teacher Assessment/Preparation workstream rather than making archive silently permanent.
 
 
 ### Priority 2 — Complete the SIS student lifecycle
