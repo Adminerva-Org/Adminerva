@@ -1,3 +1,9 @@
+import {
+  buildGeneralExternalEvaluationData,
+  GENERAL_EXTERNAL_EVALUATION_REQUIRED_RULES,
+  responseShape
+} from "../assessment/general-external-evaluation.mjs?v=20261121-compact-bulk1";
+
 /**
  * Bulk assessment review on top of the authoritative Studio submission/grade
  * services. No separate grade store: results remain staged only in this page
@@ -9,6 +15,85 @@
 export const BULK_PACKAGE_FORMAT="adminerva-v4-bulk-evaluation-package-v1";
 export const BULK_RESPONSE_FORMAT="adminerva-v4-bulk-evaluation-response-v1";
 export const BULK_MAX_BATCH=10;
+export const BULK_COMPACT_PACKAGE_FORMAT="adminerva-v4-bulk-evaluation-package-v2";
+
+/**
+ * V2 transport keeps each immutable submission distinct but hoists published
+ * assessment, rubric, checking guidance and evaluator rules out of each item.
+ * The existing V1 response format and ref-to-student binding do not change.
+ */
+export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}={}){
+  if(typeof batchId!=="string"||!batchId.trim()||!Array.isArray(entries)||
+     !entries.length||entries.length>BULK_MAX_BATCH)
+    throw Error("Expected a valid batch ID and 1–"+BULK_MAX_BATCH+" verified submissions.");
+  const first=entries[0]?.evaluationData;
+  if(!first||first.format!=="adminerva-general-external-evaluation-v1"||
+     first.assessment?.submissionSource!=="studio"||
+     !Array.isArray(first.assessment?.rubric)||!first.assessment.rubric.length)
+    throw Error("The canonical shared assessment and rubric are unavailable.");
+  const originalAssessment=JSON.stringify(first.assessment);
+  const originalRules=JSON.stringify(first.gradingRules);
+  const checking=entries.every(entry=>
+    entry.evaluationData?.teacherCheckingInstructions===first.teacherCheckingInstructions)
+      ?first.teacherCheckingInstructions:null;
+  const seen=new Set();
+  const items=entries.map(entry=>{
+    const ref=entry?.ref,data=entry?.evaluationData;
+    if(typeof ref!=="string"||!ref||seen.has(ref))
+      throw Error("The bulk package contains a missing or duplicate anonymous reference.");
+    seen.add(ref);
+    if(!data||data.format!==first.format||
+       JSON.stringify(data.assessment)!==originalAssessment||
+       JSON.stringify(data.gradingRules)!==originalRules)
+      throw Error("The batch mixes different assessment instructions or grading rules. Export separately.");
+    const evidence=data.evidence;
+    if(!evidence||evidence.type!=="adminerva_studio_snapshot"||
+       !Number.isInteger(evidence.version)||evidence.version<1||
+       !evidence.contentDigest||!Array.isArray(evidence.files)||!evidence.files.length)
+      throw Error("A student has no complete frozen Studio source to evaluate.");
+    if(first.assessment.personalized&&
+       (!evidence.personalizedTask||!String(evidence.personalizedTask.prompt||"").trim()))
+      throw Error("One personalized learner is missing the exact assigned task.");
+    const {personalizedTask,...frozenEvidence}=evidence;
+    return {
+      ref,
+      personalizedTask:personalizedTask||null,
+      frozenEvidence,
+      ...(checking===null?{
+        teacherCheckingInstructions:data.teacherCheckingInstructions||""
+      }:{})
+    };
+  });
+  return {
+    format:BULK_COMPACT_PACKAGE_FORMAT,
+    batchId,
+    purpose:"Evaluate each frozen submission independently against the shared assessment. Return only the specified batch JSON.",
+    privacy:"Anonymous references contain no student names or account IDs. Source files may still contain identifying text; inspect before sharing externally.",
+    shared:{
+      assessment:first.assessment,
+      teacherCheckingInstructions:checking||"",
+      gradingRules:first.gradingRules,
+      requiredRules:GENERAL_EXTERNAL_EVALUATION_REQUIRED_RULES,
+      evaluationInstructions:[
+        "Apply the shared published rubric, instructions and evaluator rules to every item.",
+        "For each item, apply only its own personalizedTask and frozenEvidence. Never mix source files, scenarios, runtime proof or feedback across references.",
+        "Treat a matching platform automaticVerification as authoritative for the submitted source. Do not treat unmatched or historical runs as proof of compilation or execution.",
+        "Keep each assessment independent; return one result per ref in exactly the expected batch JSON format. No Markdown.",
+        "All scores are teacher-private suggestions, never automatically published."
+      ]
+    },
+    expectedResponse:{
+      format:BULK_RESPONSE_FORMAT,
+      batchId,
+      results:[{
+        ref:"One exact anonymous ref from items",
+        response:responseShape(task)
+      }]
+    },
+    items
+  };
+}
+
 
 export function bulkSuggestionState(suggestion,task){
   const rubric=Array.isArray(task?.rubric)?task.rubric:[];
@@ -260,7 +345,7 @@ export function createV4BulkEvaluationController({
       selection=new Set([...selection].slice(0,BULK_MAX_BATCH));
     render();
   }
-  async function inspect(row){
+  async function inspect(row,{forExternal=false}={}){
     if(!task||!isStudio(task))throw Error("Choose a Studio assessment.");
     const id=key(row);
     if(!id)throw Error("No submitted version was selected.");
@@ -302,11 +387,17 @@ export function createV4BulkEvaluationController({
         }};
       }
     }
-    const text=buildPackage({
+    const context={
       task,snapshot,checkingInstructions:result.checkingInstructions||""
-    });
+    };
     return {key:id,row,version:snapshot.version,digest:snapshot.contentDigest,
-      sourceLanguage:snapshot.sourceLanguage||"",packageText:text};
+      sourceLanguage:snapshot.sourceLanguage||"",
+      ...(
+        forExternal
+          ?{evaluationData:buildGeneralExternalEvaluationData(context)}
+          :{packageText:buildPackage(context)}
+      )
+    };
   }
   async function execute(title,work){
     if(running||isBusy()||!task)return;
@@ -365,11 +456,11 @@ export function createV4BulkEvaluationController({
         if(stopped)break;
         const id=key(row);
         try{
-          const frozen=await inspect(row);
+          const frozen=await inspect(row,{forExternal:true});
           if(session!==scopeGeneration)break;
           const ref=crypto.randomUUID();
           refs.set(ref,frozen);
-          items.push({ref,evaluationInstructions:frozen.packageText});
+          items.push({ref,evaluationData:frozen.evaluationData});
           exceptions.delete(id);
         }catch(error){
           if(session!==scopeGeneration)break;
@@ -381,29 +472,10 @@ export function createV4BulkEvaluationController({
       if(session!==scopeGeneration)return;
       if(!items.length)throw Error("No frozen submissions passed the package checks.");
       batchId=crypto.randomUUID();referenceMap=refs;
-      payload.value=JSON.stringify({
-        format:BULK_PACKAGE_FORMAT,batchId,
-        purpose:"Evaluate each independent frozen submission. Return JSON only.",
-        privacy:"No student name, user ID or email is included in reference metadata. Source code may itself contain identifying text; inspect before using an external evaluator.",
-        constraints:[
-          "Use the rubric and evidence rules embedded in each evaluationInstructions exactly.",
-          "Never combine student evidence or assume another student's scenario.",
-          "Do not assign zero merely because runtime proof is missing; distinguish confirmed defects from uncertainty.",
-          "Results remain teacher-private suggestions until explicitly saved."
-        ],
-        expectedResponse:{format:BULK_RESPONSE_FORMAT,batchId,
-          results:[{ref:"One exact anonymous ref from items",
-            response:{format:"adminerva-general-external-evaluation-response-v1",
-              criteria:(task.rubric||[]).map(part=>({
-                name:part.name,maximumPoints:Number(part.points||0),
-                awardedPoints:"number",pendingPoints:"number",
-                comment:"Evidence-based feedback",
-                rationale:"Concrete source or runtime evidence",
-                confidence:"high | moderate | teacher_confirmation"
-              })),
-              feedback:"At least 20 characters",limitations:"Evidence limitations"}}]},
-        items
-      },null,2);
+      payload.value=JSON.stringify(
+        buildCompactBulkExternalEvaluationPackage({batchId,entries:items,task}),
+        null,2
+      );
       const exchange=payload.closest("details");
       if(exchange)exchange.open=true;
       payload.scrollIntoView({block:"nearest"});
