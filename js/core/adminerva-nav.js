@@ -1,4 +1,4 @@
-/** Shared, role-aware navigation. Page guards remain responsible for access. */
+
 if(!document.getElementById("adminerva-analytics-script")){
   const analytics=document.createElement("script");
   analytics.id="adminerva-analytics-script";
@@ -76,8 +76,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   const platformTestMode = root.dataset.platformTestMode === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=47eba756913e");
-  if(turn!==navigationEpoch)return;
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=20261121-admin-reconciled");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=20261120-school-profile");
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
     hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent,platformTestMode
@@ -359,7 +359,7 @@ document.addEventListener("DOMContentLoaded", () => {
     import("./notifications.mjs?v=07ff052f7d63").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
-  import("./account-context-switcher.mjs?v=47eba756913e")
+  import("./account-context-switcher.mjs?v=21a534696b3d")
     .then(module=>module.mountAccountContextSwitcher(root))
     .catch(error=>console.warn("Account context switcher unavailable:",error));
   };
