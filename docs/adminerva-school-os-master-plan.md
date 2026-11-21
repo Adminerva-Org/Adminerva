@@ -218,8 +218,8 @@ Status definitions:
 | V4 verified-school / multi-school foundation | Foundation | PR #113 contains the broad V4 foundation; PR #186 staged selective main-first integration. These are not the roadmap anymore; their architectural invariants remain inputs to this document. |
 | Games / Practice modernization | Evolving | School-scoped progress, challenges, analytics and game UX have been developed through the recent Practice/Games PR series. |
 | Cloudflare edge services | Foundation / optional | Worker/R2/Queues/CheerpJ work exists. Firebase remains authoritative for school identity, academics, grades and evidence unless a separately approved change is made. |
-| Registrar full SIS lifecycle | Planned / partial | Registration exists; full admissions, transfers, promotion, graduation, records and credentials remain to be completed. |
-| Parent/Guardian services | Planned / partial | Guardian data is used in enrollment; dedicated parent accounts/portal and broader guardian workflows remain future work. |
+| Registrar full SIS lifecycle | Released; E2E verification pending | PR #238 merged to main at `e9b95b055852a7e8349d59f5fe44da77d0714699`. The production Firebase deployment completed successfully, including creation of `schoolStudentRecords` and update of `schoolEnrollment`; GitHub Pages successfully released the post-merge cache-bumped frontend from `3217fbd7402033e4297bc2ba7165b66f115310a5`. A narrow verified `registrar` school membership role is staff-bound and limited to Enrollment & Registration plus Student Records / 201 File unless another role is separately granted. Released scope includes admissions review already inside Enrollment, official registration/placement, withdrawal/transfer classification, progression workflows, canonical Student Records aggregation, guardian relationship/contact lifecycle, exact released Class Record result display and registrar document-request tracking. Authenticated school end-to-end testing is still required before calling the workflow operational. Actual transcript/report-card/certificate file generation, parent/guardian portal authority, richer records retention/release controls and Registrar reporting remain future work. |
+| Parent/Guardian services | Partial foundation released | PR #238 released canonical school-scoped guardian contacts and distinct student-to-guardian relationships, including primary-contact selection, lifecycle preservation, legacy primary-guardian snapshot adoption and enrollment seeding. People & Access no longer edits guardian relationships in the normal UI; Student Records is the relationship authority. Parent/Guardian account invitation/authentication, consent/authority rules, portal views and messaging remain future work. |
 | Personnel / HR | Planned | Teaching relationships exist; full personnel records, DTR, leave, contracts, payroll and HR lifecycle are future modules. |
 | Finance | Planned | Navigation/future architecture exists; no canonical complete finance system is established yet. |
 | Clinic / Guidance | Planned | Navigation/future architecture exists; health and counseling records require stricter dedicated permissions. |
@@ -353,9 +353,10 @@ The normal setup/operations sequence is:
 3. **People & Access** — establish people, accounts, school roles and access.
 4. **Classes & Scheduling** — create offerings, assign teachers/advisers, schedules and roster authority.
 5. **Enrollment & Registration** — register learners and establish official placement.
-6. **Grading Policies** — define school grading structures.
-7. **Operate the school** — Classroom, assessments, attendance, Gradebook and Class Record.
-8. **Monitor exceptions** — dashboard should surface missing staffing, schedule conflicts, unplaced learners, attendance gaps and other operational issues.
+6. **Student Records / Registrar** — maintain the learner 201-file aggregation, guardian relationships, released academic-record view and registrar document-request lifecycle. Verified Registrar staff may operate Enrollment and Student Records without receiving broader School Admin authority.
+7. **Grading Policies** — define school grading structures.
+8. **Operate the school** — Classroom, assessments, attendance, Gradebook and Class Record.
+9. **Monitor exceptions** — dashboard should surface missing staffing, schedule conflicts, unplaced learners, attendance gaps and other operational issues.
 
 Future departments should join this same action-oriented model rather than adding unrelated dashboard trees.
 
