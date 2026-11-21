@@ -372,8 +372,8 @@ picker=createTenantSchoolPicker({
   },
   onReady:scope=>{
     const currentScope=scope.current;
-    if(!currentScope?.roles.includes("school_admin")){
-      workspace.hidden=true;status.textContent="School Administrator access is required for Student Records during this phase.";return;
+    if(!currentScope?.roles.some(role=>["school_admin","registrar"].includes(role))){
+      workspace.hidden=true;status.textContent="School Administrator or Registrar access is required for Student Records.";return;
     }
     workspace.hidden=false;status.textContent="Student Records ready. Search for a learner or open a deep link from People & Access.";
     void searchStudents().then(()=>{
