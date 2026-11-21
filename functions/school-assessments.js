@@ -455,6 +455,14 @@ function createSchoolAssessmentService({db}){
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
       action:publish?"assessment_published":"assessment_unpublished",
       beforeRevision:revision,afterRevision:nextRevision,createdAt:now});
+    if(!publish&&data.manualOpenRequired===true&&data.manualAccessState==="open"){
+      const epoch=Number(data.manualSessionEpoch||0);
+      tx.create(db.doc(prefix+"studio_exam_session_events/closed_"+taskId+"_"+epoch),{
+        schoolId:ctx.schoolId,taskId,offeringId:data.offeringId,sessionEpoch:epoch,
+        kind:"closed",title:data.title||"Practical exam",actorUid:ctx.uid,
+        sourceAction:"assessment_unpublished",createdAt:now
+      });
+    }
     result={taskId,published:publish,revision:nextRevision,alreadyCurrent:false,
       offeringId:data.offeringId,title:data.title||"Assessment"};
    });
@@ -624,6 +632,15 @@ function createSchoolAssessmentService({db}){
       action:"assessment_"+input.action,beforeLifecycle:lifecycle,afterLifecycle:next,
       beforeRevision:revision,afterRevision:nextRevision,reason,
       ...(newDueAt?{newDueAt}:{}),createdAt:now});
+    if(data.manualOpenRequired===true&&data.manualAccessState==="open"&&
+       ["close","archive","cancel"].includes(input.action)){
+      const epoch=Number(data.manualSessionEpoch||0);
+      tx.create(db.doc(prefix+"studio_exam_session_events/closed_"+taskId+"_"+epoch),{
+        schoolId:ctx.schoolId,taskId,offeringId:data.offeringId,sessionEpoch:epoch,
+        kind:"closed",title:data.title||"Practical exam",actorUid:ctx.uid,
+        sourceAction:"assessment_"+input.action,createdAt:now
+      });
+    }
     result={taskId,lifecycle:next,revision:nextRevision,offeringId:data.offeringId,
       title:data.title||"Assessment",dueAt:(newDueAt||data.dueAt).toMillis()};
    });
