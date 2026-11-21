@@ -632,7 +632,9 @@ async function provisionAssessmentProject(assessmentId,studioSchool){
   });
   window.adminervaAssessmentProjectContext={...context,projectId:result?.projectId||"",created:result?.created===true};
   if(result?.project){
-    showSaveStatus(result.created?"Assessment project created automatically":"Assessment project reopened");
+    showSaveStatus(result.recoveredSubmittedVersion
+      ?"Recovered submitted version "+result.recoveredSubmittedVersion+" · verifying school cloud save"
+      :result.created?"Assessment project created automatically":"Assessment project reopened");
     window.dispatchEvent(new CustomEvent("adminerva:assessment-project-ready",{detail:{
       assessmentId:context.assessmentId,projectId:result.projectId,created:result.created===true
     }}));
