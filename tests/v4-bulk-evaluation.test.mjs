@@ -36,6 +36,7 @@ test("bulk response validates exact anonymous batch identity and rubric order",(
  assert.equal(rows[0].review.saveEligible,true);
  assert.match(rows[0].review.criteria[0].comment,/Evidence: Source contains derived class/);
  assert.equal(BULK_MAX_BATCH,20);
+ assert.equal(BULK_MAX_PACKAGE_CHARACTERS,1000000);
  assert.equal(BULK_GITHUB_MAX_BATCH,10);
  assert.equal(bulkBatchLimit("github"),10);
  assert.equal(bulkBatchLimit("studio"),20);
@@ -418,11 +419,11 @@ test("person-specific task instructions remain bound to frozen essays and never 
    version:1,payload:{response:"No personalized prompt"}
  }}),/missing its exact assigned scenario/);
 });
-test("oversized 20-learner external packages report context limit instead of truncating evidence",()=>{
+test("external batches larger than one million characters fail without truncating evidence",()=>{
  const textTask={...compactAssessment,submissionSource:"text",personalizedTask:{enabled:false}};
  const entries=Array.from({length:20},(_,i)=>({
    ref:"essay-"+i,evaluationData:buildGeneralExternalEvaluationData({
-     task:textTask,snapshot:{version:1,payload:{response:"S"+i+" "+("a".repeat(49900))}}
+     task:textTask,snapshot:{version:1,payload:{response:"S"+i+" "+("a".repeat(60000))}}
    })
  }));
  assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
