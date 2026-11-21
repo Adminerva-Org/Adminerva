@@ -36,6 +36,12 @@ function harness(){
   for(const field of progressionForm.elements)progressionForm.elements[field.name]=field;
   progressionForm.reset=()=>{for(const field of progressionForm.elements)field.value="";};
   progressionForm.reportValidity=()=>true;
+  const cohortForm=get("en-cohort-form"),
+    cohortFields=["sourceYearId","sourceTermId","sourceSectionId","progressionType","targetYearId","targetProgramId","targetTermId","targetSectionId","reason"];
+  cohortForm.elements=cohortFields.map(name=>{const node=new Element();node.name=name;return node;});
+  for(const field of cohortForm.elements)cohortForm.elements[field.name]=field;
+  cohortForm.reset=()=>{for(const field of cohortForm.elements)field.value="";};
+  cohortForm.reportValidity=()=>true;
   const actionButton=new Element(),requests=[];
   let allowDiscard=true,pickerOptions;
   const scope={lease:()=>({schoolId:"manila-cathedral-school",uid:"admin"}),assertLease(){}};
