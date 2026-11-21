@@ -33,6 +33,9 @@ if(list&&search&&category&&status&&count&&empty){
     const cost=element('p',null,'Cost: '+item.cost);
     const eligibility=element('p',null,item.eligibility);
     facts.append(cost,eligibility);
+    if(item.applicationDeadline){
+      facts.append(element('p','av-opportunity-deadline','Application deadline: '+item.applicationDeadline+' (confirm with provider)'));
+    }
     const tags=element('div','av-opportunity-tags');
     for(const tag of item.tags)tags.append(element('span',null,tag));
     const footer=element('div','av-opportunity-footer');
