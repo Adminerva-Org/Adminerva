@@ -14,7 +14,7 @@ export function bulkSuggestionState(suggestion,task){
   const rubric=Array.isArray(task?.rubric)?task.rubric:[];
   if(!rubric.length||!Array.isArray(suggestion?.criteria)||suggestion.criteria.length!==rubric.length)
     throw Error("The evaluation does not match this assessment's rubric.");
-  let awarded=0,pending=0;
+  let awarded=0,pending=0,teacherConfirmation=false;
   const criteria=suggestion.criteria.map((row,i)=>{
     const max=Number(rubric[i]?.points);
     const score=Number(row?.awardedPoints),hold=Number(row?.pendingPoints||0);
@@ -22,15 +22,19 @@ export function bulkSuggestionState(suggestion,task){
       score<0||hold<0||score+hold>max+0.000001)
       throw Error("Invalid evaluation score for rubric criterion "+(i+1)+".");
     awarded+=score;pending+=hold;
+    if(row.confidence==="teacher_confirmation")teacherConfirmation=true;
+    const comment=String(row.comment||"").trim();
+    const rationale=String(row.rationale||"").trim();
     return {awardedPoints:score,pendingPoints:hold,
-      comment:String(row.comment||"").slice(0,1000)};
+      comment:(comment+(rationale?"\nEvidence: "+rationale:"")).slice(0,1000)};
   });
   const feedback=String(suggestion.feedback||"").trim().slice(0,5000);
   if(feedback.length<20)throw Error("Evaluation feedback must contain at least 20 characters.");
-  return {criteria,feedback,awarded,pending,
-    saveEligible:awarded>0&&pending===0,
+  return {criteria,feedback,awarded,pending,teacherConfirmation,
+    saveEligible:awarded>0&&pending===0&&!teacherConfirmation,
     reason:awarded<=0?"Zero-score result; needs individual attention":
-      pending>0?"Unresolved points; individual review required":""};
+      pending>0?"Unresolved points; individual review required":
+      teacherConfirmation?"Evaluator requires teacher confirmation":""};
 }
 
 export function readBulkExternalResponse(raw,{batchId,allowedRefs,task,parseResponse}){
