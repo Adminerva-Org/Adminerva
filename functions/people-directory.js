@@ -680,12 +680,18 @@ function createPeopleDirectoryService({db}) {
           if(invitations.docs.some(doc=>doc.data().status==="pending"))
             throw new TenantAccessError("failed-precondition","Resolve or expire this person's pending invitation before archiving.");
           if(data.kind==="student"){
-            const enrollments=await tx.get(db.collection("schools/"+ctx.schoolId+"/enrollments")
-              .where("personId","==",personId).limit(101));
-            if(enrollments.size===101)
-              throw new TenantAccessError("resource-exhausted","Enrollment history requires reviewed pagination before archiving.");
-            if(enrollments.docs.some(doc=>doc.data().status==="active"))
-              throw new TenantAccessError("failed-precondition","End this student's active course enrollments before archiving the person record.");
+            const [enrollments,registrations]=await Promise.all([
+              tx.get(db.collection("schools/"+ctx.schoolId+"/enrollments")
+                .where("personId","==",personId).limit(101)),
+              tx.get(db.collection("schools/"+ctx.schoolId+"/student_registrations")
+                .where("personId","==",personId).limit(101))
+            ]);
+            if(enrollments.size===101||registrations.size===101)
+              throw new TenantAccessError("resource-exhausted","Student academic history requires reviewed pagination before archiving.");
+            if(registrations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
+              throw new TenantAccessError("failed-precondition","End this student's active official registration before archiving the person record.");
+            if(enrollments.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
+              throw new TenantAccessError("failed-precondition","End this student's remaining active course enrollments before archiving the person record.");
           }else if(data.kind==="staff"&&data.authUid){
             const assignments=await tx.get(db.collection("schools/"+ctx.schoolId+"/staff_assignments")
               .where("teacherUid","==",id(data.authUid)).limit(101));
