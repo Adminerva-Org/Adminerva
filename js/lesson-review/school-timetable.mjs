@@ -10,7 +10,7 @@ const days=[["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thurs
 let picker=null,rows=[],offerings=[],periods=[],officialSchedules=[],activePeriod="",revision=0,dirty=false,busy=false,ready=false,epoch=0,legacyLoaded=false,legacyAvailable=false;
 const node=(tag,text="",className="")=>{const n=document.createElement(tag);n.textContent=text;n.className=className;return n;};
 function say(message){status.textContent=message;}
-function markDirty(){dirty=true;el("schoolTimetableSave").disabled=!ready||busy;say("Unsaved timetable changes. Save to sync across devices.");}
+function markDirty(){dirty=true;el("schoolTimetableSave").disabled=!ready||busy;say("Unsaved personal timetable changes. Save the overlay to sync across devices.");}
 function updateControls(){
   period.disabled=busy;editor.disabled=busy||!ready;
   el("schoolTimetableReload").disabled=busy||!activePeriod;
@@ -122,12 +122,12 @@ function addRow(type){if(!ready||busy)return;if(rows.length>=40){say("A timetabl
 async function loadPeriod(id){
   const run=++epoch;ready=false;busy=true;activePeriod=id;period.value=id;rows=[];dirty=false;revision=0;host.replaceChildren();renderSummary();updateControls();
   if(!id){busy=false;updateControls();say("Choose an assigned academic period.");return;}
-  say("Loading school-saved timetable…");
+  say("Loading your saved personal timetable overlay…");
   try{
     const data=await scoped(schedules,"get",{periodId:id});
     if(run!==epoch)return;
     rows=Array.isArray(data.rows)?structuredClone(data.rows):[];revision=Number(data.revision)||0;ready=true;
-    say(revision?"Loaded school-saved timetable · revision "+revision:"No school-saved timetable in this period. Add your first time slot.");
+    say(revision?"Loaded personal timetable overlay · revision "+revision:"No personal timetable overlay in this period. Official classes are shown above.");
   }catch(error){if(run===epoch)say(error?.message||"Timetable unavailable. Reload before editing.");}
   finally{if(run===epoch){busy=false;renderRows();}}
 }
@@ -162,17 +162,17 @@ async function save(){
   }
   const ordered=rows.map((row,index)=>({row,index})).sort((a,b)=>minutes(a.row.startTime)-minutes(b.row.startTime));
   for(let i=1;i<ordered.length;i++)if(minutes(ordered[i-1].row.endTime)>minutes(ordered[i].row.startTime)){say("Time slots "+(ordered[i-1].index+1)+" and "+(ordered[i].index+1)+" overlap. Use one slot for the same time across weekdays.");return;}
-  const run=epoch;busy=true;updateControls();say("Saving timetable to school cloud…");
+  const run=epoch;busy=true;updateControls();say("Saving personal timetable overlay…");
   try{
     const result=await scoped(schedules,"save",{periodId:activePeriod,rows:ordered.map(x=>x.row),expectedRevision:revision});
     if(run!==epoch)return;
-    revision=result.revision;rows=ordered.map(x=>x.row);dirty=false;say("Saved to school cloud · revision "+revision);
+    revision=result.revision;rows=ordered.map(x=>x.row);dirty=false;say("Personal timetable overlay saved · revision "+revision);
   }catch(error){if(run===epoch)say((error?.message||"Cloud save failed.")+" Your unsaved edits remain in this view.");}
   finally{if(run===epoch){busy=false;renderRows();}}
 }
 async function showLegacy(){
   if(!legacyAvailable)return;
-  if(dirty&&!confirm("Leave the school timetable view? Unsaved edits will remain in this tab until you return."))return;
+  if(dirty&&!confirm("Leave this view with unsaved personal timetable changes?"))return;
   panel.hidden=true;legacy.hidden=false;el("schoolTimetableReturn").hidden=!picker.scope.current?.roles.includes("teacher");
   if(!legacyLoaded){legacyLoaded=true;try{await import("./schedule.js?v=4.0.1");}catch(error){legacyLoaded=false;legacy.hidden=true;panel.hidden=false;say("Legacy timetable could not load: "+(error?.message||error));}}
 }
