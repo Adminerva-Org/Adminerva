@@ -7,6 +7,7 @@ import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResp
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
+import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261121-studio-bulk-eval1";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -58,7 +59,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const verificationApi=httpsCallable(functions,"studioSubmissionVerification");
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null;
   let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher",reviewNeedsRefresh=false;
-  function clearTaskContext(){currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
+  let bulkEvaluator=null;
+  function clearTaskContext(){bulkEvaluator?.reset();currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
 
   async function scoped(api,action,details={}){
     if(!picker?.scope.current)throw Error("Choose a verified school first.");
@@ -93,6 +95,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     busy=value;taskSelect.disabled=value;document.getElementById("gbV4Close").disabled=value;refreshReviewControls();
     if(message)document.getElementById("gbV4ReviewStatus").textContent=message;
   }
+  bulkEvaluator=createV4BulkEvaluationController({
+    root:document.getElementById("gbV4BulkPanel"),
+    scoped,migrationApi,assessmentApi,submissionApi,gradeApi,
+    buildPackage:buildGeneralExternalEvaluationPackage,
+    parseResponse:parseGeneralExternalEvaluationResponse,
+    generateContent:generateSchoolContent,evaluationJSON,
+    setBusy,isBusy:()=>busy||dialog.open,
+    onSaved:()=>loadInbox()
+  });
   async function loadTasks(){
     const token=++generation,previous=taskSelect.value;
     clearTaskContext();tasks.clear();taskSelect.replaceChildren(new Option("Loading assessments…",""));taskSelect.disabled=true;
@@ -145,7 +156,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const task=tasks.get(taskSelect.value);
     currentTask=task||null;inbox.replaceChildren();
     if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
-    if(!task){status.textContent="Choose an assessment to load submissions.";return;}
+    if(!task){bulkEvaluator?.reset();status.textContent="Choose an assessment to load submissions.";return;}
     if(task.legacyCompatibility&&task.submissionSource!=="studio"){
       status.textContent="Historical GitHub submission review still uses its verified original repository evidence workspace.";
       if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;}
@@ -204,6 +215,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           ?zeroDrafts+" zero-score draft"+(zeroDrafts===1?" is":"s are")+" excluded from bulk publication."
           :"Publish every valid non-zero draft for this assessment.";
       }
+      bulkEvaluator?.onInbox({
+        task:currentTask,rows,gradeMap,
+        schoolId:picker.scope.current?.schoolId||picker.scope.lease().schoolId
+      });
       if(historicalStudio){
         const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
         notice.append(make("h3","font-bold text-violet-950",
@@ -273,6 +288,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       }
     }catch(error){
       if(token!==generation)return;
+      bulkEvaluator?.reset();
       status.textContent=error?.message||"Submission inbox is unavailable.";
       if(task?.legacyCompatibility&&task.submissionSource==="studio"){
         const help=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
