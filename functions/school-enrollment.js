@@ -118,7 +118,8 @@ function createSchoolEnrollmentService({db}){
         subjects:by.subjects.map(row=>({id:row.id,name:row.name})),
         offerings:by.course_offerings.map(row=>({
           offeringId:row.id,programId:row.programId,yearId:row.yearId,
-          termId:row.termId,sectionId:row.sectionId,subjectId:row.subjectId
+          termId:row.termId,sectionId:row.sectionId,subjectId:row.subjectId,
+          rosterMode:row.rosterMode||"legacy"
         }))
       };
     }
@@ -181,7 +182,8 @@ function createSchoolEnrollmentService({db}){
         accountLinked:Boolean(doc.data().accountLinked),
         accountResponsibility:doc.data().accountResponsibility||"student",
         guardianEmail:doc.data().guardianEmail||"",
-        source:doc.data().source||"onsite"
+        source:doc.data().source||"onsite",
+        revision:Number(doc.data().revision)||1
       }))};
     }
 
@@ -293,6 +295,212 @@ function createSchoolEnrollmentService({db}){
           courseCount:changedCourses,reason,createdAt:FieldValue.serverTimestamp()});
       });
       return {registrationId,status:restoring?"active":"ended",courseCount:changedCourses};
+    }
+
+    if(input.action==="change_registration_section"){
+      const registrationId=checkId(input.registrationId,"Registration ID",128),
+        sectionId=checkId(input.sectionId,"Section"),
+        expectedRevision=Number(input.expectedRevision),
+        reason=text(input.reason,"Section change reason",500);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        deny("invalid-argument","Refresh this registration before changing its section.");
+      if(reason.length<12)
+        deny("invalid-argument","Explain the section change in at least 12 characters.");
+
+      const registrationRef=db.doc(root+"student_registrations/"+registrationId);
+      const initial=await registrationRef.get();
+      if(!initial.exists||initial.data().schoolId!==ctx.schoolId)
+        deny("not-found","The student registration was not found.");
+      const current=initial.data();
+      if(current.status!=="active")
+        deny("failed-precondition","Only an active registration can change section.");
+      if(sectionId===current.sectionId)
+        deny("invalid-argument","Choose a different section.");
+
+      const personId=checkId(current.personId,"Person ID",128),
+        yearId=checkId(current.yearId,"Academic year"),
+        programId=checkId(current.programId,"Program"),
+        termId=checkId(current.termId,"Academic period"),
+        newRegistrationId=key(personId,yearId,termId,sectionId),
+        newRegistrationRef=db.doc(root+"student_registrations/"+newRegistrationId),
+        slotRef=db.doc(root+"student_registration_slots/"+key(personId,yearId,termId)),
+        personRef=db.doc(root+"people/"+personId),
+        sectionRef=db.doc(root+"sections/"+sectionId),
+        yearRef=db.doc(root+"academic_years/"+yearId),
+        programRef=db.doc(root+"academic_programs/"+programId),
+        termRef=db.doc(root+"terms/"+termId);
+
+      const [section,year,program,term,offeringSnap,enrollmentSnap]=await Promise.all([
+        sectionRef.get(),yearRef.get(),programRef.get(),termRef.get(),
+        db.collection(root+"course_offerings").limit(250).get(),
+        db.collection(root+"enrollments").where("personId","==",personId).limit(251).get()
+      ]);
+      for(const [record,label] of [[section,"section"],[year,"academic year"],[program,"program"],[term,"academic period"]]){
+        if(!record.exists||record.data().schoolId!==ctx.schoolId||record.data().status!=="active")
+          deny("failed-precondition","The selected "+label+" is not active in this school.");
+      }
+      if(section.data().programId!==programId)
+        deny("failed-precondition","Choose a section in the registration's current program.");
+      if(term.data().yearId!==yearId||term.data().programId!==programId)
+        deny("failed-precondition","The registration's academic period no longer matches its program and school year.");
+      const currentGrade=String(current.gradeLevel||"").trim().toLowerCase(),
+        targetGrade=String(section.data().gradeLevel||"").trim().toLowerCase();
+      if(currentGrade&&targetGrade&&currentGrade!==targetGrade)
+        deny("failed-precondition","Section correction is limited to the same grade level. Use a new registration workflow for a grade-level or academic-period change.");
+      if(enrollmentSnap.size===251)
+        deny("resource-exhausted","This student has too many enrollment records for a safe section change.");
+
+      const targetOfferings=offeringSnap.docs.filter(doc=>{
+        const row=doc.data();
+        return row.schoolId===ctx.schoolId&&row.status==="active"&&
+          row.yearId===yearId&&row.programId===programId&&row.termId===termId&&
+          row.sectionId===sectionId&&row.rosterMode!=="selective";
+      });
+      if(!targetOfferings.length)
+        deny("failed-precondition","The target section has no active automatic-roster classes in this academic period.");
+      if(targetOfferings.length>60)
+        deny("resource-exhausted","The target section has too many classes for one placement change.");
+
+      const currentCandidates=enrollmentSnap.docs.filter(doc=>{
+        const row=doc.data();
+        return row.schoolId===ctx.schoolId&&row.personId===personId&&row.status==="active"&&
+          row.yearId===yearId&&row.termId===termId&&row.sectionId===current.sectionId;
+      });
+      const candidateOfferingIds=[...new Set(currentCandidates.map(doc=>doc.data().offeringId).filter(Boolean))];
+      const candidateOfferings=await Promise.all(candidateOfferingIds.map(id=>
+        db.doc(root+"course_offerings/"+checkId(id,"Course offering ID",330)).get()));
+      const candidateOfferingMap=new Map(candidateOfferings.filter(doc=>doc.exists).map(doc=>[doc.id,doc.data()]));
+      const currentOfficial=currentCandidates.filter(doc=>{
+        const row=doc.data(),offering=candidateOfferingMap.get(row.offeringId);
+        if(row.registrationId)return row.registrationId===registrationId;
+        return offering&&offering.schoolId===ctx.schoolId&&offering.rosterMode!=="selective";
+      });
+
+      const currentEnrollmentRefs=currentOfficial.map(doc=>doc.ref),
+        targetOfferingRefs=targetOfferings.map(doc=>doc.ref),
+        targetEnrollmentRefs=targetOfferings.map(doc=>
+          db.doc(root+"enrollments/"+key(personId,doc.id))),
+        auditRef=db.collection(root+"directory_audit").doc();
+
+      let result;
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const [registration,newRegistration,slot,person,targetSection,currentYear,currentProgram,currentTerm]=await Promise.all([
+          tx.get(registrationRef),tx.get(newRegistrationRef),tx.get(slotRef),tx.get(personRef),
+          tx.get(sectionRef),tx.get(yearRef),tx.get(programRef),tx.get(termRef)
+        ]);
+        if(!registration.exists||registration.data().schoolId!==ctx.schoolId)
+          deny("not-found","The student registration was not found.");
+        const data=registration.data(),actualRevision=Number(data.revision)||1;
+        if(data.status!=="active")
+          deny("failed-precondition","This registration is no longer active. Refresh the enrollment list.");
+        if(actualRevision!==expectedRevision)
+          deny("failed-precondition","This registration changed after you opened it. Refresh and review the latest placement.");
+        if(data.personId!==personId||data.yearId!==yearId||data.programId!==programId||
+           data.termId!==termId||data.sectionId!==current.sectionId)
+          deny("failed-precondition","The registration placement changed. Refresh before trying again.");
+        if(newRegistration.exists)
+          deny("failed-precondition",newRegistration.data().status==="ended"
+            ?"The target section already has ended registration history for this student. Review that history instead of silently reopening it."
+            :"The target section already has a registration for this student.");
+        if(slot.exists&&slot.data().status==="active"&&slot.data().registrationId!==registrationId)
+          deny("failed-precondition","Another official registration currently owns this academic-period placement.");
+        if(!person.exists||person.data().schoolId!==ctx.schoolId||
+           person.data().kind!=="student"||person.data().status!=="active")
+          deny("failed-precondition","The student directory record must be active before changing placement.");
+        for(const [record,label] of [[targetSection,"section"],[currentYear,"academic year"],[currentProgram,"program"],[currentTerm,"academic period"]]){
+          if(!record.exists||record.data().schoolId!==ctx.schoolId||record.data().status!=="active")
+            deny("failed-precondition","The "+label+" changed while this placement was open. Refresh and retry.");
+        }
+        if(targetSection.data().programId!==programId||
+           currentTerm.data().yearId!==yearId||currentTerm.data().programId!==programId)
+          deny("failed-precondition","The target section no longer matches this academic period.");
+
+        const oldEnrollments=await Promise.all(currentEnrollmentRefs.map(ref=>tx.get(ref)));
+        const liveTargetOfferings=await Promise.all(targetOfferingRefs.map(ref=>tx.get(ref)));
+        const targetEnrollments=await Promise.all(targetEnrollmentRefs.map(ref=>tx.get(ref)));
+        if(liveTargetOfferings.some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||
+          doc.data().status!=="active"||doc.data().yearId!==yearId||doc.data().programId!==programId||
+          doc.data().termId!==termId||doc.data().sectionId!==sectionId||doc.data().rosterMode==="selective"))
+          deny("failed-precondition","The target section's class roster configuration changed. Refresh before moving the student.");
+
+        const endedTarget=targetEnrollments.find(doc=>doc.exists&&doc.data().status!=="active");
+        if(endedTarget)
+          deny("failed-precondition","The target section contains ended subject-enrollment history for this student. Review that history before changing the official placement.");
+
+        const now=FieldValue.serverTimestamp();
+        let endedCourses=0,createdCourses=0,adoptedCourses=0;
+        for(const doc of oldEnrollments){
+          if(!doc.exists||doc.data().status!=="active")continue;
+          if(doc.data().registrationId&&doc.data().registrationId!==registrationId)
+            deny("failed-precondition","An active class in the current section belongs to another registration. Review the student's enrollment history.");
+          tx.update(doc.ref,{status:"ended",endedByUid:ctx.uid,endedAt:now,endReason:reason,
+            endedByRegistrationId:registrationId,replacedByRegistrationId:newRegistrationId,
+            revision:(Number(doc.data().revision)||1)+1});
+          endedCourses++;
+        }
+
+        targetEnrollments.forEach((doc,index)=>{
+          const offering=liveTargetOfferings[index],row=offering.data();
+          if(doc.exists){
+            const prior=doc.data();
+            if(prior.schoolId!==ctx.schoolId||prior.personId!==personId||
+               prior.offeringId!==offering.id)
+              deny("failed-precondition","A target class enrollment key collision requires review.");
+            if(prior.registrationId&&prior.registrationId!==newRegistrationId)
+              deny("failed-precondition","A target class is already owned by another registration.");
+            tx.update(doc.ref,{registrationId:newRegistrationId,programId:row.programId,
+              yearId:row.yearId,termId:row.termId,sectionId:row.sectionId,subjectId:row.subjectId,
+              placementAdoptedByUid:ctx.uid,placementAdoptedAt:now,
+              revision:(Number(prior.revision)||1)+1});
+            adoptedCourses++;
+          }else{
+            tx.create(doc.ref,{schoolId:ctx.schoolId,personId,offeringId:offering.id,
+              registrationId:newRegistrationId,programId:row.programId,yearId:row.yearId,
+              termId:row.termId,sectionId:row.sectionId,subjectId:row.subjectId,
+              status:"active",revision:1,createdByUid:ctx.uid,createdAt:now});
+            createdCourses++;
+          }
+        });
+
+        tx.update(registrationRef,{status:"ended",endedByUid:ctx.uid,endedAt:now,
+          endReason:reason,endReasonType:"section_change",replacedByRegistrationId:newRegistrationId,
+          updatedByUid:ctx.uid,updatedAt:now,revision:actualRevision+1});
+
+        const targetGradeValue=String(targetSection.data().gradeLevel||data.gradeLevel||"").trim().toLowerCase();
+        const newRegistrationData={
+          schoolId:ctx.schoolId,personId,displayName:data.displayName||person.data().displayName||"Student",
+          studentNumber:data.studentNumber||person.data().studentNumber||null,birthDate:data.birthDate||person.data().birthDate||null,
+          guardianName:data.guardianName||person.data().primaryGuardianName||null,
+          guardianRelationship:data.guardianRelationship||person.data().primaryGuardianRelationship||null,
+          guardianEmail:data.guardianEmail||person.data().primaryGuardianEmail||null,
+          guardianMobile:data.guardianMobile||person.data().primaryGuardianMobile||null,
+          studentEmailType:data.studentEmailType||person.data().studentEmailType||null,
+          studentEmailRequired:data.studentEmailRequired===true,
+          accountResponsibility:data.accountResponsibility||person.data().accountResponsibility||"student",
+          yearId,programId,termId,sectionId,gradeLevel:targetGradeValue,status:"active",
+          courseCount:targetOfferings.length,accountLinked:Boolean(data.accountLinked||person.data().authUid),
+          source:data.source||"onsite",applicationId:data.applicationId||null,
+          previousRegistrationId:registrationId,placementChangeReason:reason,
+          revision:1,createdByUid:ctx.uid,createdAt:now,updatedByUid:ctx.uid,updatedAt:now
+        };
+        tx.create(newRegistrationRef,newRegistrationData);
+        const placementData={schoolId:ctx.schoolId,personId,yearId,programId,termId,sectionId,
+          registrationId:newRegistrationId,status:"active",updatedByUid:ctx.uid,updatedAt:now};
+        if(slot.exists)
+          tx.set(slotRef,{...placementData,revision:(Number(slot.data().revision)||1)+1},{merge:true});
+        else
+          tx.create(slotRef,{...placementData,revision:1,createdByUid:ctx.uid,createdAt:now});
+
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
+          registrationId:newRegistrationId,previousRegistrationId:registrationId,
+          action:"student_registration_section_changed",yearId,programId,termId,
+          fromSectionId:data.sectionId,toSectionId:sectionId,endedCourses,
+          courseCount:targetOfferings.length,createdCourses,adoptedCourses,reason,createdAt:now});
+        result={registrationId:newRegistrationId,previousRegistrationId:registrationId,
+          sectionId,courseCount:targetOfferings.length,endedCourses,createdCourses,adoptedCourses};
+      });
+      return result;
     }
 
     if(input.action==="register_student"){
@@ -483,12 +691,17 @@ function createSchoolEnrollmentService({db}){
             if(prior.data().schoolId!==ctx.schoolId||prior.data().personId!==personId||
                prior.data().offeringId!==offering.id)
               deny("failed-precondition","A course enrollment key collision requires review.");
+            if(prior.data().registrationId&&prior.data().registrationId!==registrationId)
+              deny("failed-precondition","This active subject enrollment belongs to another official registration.");
+            if(!prior.data().registrationId)
+              tx.update(prior.ref,{registrationId,placementAdoptedByUid:ctx.uid,
+                placementAdoptedAt:now,revision:(Number(prior.data().revision)||1)+1});
             activeCourses++;return;
           }
           createdCourses++;activeCourses++;
           const row=offering.data();
           tx.create(enrollmentRefs[index],{
-            schoolId:ctx.schoolId,personId,offeringId:offering.id,
+            schoolId:ctx.schoolId,personId,offeringId:offering.id,registrationId,
             programId:row.programId,yearId:row.yearId,termId:row.termId,
             sectionId:row.sectionId,subjectId:row.subjectId,
             status:"active",revision:1,createdByUid:ctx.uid,createdAt:now
