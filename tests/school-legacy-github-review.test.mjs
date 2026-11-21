@@ -39,7 +39,7 @@ function fixture({published=false,grade=null,approval=true,discovery=false,
  put("assessment_evidence/"+evidenceId,{
    studentId,assessmentId:taskId,section:"Grade 12 ICT",
    repository:"https://github.com/learner/java-classes",
-   status:approval?"approved":discovery?"needs_review":"submitted",revision:7,
+   status:approval?"approved":studentResubmitted?"submitted":discovery?"needs_review":"submitted",revision:7,
    source:discovery?"teacher_discovered":"student_submitted",
    checkpointSha:checkpoint,approvedCheckpointSha:approval?checkpoint:null,
    selectedCommits:zeroCommits?[]:[commit],
