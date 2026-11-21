@@ -247,6 +247,17 @@ function renderDetail(){
     "No adviser assigned for "+(item.yearName||"this school year")+".";
   el("csAdviserRemove").disabled=!adviser||busy;
   renderScheduleEditor();
+  const rosterMode=item.rosterMode||"legacy",modeSelect=el("csRosterMode"),modeButton=el("csRosterModeSave");
+  if(rosterMode==="selective")modeSelect.value="selective";else modeSelect.value="section";
+  el("csRosterModeCurrent").textContent=rosterMode==="section"?
+    "Official section placement · automatic synchronization":
+    rosterMode==="selective"?"Selective / manual roster":"Legacy roster behavior · not yet explicitly classified";
+  el("csRosterModeHelp").textContent=rosterMode==="section"?
+    "Saving Official section placement again performs a safe synchronization of missing active official placements. Ended enrollment history is never silently restored.":
+    rosterMode==="selective"?
+      "New section registrations are not automatically added to this class. Switching modes does not remove current students.":
+      "Existing classes keep their current behavior. Adopt Official section placement to reconcile the current official section roster, or choose Selective for an intentional exception.";
+  modeButton.textContent=rosterMode==="section"&&modeSelect.value==="section"?"Synchronize official roster":"Apply roster source";
   el("csRecordLink").href="school-class-records.html?offeringId="+encodeURIComponent(item.offeringId);
   el("csEnrollmentClassLink").href=enrollmentRoute();
 }
@@ -312,6 +323,31 @@ el("csScheduleForm").addEventListener("submit",event=>{
       renderSummary();renderList();renderScheduleEditor();say("Official class schedule saved. Teacher, section and room conflicts were checked.");
     }catch(error){say(error?.message||"The official class schedule could not be saved.",true);}
     finally{setBusy(false);renderScheduleEditor();}
+  })();
+});
+el("csRosterMode").addEventListener("change",()=>{
+  const item=selected();if(!item)return;
+  el("csRosterModeSave").textContent=item.rosterMode==="section"&&el("csRosterMode").value==="section"?
+    "Synchronize official roster":"Apply roster source";
+});
+el("csRosterModeForm").addEventListener("submit",event=>{
+  event.preventDefault();const item=selected(),rosterMode=el("csRosterMode").value,
+    reason=el("csRosterModeReason").value.trim();if(!item||busy)return;
+  if(reason.length<12){say("Explain the roster-source change or synchronization in at least 12 characters.",true);return;}
+  void (async()=>{
+    setBusy(true);say(rosterMode==="section"?"Synchronizing official section placement with this class…":"Saving selective roster mode…");
+    try{
+      const result=await scoped("set_offering_roster_mode",{
+        offeringId:item.offeringId,rosterMode,expectedRevision:Number(item.revision)||1,reason
+      });
+      el("csRosterModeReason").value="";
+      await loadOverview({preserveSelection:true,force:true});
+      const added=Number(result.added)||0;
+      say(rosterMode==="section"?
+        "Official section roster active. "+added+" missing student"+(added===1?" was":"s were")+" added; ended history was not restored.":
+        "Selective/manual roster active. Existing enrollments were preserved; future section registrations will not be auto-added.");
+    }catch(error){say(error?.message||"Roster source could not be changed.",true);}
+    finally{setBusy(false);}
   })();
 });
 el("csAdviserForm").addEventListener("submit",event=>{
