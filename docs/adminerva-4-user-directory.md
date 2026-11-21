@@ -1,3 +1,5 @@
+> **Planning authority:** This document is retained only as a technical/historical reference. The canonical Adminerva product roadmap, development status and future priorities are maintained in [Adminerva School OS — Master Development Plan](https://github.com/Adminerva-Org/Adminerva/blob/main/docs/adminerva-school-os-master-plan.md). Any older sequencing, milestone, status or future-work statement here is subordinate to the master plan.
+
 # Adminerva 4.0 — Unified school User Directory, identities, enrollment and access
 
 **Planning specification only. No production roster has been modified.** Replace the current separated student roster, teacher accounts and guest admission panels with one role-aware **People & Access** workspace. Keep familiar deep links as redirects/tabs. Use the school-aware authorization foundation and MCS verified legacy migration.
