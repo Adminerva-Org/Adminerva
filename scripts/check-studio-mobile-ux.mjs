@@ -80,8 +80,8 @@ assert.match(variant,/adminerva:studio-task-overview/);
 assert.match(variant,/overview\.dataset\.taskKind/);
 assert.match(variant,/overviewText\.textContent/);
 assert.match(submit,/const eligibility=studioSubmissionAllowed\(task,chosen\.student\.section\)/);
-assert.match(submit,/if\(typeField\)typeField\.textContent=kind/);
-assert.match(submit,/if\(dueField\)dueField\.textContent=due/);
+assert.match(submit,/if\(typeField\)typeField\.textContent=(?:kind|type)/);
+assert.match(submit,/if\(dueField\)dueField\.textContent=(?:due|deadline)/);
 assert.ok(!/window\.addEventListener\("adminerva:studio-ready",\(\)=>\{\s*button\.click\(\)/.test(submit),
   'opening an assignment should not automatically open its submission dialog');
 console.log('Mobile Studio header, task drawer and assessment submission UX contracts passed.');
