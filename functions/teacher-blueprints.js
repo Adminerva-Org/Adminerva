@@ -2,6 +2,7 @@
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {FieldValue}=require("firebase-admin/firestore");
+const {planPersonalizationForOfferings}=require("./assessment-personalization-planning.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message)};
 function documentId(value) {
   if(typeof value!=="string"||!/^[a-zA-Z0-9_-]{1,128}$/.test(value))deny("invalid-argument","Invalid assessment identifier.");
@@ -154,6 +155,11 @@ function createTeacherBlueprintService({db}) {
       if(!config.enabled)
         deny("failed-precondition","Enable Personalized mode on this blueprint before managing variants.");
       const fingerprint=blueprintFingerprint(current);
+      const offeringIds=Array.isArray(input.offeringIds)?input.offeringIds:[];
+      const rosterPlan=offeringIds.length?await planPersonalizationForOfferings({
+        db,schoolId:ctx.schoolId,teacherUid:ctx.uid,offeringIds,platformOverride:ctx.platformOverride
+      }):null;
+      const target=rosterPlan?.requiredVariants||config.variantTarget;
       const poolRef=db.doc("schools/"+ctx.schoolId+"/assessment_blueprint_private/"+id+"/pools/"+fingerprint);
       if(action==="personalization_status"){
         const pool=await poolRef.get(),data=pool.exists?pool.data():{};
@@ -168,8 +174,9 @@ function createTeacherBlueprintService({db}) {
               prompt:value.prompt||"",evaluationNotes:value.evaluationNotes||""});
           }
         }
-        return {resourceId:id,fingerprint,variantTarget:config.variantTarget,
-          count:variantIds.length,ready:data.ready===true&&variantIds.length>=config.variantTarget,
+        return {resourceId:id,fingerprint,variantTarget:target,calculated:!!rosterPlan,
+          roster:rosterPlan||null,poolActivated:data.ready===true,
+          count:variantIds.length,ready:data.ready===true&&variantIds.length>=target,
           scenarioRegistry:registry,samples};
       }
       const expectedRevision=Number(input.expectedRevision);
@@ -207,12 +214,12 @@ function createTeacherBlueprintService({db}) {
           }
           const payload={schoolId:ctx.schoolId,ownerUid:blueprintOwner,blueprintId:id,
             blueprintRevision:expectedRevision,fingerprint,variantIds:ids,scenarioRegistry:registry,
-            count:ids.length,target:config.variantTarget,ready:false,updatedAt:FieldValue.serverTimestamp()};
+            count:ids.length,target,ready:false,updatedAt:FieldValue.serverTimestamp()};
           if(pool.exists)tx.update(poolRef,payload);else tx.create(poolRef,{...payload,createdAt:FieldValue.serverTimestamp()});
         });
         const updated=await poolRef.get();
         return {resourceId:id,fingerprint,count:updated.data().variantIds.length,
-          variantTarget:config.variantTarget,ready:updated.data().ready===true};
+          variantTarget:target,ready:updated.data().ready===true&&updated.data().variantIds.length>=target};
       }
       await db.runTransaction(async tx=>{
         const [latest,pool]=await Promise.all([tx.get(ref),tx.get(poolRef)]);
@@ -222,12 +229,12 @@ function createTeacherBlueprintService({db}) {
           deny("failed-precondition","The blueprint changed before pool activation.");
         if(!pool.exists)deny("failed-precondition","Import personalized variants before activation.");
         const ids=Array.isArray(pool.data().variantIds)?pool.data().variantIds:[];
-        if(ids.length<config.variantTarget)
-          deny("failed-precondition","The private pool has "+ids.length+" of "+config.variantTarget+" required variants.");
-        tx.update(poolRef,{ready:true,target:config.variantTarget,blueprintRevision:expectedRevision,
+        if(ids.length<target)
+          deny("failed-precondition","The private pool has "+ids.length+" of "+target+" required variants for the selected classes.");
+        tx.update(poolRef,{ready:true,target,blueprintRevision:expectedRevision,
           activatedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
       });
-      return {resourceId:id,fingerprint,variantTarget:config.variantTarget,ready:true};
+      return {resourceId:id,fingerprint,variantTarget:target,ready:true};
     }
     if(action==="recipients") {
       const snap=await db.collection("schools/"+ctx.schoolId+"/memberships")
