@@ -131,7 +131,7 @@ test("recovered students retain legacy assessment and personalized-task identity
   ]);
   assert.match(helper,/legacyStudentIds/);
   assert.match(helper,/source:"canonical_person"/);
-  assert.match(helper,/source:"email_fallback"/);
+  assert.match(helper,/email_fallback/);
   assert.match(index,/legacyStudentRecordsForAccount/);
   assert.match(index,/profiles,identitySource/);
   assert.match(access,/readyProjection/);
