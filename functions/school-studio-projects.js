@@ -97,7 +97,14 @@ function createSchoolStudioProjectService({db}){
    // including when a new class session reuses a previously saved project.
    const member=await tx.get(membershipRef),
      personId=checkId(member.data()?.personId,"Student person",128);
-   const enrollment=await tx.get(db.doc(prefix+"enrollments/"+rowKey(personId,data.offeringId)));
+   const [person,enrollment]=await Promise.all([
+     tx.get(db.doc(prefix+"people/"+personId)),
+     tx.get(db.doc(prefix+"enrollments/"+rowKey(personId,data.offeringId)))
+   ]);
+   if(!person.exists||person.data().schoolId!==ctx.schoolId||
+      person.data().kind!=="student"||person.data().status!=="active"||
+      person.data().authUid!==ctx.uid)
+    deny("permission-denied","Your school student identity is no longer verified for this exam.");
    if(!enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
       enrollment.data().personId!==personId||enrollment.data().offeringId!==data.offeringId||
       enrollment.data().status!=="active")
@@ -242,9 +249,27 @@ function createSchoolStudioProjectService({db}){
    if(binding?.provisionedBy==="assessment-launch"){
     const taskId=checkId(binding.taskId||binding.assessmentId,"Assessment task",128);
     const task=await db.doc(prefix+"assessments/"+taskId).get();
-    if(task.exists&&task.data().schoolId===ctx.schoolId&&
-       task.data().manualOpenRequired===true&&task.data().manualAccessState!=="open")
-      deny("failed-precondition","Your teacher has not opened this section's Studio exam, or has temporarily held it.");
+    if(!task.exists||task.data().schoolId!==ctx.schoolId)
+      deny("failed-precondition","The assessment assigned to this school project is unavailable.");
+    if(task.data().manualOpenRequired===true){
+      if(task.data().manualAccessState!=="open"||task.data().published!==true||
+         (task.data().lifecycle||"active")!=="active")
+       deny("failed-precondition","Your teacher has not opened this section's Studio exam.");
+      const member=await membershipRef.get(),
+        personId=checkId(member.data()?.personId,"Student person",128);
+      const [person,enrollment]=await Promise.all([
+        db.doc(prefix+"people/"+personId).get(),
+        db.doc(prefix+"enrollments/"+rowKey(personId,task.data().offeringId)).get()
+      ]);
+      if(member.data()?.status!=="active"||
+         !person.exists||person.data().schoolId!==ctx.schoolId||
+         person.data().authUid!==ctx.uid||person.data().kind!=="student"||
+         person.data().status!=="active"||
+         !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
+         enrollment.data().offeringId!==task.data().offeringId||
+         enrollment.data().personId!==personId||enrollment.data().status!=="active")
+        deny("permission-denied","Your enrollment in this Studio exam is no longer active.");
+    }
    }
    if(data.status==="archived")deny("failed-precondition","This school project is archived. Restore it before opening.");
    return {projectId,title:data.title,language:data.language,status:data.status||"active",
@@ -266,6 +291,17 @@ function createSchoolStudioProjectService({db}){
     const data=doc.data();
     if(data.revision!==expectedRevision)
      deny("failed-precondition","Project changed in school storage. Reload before changing its status.");
+    // Exam projects remain part of the school's academic evidence chain.
+    // Generic project archive/restore is not an authorized way to dispose
+    // of an active teacher-controlled practical examination workspace.
+    const binding=data.artifacts?.assessment;
+    if(binding?.provisionedBy==="assessment-launch"){
+      const taskId=checkId(binding.taskId||binding.assessmentId,"Assessment task",128),
+        task=await tx.get(db.doc(prefix+"assessments/"+taskId));
+      if(task.exists&&task.data().schoolId===ctx.schoolId&&
+         task.data().manualOpenRequired===true)
+       deny("failed-precondition","A teacher-assigned practical exam project cannot be archived or restored from the student project directory.");
+    }
     const current=data.status||"active";
     if(restoring&&current!=="archived")deny("failed-precondition","Only an archived project can be restored.");
     if(!restoring&&current==="archived")deny("failed-precondition","This project is already archived.");
