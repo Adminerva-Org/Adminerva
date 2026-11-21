@@ -51,8 +51,15 @@ export function normalizePublicItem(item,channel,now=Date.now()){
        !categorySet.has(item.category)||!Number.isFinite(verifiedAt)||
        age<0||age>maxAge)return null;
     const tags=Array.isArray(item.tags)?item.tags.slice(0,5).map(t=>trim(t,30)).filter(Boolean):[];
+    // An optional application deadline is not the same as the editorial recheck expiry.
+    // Treat deadlines as local Philippine end-of-day unless a source provides a
+    // more precise time; avoid showing opportunities past a confirmed closing date.
+    const deadline=item.applicationDeadline===undefined||item.applicationDeadline===null
+      ?null:trim(item.applicationDeadline,10);
+    const closesAt=deadline?Date.parse(deadline+'T23:59:59+08:00'):null;
+    if(deadline&&(!/^\d{4}-\d{2}-\d{2}$/.test(deadline)||!Number.isFinite(closesAt)||closesAt<=now))return null;
     return {...common,category:item.category,provider,verifiedAt:item.verifiedAt,sourceUrl,
-      eligibility,cost,location,tags};
+      eligibility,cost,location,tags,...(deadline?{applicationDeadline:deadline}:{})};
   }
   if(channel==='experiences'){
     if(!link.match(/^[a-z0-9][a-z0-9-]*\.html/i))return null;
