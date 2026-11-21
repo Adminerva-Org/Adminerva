@@ -4,6 +4,7 @@ import {createRequire} from "node:module";
 import {readFile} from "node:fs/promises";
 const require=createRequire(import.meta.url);
 const {studentAccountUids,studentRecordUidAllowed}=require("../functions/student-account-history.js");
+const {legacyStudentRecordsForAccount}=require("../functions/legacy-student-identity.js");
 
 test("student account history keeps current login first and deduplicates prior logins",()=>{
   const person={previousAuthUids:["old-a","old-b","old-a","current"]};
@@ -130,7 +131,7 @@ test("recovered students retain legacy assessment and personalized-task identity
   ]);
   assert.match(helper,/legacyStudentIds/);
   assert.match(helper,/source:"canonical_person"/);
-  assert.match(helper,/source:"email_fallback"/);
+  assert.match(helper,/email_fallback/);
   assert.match(index,/legacyStudentRecordsForAccount/);
   assert.match(index,/profiles,identitySource/);
   assert.match(access,/readyProjection/);
@@ -155,4 +156,76 @@ test("student assessment recovery bundle is cache-versioned end to end",async()=
   assert.match(workflow,/"js\/student\/student-access\.mjs"/);
   assert.match(workflow,/js\/student\/assessments\\\.js\\\?v=/);
   assert.match(workflow,/student-access\\\.mjs\\\?v=/);
+});
+
+
+function legacyIdentityDb(records){
+  const snapshot=(path,data)=>({
+    id:path.split("/").at(-1),exists:data!==undefined,data:()=>data
+  });
+  return {
+    doc(path){return {path,get:async()=>snapshot(path,records[path])};},
+    async getAll(...refs){return refs.map(ref=>snapshot(ref.path,records[ref.path]));},
+    collection(name){
+      return {
+        where(field,op,value){
+          assert.equal(name,"students");assert.equal(field,"email");assert.equal(op,"==");
+          return {
+            limit(max){
+              return {get:async()=>({
+                docs:Object.entries(records)
+                  .filter(([path,data])=>path.startsWith("students/")&&data?.email===value)
+                  .slice(0,max).map(([path,data])=>snapshot(path,data))
+              })};
+            }
+          };
+        }
+      };
+    }
+  };
+}
+
+test("recovered canonical migration resolves legacy student through previous Auth UID",async()=>{
+  const db=legacyIdentityDb({
+    "schools/mcs-manila/memberships/new-uid":{
+      schoolId:"mcs-manila",status:"active",roles:["student"],personId:"person-davis"
+    },
+    "schools/mcs-manila/people/person-davis":{
+      schoolId:"mcs-manila",kind:"student",status:"active",authUid:"new-uid",
+      previousAuthUids:["old-uid"]
+    },
+    "students/legacy-davis":{
+      email:"old-davis@example.edu",status:"active",section:"St. Carlo Acutis",name:"Davis Izon"
+    }
+  });
+  const result=await legacyStudentRecordsForAccount({
+    db,uid:"new-uid",email:"replacement@example.edu",
+    resolveUser:async uid=>{
+      assert.equal(uid,"old-uid");
+      return {uid,email:"old-davis@example.edu",disabled:false};
+    }
+  });
+  assert.equal(result.source,"canonical_account_history");
+  assert.deepEqual(result.records.map(row=>row.id),["legacy-davis"]);
+});
+
+test("recovered identity fails closed instead of binding current replacement email",async()=>{
+  const db=legacyIdentityDb({
+    "schools/mcs-manila/memberships/new-uid":{
+      schoolId:"mcs-manila",status:"active",roles:["student"],personId:"person-davis"
+    },
+    "schools/mcs-manila/people/person-davis":{
+      schoolId:"mcs-manila",kind:"student",status:"active",authUid:"new-uid",
+      previousAuthUids:["old-uid"]
+    },
+    "students/replacement-row":{
+      email:"replacement@example.edu",status:"active",section:"Wrong Section",name:"Duplicate"
+    }
+  });
+  const result=await legacyStudentRecordsForAccount({
+    db,uid:"new-uid",email:"replacement@example.edu",
+    resolveUser:async()=>({uid:"old-uid",email:"old-davis@example.edu"})
+  });
+  assert.equal(result.source,"canonical_history_unmapped");
+  assert.deepEqual(result.records,[]);
 });
