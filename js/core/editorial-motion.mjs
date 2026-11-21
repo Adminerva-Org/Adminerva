@@ -95,3 +95,18 @@ for (const scene of document.querySelectorAll('[data-cine-scene]')) {
     observer?.disconnect();
   },{once:true});
 }
+
+/** Scroll staging is progressive enhancement: content remains visible without JS. */
+const sections=[...document.querySelectorAll('.av-cine-section-heading,.av-atlas-console-grid,.av-signal-console,.av-cine-next')];
+if(sections.length&&!reduce()&&'IntersectionObserver' in window){
+  for(const section of sections)section.classList.add('av-cine-reveal');
+  const reveal=new IntersectionObserver(entries=>{
+    for(const entry of entries){
+      if(!entry.isIntersecting)continue;
+      entry.target.classList.add('av-cine-revealed');
+      reveal.unobserve(entry.target);
+    }
+  },{threshold:.12,rootMargin:'0px 0px -45px 0px'});
+  for(const section of sections)reveal.observe(section);
+  window.addEventListener('pagehide',()=>reveal.disconnect(),{once:true});
+}
