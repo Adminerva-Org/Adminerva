@@ -358,6 +358,33 @@ test("unverified GitHub, empty essays, missing links and unsupported MCQ are exc
  assert.throws(()=>assertBulkEvidence("link",{type:"submission_link",version:1,url:"http://unsafe"}),/submission link/);
  assert.throws(()=>assertBulkEvidence("mcq",{type:"objective_response",version:1}),/No V4 evidence adapter/);
 });
+test("person-specific task instructions remain bound to frozen essays and never become shared instructions",()=>{
+ const personalized={...compactAssessment,submissionSource:"text",
+   personalizedTask:{enabled:true}};
+ const one=buildGeneralExternalEvaluationData({task:personalized,snapshot:{
+   version:1,payload:{response:"My answer to prompt one."},
+   personalizedTask:{variantId:"one",prompt:"Explain scenario ONE",
+     evaluationNotes:"Look at first scenario"}
+ }});
+ const two=buildGeneralExternalEvaluationData({task:personalized,snapshot:{
+   version:1,payload:{response:"My answer to prompt two."},
+   personalizedTask:{variantId:"two",prompt:"Explain scenario TWO",
+     evaluationNotes:"Look at second scenario"}
+ }});
+ const pack=buildCompactBulkExternalEvaluationPackage({
+   batchId:"essay-personalized",task:personalized,
+   entries:[{ref:"ref-one",evaluationData:one},{ref:"ref-two",evaluationData:two}]
+ });
+ assert.equal(pack.shared.assessment.personalized,true);
+ assert.equal(pack.items[0].personalizedTask.prompt,"Explain scenario ONE");
+ assert.equal(pack.items[1].personalizedTask.prompt,"Explain scenario TWO");
+ assert.equal(pack.items[0].frozenEvidence.response,"My answer to prompt one.");
+ assert.equal(pack.items[1].frozenEvidence.response,"My answer to prompt two.");
+ assert.equal("personalizedTask" in pack.shared,false);
+ assert.throws(()=>buildGeneralExternalEvaluationData({task:personalized,snapshot:{
+   version:1,payload:{response:"No personalized prompt"}
+ }}),/missing its exact assigned scenario/);
+});
 test("oversized 20-learner external packages report context limit instead of truncating evidence",()=>{
  const textTask={...compactAssessment,submissionSource:"text",personalizedTask:{enabled:false}};
  const entries=Array.from({length:20},(_,i)=>({
