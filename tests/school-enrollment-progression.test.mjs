@@ -36,3 +36,16 @@ test("graduated or progressed registrations cannot be directly restored",()=>{
   assert.match(source,/if\(restoring&&data\.progressionType\)/);
   assert.match(source,/progressed or graduated registration cannot be restored directly/);
 });
+
+
+test("promotion into a student-login grade requires canonical identity readiness",()=>{
+  assert.match(source,/targetStudentEmailRequired=gradeRequiresStudentEmail\(targetGrade\)/);
+  assert.match(source,/student_identity_required/);
+  assert.match(source,/activation email or link their verified account in People & Access/);
+  assert.match(source,/accountResponsibility:targetStudentEmailRequired\?"student":"guardian"/);
+});
+
+test("progression final-grade gate requires the released revision to match the student's finalized grade",()=>{
+  assert.match(source,/gradeData\.status==="finalized"/);
+  assert.match(source,/Number\(gradeData\.finalizationRevision\)===releasedRevision/);
+});
