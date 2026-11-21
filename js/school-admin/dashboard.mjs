@@ -5,6 +5,7 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.1
 const get=id=>document.getElementById(id);
 const functions=getFunctions(app,"asia-southeast1");
 const peopleApi=httpsCallable(functions,"peopleDirectory");
+const profileApi=httpsCallable(functions,"schoolProfile");
 const academicsApi=httpsCallable(functions,"schoolAcademics");
 const schedulesApi=httpsCallable(functions,"schoolSchedules");
 const classRecordApi=httpsCallable(functions,"schoolClassRecordAdmin");
@@ -39,10 +40,11 @@ function applyEnrollmentRoute(scope){
 function renderRecommendation({final=false}={}){
   const title=get("adminNextActionTitle"),detail=get("adminNextActionDetail"),link=get("adminNextActionLink"),panel=get("adminNextAction");
   if(!title||!detail||!link||!panel)return;
-  const sources=[model.overview,model.reconciliation,model.classes,model.schedules,model.records,model.support],complete=sources.every(value=>value!==undefined);
+  const sources=[model.profile,model.academics,model.overview,model.reconciliation,model.classes,model.schedules,model.records,model.support],
+    complete=sources.every(value=>value!==undefined);
   if(!final&&!complete){
     title.textContent="Checking school operations…";
-    detail.textContent="Adminerva is comparing directory, staffing, Class Record and support signals.";
+    detail.textContent="Adminerva is checking school profile, academic setup, directory, staffing, Class Record and support signals.";
     link.hidden=true;panel.className="av-panel p-4 sm:p-5 border-l-4 border-l-blue-600";return;
   }
   let action=null;
@@ -60,10 +62,22 @@ function renderRecommendation({final=false}={}){
     primaryReviewClasses=classRows.filter(row=>row.primaryNeedsReview).length;
   const enrollments=Number(model.overview?.counts?.enrollments);
   const people=Number(model.overview?.counts?.people);
+  const profileSaved=Number(model.profile?.profile?.revision)>0;
+  const academicOfferings=Array.isArray(model.academics?.offerings)?model.academics.offerings.length:null;
   if(critical>0)action={
     title:critical+" critical support report"+(critical===1?"":"s")+" need review",
     detail:"Critical support reports take priority over routine administration because they may be blocking normal school use.",
     href:"issues.html",label:"Open support queue",tone:"rose"
+  };
+  else if(model.profile!==null&&model.profile!==undefined&&!profileSaved)action={
+    title:"Complete the school profile first",
+    detail:"Save the official institution profile before configuring the academic and operational workspaces. This establishes the school identity, timezone and contact context used across Adminerva.",
+    href:"school-profile.html",label:"Complete school profile",tone:"blue"
+  };
+  else if(model.academics!==null&&model.academics!==undefined&&academicOfferings===0)action={
+    title:"Complete Academic Configuration",
+    detail:"No active class offering is configured yet. Create the academic year, division/program, period, subjects, sections and at least one class offering before staffing or enrollment.",
+    href:"school-academic-configuration.html",label:"Configure academics",tone:"blue"
   };
   else if(integrity)action={
     title:"Resolve an integrity issue first",
@@ -222,12 +236,20 @@ function reset(){
   model={};attentionLimit=10;recordLimit=20;
   for(const id of ["adminPeopleCount","adminAttentionCount","adminClassRecordCount","adminReportCount","adminSupportOpen","adminSupportCritical","adminSupportWaiting","adminEnrollmentCount","adminAssignmentCount","adminInvitationCount"])set(id,"—");
   set("adminIntegrityMeta","Not checked");set("adminClassRecordMeta","Not checked");set("adminReportMeta","Not checked");
-  for(const id of ["adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
+  for(const id of ["adminWorkflowProfile","adminWorkflowAcademics","adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
   set("adminAttentionCoverage","");set("adminRecordCoverage","");get("adminAttentionMore").hidden=true;get("adminRecordMore").hidden=true;
   message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");message(get("adminActivityList"),"Waiting for verified school activity…");renderRecommendation();
 }
 function renderSource(name,data){
-  if(name==="directory"){
+  if(name==="profile"){
+    model.profile=data;
+    const node=get("adminWorkflowProfile"),saved=Number(data?.profile?.revision)>0;
+    if(node){node.textContent=data===null?"Unavailable":saved?"Saved":"Not configured";node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(data===null?"bg-amber-100 text-amber-900":saved?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");}
+  }else if(name==="academics"){
+    model.academics=data;
+    const node=get("adminWorkflowAcademics"),total=Array.isArray(data?.offerings)?data.offerings.length:null;
+    if(node){node.textContent=data===null?"Unavailable":total?"Configured · "+total+" class"+(total===1?"":"es"):"Not configured";node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(data===null?"bg-amber-100 text-amber-900":total?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");}
+  }else if(name==="directory"){
     model.overview=data;
     for(const [id,key] of [["adminPeopleCount","people"],["adminEnrollmentCount","enrollments"],["adminAssignmentCount","staff_assignments"],["adminInvitationCount","invitations"]])set(id,count(data?.counts?.[key]));
     renderActivity();
@@ -267,6 +289,8 @@ async function loadDashboard(){
   const generation=++loadGeneration,lease=picker.scope.lease();
   reset();refresh.disabled=true;status.textContent="Loading school operations…";get("adminLastChecked").textContent="";
   const sources=[
+    ["profile","School profile",profileApi,"get"],
+    ["academics","Academic configuration",academicsApi,"planning_options"],
     ["directory","Directory totals",peopleApi,"overview"],
     ["relationships","Relationship checks",peopleApi,"reconcile_directory"],
     ["classes","Active classes",academicsApi,"faculty_workload"],
@@ -282,7 +306,7 @@ async function loadDashboard(){
   }));
   if(!current())return;
   refresh.disabled=false;set("adminLastChecked","Checked "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
-  status.textContent=failed.length?"Unavailable: "+failed.join(", ")+". Other results remain usable.":"All six school operation sources loaded.";
+  status.textContent=failed.length?"Unavailable: "+failed.join(", ")+". Other results remain usable.":"All eight school operation sources loaded.";
   renderRecommendation({final:true});
 }
 refresh.addEventListener("click",()=>{if(picker.scope.current?.roles.includes("school_admin"))void loadDashboard();else void picker.load().catch(error=>{status.textContent=error?.message||"School access unavailable.";});});
