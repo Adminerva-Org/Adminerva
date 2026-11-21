@@ -928,6 +928,29 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
       if(scroll)get("en-registration-list").scrollIntoView({behavior:"smooth",block:"start"});
       return false;
     }
+    if(result.activeLegacyEnrollments?.length){
+      const legacyItem={
+        personId:person.personId,displayName:person.displayName||"Student",
+        studentNumber:person.studentNumber||"",personStatus:"active",
+        courseCount:result.activeLegacyEnrollments.length,
+        sectionIds:[...new Set(result.activeLegacyEnrollments.map(row=>row.sectionId).filter(Boolean))],
+        yearIds:[...new Set(result.activeLegacyEnrollments.map(row=>row.yearId).filter(Boolean))],
+        termIds:[...new Set(result.activeLegacyEnrollments.map(row=>row.termId).filter(Boolean))],
+        hasRegistrationLinkedEnrollment:result.activeLegacyEnrollments.some(row=>Boolean(row.registrationId)),
+        enrollments:result.activeLegacyEnrollments
+      };
+      const existingIndex=legacyRegistrations.findIndex(row=>row.personId===person.personId);
+      if(existingIndex>=0)legacyRegistrations.splice(existingIndex,1,legacyItem);
+      else legacyRegistrations.unshift(legacyItem);
+      get("en-registration-search").value=person.displayName||person.studentNumber||"";
+      renderRegistrations();renderLegacyRegistrations();
+      status.textContent=legacyItem.hasRegistrationLinkedEnrollment
+        ?person.displayName+" has active older class enrollments tied to registration history. Review is required before account recovery."
+        :person.displayName+" has "+legacyItem.courseCount+" active pre-canonical class enrollment"+
+          (legacyItem.courseCount===1?"":"s")+". Reconcile them below before account recovery.";
+      if(scroll)get("en-legacy-reconciliation-card").scrollIntoView({behavior:"smooth",block:"start"});
+      return false;
+    }
     if(draftDirty&&!discardDraft())return false;
     loadedApplication=null;loadedPerson=person;
     form.elements.applicationId.value="";form.elements.personId.value=person.personId;
