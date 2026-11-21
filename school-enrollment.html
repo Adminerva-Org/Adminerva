@@ -241,13 +241,63 @@
       </div>
     </form>
   </dialog>
+
+  <dialog id="en-progression-dialog" class="en-dialog" aria-labelledby="en-progression-title">
+    <form id="en-progression-form" class="en-card" method="dialog">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-extrabold uppercase tracking-wider text-emerald-700">Registrar progression</p>
+          <h2 id="en-progression-title" class="text-lg font-extrabold mt-1">Progress student</h2>
+          <p id="en-progression-target" class="en-muted mt-1"></p>
+        </div>
+        <button id="en-progression-close" type="button" class="en-btn secondary">Close</button>
+      </div>
+      <p class="en-notice mt-4">Promotion, retention and graduation use released Class Record Final Grades as the completion gate. Adminerva preserves the completed registration and its academic evidence instead of editing the old placement in place.</p>
+      <label class="text-sm font-bold block mt-4">Decision
+        <select name="progressionType" class="en-input mt-1" required>
+          <option value="">Choose progression decision</option>
+          <option value="promotion">Promotion</option>
+          <option value="retention">Retention</option>
+          <option value="graduation">Graduation</option>
+        </select>
+      </label>
+      <section id="en-progression-placement" class="en-summary mt-4" hidden>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="text-sm font-bold">Target academic year
+            <select name="targetYearId" class="en-input mt-1"></select>
+          </label>
+          <label class="text-sm font-bold">Target program / division
+            <select name="targetProgramId" class="en-input mt-1"></select>
+          </label>
+          <label class="text-sm font-bold">Target academic period
+            <select name="targetTermId" class="en-input mt-1"></select>
+          </label>
+          <label class="text-sm font-bold">Target section
+            <select name="targetSectionId" class="en-input mt-1"></select>
+          </label>
+        </div>
+      </section>
+      <section class="en-summary mt-4">
+        <strong class="text-sm">Progression readiness</strong>
+        <p id="en-progression-preview" class="en-muted mt-2" role="status" aria-live="polite">Choose a progression decision to check released Final Grades and target placement.</p>
+        <div id="en-progression-blockers" class="en-list mt-3"></div>
+      </section>
+      <label class="text-sm font-bold block mt-4">Institutional reason
+        <textarea name="reason" class="en-input mt-1" rows="3" minlength="12" maxlength="500" required placeholder="Record the promotion, retention or graduation decision basis."></textarea>
+      </label>
+      <div class="flex flex-wrap gap-2 mt-4">
+        <button id="en-progression-confirm" class="en-btn" type="submit" disabled>Apply progression</button>
+        <button id="en-progression-cancel" class="en-btn secondary" type="button">Cancel</button>
+      </div>
+    </form>
+  </dialog>
 </main>
 
 <script defer src="js/core/release-footer.js"></script>
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-registration-lifecycle2"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-sis-progression1"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
