@@ -47,8 +47,10 @@ test("Student Records 201 file aggregates canonical records instead of creating 
   assert.doesNotMatch(block,/tx\.create\([^\n]*people/);
 });
 
-test("released academic results require the released Class Record revision",()=>{
-  assert.match(service,/released\.get\(doc\.data\(\)\.offeringId\)===Number\(doc\.data\(\)\.finalizationRevision\)/);
+test("released academic results resolve the exact released Class Record revision",()=>{
+  assert.match(service,/releasedRevision=released\.get\(doc\.data\(\)\.offeringId\)\|\|0/);
+  assert.match(service,/doc\.ref\.collection\("revisions"\)\.doc\(String\(releasedRevision\)\)/);
+  assert.match(service,/Number\(historical\.data\(\)\.finalizationRevision\)!==releasedRevision/);
   assert.match(service,/status==="finalized"/);
 });
 
@@ -87,4 +89,10 @@ test("Student Records UI deep-links to owning identity and enrollment workspaces
   assert.match(recordsUi,/school-enrollment\.html\?personId=/);
   assert.match(recordsHtml,/One record, not another student table/);
   assert.match(recordsHtml,/js\/core\/adminerva-loader\.js/);
+});
+
+
+test("primary guardian selection is resolved inside the same transaction",()=>{
+  assert.match(service,/tx\.get\(db\.collection\(root\+"guardian_relationships"\)\.where\("studentPersonId","==",personId\)\.limit\(51\)\)/);
+  assert.match(enrollment,/const guardianRelationships=await tx\.get\(db\.collection\(root\+"guardian_relationships"\)/);
 });
