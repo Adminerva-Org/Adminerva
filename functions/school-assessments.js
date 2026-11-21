@@ -8,6 +8,7 @@ const {createHash}=require("node:crypto");
 const {Timestamp,FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
+const {digestProject,digestSource}=require("./school-studio-projects.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 const {blueprintFingerprint,personalizationContent,PERSONALIZATION_MODE}=require("./teacher-blueprints.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -276,6 +277,11 @@ function createSchoolAssessmentService({db}){
     const frozen=receipt.data();
     if(!Array.isArray(frozen.files))
      deny("failed-precondition","This historical checkpoint contains a digest but predates source snapshot capture.");
+    if(frozen.sourceDigest&&frozen.sourceDigest!==digestSource(frozen.files,frozen.language))
+     deny("data-loss","The saved source digest does not match the immutable exam checkpoint.");
+    if(frozen.artifacts&&frozen.contentDigest&&
+       frozen.contentDigest!==digestProject(frozen.files,frozen.artifacts))
+     deny("data-loss","The saved project digest does not match the immutable exam checkpoint.");
     return {taskId,sessionEpoch:epoch,studentUid,
       projectId:frozen.projectId,projectRevision:frozen.projectRevision,
       title:frozen.title||"Saved Studio project",language:frozen.language||"text",
@@ -296,9 +302,10 @@ function createSchoolAssessmentService({db}){
      }));
    const rosterDoc=await db.doc(prefix+"studio_exam_session_rosters/"+taskId+
      "/sessions/"+epoch).get();
+   const hasCapturedRoster=rosterDoc.exists&&rosterDoc.data().schoolId===ctx.schoolId&&
+      rosterDoc.data().taskId===taskId&&Array.isArray(rosterDoc.data().students);
    let roster=[];
-   if(rosterDoc.exists&&rosterDoc.data().schoolId===ctx.schoolId&&
-      rosterDoc.data().taskId===taskId&&Array.isArray(rosterDoc.data().students)){
+   if(hasCapturedRoster){
     roster=rosterDoc.data().students;
    }else{
     // Compatibility fallback for pre-roster sessions or a partial fanout
@@ -328,7 +335,7 @@ function createSchoolAssessmentService({db}){
    const sessionClosed=epoch<currentEpoch||
      ["closed","closing","held"].includes(task.data().manualAccessState);
    return {taskId,sessionEpoch:epoch,currentSessionEpoch:currentEpoch,
-     sessionClosed,rosterSource:rosterDoc.exists?"close_snapshot":"current_fallback",
+     sessionClosed,rosterSource:hasCapturedRoster?"close_snapshot":"current_fallback",
      confirmed,enrolledStudents:students.length,students};
   }
 
