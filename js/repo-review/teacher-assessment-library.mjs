@@ -341,17 +341,22 @@ function bulkSettingsModal(){
       try{
         for(const task of selected){
           result.textContent="Updating "+(completed+failures.length+1)+" of "+selected.length+": "+deploymentClassLabel(task)+"…";
-          const details={
-            taskId:task.taskId,expectedRevision:task.revision||1,
-            opensAt:dates?opensAt.toISOString():new Date(task.opensAt).toISOString(),
-            dueAt:dates?dueAt.toISOString():new Date(task.dueAt).toISOString(),
-            allowLateSubmissions:late?form.elements.allowLateSubmissions.checked:task.allowLateSubmissions===true,
-            manualOpenRequired:manual?form.elements.manualOpenRequired.checked:task.manualOpenRequired===true,
-            reason
-          };
           try{
+            const originalOpens=new Date(task.opensAt),originalDue=new Date(task.dueAt);
+            if(!dates&&(!Number.isFinite(originalOpens.getTime())||!Number.isFinite(originalDue.getTime())))
+              throw new Error("Original schedule unavailable; edit this class individually.");
+            const details={
+              taskId:task.taskId,expectedRevision:task.revision||1,
+              opensAt:dates?opensAt.toISOString():originalOpens.toISOString(),
+              dueAt:dates?dueAt.toISOString():originalDue.toISOString(),
+              allowLateSubmissions:late?form.elements.allowLateSubmissions.checked:task.allowLateSubmissions===true,
+              manualOpenRequired:manual?form.elements.manualOpenRequired.checked:task.manualOpenRequired===true,
+              reason
+            };
             await performScoped(scopedAssessmentApi,"update_settings",details);
             bulkSettingsSucceeded.add(task.taskId);completed++;
+            const selection=form.querySelector('input[data-task-id="'+CSS.escape(task.taskId)+'"]');
+            if(selection){selection.checked=false;selection.disabled=true;}
           }catch(error){failures.push(deploymentClassLabel(task)+": "+(error?.message||"Could not save"));}
         }
         result.textContent="Updated "+completed+" of "+selected.length+" classes."+
