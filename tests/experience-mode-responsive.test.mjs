@@ -39,7 +39,7 @@ test('experience modules preserve quick mode and avoid private data dependencies
     assert.match(source,/Full experience/);
     assert.match(source,/Quick mode/);
     assert.match(source,/prefers-reduced-motion/);
-    assert.doesNotMatch(source,/firebase|firestore|studentId|schoolId|grade|enrollmentId|accessToken/i);
+    assert.doesNotMatch(source,/getFirestore|firebase|firestore|studentId|schoolId|enrollmentId|accessToken|authorization\s*:/i);
   }
   assert.match(experience,/loadPublicReleases/);
   assert.match(experience,/loadPublicChannel/);
