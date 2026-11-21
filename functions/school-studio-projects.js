@@ -109,7 +109,7 @@ function createSchoolStudioProjectService({db}){
       deny("failed-precondition","This project belongs to an earlier exam session. Reopen the assessment from My Assessments.");
     return {finalSave:false,taskId};
    }
-   if(data.manualAccessState==="closing"&&closingEpoch>0&&
+   if(["closed","closing"].includes(data.manualAccessState)&&closingEpoch>0&&
       Number(binding.sessionEpoch||0)===closingEpoch&&epoch===closingEpoch&&
       Date.now()<=(data.manualCloseGraceUntil?.toMillis?.()||0)){
     return {finalSave:true,taskId,closingEpoch};
