@@ -97,7 +97,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   }
   bulkEvaluator=createV4BulkEvaluationController({
     root:document.getElementById("gbV4BulkPanel"),
-    scoped,migrationApi,assessmentApi,submissionApi,gradeApi,
+    scoped,migrationApi,assessmentApi,submissionApi,gradeApi,verificationApi,
     buildPackage:buildGeneralExternalEvaluationPackage,
     parseResponse:parseGeneralExternalEvaluationResponse,
     generateContent:generateSchoolContent,evaluationJSON,
