@@ -216,6 +216,7 @@ function examCloseOverlay(){
   host.setAttribute("role","alertdialog");
   host.setAttribute("aria-modal","true");
   host.setAttribute("aria-labelledby","studioExamClosingHeading");
+  host.tabIndex=-1;
   host.style.cssText="position:fixed;inset:0;z-index:100000;background:#020617;"+
     "color:#f8fafc;display:flex;align-items:center;justify-content:center;padding:1.25rem;";
   host.innerHTML='<section style="max-width:490px;width:100%;background:#0f172a;border:1px solid #475569;border-radius:18px;padding:1.5rem;box-shadow:0 24px 90px #0008">'+
@@ -228,6 +229,7 @@ function examCloseOverlay(){
     '<a href="student-assessments.html" style="background:#334155;border-radius:8px;padding:.65rem 1rem;font-weight:700">Return to assessments</a></div>'+
     '</section>';
   document.body.append(host);
+  host.focus();
   return host;
 }
 async function lockAndCloseStudioExam(taskId,sessionEpoch){
@@ -246,7 +248,8 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
   const overlay=examCloseOverlay(),message=overlay.querySelector("#studioExamClosingMessage"),
     notice=overlay.querySelector("#studioExamClosingNotice"),
     actions=overlay.querySelector("#studioExamClosingActions"),
-    retry=overlay.querySelector("#studioExamRetryFinalSave");
+    retry=overlay.querySelector("#studioExamRetryFinalSave"),
+    returnLink=overlay.querySelector('a[href="student-assessments.html"]');
   let captured=persistWorkspace(),deviceCopySaved=captured;
   if(!captured){
     try{
@@ -258,6 +261,10 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
       console.warn("Could not prepare final in-memory school checkpoint",error);
     }
   }
+  returnLink?.addEventListener("click",event=>{
+    if(!confirm("Leave the locked exam without a confirmed final school save? Your most recent code may only exist in this browser. If possible, keep this tab open and contact your teacher."))
+      event.preventDefault();
+  });
   const project=projectStudio?.getActiveProject?.();
   if(!project||project.assessment?.taskId!==taskId){
     message.textContent="The exam is closed. No active assessment project was found to finalize.";
@@ -288,6 +295,7 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
         ?"Your device draft is retained, but your teacher may not yet see the latest changes. Do not clear this browser. Retry while the closing checkpoint is available."
         :"Your browser could not save a device backup. The code is still held in this open tab, but it is not confirmed in school cloud storage. Keep the tab open and retry immediately.";
       actions.hidden=false;retry.hidden=false;retry.disabled=false;
+      retry.focus();
     }
   };
   retry.addEventListener("click",()=>void finalize());
