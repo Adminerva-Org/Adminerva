@@ -77,6 +77,105 @@ function createPeopleDirectoryService({db}) {
         throw new TenantAccessError("permission-denied","School administration access has changed.");
     }
 
+    async function reviewStudentAccountRecovery(personId,replacementPersonId,tx=null) {
+      if(personId===replacementPersonId)
+        throw new TenantAccessError("invalid-argument","Choose a different linked student account for recovery.");
+      const read=target=>tx?tx.get(target):target.get();
+      const canonicalRef=base.doc(personId),replacementRef=base.doc(replacementPersonId);
+      const [canonical,replacement]=await Promise.all([read(canonicalRef),read(replacementRef)]);
+      if(!canonical.exists||canonical.data().schoolId!==ctx.schoolId||
+         canonical.data().kind!=="student"||canonical.data().status!=="active")
+        throw new TenantAccessError("failed-precondition","The canonical student record must be active.");
+      if(!replacement.exists||replacement.data().schoolId!==ctx.schoolId||
+         replacement.data().kind!=="student"||replacement.data().status!=="active")
+        throw new TenantAccessError("failed-precondition","The replacement login must belong to an active student record.");
+      const canonicalData=canonical.data(),replacementData=replacement.data(),
+        replacementUid=id(replacementData.authUid),
+        canonicalUid=typeof canonicalData.authUid==="string"&&canonicalData.authUid?
+          id(canonicalData.authUid):null;
+      if(canonicalUid===replacementUid)
+        throw new TenantAccessError("failed-precondition","This login is already linked to the canonical student.");
+
+      const replacementMemberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+replacementUid),
+        canonicalMemberRef=canonicalUid?
+          db.doc("schools/"+ctx.schoolId+"/memberships/"+canonicalUid):null;
+      const queries=[
+        db.collection("schools/"+ctx.schoolId+"/student_registrations").where("personId","==",replacementPersonId).limit(51),
+        db.collection("schools/"+ctx.schoolId+"/enrollments").where("personId","==",replacementPersonId).limit(101),
+        db.collection("schools/"+ctx.schoolId+"/student_grades").where("studentUid","==",replacementUid).limit(2),
+        db.collection("schools/"+ctx.schoolId+"/studio_submissions").where("studentUid","==",replacementUid).limit(2),
+        db.collection("schools/"+ctx.schoolId+"/assessment_submissions").where("studentUid","==",replacementUid).limit(2),
+        db.collection("schools/"+ctx.schoolId+"/github_evidence").where("studentUid","==",replacementUid).limit(2),
+        db.collection("schools/"+ctx.schoolId+"/student_repository_configs").where("personId","==",replacementPersonId).limit(2),
+        db.collection("schools/"+ctx.schoolId+"/class_record_period_grades").where("personId","==",replacementPersonId).limit(2),
+        db.collection("schools/"+ctx.schoolId+"/assessment_threads").where("studentPersonId","==",replacementPersonId).limit(2),
+        base.where("authUid","==",replacementUid).limit(3)
+      ];
+      const reads=[
+        read(replacementMemberRef),
+        canonicalMemberRef?read(canonicalMemberRef):Promise.resolve(null),
+        ...queries.map(query=>read(query))
+      ];
+      const [replacementMember,canonicalMember,registrations,enrollments,grades,studio,
+        responses,githubEvidence,repositoryConfigs,classRecordGrades,assessmentThreads,linkedPeople]=
+        await Promise.all(reads);
+      const blockers=[],replacementRoles=Array.isArray(replacementMember?.data?.()?.roles)?
+        replacementMember.data().roles:[];
+
+      if(!replacementMember?.exists||replacementMember.data().schoolId!==ctx.schoolId||
+         replacementMember.data().status!=="active"||
+         replacementMember.data().personId!==replacementPersonId||
+         !replacementRoles.includes("student"))
+        blockers.push("The replacement login is not an active student membership linked to the selected duplicate record.");
+      if(replacementRoles.some(role=>role!=="student"))
+        blockers.push("The replacement login has another school role. Resolve that role before student account recovery.");
+      if(linkedPeople.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).length!==1)
+        blockers.push("The replacement login is linked to more than one school person. Resolve the directory integrity issue first.");
+      if(registrations.size===51||enrollments.size===101)
+        blockers.push("The duplicate student has too much academic history for automatic recovery.");
+      if(registrations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
+        blockers.push("The duplicate student has an active official registration. End or correct it in Enrollment & Registration first.");
+      if(enrollments.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
+        blockers.push("The duplicate student has active class enrollment. Resolve it in the authoritative enrollment/class workflow first.");
+      const substantive=[
+        [grades,"grade history"],[studio,"Studio submissions"],[responses,"assessment submissions"],
+        [githubEvidence,"GitHub evidence"],[repositoryConfigs,"repository configuration"],
+        [classRecordGrades,"Class Record grades"],[assessmentThreads,"private assessment conversation history"]
+      ];
+      for(const [snapshot,label] of substantive)
+        if(snapshot.docs.some(doc=>doc.data().schoolId===ctx.schoolId))
+          blockers.push("The duplicate student already has "+label+". Manual identity reconciliation is required.");
+      if(canonicalMember?.exists&&canonicalMember.data().schoolId!==ctx.schoolId)
+        blockers.push("The canonical student's previous membership belongs to another school context.");
+      if(canonicalMember?.exists){
+        const canonicalRoles=Array.isArray(canonicalMember.data().roles)?canonicalMember.data().roles:[];
+        if(canonicalRoles.some(role=>role!=="student"))
+          blockers.push("The canonical student's previous account has another school role and requires manual recovery.");
+      }
+
+      return {
+        refs:{canonicalRef,replacementRef,replacementMemberRef,canonicalMemberRef},
+        docs:{canonical,replacement,replacementMember,canonicalMember},
+        canonicalUid,replacementUid,replacementRoles,blockers,
+        preview:{
+          canonical:{personId,displayName:String(canonicalData.displayName||"Student").slice(0,140),
+            revision:Number(canonicalData.revision||1),accountLinked:Boolean(canonicalUid)},
+          replacement:{personId:replacementPersonId,
+            displayName:String(replacementData.displayName||"Linked student").slice(0,140),
+            revision:Number(replacementData.revision||1),accountLinked:true},
+          previousAccountWillBeSuspended:Boolean(canonicalUid&&canonicalMember?.exists&&
+            canonicalMember.data().status==="active"),
+          blockers,
+          expected:{
+            canonicalRevision:Number(canonicalData.revision||1),
+            replacementRevision:Number(replacementData.revision||1),
+            replacementMembershipRevision:Number(replacementMember?.data?.()?.revision||0),
+            canonicalMembershipRevision:Number(canonicalMember?.data?.()?.revision||0)
+          }
+        }
+      };
+    }
+
     if(input.action==="overview") {
       const scopes=["people","enrollments","staff_assignments","invitations"];
       const counts=await Promise.all(scopes.map(name=>db.collection("schools/"+ctx.schoolId+"/"+name).count().get()));
@@ -629,6 +728,122 @@ function createPeopleDirectoryService({db}) {
           action:"school_membership_restored",reason,createdAt:now});
       });
       return {targetUid,status:"active",revision:expectedRevision+1};
+    }
+    if(input.action==="preview_student_account_recovery"||input.action==="recover_student_account"){
+      const personId=id(input.personId),replacementPersonId=id(input.replacementPersonId);
+      if(input.action==="preview_student_account_recovery"){
+        const review=await reviewStudentAccountRecovery(personId,replacementPersonId);
+        return review.preview;
+      }
+      const reason=field(input.reason,500,"Account recovery reason");
+      if(reason.length<20)
+        invalid("Explain the student account replacement in at least 20 characters.");
+      const expectedCanonicalRevision=Number(input.expectedCanonicalRevision),
+        expectedReplacementRevision=Number(input.expectedReplacementRevision),
+        expectedReplacementMembershipRevision=Number(input.expectedReplacementMembershipRevision),
+        expectedCanonicalMembershipRevision=Number(input.expectedCanonicalMembershipRevision||0);
+      for(const [value,label] of [
+        [expectedCanonicalRevision,"canonical student"],
+        [expectedReplacementRevision,"replacement student"],
+        [expectedReplacementMembershipRevision,"replacement membership"]
+      ])if(!Number.isSafeInteger(value)||value<1)
+        invalid("Refresh the "+label+" recovery preview before saving.");
+      if(!Number.isSafeInteger(expectedCanonicalMembershipRevision)||expectedCanonicalMembershipRevision<0)
+        invalid("Refresh the previous-account recovery preview before saving.");
+
+      const {getAuth}=require("firebase-admin/auth");
+      const initial=await reviewStudentAccountRecovery(personId,replacementPersonId);
+      if(initial.blockers.length)
+        throw new TenantAccessError("failed-precondition",initial.blockers[0]);
+      const replacementAccount=await getAuth().getUser(initial.replacementUid);
+      if(replacementAccount.disabled)
+        throw new TenantAccessError("failed-precondition","The replacement login is disabled. Restore the sign-in identity before recovery.");
+
+      const canonicalAudit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc(),
+        duplicateAudit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      let result;
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const review=await reviewStudentAccountRecovery(personId,replacementPersonId,tx);
+        if(review.blockers.length)
+          throw new TenantAccessError("failed-precondition",review.blockers[0]);
+        const {canonical,replacement,replacementMember,canonicalMember}=review.docs;
+        if(Number(canonical.data().revision||1)!==expectedCanonicalRevision||
+           Number(replacement.data().revision||1)!==expectedReplacementRevision||
+           Number(replacementMember.data().revision||0)!==expectedReplacementMembershipRevision||
+           Number(canonicalMember?.data?.()?.revision||0)!==expectedCanonicalMembershipRevision)
+          throw new TenantAccessError("failed-precondition",
+            "Student identity records changed after preview. Refresh and review the recovery again.");
+
+        const now=FieldValue.serverTimestamp(),newUid=review.replacementUid,oldUid=review.canonicalUid,
+          canonicalData=canonical.data(),replacementData=replacement.data(),
+          previousAuthUids=[...new Set([
+            ...(Array.isArray(canonicalData.previousAuthUids)?canonicalData.previousAuthUids:[]),
+            ...(oldUid&&oldUid!==newUid?[oldUid]:[])
+          ].filter(value=>typeof value==="string"&&value&&value!==newUid))].slice(-20),
+          canonicalRevision=expectedCanonicalRevision+1,
+          duplicateRevision=expectedReplacementRevision+1,
+          replacementMembershipRevision=expectedReplacementMembershipRevision+1;
+
+        tx.update(review.refs.canonicalRef,{
+          authUid:newUid,previousAuthUids,revision:canonicalRevision,
+          accountRecoveredAt:now,accountRecoveredByUid:ctx.uid,
+          updatedAt:now,updatedByUid:ctx.uid
+        });
+        tx.update(review.refs.replacementRef,{
+          status:"archived",authUid:null,
+          previousAuthUids:[...new Set([
+            ...(Array.isArray(replacementData.previousAuthUids)?replacementData.previousAuthUids:[]),newUid
+          ])].slice(-20),
+          mergedIntoPersonId:personId,mergedAt:now,mergedByUid:ctx.uid,
+          mergeReason:reason,revision:duplicateRevision,updatedAt:now,updatedByUid:ctx.uid
+        });
+        tx.update(review.refs.replacementMemberRef,{
+          personId,status:"active",roles:review.replacementRoles,
+          displayName:String(canonicalData.displayName||"Student").slice(0,140),
+          revision:replacementMembershipRevision,
+          accountRecoveryFromPersonId:replacementPersonId,
+          updatedAt:now,updatedByUid:ctx.uid
+        });
+        tx.set(db.doc("platform_users/"+newUid+"/memberships/"+ctx.schoolId),{
+          schoolId:ctx.schoolId,status:"active",roles:review.replacementRoles,
+          revision:replacementMembershipRevision,updatedAt:now
+        });
+
+        let previousAccountSuspended=false;
+        if(oldUid&&review.refs.canonicalMemberRef&&canonicalMember?.exists&&
+           canonicalMember.data().status==="active"){
+          const oldData=canonicalMember.data(),
+            oldRoles=Array.isArray(oldData.roles)?oldData.roles:["student"],
+            oldRevision=expectedCanonicalMembershipRevision+1;
+          tx.update(review.refs.canonicalMemberRef,{
+            status:"suspended",revision:oldRevision,
+            suspendedAt:now,suspendedByUid:ctx.uid,
+            suspensionReason:"Student account replaced: "+reason,
+            updatedAt:now,updatedByUid:ctx.uid
+          });
+          tx.set(db.doc("platform_users/"+oldUid+"/memberships/"+ctx.schoolId),{
+            schoolId:ctx.schoolId,status:"suspended",roles:oldRoles,
+            revision:oldRevision,updatedAt:now
+          });
+          previousAccountSuspended=true;
+        }
+
+        tx.create(canonicalAudit,{
+          schoolId:ctx.schoolId,actorUid:ctx.uid,personId,targetUid:newUid,
+          action:"student_account_recovered",reason,
+          previousPersonId:replacementPersonId,previousAuthUid:oldUid||null,
+          createdAt:now
+        });
+        tx.create(duplicateAudit,{
+          schoolId:ctx.schoolId,actorUid:ctx.uid,personId:replacementPersonId,targetUid:newUid,
+          action:"duplicate_student_person_archived",reason,mergedIntoPersonId:personId,createdAt:now
+        });
+        result={personId,replacementPersonId,status:"recovered",
+          displayName:String(canonicalData.displayName||"Student").slice(0,140),
+          previousAccountSuspended};
+      });
+      return result;
     }
     if(input.action==="list_invitable_people") {
       const role=input.role;
