@@ -259,6 +259,25 @@ function renderClasswork(){
     top.append(text,link);row.append(top);
     const health=classworkHealth.get(item.taskId);
     if(health){
+      const record=health.classRecord||{status:"unlinked"};
+      const recordRow=make("div","mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2");
+      const recordText=make("div","min-w-0");
+      if(record.status==="linked"){
+        recordText.append(make("strong","block text-xs text-emerald-800","Linked to Class Record"),
+          make("span","block text-[11px] text-slate-500 mt-0.5",[record.category||"Uncategorized",record.studentVisibility==="released"?"visible to students":"hidden from students"].join(" · ")));
+      }else if(record.status==="archived"){
+        recordText.append(make("strong","block text-xs text-amber-800","Archived Class Record link"),
+          make("span","block text-[11px] text-slate-500 mt-0.5","The prior Class Record column is archived; review the record before linking again."));
+      }else{
+        recordText.append(make("strong","block text-xs text-slate-700","Not linked to Class Record"),
+          make("span","block text-[11px] text-slate-500 mt-0.5","Published Gradebook results do not enter the formal Class Record until you link this assessment."));
+      }
+      const recordLink=make("a","shrink-0 text-xs font-extrabold underline "+(record.status==="linked"?"text-emerald-800":record.status==="archived"?"text-amber-800":"text-blue-700"),
+        record.status==="linked"?"Open record":record.status==="archived"?"Review archived link":"Link to record");
+      recordLink.href=record.status==="unlinked"?
+        "class-record.html?"+new URLSearchParams({offering:item.offeringId,assessment:item.taskId,source:"school"}).toString():
+        "class-record.html?offering="+encodeURIComponent(item.offeringId);
+      recordRow.append(recordText,recordLink);row.append(recordRow);
       const chips=make("div","flex flex-wrap gap-1.5 mt-3");
       const add=(label,value,cls)=>{if(Number(value)>0)chips.append(make("span","rounded-full border px-2 py-1 text-[11px] font-bold "+cls,label+" "+Number(value).toLocaleString()));};
       add("Not submitted",health.notSubmitted,"border-slate-200 bg-slate-50 text-slate-700");
