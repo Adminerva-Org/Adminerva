@@ -209,8 +209,26 @@ function createSchoolAssessmentService({db}){
     const enrolled=await db.collection(prefix+"enrollments")
       .where("offeringId","==",result.offeringId).limit(101).get().catch(()=>null);
     if(enrolled&&enrolled.size<=100){
-      const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"),
+      const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"&&
+        typeof doc.data().personId==="string"),
         people=await Promise.all(active.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
+      if(!opening){
+       // Retain the class roster as it existed at closing, rather than rebuilding
+       // historical reports from memberships that may change next semester.
+       const roster=people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
+         person.data().status==="active"&&person.data().kind==="student").map(person=>({
+           personId:person.id,displayName:String(person.data().displayName||"Student").slice(0,140),
+           studentUid:person.data().authUid||null
+         }));
+       try{
+        await db.doc(prefix+"studio_exam_session_rosters/"+taskId+"/sessions/"+result.sessionEpoch)
+          .create({schoolId:ctx.schoolId,taskId,offeringId:result.offeringId,
+            sessionEpoch:result.sessionEpoch,students:roster,capturedAt:FieldValue.serverTimestamp()});
+       }catch(error){
+        if(error.code!==6&&error.code!=="already-exists")
+         console.warn("Exam close roster capture unavailable",taskId,result.sessionEpoch,error);
+       }
+      }
       await Promise.allSettled(people.map(person=>{
         const uid=person.exists&&person.data().schoolId===ctx.schoolId&&person.data().status==="active"?
           person.data().authUid:null;
