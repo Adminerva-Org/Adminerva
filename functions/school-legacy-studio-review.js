@@ -18,6 +18,18 @@ const safeId=(value,label,max=256)=>{
     deny("invalid-argument",label+" is invalid.");
   return id;
 };
+// Old Repository Management student document IDs are not always Firebase Auth
+// UIDs or alphanumeric IDs. The original Studio evidence identity deliberately
+// permits email-like IDs and punctuation (but never path separators).
+// Validate an existing Firestore *document segment*; do not transform an ID.
+const legacyDocumentId=(value,label,max=300)=>{
+  if(typeof value!=="string"||!value||value.length>max||
+     Buffer.byteLength(value,"utf8")>1500||
+     value==="."||value===".."||/[\\/\u0000-\u001f\u007f]/.test(value)||
+     /^__.*__$/.test(value))
+    deny("invalid-argument",label+" is invalid.");
+  return value;
+};
 const validSnapshot=(head,version)=>{
   if(!head||!version||version.ownerUid!==head.ownerUid||
     version.assessmentId!==head.assessmentId||
@@ -128,7 +140,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
         deny("failed-precondition","The submitted record identity does not match the learner and assessment.");
     };
     const inspectRaw=async submissionId=>{
-      const id=safeId(submissionId,"Submitted Studio revision",300);
+      const id=legacyDocumentId(submissionId,"Submitted Studio revision",300);
       const ref=db.doc("studio_submissions/"+id),head=await ref.get();
       if(!head.exists)deny("not-found","Historical Studio submission not found.");
       validateHead(head.data(),id);
@@ -184,7 +196,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
         const batch=rows.slice(start,start+80);
         const [names,scores]=await Promise.all([
           Promise.all(batch.map(row=>db.doc("students/"+
-            safeId(row.data().studentId,"Student",160)).get())),
+            legacyDocumentId(row.data().studentId,"Student",160)).get())),
           Promise.all(batch.map(row=>gradeRef(row.id).get()))
         ]);
         students.push(...names);grades.push(...scores);
@@ -228,7 +240,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
     if(!["legacy_review_save_draft","legacy_review_publish","legacy_review_bulk_publish"].includes(input.action))
       deny("invalid-argument","Unknown historical Studio review operation.");
     async function publishOne(submissionId,expectedGradeRevision=null){
-      const id=safeId(submissionId,"Studio submission",300),ref=db.doc("studio_submissions/"+id),
+      const id=legacyDocumentId(submissionId,"Studio submission",300),ref=db.doc("studio_submissions/"+id),
         grade=gradeRef(id),audit=db.collection("grade_revisions").doc();
       let published=false;
       await db.runTransaction(async tx=>{
@@ -262,7 +274,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
       return published;
     }
     if(input.action==="legacy_review_bulk_publish"){
-      const cursor=input.cursor?safeId(input.cursor,"Pagination cursor",300):"";
+      const cursor=input.cursor?legacyDocumentId(input.cursor,"Pagination cursor",300):"";
       const page=await submissionPage(cursor,40);
       let published=0,failed=0,zeroSkipped=0;
       for(const row of page.docs.filter(d=>allowedHead(d.data()))){
