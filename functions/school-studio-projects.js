@@ -204,9 +204,13 @@ function createSchoolStudioProjectService({db}){
     // project may be edited next week; this immutable receipt is the evidence
     // for what the school actually received when the teacher closed this class.
     const frozenReceipt=receiptRef?{
+      schemaVersion:1,retentionClass:"academic_assessment_evidence",
       schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
       projectId,title,language,files,artifacts,sourceDigest:digestSource(files,language),
-      contentDigest:digest,closingEpoch,savedAt:now
+      contentDigest:digest,closingEpoch,savedAt:now,
+      // This is the UTF-8 JSON payload size, not Firestore billed storage
+      // (which also includes document metadata and index overhead).
+      payloadBytes:Buffer.byteLength(JSON.stringify({files,artifacts}),"utf8")
     }:null;
     if(!current.exists){
      tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,status:"active",
