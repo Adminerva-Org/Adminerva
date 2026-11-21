@@ -44,13 +44,13 @@ The due date applies to formal submission policy. Teacher opening after the due 
 | Assessment audit trail | `assessment_audit/{eventId}` | Backend-authored |
 | Close/open notifications | `notifications/{authUid}/items/{eventId}` | Backend-authored, recipient-readable |
 
-Each final checkpoint contains `projectRevision`, `projectId`, `contentDigest`, `sourceDigest`, UTF-8 source files, validated project artifacts and server `savedAt`. The teacher's View code and project-data reader verifies recorded digests on retrieval. Firestore single-field indexes for the large `files` and `artifacts` fields of the unique checkpoint collection group are disabled; queryable receipt metadata remains indexable.
+Each final checkpoint contains `schemaVersion`, `retentionClass: academic_assessment_evidence`, `projectRevision`, `projectId`, `contentDigest`, `sourceDigest`, UTF-8 source files, validated project artifacts, `payloadBytes`, and server `savedAt`. The teacher's View code and project-data reader verifies recorded digests on retrieval. Firestore single-field indexes for the large `files` and `artifacts` fields of the unique checkpoint collection group are disabled; queryable receipt metadata remains indexable.
 
 The teacher's Class save history uses **the roster frozen at the time of explicit closing**, not current enrollment, with an explicitly-labelled current-roster fallback if capture did not succeed. Current and historical sessions remain accessible even if the exam is unpublished, archived or the manual setting is later disabled, subject to active teacher authorization.
 
 ## UI architecture
 
-- **Teacher**: Assessment Studio deployment settings, Open exam / Close exam, and a session-selectable Class save history. Each student row shows confirmed/unconfirmed progress, revision and saved time. View code presents immutable source and database/design/configuration data.
+- **Teacher**: Assessment Studio deployment settings, Open exam / Close exam, and a session-selectable Class save history (including arbitrary older session numbers). Each student row shows confirmed/unconfirmed progress, revision and saved time. View code presents immutable source and database/design/configuration data. A teacher-authorized CSV export includes student checkpoint states, timestamps, SHA-256 digests and approximate storage usage.
 - **Student**: My Assessments is the canonical entry point. The editor uses a read-only close overlay and automatic exit on save confirmation; recovery is explicit on failure. A confirmed receipt is verified again in My Assessments without delaying the whole assignments list.
 - **Project list**: Bound exam projects route to My Assessments; generic duplicate/delete shortcuts are hidden. Unrelated personal projects remain unaffected.
 - **Shared school service**: All Studio modules import the same cache-versioned `v4-studio-service.mjs` singleton to prevent disconnected school picker and revision state.
@@ -59,6 +59,15 @@ The teacher's Class save history uses **the roster frozen at the time of explici
 
 - Server-held close is immediate; client lock depends on receipt of a realtime notification or the fallback session check. Offline tabs cannot be forcibly terminated.
 - Final checkpoint creation is **not** formal exam submission and does not calculate grades. The class close report shows who received an acknowledged checkpoint, not who completed all exam requirements.
-- Best-effort roster and notification fanout currently use a **100-enrollment limit**; school-wide scale would need paginated fanout and per-session job tracking.
-- Immutable Firestore documents are intentionally bounded by the existing source (600 KB) and artifacts (180 KB) limits. A retention/export policy for large multi-year cohorts remains a school data-governance decision.
+- Offering enrollments and checkpoint metadata are paged in bounded batches; school-person reads are batched. The current synchronous notification fanout and class report have an explicit **1,500-person limit**. For larger sections, job-queued notification fanout and separately paged reports remain future work.
+- The teacher roster report projects **only small receipt metadata**; full source/database/diagram payloads are fetched solely for the selected student's View code action.
+- Immutable Firestore documents are bounded by the existing source (600 KB) and artifacts (180 KB) limits. A `payloadBytes` estimate supports capacity planning but excludes billed Firestore document/index overhead.
+
+## Retention and export governance
+
+- **Default: retain academic evidence.** Closing checkpoints and historical rosters are not assigned a Firestore TTL or automatically deleted. Marking an assessment archived or removing a student's current section does not purge the evidence.
+- `retentionClass: academic_assessment_evidence` is a **classification**, not a retention duration. No school-wide period has been approved in this change.
+- Teachers may export session **receipt metadata** to CSV (names, student IDs, final-checkpoint status, revision, server timestamp, hashes, payload-byte estimate). A CSV is not an export of actual code, database or diagrams: those remain in the school-owned immutable Firestore evidence records.
+- Any future archival or deletion operation needs a separately authorized school-admin policy, a recorded decision, confirmation that grade disputes and appeals are resolved, an integrity-preserving archive/export process, and an auditable purge log. No automatic purge function is installed by this PR.
+- Recipients must treat exported CSVs as confidential school records; the export escapes spreadsheet-formula-leading values to avoid executing untrusted student names in spreadsheet applications.
 - Deploy backend Firebase Functions and Firestore index exclusions before publishing cache-versioned GitHub Pages frontend. No production readiness claim follows from syntax checks; a focused teacher+student online/offline exercise is still required.
