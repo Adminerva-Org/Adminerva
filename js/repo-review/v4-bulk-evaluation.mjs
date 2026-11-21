@@ -428,7 +428,8 @@ export function createV4BulkEvaluationController({
       const gradeable=github?["approved","reviewed"].includes(row.status):
         ["submitted","reviewed"].includes(row.status);
       return {...row,gradeStatus,bulkReady:gradeable&&
-        (!next?.legacyCompatibility||!github||row.approved===true)};
+        (!next?.legacyCompatibility||!github||
+          (row.approved===true&&Number(row.verifiedCount||0)>0))};
     });
     const available=new Set(rows.map(key));
     for(const id of selection)if(!available.has(id)||
