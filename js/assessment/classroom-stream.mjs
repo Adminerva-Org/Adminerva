@@ -18,6 +18,11 @@ function make(tag,cls,text){const n=document.createElement(tag);if(cls)n.classNa
 function date(value){return value?new Date(value).toLocaleString():"";}
 function label(item){return [item?.subject,item?.section,item?.term,item?.year].filter(Boolean).join(" · ");}
 function current(){return offerings.find(item=>item.offeringId===select.value)||null;}
+function syncOfferingUrl(offeringId){
+  const url=new URL(location.href);
+  if(offeringId)url.searchParams.set("offeringId",offeringId);else url.searchParams.delete("offeringId");
+  history.replaceState(null,"",url.pathname+(url.search?url.search:"")+url.hash);
+}
 function say(message,error=false){el("teacherClassroomStatus").textContent=message;el("teacherClassroomStatus").className="text-sm mt-3 "+(error?"text-rose-700":"text-slate-600");}
 function readComposer(){const data={};for(const name of fields){const field=el("teacherClassroom"+name);data[name.toLowerCase()]=name==="Pinned"?field.checked:field.value;}return data;}
 function fillComposer(data={}){for(const name of fields){const field=el("teacherClassroom"+name),value=data[name.toLowerCase()];if(name==="Pinned")field.checked=Boolean(value);else field.value=value??(name==="Kind"?"announcement":"");}}
@@ -383,7 +388,7 @@ async function refresh(){
     if(offerings.some(item=>item.offeringId===previous))select.value=previous;
     else if(initialOfferingId&&offerings.some(item=>item.offeringId===initialOfferingId))select.value=initialOfferingId;
     if(!offerings.length){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];officialMeetings=[];renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();say("No active class is assigned to this teacher account.",true);return;}
-    restoreDraft(select.value);if(await loadPosts())say("Classroom ready for "+label(current())+".");
+    syncOfferingUrl(select.value);restoreDraft(select.value);if(await loadPosts())say("Classroom ready for "+label(current())+".");
   }catch(error){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();say(error?.message||"Classroom could not load.",true);}
   finally{setBusy(false);}
 }
@@ -439,7 +444,7 @@ el("teacherClassroomCancelEdit").addEventListener("click",()=>{if(!busy)restoreD
 select.addEventListener("change",async()=>{
   if(busy){select.value=composerOffering;return;}
   if(editing&&!confirm("Discard unsaved changes to this post?")){select.value=composerOffering;return;}
-  keepDraft();restoreDraft(select.value);setBusy(true);say("Loading classroom…");
+  keepDraft();syncOfferingUrl(select.value);restoreDraft(select.value);setBusy(true);say("Loading classroom…");
   try{if(await loadPosts())say("Classroom ready for "+label(current())+".");}finally{setBusy(false);}
 });
 el("teacherClassroomRefresh").addEventListener("click",()=>void refresh());
@@ -449,7 +454,7 @@ picker=createTenantSchoolPicker({host:el("teacherClassroomSchoolSwitcher"),statu
   if(busy||editing)throw Error("Finish or cancel the current classroom action before switching schools.");
   keepDraft();++epoch;offerings=[];posts=[];classwork=[];rosterStudents=[];loadedOffering="";canPost=false;canComment=false;composerOffering="";
   classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];officialMeetings=[];mutedPersonIds=new Set();classroomSettings={participationMode:"teacher_only",revision:0};
-  select.replaceChildren();fillComposer();renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
+  syncOfferingUrl("");select.replaceChildren();fillComposer();renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();
 },onReady:scope=>{if(scope.current?.roles.includes("teacher"))void refresh();else say("Teacher access is required.",true);}});
 renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
 await auth.authStateReady();
