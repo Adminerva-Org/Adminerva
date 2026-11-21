@@ -1304,6 +1304,7 @@ async function openPersonDetail(person){
       try{
         legacyPlacementReview=await performEnrollment("student_candidate",{personId:p.personId});
       }catch(error){
+        legacyPlacementReview={unavailable:true,person:{personId:p.personId}};
         get("pa-detail-placement-status").textContent=error?.message||"Current placement could not be checked.";
       }
       if(!dialog.open||run!==detailRun)return;
@@ -1438,6 +1439,10 @@ function renderDetailPlacementState(){
   if(!box||!form)return;
   const official=legacyPlacementReview?.activeRegistrations||[],
     legacy=legacyPlacementReview?.activeLegacyEnrollments||[];
+  if(legacyPlacementReview?.unavailable){
+    box.hidden=false;summary.textContent="Current placement could not be verified. Placement changes are disabled until the record is refreshed.";
+    endButton.hidden=true;endReason.parentElement.hidden=true;form.hidden=true;return;
+  }
   if(official.length){
     const current=official[0],section=directoryPlacementCatalog?.sections?.find(row=>row.id===current.sectionId)?.name||current.sectionId||"assigned section";
     box.hidden=false;summary.textContent="Official registration active · "+section+". Use Enrollment & Registration for lifecycle changes.";
@@ -1479,13 +1484,16 @@ function updateDetailPlacementPicker(stage="year"){
   }
   const {yearId,termId,sectionId}=form.elements;
   const offerings=catalog.offerings.filter(row=>row.yearId===yearId.value&&row.termId===termId.value&&row.sectionId===sectionId.value),
-    activeLegacy=Boolean(legacyPlacementReview?.activeLegacyEnrollments?.length);
-  get("pa-detail-placement-preview").textContent=activeLegacy
-    ?"End the current placement before assigning the student to another section."
+    activeLegacy=Boolean(legacyPlacementReview?.activeLegacyEnrollments?.length),
+    placementUnavailable=Boolean(legacyPlacementReview?.unavailable);
+  get("pa-detail-placement-preview").textContent=placementUnavailable
+    ?"Current placement could not be verified. Refresh the student before changing placement."
+    :activeLegacy
+      ?"End the current placement before assigning the student to another section."
     :offerings.length
       ?offerings.length+" active subject offering(s) will be added to the student's class roster."
       :"Choose a section with active subjects in the selected academic year and period.";
-  form.querySelector('button[type="submit"]').disabled=activeLegacy||!offerings.length;
+  form.querySelector('button[type="submit"]').disabled=placementUnavailable||activeLegacy||!offerings.length;
 }
 get("pa-detail-placement-end")?.addEventListener("click",()=>{
   if(pendingWrite||!legacyPlacementReview?.person?.personId)return;
