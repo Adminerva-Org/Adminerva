@@ -73,6 +73,79 @@
         "Student learning",
         "Career skills"
       ]
+    },
+    {
+      "id": "ioai-philippines-2027-selection",
+      "status": "published",
+      "publishedAt": "2026-11-21T21:00:00+08:00",
+      "expiresAt": "2026-12-15T23:59:59+08:00",
+      "verifiedAt": "2026-11-21",
+      "title": "2027 Philippine AI Olympiad team selection",
+      "summary": "The official Philippine AI Olympiad team-selection site is accepting registration for its 2027 cycle. Filipino K–12 learners worldwide can apply for a merit-based screening process.",
+      "provider": "IOAI Philippines",
+      "category": "Competition",
+      "audience": [
+        "all"
+      ],
+      "location": "Philippines / Filipino students worldwide",
+      "cost": "No application fee",
+      "eligibility": "Open to Filipino K–12 students; selection is based on technical assessments. Check the official selection rules and registration form.",
+      "url": "https://ioaiph.org/",
+      "sourceUrl": "https://ioaiph.org/",
+      "tags": [
+        "Artificial intelligence",
+        "Competition",
+        "K–12"
+      ]
+    },
+    {
+      "id": "iste-ai-innovator-2027",
+      "status": "published",
+      "publishedAt": "2026-11-21T21:00:00+08:00",
+      "expiresAt": "2026-12-15T23:59:59+08:00",
+      "verifiedAt": "2026-11-21",
+      "title": "2027 AI Innovator Student Challenge",
+      "summary": "Design an AI-powered solution addressing a community problem and a UN Sustainable Development Goal. The official program lists a February 7, 2027 submission deadline.",
+      "provider": "ISTE+ASCD",
+      "category": "Competition",
+      "audience": [
+        "all"
+      ],
+      "location": "International / Online submission",
+      "cost": "Check the official 2027 program guide",
+      "eligibility": "Student teams worldwide participate with educator guidance; read the program guide for full grade, team and submission requirements.",
+      "applicationDeadline": "2027-02-07",
+      "url": "https://iste-ascd.org/ai-innovator",
+      "sourceUrl": "https://iste-ascd.org/ai-innovator",
+      "tags": [
+        "AI",
+        "Design",
+        "Team projects"
+      ]
+    },
+    {
+      "id": "devcon-philippines-free-tech-events",
+      "status": "published",
+      "publishedAt": "2026-11-21T21:00:00+08:00",
+      "expiresAt": "2026-12-10T23:59:59+08:00",
+      "verifiedAt": "2026-11-21",
+      "title": "Find Philippine tech meetups and code camps",
+      "summary": "Browse DEVCON Philippines events and community activities, including hands-on code camps, campus sessions and technology meetups across regional chapters. Individual event availability varies.",
+      "provider": "DEVCON Philippines",
+      "category": "Event",
+      "audience": [
+        "all"
+      ],
+      "location": "Philippines / Various cities",
+      "cost": "Most events are free; verify individual listings",
+      "eligibility": "Event-specific registration, age restrictions and seat availability apply; confirm with the organizers.",
+      "url": "https://devcon.ph/attend/",
+      "sourceUrl": "https://devcon.ph/attend/",
+      "tags": [
+        "Events",
+        "Coding",
+        "Community"
+      ]
     }
   ]
 }
