@@ -19,6 +19,49 @@ const tabs=new Set(["overview","people","invites","classes","access","import"]);
 function escapeHTML(value){return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));}
 function count(value){return Number.isFinite(value)&&value>=0?value.toLocaleString():"—";}
 function set(id,value){get(id).textContent=value;}
+function gradingCoverage(){
+  const offerings=Array.isArray(model.academics?.offerings)?model.academics.offerings:[],
+    schemes=Array.isArray(model.grading?.schemes)?model.grading.schemes:[],
+    periodTypes=new Map((model.academics?.periodRecords||[]).map(row=>[row.termId,row.periodType||"term"])),
+    uncovered=[],ambiguous=[],covered=[];
+  const specificity=scope=>Number(Boolean(scope?.programId))+Number(Boolean(scope?.subjectId))+
+    Number(Boolean(scope?.sectionId))+Number(Boolean(scope?.periodTypes?.length));
+  const matches=(scheme,offering)=>{
+    const scope=scheme.applicability||{},periodType=String(periodTypes.get(offering.termId)||"term").toLowerCase();
+    if(scope.programId&&scope.programId!==offering.programId)return false;
+    if(scope.subjectId&&scope.subjectId!==offering.subjectId)return false;
+    if(scope.sectionId&&scope.sectionId!==offering.sectionId)return false;
+    if(scope.periodTypes?.length&&!scope.periodTypes.map(value=>String(value).toLowerCase()).includes(periodType))return false;
+    return true;
+  };
+  for(const offering of offerings){
+    const candidates=schemes.filter(scheme=>matches(scheme,offering));
+    if(!candidates.length){uncovered.push(offering);continue;}
+    const top=Math.max(...candidates.map(scheme=>specificity(scheme.applicability||{}))),
+      winners=candidates.filter(scheme=>specificity(scheme.applicability||{})===top);
+    if(winners.length>1)ambiguous.push({offering,schemes:winners});
+    else covered.push(offering);
+  }
+  return {total:offerings.length,covered,uncovered,ambiguous};
+}
+function renderGradingWorkflow(){
+  const node=get("adminWorkflowGrading");if(!node)return;
+  if(model.grading===null){node.textContent="Unavailable";node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-amber-100 text-amber-900";return;}
+  const schemes=Array.isArray(model.grading?.schemes)?model.grading.schemes:null;
+  if(!schemes){node.textContent="Checking…";node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-slate-200 text-slate-700";return;}
+  if(!schemes.length){node.textContent="Not configured";node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-slate-200 text-slate-700";return;}
+  const coverage=gradingCoverage();
+  if(coverage.ambiguous.length){
+    node.textContent=coverage.ambiguous.length+" policy conflict"+(coverage.ambiguous.length===1?"":"s");
+    node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-rose-100 text-rose-800";return;
+  }
+  if(coverage.total&&coverage.uncovered.length){
+    node.textContent=coverage.covered.length+"/"+coverage.total+" classes covered";
+    node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-amber-100 text-amber-900";return;
+  }
+  node.textContent=coverage.total?coverage.total+"/"+coverage.total+" classes covered":schemes.length+" active polic"+(schemes.length===1?"y":"ies");
+  node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-emerald-100 text-emerald-800";
+}
 function setWorkflow(id,value,noun){
   const node=get(id);if(!node)return;
   const numeric=Number(value),known=Number.isFinite(numeric)&&numeric>=0;
@@ -63,6 +106,7 @@ function renderRecommendation({final=false}={}){
     primaryReviewClasses=classRows.filter(row=>row.primaryNeedsReview).length;
   const enrollments=Number(model.overview?.counts?.enrollments);
   const people=Number(model.overview?.counts?.people);
+  const gradeCoverage=gradingCoverage();
   const profileSaved=Number(model.profile?.profile?.revision)>0;
   const academicOfferings=Array.isArray(model.academics?.offerings)?model.academics.offerings.length:null;
   if(critical>0)action={
@@ -119,6 +163,16 @@ function renderRecommendation({final=false}={}){
     title:"Configure a grading policy",
     detail:"No active school grading policy is available yet. Define the category weights, transmutation rule and applicability before teachers finalize Class Records.",
     href:"school-grading-schemes.html",label:"Configure grading policy",tone:"blue"
+  };
+  else if(gradeCoverage.ambiguous.length)action={
+    title:gradeCoverage.ambiguous.length+" class"+(gradeCoverage.ambiguous.length===1?" has":"es have")+" overlapping grading policies",
+    detail:"Multiple equally specific active policies match these classes. Class Record will block policy resolution until School Administration removes the overlap.",
+    href:"school-grading-schemes.html",label:"Resolve grading-policy overlap",tone:"amber"
+  };
+  else if(gradeCoverage.uncovered.length)action={
+    title:gradeCoverage.uncovered.length+" class"+(gradeCoverage.uncovered.length===1?" has":"es have")+" no matching grading policy",
+    detail:"At least one active class is outside the applicability of every active grading policy. Add or broaden a policy before teachers finalize those Class Records.",
+    href:"school-grading-schemes.html",label:"Complete grading coverage",tone:"amber"
   };
   else if(open>0)action={
     title:open+" open support report"+(open===1?"":"s")+" remain",
@@ -255,6 +309,7 @@ function renderSource(name,data){
     model.academics=data;
     const node=get("adminWorkflowAcademics"),total=Array.isArray(data?.offerings)?data.offerings.length:null;
     if(node){node.textContent=data===null?"Unavailable":total?"Configured · "+total+" class"+(total===1?"":"es"):"Not configured";node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(data===null?"bg-amber-100 text-amber-900":total?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");}
+    renderGradingWorkflow();
   }else if(name==="directory"){
     model.overview=data;
     for(const [id,key] of [["adminPeopleCount","people"],["adminEnrollmentCount","enrollments"],["adminAssignmentCount","staff_assignments"],["adminInvitationCount","invitations"]])set(id,count(data?.counts?.[key]));
@@ -277,9 +332,7 @@ function renderSource(name,data){
     set("adminIntegrityMeta",data?count(data.counts?.integrity)+" integrity · "+count(data.counts?.attention)+" attention":"Relationship checks unavailable");
     renderAttention();
   }else if(name==="grading"){
-    model.grading=data;
-    const node=get("adminWorkflowGrading"),total=Array.isArray(data?.schemes)?data.schemes.length:null;
-    if(node){node.textContent=data===null?"Unavailable":total?total+" active polic"+(total===1?"y":"ies"):"Not configured";node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(data===null?"bg-amber-100 text-amber-900":total?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");}
+    model.grading=data;renderGradingWorkflow();
   }else if(name==="records"){
     model.records=Array.isArray(data?.records)?data.records:null;
     set("adminClassRecordCount",model.records?count(model.records.length):"—");
