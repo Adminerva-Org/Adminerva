@@ -340,10 +340,24 @@ export function createV4BulkEvaluationController({
          /^[a-f0-9]{40}$/i.test(links.checkpointSha||"")){
         addEvidenceLink("Open approved checkpoint ↗",
           "https://github.com/"+links.repository+"/tree/"+links.checkpointSha);
-        for(const sha of links.commits||[])
-          if(/^[a-f0-9]{40}$/i.test(sha))
-            addEvidenceLink("Commit "+sha.slice(0,10)+" ↗",
-              "https://github.com/"+links.repository+"/commit/"+sha);
+        const commits=(links.commits||[]).filter(sha=>/^[a-f0-9]{40}$/i.test(sha));
+        if(commits.length){
+          const details=document.createElement("details");
+          details.className="mt-2 rounded-lg border border-slate-200 p-2";
+          const summary=document.createElement("summary");
+          summary.className="cursor-pointer font-semibold text-indigo-800";
+          summary.textContent="Show commits ("+commits.length+")";
+          details.append(summary);
+          for(const sha of commits){
+            const anchor=document.createElement("a");
+            anchor.textContent="Commit "+sha.slice(0,12)+" ↗";
+            anchor.href="https://github.com/"+links.repository+"/commit/"+sha;
+            anchor.target="_blank";anchor.rel="noopener noreferrer";
+            anchor.className="mt-2 mr-3 inline-block font-bold text-indigo-700 underline";
+            details.append(anchor);
+          }
+          line.append(details);
+        }
       }
       if(links.submissionUrl)addEvidenceLink("Open submitted artifact ↗",links.submissionUrl);
       const submitted=rows.find(row=>key(row)===data.key);
