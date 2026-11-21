@@ -195,6 +195,7 @@ export function createProjectStudio({
     getActiveProject:()=>activeProject,
     showHome,
     saveState,
+    captureClosingState,
     flushCloudSaves,
     hasPendingCloudSaves:()=>cloudEnabled&&cloudPending.size>0,
     recordRun,
@@ -260,6 +261,24 @@ export function createProjectStudio({
   function saveState(state){
     if(!activeProject)return null;
     return store({...activeProject,state,lastOpenedAt:new Date().toISOString()},true);
+  }
+  function captureClosingState(state){
+    if(!activeProject||!state?.files)return {queued:false,deviceSaved:false};
+    const draft=normalizeProject({...activeProject,state,
+      lastOpenedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+    validateProject(draft);
+    let deviceSaved=false;
+    try{
+      activeProject=saveCodeProject(projectStorage,uid,draft);
+      deviceSaved=true;
+    }catch(error){
+      // A full/disabled localStorage must not prevent uploading the in-memory
+      // editor snapshot. Do not claim a device backup was made.
+      console.warn("Exam closing device draft unavailable; using memory-only cloud checkpoint",error);
+      activeProject=draft;
+    }
+    if(cloudEnabled)scheduleCloudSave(activeProject);
+    return {queued:cloudEnabled,deviceSaved};
   }
   function scheduleCloudSave(project){
     if(!cloudEnabled||deletedProjects.has(project.id))return;
