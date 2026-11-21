@@ -137,8 +137,9 @@ if(panel&&list&&status&&schoolHost){
         scoped(scope,profileApi,"my_profile")
       ]);
       if(generation!==renderGeneration)return;
-      await displayExamCloseReceipt(scope);
-      if(generation!==renderGeneration)return;
+      // Receipt verification is independent of the assessment list.
+      // Do not block the student's assignment page on a separate history lookup.
+      void displayExamCloseReceipt(scope);
       const profile=results[2]||{},classes=profile.classes||[];
       let subjectId=requestedSubjectId,subjectName=requestedSubjectName,offeringId=requestedOfferingId;
       const allowedOfferings=new Set(classes.filter(item=>
