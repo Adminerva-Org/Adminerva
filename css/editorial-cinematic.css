@@ -202,3 +202,10 @@ html[data-motion="reduce"] .av-cine *,html[data-motion="reduce"] .av-cine *::bef
 .av-cine-motion-toggle:disabled{cursor:default;opacity:.64}
 .av-cine-hero[data-motion-paused="true"] *, .av-cine-hero[data-motion-paused="true"] *::before,.av-cine-hero[data-motion-paused="true"] *::after{animation-play-state:paused!important;transition:none!important}
 @media(max-width:520px){.av-cine-topline>span:nth-child(2){display:none}.av-cine-motion-toggle{margin-left:auto;font-size:.62rem;padding:.42rem .55rem}}
+
+/* Scroll-led visual chapters, disabled when the visitor requests less motion. */
+@media(prefers-reduced-motion:no-preference){
+  .av-cine-reveal{opacity:0;transform:translateY(42px);transition:opacity .75s cubic-bezier(.2,.75,.25,1),transform .75s cubic-bezier(.2,.75,.25,1)}
+  .av-cine-reveal.av-cine-revealed{opacity:1;transform:none}
+}
+html[data-motion="reduce"] .av-cine-reveal,html[data-adminerva-reduce-motion="true"] .av-cine-reveal{opacity:1!important;transform:none!important}
