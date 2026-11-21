@@ -480,13 +480,16 @@ function createPeopleDirectoryService({db}) {
         studentNumber:person.data().studentNumber||"",
         kind:person.data().kind,status:person.data().status,
         accountLinked:Boolean(person.data().authUid),
-        activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId
+        activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId,
+        revision:Number(person.data().revision)||1
       })),truncated:snap.size===101||matches.length>50};
     }
     if(input.action==="activate_linked_staff"){
       // Expedited, reviewed access grant for an existing identity-linked staff record.
       // No UID alone can confer access: a matching active canonical person is required.
-      const personId=id(input.personId);
+      const personId=id(input.personId),expectedPersonRevision=Number(input.expectedPersonRevision);
+      if(!Number.isSafeInteger(expectedPersonRevision)||expectedPersonRevision<1)
+        invalid("Refresh the linked staff search before activating school access.");
       const reason=field(input.reason,500,"Activation reason");
       if(reason.length<12)invalid("Explain the reason for activating school access.");
       const personRef=base.doc(personId);
@@ -495,6 +498,8 @@ function createPeopleDirectoryService({db}) {
          initial.data().status!=="active"||initial.data().kind!=="staff"||
          !initial.data().authUid)
         throw new TenantAccessError("failed-precondition","Select an active staff record linked to a verified account.");
+      if((Number(initial.data().revision)||1)!==expectedPersonRevision)
+        throw new TenantAccessError("failed-precondition","This staff identity changed after you selected it. Refresh the search before activating access.");
       const targetUid=id(initial.data().authUid);
       const {getAuth}=require("firebase-admin/auth");
       const account=await getAuth().getUser(targetUid);
@@ -511,7 +516,8 @@ function createPeopleDirectoryService({db}) {
         const [person,member]=await Promise.all([tx.get(personRef),tx.get(memberRef)]);
         if(!person.exists||person.data().schoolId!==ctx.schoolId||
            person.data().status!=="active"||person.data().kind!=="staff"||
-           person.data().authUid!==targetUid)
+           person.data().authUid!==targetUid||
+           (Number(person.data().revision)||1)!==expectedPersonRevision)
           throw new TenantAccessError("failed-precondition","The staff identity link changed. Refresh before granting access.");
         const prior=member.exists?member.data():null;
         if(prior&&prior.schoolId!==ctx.schoolId)
