@@ -10,6 +10,7 @@ const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rosterEmailHash,normalizedRosterEmail}=require("./school-roster-identity.js");
+const {guardianContactIdForEmail,guardianRelationshipId}=require("./school-guardian-identity.js");
 
 const EMAIL_TYPES=new Set(["personal","institutional"]);
 const APPLICATION_REVIEW_STATUSES=new Set(["needs_information","rejected"]);
@@ -1042,18 +1043,39 @@ function createSchoolEnrollmentService({db}){
           "This student already has an active official section placement for the selected academic period. End or correct that registration before creating another.");
       const enrollmentRefs=offerings.map(offering=>
         db.doc(root+"enrollments/"+key(personId,offering.id)));
-      const auditRef=db.collection(root+"directory_audit").doc();
+      const guardianContactId=guardianContactIdForEmail(guardianEmail),
+        guardianRelationshipKey=guardianRelationshipId(personId,guardianContactId),
+        guardianContactRef=db.doc(root+"guardian_contacts/"+guardianContactId),
+        guardianRelationshipRef=db.doc(root+"guardian_relationships/"+guardianRelationshipKey),
+        guardianRelationshipSnap=await db.collection(root+"guardian_relationships")
+          .where("studentPersonId","==",personId).limit(51).get();
+      if(guardianRelationshipSnap.size===51)
+        deny("resource-exhausted","This student has too many guardian relationship records for safe enrollment.");
+      const otherGuardianRefs=guardianRelationshipSnap.docs
+        .filter(doc=>doc.id!==guardianRelationshipKey&&doc.data().schoolId===ctx.schoolId)
+        .map(doc=>doc.ref);
+      const auditRef=db.collection(root+"directory_audit").doc(),
+        guardianAuditRef=db.collection(root+"student_records_audit").doc();
       const source=applicationId?"online":"onsite";
       const accountResponsibility=studentEmailRequired?"student":"guardian";
 
       let result;
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
-        const reads=[tx.get(personRef),tx.get(registrationRef),tx.get(placementSlotRef),...enrollmentRefs.map(ref=>tx.get(ref))];
+        const guardianOffset=3+enrollmentRefs.length,
+          reads=[
+            tx.get(personRef),tx.get(registrationRef),tx.get(placementSlotRef),
+            ...enrollmentRefs.map(ref=>tx.get(ref)),
+            tx.get(guardianContactRef),tx.get(guardianRelationshipRef),
+            ...otherGuardianRefs.map(ref=>tx.get(ref))
+          ];
         if(applicationRef)reads.push(tx.get(applicationRef));
         const records=await Promise.all(reads);
         const person=records[0],registration=records[1],placementSlot=records[2],
           enrollments=records.slice(3,3+enrollmentRefs.length),
+          guardianContact=records[guardianOffset],
+          guardianLink=records[guardianOffset+1],
+          otherGuardians=records.slice(guardianOffset+2,guardianOffset+2+otherGuardianRefs.length),
           currentApplication=applicationRef?records.at(-1):null;
         if(placementSlot.exists&&placementSlot.data().status==="active"&&
            placementSlot.data().registrationId!==registrationId)
@@ -1096,6 +1118,15 @@ function createSchoolEnrollmentService({db}){
           });
         }
 
+        if(guardianContact.exists&&guardianContact.data().schoolId!==ctx.schoolId)
+          deny("failed-precondition","Guardian contact identity collision requires Student Records review.");
+        if(guardianContact.exists&&guardianContact.data().status!=="active")
+          deny("failed-precondition","The matching guardian contact is inactive. Review it in Student Records before enrolling.");
+        if(guardianLink.exists&&(guardianLink.data().schoolId!==ctx.schoolId||
+           guardianLink.data().studentPersonId!==personId||
+           guardianLink.data().guardianContactId!==guardianContactId))
+          deny("failed-precondition","Guardian relationship identity collision requires Student Records review.");
+
         const priorRegistration=registration.exists?registration.data():null;
         if(priorRegistration&&priorRegistration.schoolId!==ctx.schoolId)
           deny("failed-precondition","Enrollment record collision requires review.");
@@ -1108,6 +1139,42 @@ function createSchoolEnrollmentService({db}){
             "One or more subject enrollments were previously ended. Review that history before re-enrolling the student.");
 
         const now=FieldValue.serverTimestamp();
+        if(!guardianContact.exists){
+          tx.create(guardianContactRef,{
+            schoolId:ctx.schoolId,displayName:guardianName,email:guardianEmail,mobile:guardianMobile||"",
+            status:"active",linkedUid:null,revision:1,createdByUid:ctx.uid,createdAt:now,updatedAt:now
+          });
+        }
+        for(const other of otherGuardians){
+          if(!other.exists||other.data().schoolId!==ctx.schoolId||other.data().status!=="active"||
+             other.data().isPrimary!==true)continue;
+          tx.update(other.ref,{isPrimary:false,revision:(Number(other.data().revision)||1)+1,
+            updatedByUid:ctx.uid,updatedAt:now});
+        }
+        const guardianRevision=guardianLink.exists?(Number(guardianLink.data().revision)||1)+1:1;
+        if(guardianLink.exists){
+          tx.set(guardianRelationshipRef,{
+            status:"active",isPrimary:true,
+            relationship:String(guardianLink.data().relationship||guardianRelationship||"Guardian").slice(0,60),
+            revision:guardianRevision,updatedByUid:ctx.uid,updatedAt:now,
+            ...(guardianLink.data().status==="ended"?{
+              restoredByUid:ctx.uid,restoredAt:now,restoreReason:"Official enrollment confirmed this guardian relationship."
+            }:{})
+          },{merge:true});
+        }else{
+          tx.create(guardianRelationshipRef,{
+            schoolId:ctx.schoolId,studentPersonId:personId,guardianContactId,
+            relationship:guardianRelationship,isPrimary:true,status:"active",revision:1,
+            createdByUid:ctx.uid,createdAt:now,updatedAt:now
+          });
+        }
+        tx.create(guardianAuditRef,{
+          schoolId:ctx.schoolId,personId,actorUid:ctx.uid,
+          guardianContactId,relationshipId:guardianRelationshipKey,
+          action:guardianLink.exists?"guardian_relationship_confirmed_by_enrollment":"guardian_relationship_created_from_enrollment",
+          revision:guardianRevision,createdAt:now
+        });
+
         let createdCourses=0,activeCourses=0;
         offerings.forEach((offering,index)=>{
           const prior=enrollments[index];
@@ -1171,7 +1238,8 @@ function createSchoolEnrollmentService({db}){
         });
         result={registrationId,personId,displayName,gradeLevel,studentEmailRequired,
           accountResponsibility,courseCount:activeCourses,createdCourses,accountLinked,source,
-          reusedDirectoryPerson:Boolean(explicitPersonId)};
+          reusedDirectoryPerson:Boolean(explicitPersonId),
+          guardianRelationshipId:guardianRelationshipKey};
       });
       return result;
     }
