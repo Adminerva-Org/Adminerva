@@ -36,3 +36,10 @@ test("restoring an archived grading policy revalidates dependencies and overlap"
   assert.match(source,/restore overlap can be validated safely/);
   assert.match(source,/schemeScopesOverlap\(restoredApplicability/);
 });
+
+
+test("archived grading policies cannot be edited back to active outside restore",()=>{
+  const source=readFileSync(new URL("../functions/school-class-record.js",import.meta.url),"utf8");
+  assert.match(source,/if\(prior&&\(prior\.status\|\|"active"\)!=="active"\)/);
+  assert.match(source,/Restore this grading policy before editing it/);
+});
