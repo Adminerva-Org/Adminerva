@@ -213,6 +213,12 @@
           </div>
           <label id="pa-person-reason-field" hidden>Reason<input name="reason" class="pa-field" minlength="12" maxlength="500" placeholder="Explain why this record status is changing"></label>
           <p id="pa-person-dialog-help" class="pa-muted"></p>
+          <div id="pa-person-lifecycle-actions" style="display:none;gap:.5rem;flex-wrap:wrap;margin:.65rem 0">
+            <a id="pa-person-open-enrollment" class="pa-action" href="school-enrollment.html" style="display:inline-flex;align-items:center;text-decoration:none;background:#0f766e">Enrollment</a>
+            <a id="pa-person-open-classes" class="pa-action" href="school-classes.html" style="display:inline-flex;align-items:center;text-decoration:none;background:#0f766e">Classes &amp; Scheduling</a>
+            <button id="pa-person-open-access" type="button" class="pa-action" data-pa-open-tab="access">Roles &amp; access</button>
+            <button id="pa-person-open-invites" type="button" class="pa-action" data-pa-open-tab="invites" style="background:#475569">Invitations</button>
+          </div>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
             <button id="pa-person-dialog-confirm" class="pa-action" type="submit">Save</button>
             <button id="pa-person-dialog-cancel" class="pa-action" type="button" style="background:#475569">Cancel</button>
@@ -454,7 +460,7 @@
 <script defer src="js/core/adminerva-nav.js?v=20261121-admin-reconciled2"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261121-admin-reconciled2"></script>
 <script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=20261120-assist-context"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=20261121-crud-lifecycle2"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=20261121-crud-lifecycle3"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
