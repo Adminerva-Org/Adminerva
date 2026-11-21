@@ -176,6 +176,99 @@ function createSchoolAcademicsService({db}) {
     })).filter(item=>item.programName&&item.sectionName&&item.subjectName)
    };
   }
+  if(input.action==="my_advisory_sections"){
+   if(!teacher)deny("permission-denied","Teacher access is required for advisory sections.");
+   const adviserSnap=await db.collection("schools/"+ctx.schoolId+"/section_advisers")
+    .where("teacherUid","==",uid).limit(51).get();
+   if(adviserSnap.size===51)deny("resource-exhausted","Advisory assignments require pagination.");
+   const advisers=adviserSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+    doc.data().status==="active"&&doc.data().sectionId&&doc.data().yearId);
+   if(!advisers.length)return {schoolId:ctx.schoolId,sections:[]};
+
+   const prefix="schools/"+ctx.schoolId+"/";
+   const staffSnap=await db.collection(prefix+"staff_assignments").where("status","==","active").limit(2001).get();
+   if(staffSnap.size===2001)deny("resource-exhausted","Advisory class staffing exceeds the current review limit.");
+   const staff=staffSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
+   const teacherUids=[...new Set(staff.map(doc=>doc.data().teacherUid).filter(Boolean))];
+   const teacherDocs=await Promise.all(teacherUids.map(id=>schoolRoot.doc("memberships/"+id).get()));
+   const teacherNames=new Map(teacherDocs.map((doc,index)=>[
+    teacherUids[index],doc.exists&&doc.data().schoolId===ctx.schoolId?
+      String(doc.data().displayName||("Teacher "+teacherUids[index].slice(0,8))):"Teacher "+teacherUids[index].slice(0,8)
+   ]));
+
+   const results=[];
+   for(const adviser of advisers){
+    const data=adviser.data(),sectionId=checkId(data.sectionId,"Section ID"),
+     yearId=checkId(data.yearId,"Academic year ID");
+    const [section,year,registrationSnap,enrollmentSnap,offeringSnap]=await Promise.all([
+     schoolRoot.doc("sections/"+sectionId).get(),
+     schoolRoot.doc("academic_years/"+yearId).get(),
+     db.collection(prefix+"student_registrations").where("sectionId","==",sectionId).limit(201).get(),
+     db.collection(prefix+"enrollments").where("sectionId","==",sectionId).limit(501).get(),
+     db.collection(prefix+"course_offerings").where("sectionId","==",sectionId).limit(201).get()
+    ]);
+    if(registrationSnap.size===201||enrollmentSnap.size===501||offeringSnap.size===201)
+     deny("resource-exhausted","This advisory section exceeds the current overview limit.");
+    if(!section.exists||section.data().schoolId!==ctx.schoolId||!year.exists||year.data().schoolId!==ctx.schoolId)
+     continue;
+
+    const registrations=registrationSnap.docs.filter(doc=>{
+     const row=doc.data();
+     return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId;
+    });
+    const registrationByPerson=new Map(registrations.map(doc=>[doc.data().personId,doc.data()]));
+    const fallbackPeople=new Set(enrollmentSnap.docs.filter(doc=>{
+     const row=doc.data();
+     return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId;
+    }).map(doc=>doc.data().personId).filter(Boolean));
+    const personIds=registrationByPerson.size?[...registrationByPerson.keys()]:[...fallbackPeople];
+    if(personIds.length>200)deny("resource-exhausted","This advisory roster requires pagination.");
+    const people=await Promise.all(personIds.map(personId=>schoolRoot.doc("people/"+checkId(personId,"Person ID",128)).get()));
+    const students=people.map((person,index)=>{
+     const personId=personIds[index],row=registrationByPerson.get(personId)||{},personData=person.exists?person.data():null;
+     return {
+      personId,name:personData&&personData.schoolId===ctx.schoolId?
+       String(personData.displayName||row.displayName||"Student"):String(row.displayName||"Student"),
+      studentNumber:String(row.studentNumber||""),
+      accountLinked:Boolean(personData&&personData.schoolId===ctx.schoolId&&personData.authUid),
+      registrationSource:registrationByPerson.has(personId)?"registration":"class_enrollment"
+     };
+    }).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+
+    const classDocs=offeringSnap.docs.filter(doc=>{
+     const row=doc.data();
+     return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId;
+    });
+    const subjectIds=[...new Set(classDocs.map(doc=>doc.data().subjectId).filter(Boolean))],
+     termIds=[...new Set(classDocs.map(doc=>doc.data().termId).filter(Boolean))];
+    const [subjects,terms]=await Promise.all([
+     Promise.all(subjectIds.map(id=>schoolRoot.doc("subjects/"+id).get())),
+     Promise.all(termIds.map(id=>schoolRoot.doc("terms/"+id).get()))
+    ]);
+    const subjectNames=new Map(subjects.map((doc,index)=>[subjectIds[index],
+      doc.exists&&doc.data().schoolId===ctx.schoolId?String(doc.data().name||subjectIds[index]):subjectIds[index]])),
+     termNames=new Map(terms.map((doc,index)=>[termIds[index],
+      doc.exists&&doc.data().schoolId===ctx.schoolId?String(doc.data().name||termIds[index]):termIds[index]]));
+    const classes=classDocs.map(doc=>{
+     const row=doc.data(),teachers=staff.filter(grant=>grant.data().offeringId===doc.id)
+      .map(grant=>teacherNames.get(grant.data().teacherUid)||"Teacher");
+     return {
+      offeringId:doc.id,subjectId:row.subjectId,subjectName:subjectNames.get(row.subjectId)||row.subjectId||"Subject",
+      termId:row.termId,termName:termNames.get(row.termId)||row.termId||"Period",
+      teacherNames:[...new Set(teachers)]
+     };
+    }).sort((a,b)=>a.termName.localeCompare(b.termName)||a.subjectName.localeCompare(b.subjectName));
+
+    results.push({
+     advisoryId:adviser.id,sectionId,sectionName:String(section.data().name||sectionId),
+     yearId,yearName:String(year.data().name||yearId),programId:section.data().programId||null,
+     gradeLevel:section.data().gradeLevel||null,pathway:section.data().pathway||null,
+     students,classes,revision:Number(data.revision)||1
+    });
+   }
+   return {schoolId:ctx.schoolId,sections:results.sort((a,b)=>a.yearName.localeCompare(b.yearName)||a.sectionName.localeCompare(b.sectionName))};
+  }
+
   if(input.action==="faculty_workload"){
    requireAdmin();
    const prefix="schools/"+ctx.schoolId+"/";
