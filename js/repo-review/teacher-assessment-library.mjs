@@ -704,7 +704,9 @@ async function showExamCloseReport(task){
       if(payloadBytes>0)
         summary.textContent+=" Approximate retained source/project payload: "+
           (payloadBytes/1048576).toFixed(2)+" MiB (excludes Firestore overhead).";
-      if(report.rosterSource!=="close_snapshot")
+      if(report.rosterSource==="capture_pending")
+        summary.textContent+=" School roster capture is still processing; the current enrollment shown is provisional. Refresh to check again.";
+      else if(report.rosterSource!=="close_snapshot")
         summary.textContent+=" Historical roster unavailable; showing the current enrollment roster.";
       const table=document.createElement("table");table.className="min-w-full text-left text-sm";
       const thead=document.createElement("thead");thead.className="bg-slate-100";
@@ -741,7 +743,9 @@ async function showExamCloseReport(task){
       }
       table.append(tbody);tableWrap.replaceChildren(table);
       if(!tbody.children.length)
-        summary.textContent+=" There are no active enrolled students on the current roster.";
+        summary.textContent+=report.rosterSource==="close_snapshot"
+          ?" No students were recorded in this session's closing roster."
+          :" There are no currently enrolled students in the provisional roster.";
     }catch(error){
       if(turn===generation)summary.textContent=error?.message||"Could not load final exam save confirmations.";
     }finally{if(turn===generation)refresh.disabled=false;}
