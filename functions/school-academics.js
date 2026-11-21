@@ -430,7 +430,10 @@ function createSchoolAcademicsService({db}) {
    requireAdmin();
    const sectionId=checkId(input.sectionId,"Section ID"),
     yearId=checkId(input.yearId,"Academic year ID"),
+    expectedRevision=Number(input.expectedRevision),
     reason=checkName(input.reason,input.action==="set_section_adviser"?"Adviser assignment reason":"Adviser end reason");
+   if(!Number.isSafeInteger(expectedRevision)||expectedRevision<0)
+    deny("invalid-argument","Refresh the current adviser assignment before changing it.");
    if(reason.length<12)deny("invalid-argument","Explain the advisory assignment change in at least 12 characters.");
    const sectionRef=schoolRoot.doc("sections/"+sectionId),
     yearRef=schoolRoot.doc("academic_years/"+yearId),
@@ -455,7 +458,10 @@ function createSchoolAcademicsService({db}) {
        !teacherMember.data().roles.includes("teacher")))
      deny("permission-denied","The adviser must be an active teacher in this school.");
     const sameYear=assignments.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().yearId===yearId);
-    const active=sameYear.find(doc=>doc.data().status==="active")||null;
+    const active=sameYear.find(doc=>doc.data().status==="active")||null,
+     currentRevision=active?(Number(active.data().revision)||1):0;
+    if(currentRevision!==expectedRevision)
+     deny("failed-precondition","The section adviser changed after you opened this class. Refresh before changing the adviser.");
     const now=FieldValue.serverTimestamp();
     if(!setting){
      if(!active)deny("failed-precondition","This section has no active adviser for the selected school year.");
