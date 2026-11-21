@@ -627,7 +627,10 @@ async function showExamCloseReport(task){
     older.placeholder="e.g. 1";older.style.width="110px";olderLabel.append(older);
     const refresh=document.createElement("button");refresh.id="tl-close-report-refresh";refresh.type="button";
     refresh.className="tl-action";refresh.textContent="Refresh confirmations";
-    controls.append(label,olderLabel,refresh);
+    const exportButton=document.createElement("button");exportButton.id="tl-close-report-export";
+    exportButton.type="button";exportButton.className="tl-action alt";
+    exportButton.textContent="Export receipt CSV";exportButton.disabled=true;
+    controls.append(label,olderLabel,refresh,exportButton);
     const summary=document.createElement("p");summary.id="tl-close-report-summary";
     summary.className="mt-3 text-sm font-bold text-slate-700";summary.setAttribute("role","status");
     const tableWrap=document.createElement("div");tableWrap.id="tl-close-report-table";
@@ -638,6 +641,7 @@ async function showExamCloseReport(task){
     select=dialog.querySelector("#tl-close-report-session"),
     older=dialog.querySelector("#tl-close-report-older"),
     refresh=dialog.querySelector("#tl-close-report-refresh"),
+    exportButton=dialog.querySelector("#tl-close-report-export"),
     summary=dialog.querySelector("#tl-close-report-summary"),
     tableWrap=dialog.querySelector("#tl-close-report-table");
   title.textContent=task.title+" · Final cloud save checkpoints";
@@ -649,19 +653,43 @@ async function showExamCloseReport(task){
   }
   older.max=String(current);
   older.value="";
-  let generation=0;
+  let generation=0,lastReport=null;
+  exportButton.disabled=true;
+  exportButton.onclick=()=>{
+    if(!lastReport)return;
+    const escapeCsv=value=>'"'+String(value??"").replaceAll('"','""')+'"';
+    const rows=[
+      ["Session","Student","Student UID","Final checkpoint","Project revision","Saved at","Project SHA-256","Source SHA-256"],
+      ...(lastReport.students||[]).map(student=>[
+        lastReport.sessionEpoch,student.displayName,student.studentUid||"",
+        student.checkpointConfirmed?"Confirmed":lastReport.sessionClosed?"Unconfirmed":"In progress",
+        student.projectRevision||"",
+        student.savedAt?new Date(student.savedAt).toISOString():"",
+        student.contentDigest||"",student.sourceDigest||""
+      ])
+    ];
+    const csv=rows.map(row=>row.map(escapeCsv).join(",")).join("\r\n");
+    const url=URL.createObjectURL(new Blob(["\ufeff",csv],{type:"text/csv;charset=utf-8"}));
+    const link=document.createElement("a");link.href=url;
+    link.download="adminerva-exam-checkpoints-"+lastReport.taskId.slice(0,20)+
+      "-session-"+lastReport.sessionEpoch+".csv";
+    document.body.append(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  };
   const load=async()=>{
     const epoch=Number(older.value||select.value),turn=++generation;
     if(!Number.isSafeInteger(epoch)||epoch<1||epoch>current){
       summary.textContent="Choose a valid class session number.";return;
     }
-    refresh.disabled=true;summary.textContent="Loading school-confirmed checkpoints…";
+    refresh.disabled=true;lastReport=null;exportButton.disabled=true;
+    summary.textContent="Loading school-confirmed checkpoints…";
     tableWrap.replaceChildren();
     try{
       const report=await performScoped(scopedAssessmentApi,"exam_close_report",{
         taskId:task.taskId,sessionEpoch:epoch
       });
       if(turn!==generation||!dialog.open)return;
+      lastReport=report;exportButton.disabled=false;
       summary.textContent=report.sessionClosed
         ?report.confirmed+" of "+report.enrolledStudents+
           " students have a confirmed final cloud save for class session "+report.sessionEpoch+"."
