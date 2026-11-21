@@ -7,8 +7,27 @@ const reduce = () => window.matchMedia('(prefers-reduced-motion: reduce)').match
   document.documentElement.dataset.adminervaReduceMotion === 'true';
 for (const scene of document.querySelectorAll('[data-cine-scene]')) {
   let active = true;
+  const control=scene.querySelector('[data-cine-motion-toggle]');
+  const reduceSystem=window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    document.documentElement.dataset.motion==='reduce' ||
+    document.documentElement.dataset.adminervaReduceMotion==='true';
+  if(control){
+    if(reduceSystem){
+      control.disabled=true;
+      control.textContent='Reduced motion active';
+    }else{
+      control.addEventListener('click',()=>{
+        const paused=scene.dataset.motionPaused!=='true';
+        scene.dataset.motionPaused=String(paused);
+        control.setAttribute('aria-pressed',String(paused));
+        control.textContent=paused?'Resume motion ▶':'Pause motion ⏸';
+        if(paused)cancelAnimationFrame(raf);
+        else start();
+      });
+    }
+  }
   scene.addEventListener('pointermove',event=>{
-    if(reduce()||event.pointerType==='touch')return;
+    if(reduce()||scene.dataset.motionPaused==='true'||event.pointerType==='touch')return;
     const rect=scene.getBoundingClientRect();
     scene.style.setProperty('--cinex',((event.clientX-rect.left)/rect.width-.5).toFixed(3));
     scene.style.setProperty('--ciney',((event.clientY-rect.top)/rect.height-.5).toFixed(3));
@@ -41,7 +60,7 @@ for (const scene of document.querySelectorAll('[data-cine-scene]')) {
   resize();
   let last=0;
   function paint(t){
-    if(!active)return;
+    if(!active||scene.dataset.motionPaused==='true')return;
     ctx.clearRect(0,0,width,height);
     for(const star of stars){
       const x=(star.x+(reduce()?0:t*star.drift/1000)%1)*width;
@@ -55,7 +74,7 @@ for (const scene of document.querySelectorAll('[data-cine-scene]')) {
   }
   const start=()=>{
     cancelAnimationFrame(raf);
-    if(!active)return;
+    if(!active||scene.dataset.motionPaused==='true')return;
     resize();
     paint(performance.now());
   };
