@@ -298,6 +298,22 @@ test("new compact package keeps the original response JSON contract and single-s
  assert.match(oldSingle,/scenario 1/);
 });
 
+test("student-submitted GitHub evidence is selected without a teacher approval, while discoveries and zero commits are skipped",()=>{
+ const rows=[
+  {evidenceId:"teacher-discovery",status:"approved",hasSubmission:false,selectedCount:3,bulkReady:false,version:1},
+  {evidenceId:"no-commits",status:"approved",hasSubmission:false,selectedCount:0,bulkReady:false,version:1},
+  {evidenceId:"submitted-1",status:"submitted",hasSubmission:true,selectedCount:3,bulkReady:true,version:1},
+  {evidenceId:"submitted-2",status:"submitted",hasSubmission:true,selectedCount:1,bulkReady:true,version:1},
+  {evidenceId:"already-graded",status:"approved",hasSubmission:true,selectedCount:2,bulkReady:true,
+   gradeStatus:"published",version:1}
+ ];
+ assert.deepEqual(nextBulkSelection(rows),["submitted-1","submitted-2"]);
+ const items=new Map([["teacher-discovery",{key:"teacher-discovery",version:1,review:{saveEligible:true}}],
+   ["submitted-1",{key:"submitted-1",version:1,review:{saveEligible:true}}]]);
+ assert.deepEqual(bulkSaveableStages({
+   staged:items,saveSelection:new Set(["teacher-discovery","submitted-1"]),rows
+ }).map(x=>x.key),["submitted-1"]);
+});
 test("staged suggestions are no longer saveable when frozen GitHub approval is revoked",()=>{
  const stages=new Map([["github-1",{key:"github-1",version:2,
    review:{saveEligible:true}}]]);
