@@ -1,0 +1,170 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import vm from "node:vm";
+import {readFileSync} from "node:fs";
+import {createHash} from "node:crypto";
+const source=readFileSync(new URL("../functions/school-legacy-github-review.js",import.meta.url),"utf8");
+const digest=(...items)=>createHash("sha256").update(JSON.stringify(items)).digest("hex");
+const ctx={schoolId:"school-one",uid:"teacher-one",roles:["teacher"],platformOverride:false};
+const taskId="oop-assessment",studentId="student@school.ph";
+const evidenceId=studentId+"_"+taskId,checkpoint="c".repeat(40),commit="a".repeat(40);
+const blueprintId="legacy_"+digest(ctx.schoolId,ctx.uid,taskId).slice(0,48);
+function install(){
+ const module={exports:{}};
+ class TenantAccessError extends Error{constructor(code,message){super(message);this.code=code;}}
+ vm.runInNewContext(source,{module,console,Buffer,Date,URL,require:name=>{
+   if(name==="node:crypto")return {createHash};
+   if(name==="firebase-admin/firestore")return {
+     FieldValue:{serverTimestamp:()=>({serverTimestamp:true})},
+     FieldPath:{documentId:()=>"__name__"}
+   };
+   if(name==="./tenant-access.js")return {TenantAccessError};
+   throw Error("Unrecognized dependency "+name);
+ }},{filename:"school-legacy-github-review.js"});
+ return module.exports;
+}
+function fixture({published=false,grade=null,approval=true}={}){
+ const map=new Map(),writes=[];
+ const put=(path,value)=>map.set(path,value);
+ put("assessments/"+taskId,{ownerUid:ctx.uid,title:"Java OOP",
+   schemaVersion:2,submissionSource:"github",maxScore:40,
+   evalCriteria:"Code quality | 20\nProgram behavior | 20",
+   taskContext:"Build a Java OOP program",deployments:[{section:"Grade 12 ICT"}]});
+ put("schools/"+ctx.schoolId+"/assessment_blueprints/"+blueprintId,{
+   schoolId:ctx.schoolId,ownerUid:ctx.uid,legacyImport:{
+     assessmentId:taskId,origin:"repository_management"
+   }
+ });
+ put("assessment_evidence/"+evidenceId,{
+   studentId,assessmentId:taskId,section:"Grade 12 ICT",
+   repository:"https://github.com/learner/java-classes",
+   status:approval?"approved":"submitted",revision:7,
+   checkpointSha:checkpoint,approvedCheckpointSha:approval?checkpoint:null,
+   selectedCommits:[commit],verifiedContributionCommits:[commit],
+   contributionScope:"Instructor verified this learner's implementation",
+   submittedAt:{toMillis:()=>1234}
+ });
+ put("students/"+studentId,{name:"Original Student Name"});
+ if(grade)put("student_grades/"+evidenceId,{...grade,published});
+ const doc=path=>({
+   id:path.split("/").at(-1),path,
+   get:async()=>({id:path.split("/").at(-1),ref:doc(path),
+     exists:map.has(path),data:()=>map.get(path)})
+ });
+ let count=0;
+ const db={doc,
+   collection(path){return {
+     doc:id=>doc(path+"/"+(id||"audit-"+(++count))),
+     where(field,op,value){assert.equal(op,"==");return {
+       orderBy(){let last="";return {
+         startAfter(v){last=v;return this;},
+         limit(n){return {get:async()=>{
+           const records=[...map].filter(([key,data])=>
+             key.startsWith(path+"/")&&key.split("/").length===2&&
+             data[field]===value&&key.slice(path.length+1)>last)
+             .slice(0,n).map(([key,data])=>({
+               id:key.split("/").at(-1),data:()=>data
+             }));
+           return {docs:records,size:records.length};
+         }};
+         }
+       };}
+     };}
+   };},
+   async runTransaction(fn){const tx={
+     get:ref=>ref.get(),
+     create(ref,value){assert.ok(!map.has(ref.path));put(ref.path,value);writes.push(["create",ref.path]);},
+     set(ref,value){put(ref.path,value);writes.push(["set",ref.path]);},
+     update(ref,value){assert.ok(map.has(ref.path));put(ref.path,{...map.get(ref.path),...value});writes.push(["update",ref.path]);}
+   };return fn(tx);}
+ };
+ const service=install().createSchoolLegacyGithubReview({db,
+   parseLegacyRubric:()=>[{name:"Code quality",points:20},{name:"Program behavior",points:20}]});
+ const request=(action,extra={})=>({ctx,input:{action,legacyAssessmentId:taskId,...extra}});
+ const gradeArgs={legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
+   expectedCheckpointSha:checkpoint,expectedGradeRevision:0,
+   criteria:[{awardedPoints:18,pendingPoints:0,comment:"Relevant code"},
+     {awardedPoints:17,pendingPoints:0,comment:"Output checked"}],
+   feedback:"Verified OOP source against the submitted rubric.",
+   reviewNote:"Teacher inspected exact approved commits and checked the student's work."};
+ return {service,db,map,writes,request,gradeArgs};
+}
+test("historical GitHub V4 inbox and inspect read through original school-owned records",async()=>{
+ const f=fixture();
+ const inbox=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(inbox.evidence.length,1);
+ assert.equal(inbox.evidence[0].studentName,"Original Student Name");
+ assert.equal(inbox.evidence[0].verifiedCount,1);
+ const result=await f.service(f.request("legacy_github_inspect",{legacyEvidenceId:evidenceId}));
+ assert.equal(result.snapshot.checkpointSha,checkpoint);
+ assert.deepEqual([...result.snapshot.selectedCommitShas],[commit]);
+ assert.deepEqual([...result.snapshot.verifiedContributionCommits],[commit]);
+ assert.equal(result.task.rubric.length,2);
+ assert.equal(f.writes.length,0);
+});
+test("V4 grade save and publish update ONLY original grade and audit records",async()=>{
+ const f=fixture();
+ const saved=await f.service(f.request("legacy_github_save_draft",f.gradeArgs));
+ assert.equal(saved.awarded,35);
+ assert.equal(f.map.get("student_grades/"+evidenceId).gradeVersion,1);
+ assert.equal(f.map.get("student_grades/"+evidenceId).gradedSha,checkpoint);
+ const published=await f.service(f.request("legacy_github_publish",{
+   legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
+   expectedCheckpointSha:checkpoint,expectedGradeRevision:1
+ }));
+ assert.equal(published.published,true);
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,true);
+ assert.equal(f.writes.filter(([,path])=>path.startsWith("schools/")).length,0);
+ assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,2);
+});
+test("approval is required; unapproved GitHub evidence remains read-only",async()=>{
+ const f=fixture({approval:false});
+ const result=await f.service(f.request("legacy_github_inspect",{legacyEvidenceId:evidenceId}));
+ assert.equal(result.snapshot.status,"submitted");
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",f.gradeArgs)),
+   error=>error.code==="failed-precondition");
+ assert.equal(f.writes.length,0);
+});
+test("historical blueprint imports predating origin metadata remain compatible",async()=>{
+ const f=fixture();
+ delete f.map.get("schools/"+ctx.schoolId+"/assessment_blueprints/"+blueprintId).legacyImport.origin;
+ const res=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(res.evidence.length,1);
+});
+test("wrong school and assessment owner cannot expose original evidence",async()=>{
+ const f=fixture();
+ f.map.delete("schools/"+ctx.schoolId+"/assessment_blueprints/"+blueprintId);
+ await assert.rejects(f.service(f.request("legacy_github_inbox")),error=>error.code==="failed-precondition");
+ const other=fixture();other.map.get("assessments/"+taskId).ownerUid="another-teacher";
+ await assert.rejects(other.service(other.request("legacy_github_inbox")),error=>error.code==="permission-denied");
+});
+test("stale evidence, duplicate source identity and existing published grade block writes",async()=>{
+ const f=fixture();
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",{
+   ...f.gradeArgs,expectedEvidenceRevision:6})),error=>error.code==="failed-precondition");
+ f.map.get("assessment_evidence/"+evidenceId).studentId="different-student";
+ await assert.rejects(f.service(f.request("legacy_github_inspect",{
+   legacyEvidenceId:evidenceId})),error=>error.code==="failed-precondition");
+ const g=fixture({grade:{studentId,taskId,score:33,maxScore:40,gradeVersion:2},published:true});
+ await assert.rejects(g.service(g.request("legacy_github_save_draft",{
+   ...g.gradeArgs,expectedGradeRevision:2})),error=>error.code==="failed-precondition");
+ assert.equal(f.writes.length,0);assert.equal(g.writes.length,0);
+});
+test("zero or unresolved points cannot be published, and stale versions cannot publish",async()=>{
+ const f=fixture();
+ await f.service(f.request("legacy_github_save_draft",{
+   ...f.gradeArgs,criteria:[
+     {awardedPoints:0,pendingPoints:0,comment:"Missing"},
+     {awardedPoints:0,pendingPoints:0,comment:"Missing"}
+   ]
+ }));
+ await assert.rejects(f.service(f.request("legacy_github_publish",{
+   legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
+   expectedCheckpointSha:checkpoint,expectedGradeRevision:1
+ })),error=>error.code==="failed-precondition");
+ await assert.rejects(f.service(f.request("legacy_github_publish",{
+   legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
+   expectedCheckpointSha:checkpoint,expectedGradeRevision:0
+ })),error=>error.code==="failed-precondition");
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,false);
+});
