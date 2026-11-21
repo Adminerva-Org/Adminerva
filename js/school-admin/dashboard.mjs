@@ -5,6 +5,8 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.1
 const get=id=>document.getElementById(id);
 const functions=getFunctions(app,"asia-southeast1");
 const peopleApi=httpsCallable(functions,"peopleDirectory");
+const academicsApi=httpsCallable(functions,"schoolAcademics");
+const schedulesApi=httpsCallable(functions,"schoolSchedules");
 const classRecordApi=httpsCallable(functions,"schoolClassRecordAdmin");
 const supportApi=httpsCallable(functions,"schoolSupport");
 const status=get("adminOverviewStatus"),attentionList=get("adminAttentionList"),recordList=get("adminClassRecordList");
@@ -37,7 +39,7 @@ function applyEnrollmentRoute(scope){
 function renderRecommendation({final=false}={}){
   const title=get("adminNextActionTitle"),detail=get("adminNextActionDetail"),link=get("adminNextActionLink"),panel=get("adminNextAction");
   if(!title||!detail||!link||!panel)return;
-  const sources=[model.overview,model.reconciliation,model.records,model.support],complete=sources.every(value=>value!==undefined);
+  const sources=[model.overview,model.reconciliation,model.classes,model.schedules,model.records,model.support],complete=sources.every(value=>value!==undefined);
   if(!final&&!complete){
     title.textContent="Checking school operations…";
     detail.textContent="Adminerva is comparing directory, staffing, Class Record and support signals.";
@@ -49,7 +51,11 @@ function renderRecommendation({final=false}={}){
   const loadedIssues=issues();
   const integrity=loadedIssues.find(item=>item.severity==="integrity");
   const attention=loadedIssues.find(item=>item.severity==="attention");
-  const assignments=Number(model.overview?.counts?.staff_assignments);
+  const classRows=Array.isArray(model.classes?.offerings)?model.classes.offerings:[],
+    totalClasses=classRows.length,
+    unstaffed=classRows.filter(row=>!(row.teacherUids||[]).length).length,
+    scheduledIds=new Set((model.schedules?.schedules||[]).filter(row=>(row.meetings||[]).length).map(row=>row.offeringId)),
+    unscheduled=classRows.filter(row=>!scheduledIds.has(row.offeringId)).length;
   const enrollments=Number(model.overview?.counts?.enrollments);
   const people=Number(model.overview?.counts?.people);
   if(critical>0)action={
@@ -67,10 +73,15 @@ function renderRecommendation({final=false}={}){
     detail:(attention.label?attention.label+" · ":"")+(attention.detail||"A school relationship needs administrator attention."),
     href:issueHref(attention),label:"Review issue",tone:"amber"
   };
-  else if(Number.isFinite(assignments)&&assignments===0&&Number.isFinite(enrollments)&&enrollments>0)action={
-    title:"Assign teachers to active classes",
-    detail:"Student enrollment exists, but no active teaching assignments are loaded. Assign verified teachers before classroom and review workflows depend on these classes.",
-    href:"school-classes.html",label:"Assign teaching load",tone:"amber"
+  else if(totalClasses>0&&unstaffed>0)action={
+    title:unstaffed+" active class"+(unstaffed===1?" is":"es are")+" unstaffed",
+    detail:"Assign an active school teacher to every class before Classroom, assessment review and Class Record workflows depend on it.",
+    href:"school-classes.html",label:"Staff active classes",tone:"amber"
+  };
+  else if(totalClasses>0&&unscheduled>0)action={
+    title:unscheduled+" active class"+(unscheduled===1?" has":"es have")+" no official schedule",
+    detail:"Add the institutional meeting time and room so teachers and students share the same class timetable and conflict checks remain authoritative.",
+    href:"school-classes.html?view=schedule",label:"Complete class schedules",tone:"amber"
   };
   else if(Number.isFinite(enrollments)&&enrollments===0&&Number.isFinite(people)&&people>0)action={
     title:"Complete student enrollment",
@@ -84,7 +95,7 @@ function renderRecommendation({final=false}={}){
   };
   else action={
     title:"No blocking administrator issue found",
-    detail:complete?"The completed dashboard checks did not find a blocking directory, staffing, Class Record or support issue. Continue routine academic-policy and operations review.":"Available checks did not confirm a blocker; some sources are unavailable, so refresh before treating this as a full health result.",
+    detail:complete?"The completed dashboard checks did not find a blocking directory, class staffing, official schedule, Class Record or support issue. Continue routine academic-policy and operations review.":"Available checks did not confirm a blocker; some sources are unavailable, so refresh before treating this as a full health result.",
     href:"school-grading-schemes.html",label:"Review grading policies",tone:complete?"emerald":"amber"
   };
   title.textContent=action.title;detail.textContent=action.detail;link.href=action.href;link.textContent=action.label+" →";link.hidden=false;
@@ -92,8 +103,31 @@ function renderRecommendation({final=false}={}){
   panel.className="av-panel p-4 sm:p-5 border-l-4 "+border;
 }
 function message(host,value){host.replaceChildren();const p=document.createElement("p");p.className="p-5 text-sm text-slate-600";p.textContent=value;host.append(p);}
+function platformModePayload(){
+  try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?{platformMode:"assist"}:{};}catch{return {};}
+}
 function perform(api,action,lease){
-  return api({schoolId:lease.schoolId,action}).then(response=>{picker.scope.assertLease(lease);return response.data;});
+  return api({schoolId:lease.schoolId,action,...platformModePayload()}).then(response=>{picker.scope.assertLease(lease);return response.data;});
+}
+function renderClassWorkflow(){
+  const node=get("adminWorkflowTeaching");if(!node)return;
+  if(model.classes===null||model.schedules===null){
+    node.textContent="Unavailable";node.className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-900";return;
+  }
+  if(model.classes===undefined||model.schedules===undefined){
+    node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";return;
+  }
+  const rows=model.classes.offerings||[],total=rows.length;
+  if(!total){
+    node.textContent="Not started";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";return;
+  }
+  const staffed=rows.filter(row=>(row.teacherUids||[]).length).length,
+    scheduledIds=new Set((model.schedules.schedules||[]).filter(row=>(row.meetings||[]).length).map(row=>row.offeringId)),
+    scheduled=rows.filter(row=>scheduledIds.has(row.offeringId)).length,
+    complete=staffed===total&&scheduled===total;
+  node.textContent=staffed+"/"+total+" staffed · "+scheduled+"/"+total+" scheduled";
+  node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(complete?"bg-emerald-100 text-emerald-800":"bg-amber-100 text-amber-900");
+  set("adminAssignmentCount",staffed+"/"+total);
 }
 function activityLabel(action){
   return String(action||"directory change").replace(/^student_/,"student ").replace(/^teacher_/,"teacher ").replaceAll("_"," ");
@@ -114,6 +148,9 @@ function renderActivity(){
   }).join("");
 }
 function issueHref(item){
+  if(item.source==="class")return "school-classes.html?"+new URLSearchParams({
+    ...(item.targetTab==="schedule"?{view:"schedule"}:{}),...(item.offeringId?{offeringId:item.offeringId}:{})
+  }).toString();
   if(item.source==="record")return item.targetTab==="classes"?"school-classes.html":"school-class-records.html";
   const identityIssue=Boolean(item.personId)&&["access","invites","people"].includes(item.targetTab);
   if(identityIssue)return "people-access.html?personId="+encodeURIComponent(item.personId)+"#people";
@@ -129,6 +166,13 @@ function recordState(record){
 }
 function issues(){
   const items=(model.reconciliation?.issues||[]).slice();
+  const classRows=model.classes?.offerings||[],scheduleIds=new Set((model.schedules?.schedules||[])
+    .filter(row=>(row.meetings||[]).length).map(row=>row.offeringId));
+  for(const row of classRows){
+    const label=[row.subjectName,row.sectionName,row.termName].filter(Boolean).join(" · ");
+    if(!(row.teacherUids||[]).length)items.push({source:"class",severity:"integrity",label,detail:"Active class has no assigned subject teacher.",offeringId:row.offeringId,targetTab:"classes"});
+    if(!scheduleIds.has(row.offeringId))items.push({source:"class",severity:"attention",label,detail:"Active class has no official meeting schedule.",offeringId:row.offeringId,targetTab:"schedule"});
+  }
   for(const record of model.records||[]){
     if(!record.teacherNames?.length)items.push({source:"record",severity:"integrity",label:record.subjectName+" · "+record.sectionName,detail:"No active teacher is assigned to this Class Record.",targetTab:"classes"});
     if(record.finalization?.layoutChangedSinceFinalization)items.push({source:"record",severity:"attention",label:record.subjectName+" · "+record.sectionName,detail:"The Class Record changed after finalization and needs a new review.",targetTab:"records"});
@@ -174,7 +218,18 @@ function renderSource(name,data){
     model.overview=data;
     for(const [id,key] of [["adminPeopleCount","people"],["adminEnrollmentCount","enrollments"],["adminAssignmentCount","staff_assignments"],["adminInvitationCount","invitations"]])set(id,count(data?.counts?.[key]));
     renderActivity();
-    setWorkflow("adminWorkflowPeople",data?.counts?.people,"record");setWorkflow("adminWorkflowTeaching",data?.counts?.staff_assignments,"assignment");setWorkflow("adminWorkflowEnrollment",data?.counts?.enrollments,"enrollment");
+    setWorkflow("adminWorkflowPeople",data?.counts?.people,"record");setWorkflow("adminWorkflowEnrollment",data?.counts?.enrollments,"enrollment");
+  }else if(name==="classes"){
+    model.classes=data;
+    renderClassWorkflow();
+    if(data){
+      const total=(data.offerings||[]).length,staffed=(data.offerings||[]).filter(row=>(row.teacherUids||[]).length).length;
+      set("adminAssignmentCount",total?staffed+"/"+total:"0");
+    }else set("adminAssignmentCount","—");
+    renderAttention();
+  }else if(name==="schedules"){
+    model.schedules=data;
+    renderClassWorkflow();renderAttention();
   }else if(name==="relationships"){
     model.reconciliation=data;
     set("adminAttentionCount",count(data?.counts?.total));
@@ -198,7 +253,14 @@ function renderSource(name,data){
 async function loadDashboard(){
   const generation=++loadGeneration,lease=picker.scope.lease();
   reset();refresh.disabled=true;status.textContent="Loading school operations…";get("adminLastChecked").textContent="";
-  const sources=[["directory","Directory totals",peopleApi,"overview"],["relationships","Relationship checks",peopleApi,"reconcile_directory"],["records","Class Records",classRecordApi,"overview"],["support","Support reports",supportApi,"overview"]];
+  const sources=[
+    ["directory","Directory totals",peopleApi,"overview"],
+    ["relationships","Relationship checks",peopleApi,"reconcile_directory"],
+    ["classes","Active classes",academicsApi,"faculty_workload"],
+    ["schedules","Official schedules",schedulesApi,"admin_overview"],
+    ["records","Class Records",classRecordApi,"overview"],
+    ["support","Support reports",supportApi,"overview"]
+  ];
   const failed=[];
   const current=()=>generation===loadGeneration&&auth.currentUser?.uid===lease.uid;
   await Promise.all(sources.map(async ([name,label,api,action])=>{
@@ -207,7 +269,7 @@ async function loadDashboard(){
   }));
   if(!current())return;
   refresh.disabled=false;set("adminLastChecked","Checked "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
-  status.textContent=failed.length?"Unavailable: "+failed.join(", ")+". Other results remain usable.":"All four school operation sources loaded.";
+  status.textContent=failed.length?"Unavailable: "+failed.join(", ")+". Other results remain usable.":"All six school operation sources loaded.";
   renderRecommendation({final:true});
 }
 refresh.addEventListener("click",()=>{if(picker.scope.current?.roles.includes("school_admin"))void loadDashboard();else void picker.load().catch(error=>{status.textContent=error?.message||"School access unavailable.";});});
