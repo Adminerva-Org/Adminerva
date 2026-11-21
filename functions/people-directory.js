@@ -78,7 +78,7 @@ function createPeopleDirectoryService({db}) {
       return {schoolId:ctx.schoolId,counts:Object.fromEntries(scopes.map((name,i)=>[name,counts[i].data().count]))};
     }
     if(input.action==="reconcile_directory") {
-      const names=["people","memberships","enrollments","staff_assignments","course_offerings","invitations"];
+      const names=["people","memberships","enrollments","student_registrations","staff_assignments","course_offerings","invitations"];
       const snapshots=await Promise.all(names.map(name=>
         db.collection("schools/"+ctx.schoolId+"/"+name).limit(501).get()));
       if(snapshots.some(snapshot=>snapshot.size===501))
@@ -93,9 +93,12 @@ function createPeopleDirectoryService({db}) {
         doc.data().schoolId===ctx.schoolId&&doc.data().status==="active").map(doc=>[doc.id,doc.data()]));
       const activeEnrollments=byName.enrollments.filter(doc=>
         doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+      const activeRegistrations=byName.student_registrations.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
       const activeAssignments=byName.staff_assignments.filter(doc=>
         doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
-      const enrollmentsByPerson=new Set(activeEnrollments.map(doc=>doc.data().personId));
+      const enrollmentsByPerson=new Set(activeEnrollments.map(doc=>doc.data().personId)),
+        registrationsByPerson=new Set(activeRegistrations.map(doc=>doc.data().personId));
       const assignmentsByTeacher=new Set(activeAssignments.map(doc=>doc.data().teacherUid));
       const peopleByAuthUid=new Map();
       for(const [personId,person] of people){
@@ -134,6 +137,10 @@ function createPeopleDirectoryService({db}) {
             add("inactive_person_active_enrollment","integrity",label,
               "Inactive student person still has an active course enrollment.",
               {personId,targetTab:"classes"});
+          if(registrationsByPerson.has(personId))
+            add("inactive_person_active_registration","integrity",label,
+              "Inactive student person still has an active official registration.",
+              {personId,targetTab:"classes"});
           continue;
         }
         if(person.kind==="student"){
@@ -146,9 +153,18 @@ function createPeopleDirectoryService({db}) {
               add("student_access_missing","integrity",label,
                 "Linked account does not have a matching active student membership.",{personId,targetUid:person.authUid,targetTab:"access"});
           }
-          if(!enrollmentsByPerson.has(personId))
+          const officiallyPlaced=ctx.enrollmentMode==="canonical"
+            ?registrationsByPerson.has(personId):enrollmentsByPerson.has(personId);
+          if(!officiallyPlaced)
             add("student_no_enrollment","attention",label,
-              "Active student is not enrolled in any active course offering.",{personId,targetTab:"classes"});
+              ctx.enrollmentMode==="canonical"
+                ?"Active student has no active official registration or section placement."
+                :"Active student is not enrolled in any active course offering.",
+              {personId,targetTab:"classes"});
+          else if(ctx.enrollmentMode==="canonical"&&!enrollmentsByPerson.has(personId))
+            add("student_registration_without_classes","attention",label,
+              "Active official registration has no active class enrollments. Review the section's automatic roster configuration.",
+              {personId,targetTab:"classes"});
         }else if(person.kind==="staff"&&!person.authUid){
           add("staff_account_unlinked","review",label,
             "Active staff person has no verified account link. This may be intentional for non-teaching staff.",{personId,targetTab:"invites"});
@@ -234,7 +250,7 @@ function createPeopleDirectoryService({db}) {
       return {
         schoolId:ctx.schoolId,counts,
         issues:issues.slice(0,150),truncated:issues.length>150,
-        note:"Reconciliation uses directory, membership and active academic relationships only. Grades, evidence and private teacher resources are not inspected."
+        note:"Reconciliation uses canonical student registrations for official placement in standard schools, plus directory, membership and active class relationships. Grades, evidence and private teacher resources are not inspected."
       };
     }
     if(input.action==="list_people") {
