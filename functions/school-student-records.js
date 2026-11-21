@@ -335,11 +335,20 @@ function createSchoolStudentRecordsService({db}){
         }else if(relationship.exists)
           deny("already-exists","This guardian is already linked to the student. Edit or restore the existing relationship.");
         const now=FieldValue.serverTimestamp();
+        let nextContactRevision;
         if(contact.exists){
-          tx.update(contactRef,{displayName:guardianName,email,mobile,status:"active",
-            revision:(Number(contact.data().revision)||1)+1,updatedByUid:ctx.uid,updatedAt:now});
-        }else tx.create(contactRef,{schoolId:ctx.schoolId,displayName:guardianName,email,mobile,
-          status:"active",linkedUid:null,revision:1,createdByUid:ctx.uid,createdAt:now,updatedAt:now});
+          if(contact.data().status!=="active")
+            deny("failed-precondition","The guardian contact is inactive and must be reviewed before it can be linked.");
+          if(relationshipIdInput){
+            nextContactRevision=(Number(contact.data().revision)||1)+1;
+            tx.update(contactRef,{displayName:guardianName,email,mobile,
+              revision:nextContactRevision,updatedByUid:ctx.uid,updatedAt:now});
+          }else nextContactRevision=Number(contact.data().revision)||1;
+        }else{
+          nextContactRevision=1;
+          tx.create(contactRef,{schoolId:ctx.schoolId,displayName:guardianName,email,mobile,
+            status:"active",linkedUid:null,revision:1,createdByUid:ctx.uid,createdAt:now,updatedAt:now});
+        }
         if(isPrimary)for(const row of others){
           if(!row.exists||row.id===relationshipRef.id||row.data().schoolId!==ctx.schoolId||
              row.data().status!=="active"||row.data().isPrimary!==true)continue;
@@ -356,7 +365,7 @@ function createSchoolStudentRecordsService({db}){
           revision,createdAt:now
         });
         result={relationshipId:relationshipRef.id,guardianContactId:contactId,revision,
-          contactRevision:contact.exists?(Number(contact.data().revision)||1)+1:1,status:"active"};
+          contactRevision:nextContactRevision,status:"active",contactReused:contact.exists&&!relationshipIdInput};
       });
       return result;
     }
