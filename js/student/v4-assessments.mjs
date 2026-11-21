@@ -477,8 +477,13 @@ if(panel&&list&&status&&schoolHost){
   async function restoreGeneralCloudDraft(session,submittedResponse){
     const local=readDeviceAssessmentDraft(localStorage,session.context)||session.memoryDraft;
     let cloud;
-    try{cloud=await scoped(picker.scope,generalSubmissionsApi,"get_draft",{taskId:session.context.taskId});}
-    catch(error){
+    try{
+      cloud=await scoped(picker.scope,generalSubmissionsApi,"get_draft",{taskId:session.context.taskId});
+      if(!cloud||cloud.taskId!==session.context.taskId||
+         !Number.isSafeInteger(Number(cloud.revision))||
+         !Number.isSafeInteger(Number(cloud.submissionVersion)))
+        throw Error("The school cloud did not confirm this assessment draft.");
+    }catch(error){
       if(generalDraft!==session)return;
       session.loading=false;
       const fallback=local?.payload||submittedResponse;
