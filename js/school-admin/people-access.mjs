@@ -1004,7 +1004,8 @@ async function loadMemberships(){
       button.addEventListener("click",()=>{
         accessChange={
           targetUid:member.uid,action:restoring?"restore_access":"suspend_access",
-          name:member.displayName||member.uid.slice(0,9)
+          name:member.displayName||member.uid.slice(0,9),
+          expectedRevision:Number(member.revision)||1
         };
         get("pa-suspension-title").textContent=restoring?"Restore school access":"Suspend school access";
         get("pa-suspension-member").textContent=accessChange.name;
@@ -1039,7 +1040,9 @@ get("pa-suspension-form").addEventListener("submit",event=>{
   if(!confirm(restoring?
     "Restore this account for the current school after its linked identity is revalidated?":
     "Suspend this account for the current school? Existing grades and evidence will be preserved."))return;
-  void submitForm(form,change.action,{targetUid:change.targetUid,reason}).then(result=>{
+  void submitForm(form,change.action,{
+    targetUid:change.targetUid,expectedRevision:change.expectedRevision,reason
+  }).then(result=>{
     if(!result)return;
     get("pa-suspension-dialog").close();accessChange=null;
 
