@@ -73,18 +73,19 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const loaded=Boolean(currentTask&&currentRow&&currentSnapshot&&!reviewNeedsRefresh);
     const evidenceReady=currentTask?.submissionSource!=="github"||
       ["approved","reviewed"].includes(currentSnapshot?.status);
-    const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1";
+    const readThrough=Boolean(currentTask?.legacyCompatibility);
+    const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1"&&!readThrough;
     document.getElementById("gbV4SaveDraft").disabled=
       busy||!loaded||!evidenceReady||published||reopened||legacyScalar;
     document.getElementById("gbV4Publish").disabled=
       busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar;
     document.getElementById("gbV4RequestRevision").disabled=
-      busy||!loaded||published||reopened;
-    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar;
+      busy||!loaded||published||reopened||readThrough;
+    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||readThrough;
     const convert=document.getElementById("gbV4ConvertLegacy");
-    convert.disabled=busy||!loaded||!legacyScalar;
-    document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar;
-    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar);
+    convert.disabled=busy||!loaded||!legacyScalar||readThrough;
+    document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar||readThrough;
+    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||readThrough);
     document.getElementById("gbV4Refresh").disabled=busy;
     if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
   }
@@ -145,8 +146,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     currentTask=task||null;inbox.replaceChildren();
     if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
     if(!task){status.textContent="Choose an assessment to load submissions.";return;}
-    if(task.legacyCompatibility){
-      status.textContent="Historical deployment found. This assessment predates the V4 course-offering submission store.";
+    if(task.legacyCompatibility&&task.submissionSource!=="studio"){
+      status.textContent="Historical GitHub submission review still uses its verified original repository evidence workspace.";
       if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;}
       const card=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
       card.append(make("h3","font-extrabold text-amber-950",task.title));
@@ -166,16 +167,25 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }
     status.textContent="Loading frozen "+sourceLabel(task.submissionSource).toLowerCase()+" submissions…";
     try{
+      const historicalStudio=task.legacyCompatibility&&task.submissionSource==="studio";
       const evidenceApi=sourceApi(task.submissionSource,{
         studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
       });
-      const [result,resultData]=await Promise.all([
-        scoped(evidenceApi,"inbox",{taskId:task.taskId}),
-        scoped(gradeApi,"list_task_results",{taskId:task.taskId})
-      ]);
+      const [result,resultData]=historicalStudio?
+        [await scoped(migrationApi,"legacy_review_inbox",{legacyAssessmentId:task.legacyAssessmentId}),null]:
+        await Promise.all([
+          scoped(evidenceApi,"inbox",{taskId:task.taskId}),
+          scoped(gradeApi,"list_task_results",{taskId:task.taskId})
+        ]);
+      if(historicalStudio)currentTask={...task,...result.task};
       if(token!==generation)return;
       let rows=task.submissionSource==="github"?(result.evidence||[]):(result.submissions||[]);
-      const gradeMap=new Map((resultData.results||[]).map(item=>[item.studentUid,item]));
+      const gradeMap=new Map(historicalStudio?
+        (result.submissions||[]).filter(item=>item.gradeStatus).map(item=>[item.studentUid,{
+          studentUid:item.studentUid,status:item.gradeStatus,awarded:item.awarded,
+          total:currentTask.rubric.reduce((sum,part)=>sum+Number(part.points),0),pending:0
+        }]):
+        (resultData.results||[]).map(item=>[item.studentUid,item]));
       if(view==="results")rows=[...rows].sort((a,b)=>{
         const rank=value=>value==="published"?0:value==="draft"?1:2;
         return rank(gradeMap.get(a.studentUid)?.status)-rank(gradeMap.get(b.studentUid)?.status)||
@@ -194,8 +204,44 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           ?zeroDrafts+" zero-score draft"+(zeroDrafts===1?" is":"s are")+" excluded from bulk publication."
           :"Publish every valid non-zero draft for this assessment.";
       }
+      if(historicalStudio){
+        const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
+        notice.append(make("h3","font-bold text-violet-950",
+          "Historical Studio evidence · V4 review interface"));
+        notice.append(make("p","text-violet-900 mt-1",
+          "Frozen code and grades are read from the original submission records. No student files, variants, or grades have been copied into school V4 collections."));
+        const button=make("button",
+          "mt-3 rounded-lg border border-violet-300 px-3 py-2 font-bold text-violet-950 focus-visible:outline-2",
+          "Check migration readiness");
+        button.type="button";
+        const output=make("p","mt-2 text-xs text-violet-900");
+        output.setAttribute("role","status");output.setAttribute("aria-live","polite");
+        button.addEventListener("click",()=>void (async()=>{
+          button.disabled=true;output.textContent="Verifying original student identities, class placements, and submitted source…";
+          try{
+            const result=await scoped(migrationApi,"preview_evidence_migration",{
+              legacyAssessmentId:task.legacyAssessmentId
+            });
+            const counts=result.checked+" historical submission(s) checked · "+
+              result.identityAndClassMatched+" identity/class match(es) · "+
+              result.needsAttention+" need confirmed historical term and/or record mapping.";
+            const issues=new Map();
+            for(const row of result.rows||[])
+              for(const reason of row.blockers||[])
+                issues.set(reason,(issues.get(reason)||0)+1);
+            output.textContent=counts+" "+
+              ([...issues].map(([reason,count])=>count+" "+reason.replaceAll("_"," ")).join("; ")||
+              "No blocking identity issues found.")+
+              " This is a read-only preview; no historical record is modified.";
+          }catch(error){
+            output.textContent=error?.message||"Migration readiness could not be verified.";
+          }finally{button.disabled=false;}
+        })());
+        notice.append(button,output);inbox.append(notice);
+      }
       status.textContent=rows.length?
-        rows.length+" submitted · "+published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
+        (historicalStudio?"Historical Studio evidence · ":"")+rows.length+" submitted · "+
+          published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
         "No student evidence yet for this assessment.";
       if(!rows.length){
         inbox.append(make("div","rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600",
@@ -228,6 +274,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }catch(error){
       if(token!==generation)return;
       status.textContent=error?.message||"Submission inbox is unavailable.";
+      if(task?.legacyCompatibility&&task.submissionSource==="studio"){
+        const help=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
+        help.append(make("p","text-sm text-amber-950",
+          "The historical V4 review adapter may not be available on the school backend yet. Original submissions remain unchanged."));
+        const link=make("a","mt-2 inline-flex rounded-lg border border-amber-500 px-3 py-2 text-sm font-bold text-amber-950",
+          "Open original Studio submissions");
+        link.href="studio-submissions.html?assessment="+encodeURIComponent(task.legacyAssessmentId);
+        help.append(link);inbox.append(help);
+      }
     }
   }
   function renderFile(){
@@ -331,6 +386,21 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   function renderRubric(grade){
     const host=document.getElementById("gbV4Rubric");host.replaceChildren();
     const prior=Array.isArray(grade?.criteria)?grade.criteria:[];
+    if(currentTask?.legacyCompatibility&&grade?.status==="published"&&
+       grade?.gradeSchema==="legacy_scalar_v1"){
+      host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
+        "Original published historical grade: "+grade.awarded+" / "+grade.total+
+        ". The original record did not store a criterion-by-criterion breakdown. Empty rubric rows are deliberately not presented as zero scores."));
+      document.getElementById("gbV4Feedback").value=grade.feedback||"";
+      document.getElementById("gbV4ScoreSummary").textContent=
+        "Historical published "+grade.awarded+" / "+grade.total;
+      return;
+    }
+    if(currentTask?.legacyCompatibility&&grade?.gradeSchema==="legacy_scalar_v1"){
+      host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
+        "Original private historical draft: "+grade.awarded+" / "+grade.total+
+        ". Its rubric breakdown was not recorded. Enter and review a fresh breakdown before saving any replacement draft."));
+    }
     (currentTask?.rubric||[]).forEach((criterion,index)=>{
       const saved=prior[index]||{};
       const row=make("div","rounded-xl border border-slate-200 bg-slate-50 p-3");
@@ -462,26 +532,43 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4EvidenceType").textContent="Verified "+sourceLabel(currentTask.submissionSource);
     githubVerification=null;dialog.showModal();setBusy(true);
     try{
+      const historicalStudio=currentTask.legacyCompatibility&&currentTask.submissionSource==="studio";
       const evidenceApi=sourceApi(currentTask.submissionSource,{
         studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
       });
       const evidenceDetails=currentTask.submissionSource==="github"?
         {taskId:currentTask.taskId,evidenceId:row.recordId}:
         {taskId:currentTask.taskId,submissionId:row.recordId};
-      const result=await Promise.all([
-        scoped(evidenceApi,"inspect",evidenceDetails),
-        scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:row.studentUid}),
-        scoped(assessmentApi,"get_private",{taskId:currentTask.taskId})
-      ]);
-      currentSnapshot=result[0];currentGrade=result[1].grade;currentPrivateConfig=result[2]||{};
+      const result=historicalStudio?
+        await scoped(migrationApi,"legacy_review_inspect",{
+          legacyAssessmentId:currentTask.legacyAssessmentId,legacySubmissionId:row.recordId
+        }):
+        null;
+      if(historicalStudio){
+        currentSnapshot=result.snapshot;
+        currentGrade=result.grade;
+        currentPrivateConfig={checkingInstructions:result.checkingInstructions||""};
+        currentTask={...currentTask,...result.task};
+      }else{
+        const native=await Promise.all([
+          scoped(evidenceApi,"inspect",evidenceDetails),
+          scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:row.studentUid}),
+          scoped(assessmentApi,"get_private",{taskId:currentTask.taskId})
+        ]);
+        currentSnapshot=native[0];currentGrade=native[1].grade;currentPrivateConfig=native[2]||{};
+      }
       currentDraftSource=currentGrade?.draftSource||"teacher";
       if(currentTask.submissionSource==="studio"&&!currentSnapshot?.automaticVerification){
         document.getElementById("gbV4ReviewStatus").textContent=
           "Frozen Studio evidence loaded. Adminerva is compiling/verifying this exact version…";
         try{
-          const verified=await scoped(verificationApi,"verify_school",{
-            taskId:currentTask.taskId,submissionId:row.recordId,version:Number(currentSnapshot.version)
-          });
+          const verified=historicalStudio?
+            await scoped(verificationApi,"verify_legacy",{
+              submissionId:row.recordId,revision:Number(currentSnapshot.version)
+            }):
+            await scoped(verificationApi,"verify_school",{
+              taskId:currentTask.taskId,submissionId:row.recordId,version:Number(currentSnapshot.version)
+            });
           currentSnapshot={...currentSnapshot,automaticVerification:verified?.verification||null};
         }catch(error){
           currentSnapshot={...currentSnapshot,automaticVerification:{
@@ -524,9 +611,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const reopened=row.status==="reopened";
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=published?
-        (currentGrade?.gradeSchema==="legacy_scalar_v1"?
-          "This imported historical grade preserves the original total but has no saved rubric breakdown. Reconstruct the breakdown without changing the score before any correction.":
-          "This grade is published. Use the correction workflow for changes."):
+        (historicalStudio?
+          "Original published Studio grade preserved. Corrections still require the audited historical correction workflow.":
+          currentGrade?.gradeSchema==="legacy_scalar_v1"?
+            "This imported historical grade preserves the original total but has no saved rubric breakdown. Reconstruct the breakdown without changing the score before any correction.":
+            "This grade is published. Use the correction workflow for changes."):
         reopened?"A revision is already requested. Wait for the student to resubmit.":
         currentTask.submissionSource==="github"&&!["approved","reviewed"].includes(currentSnapshot.status)?
           "Verify and approve the exact frozen GitHub evidence before starting a grade draft.":
@@ -626,13 +715,37 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   document.getElementById("gbV4Close").addEventListener("click",()=>{if(!busy)dialog.close();});
   dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
   bulkPublish?.addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||currentTask.legacyCompatibility||bulkPublish.dataset.ready!=="true")return;
+    if(busy||!currentTask||bulkPublish.dataset.ready!=="true")return;
     const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
     if(!count)return;
     if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? This confirmation is the teacher approval step. Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
     try{
       setBusy(true,"Publishing all valid drafts…");
-      const result=await scoped(gradeApi,"publish_task_drafts",{taskId:currentTask.taskId});
+      let result;
+      if(currentTask.legacyCompatibility){
+        const totals={published:0,failed:0,zeroSkipped:0};
+        let cursor="",pages=0;
+        for(;;){
+          const part=await scoped(migrationApi,"legacy_review_bulk_publish",{
+            legacyAssessmentId:currentTask.legacyAssessmentId,
+            ...(cursor?{cursor}:{})
+          });
+          totals.published+=Number(part.published||0);
+          totals.failed+=Number(part.failed||0);
+          totals.zeroSkipped+=Number(part.zeroSkipped||0);
+          pages++;
+          if(!part.hasMore)break;
+          if(!part.nextCursor||part.nextCursor===cursor||pages>25)
+            throw Error("Bulk publication paused because the next page could not be verified. Already published grades are preserved. Refresh to continue.");
+          cursor=part.nextCursor;
+          status.textContent="Historical bulk publication: "+totals.published+
+            " published, "+totals.zeroSkipped+" zero-score drafts held, "+
+            totals.failed+" failed or changed. Preparing next class page…";
+        }
+        result=totals;
+      }else{
+        result=await scoped(gradeApi,"publish_task_drafts",{taskId:currentTask.taskId});
+      }
       const summary="Published "+result.published+" draft"+(result.published===1?"":"s")+
         (result.zeroSkipped?" · "+result.zeroSkipped+" zero-score draft"+(result.zeroSkipped===1?" remains":"s remain")+" for attention":"")+
         (result.failed?" · "+result.failed+" draft"+(result.failed===1?" was":"s were")+" skipped after validation":"")+".";
@@ -650,15 +763,32 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     try{
       const criteria=collectCriteria();
       setBusy(true,"Saving grade draft…");
-      await scoped(gradeApi,"save_draft",{
-        taskId:currentTask.taskId,studentUid:currentRow.studentUid,
-        submissionVersion:currentSnapshot.version,criteria,
-        feedback:document.getElementById("gbV4Feedback").value.trim(),
-        draftSource:currentDraftSource
-      });
+      if(currentTask.legacyCompatibility){
+        await scoped(migrationApi,"legacy_review_save_draft",{
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          legacySubmissionId:currentRow.recordId,criteria,
+          feedback:document.getElementById("gbV4Feedback").value.trim(),
+          draftSource:currentDraftSource
+        });
+      }else{
+        await scoped(gradeApi,"save_draft",{
+          taskId:currentTask.taskId,studentUid:currentRow.studentUid,
+          submissionVersion:currentSnapshot.version,criteria,
+          feedback:document.getElementById("gbV4Feedback").value.trim(),
+          draftSource:currentDraftSource
+        });
+      }
       saved=true;
-      const refreshed=await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
-      currentGrade=refreshed.grade;renderRubric(currentGrade);
+      const refreshed=currentTask.legacyCompatibility?
+        await scoped(migrationApi,"legacy_review_inspect",{
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          legacySubmissionId:currentRow.recordId
+        }):
+        await scoped(gradeApi,"get_draft",{
+          taskId:currentTask.taskId,studentUid:currentRow.studentUid
+        });
+      currentGrade=refreshed.grade;
+      renderRubric(currentGrade);
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=
         "Draft saved against frozen submission version "+currentSnapshot.version+".";
@@ -672,7 +802,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(!confirm("Publish this reviewed grade to the student? The current V4 workflow does not allow ordinary edits after publication."))return;
     try{
       setBusy(true,"Verifying current submission and publishing grade…");
-      const result=await scoped(gradeApi,"publish",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
+      const result=currentTask.legacyCompatibility?
+        await scoped(migrationApi,"legacy_review_publish",{
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          legacySubmissionId:currentRow.recordId,
+          expectedGradeRevision:currentGrade?.revision
+        }):
+        await scoped(gradeApi,"publish",{
+          taskId:currentTask.taskId,studentUid:currentRow.studentUid
+        });
       document.getElementById("gbV4ReviewStatus").textContent="Published "+result.awarded+" / "+result.total+" to the student.";
       currentGrade={...(currentGrade||{}),status:"published"};
       currentRow={...currentRow,status:"reviewed"};
@@ -767,6 +905,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   })());
   document.getElementById("gbV4RequestRevision").addEventListener("click",()=>void (async()=>{
     if(busy||reviewNeedsRefresh||!currentTask||!currentRow)return;
+    if(currentTask.legacyCompatibility){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "Historical revisions remain managed by the original Studio submission workflow. Existing source and grades are unchanged.";
+      return;
+    }
     const reason=document.getElementById("gbV4RevisionReason").value.trim();
     if(reason.length<12){
       document.getElementById("gbV4ReviewStatus").textContent="Explain the revision request in at least 12 characters.";return;
