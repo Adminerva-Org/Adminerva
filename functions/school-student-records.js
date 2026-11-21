@@ -91,15 +91,16 @@ function createSchoolStudentRecordsService({db}){
 
     if(input.action==="search_students"){
       const query=String(input.query||"").trim().toLocaleLowerCase("en");
-      const snap=await db.collection(root+"people").orderBy("displayName").limit(251).get();
+      const snap=await db.collection(root+"people").where("kind","==","student").limit(251).get();
       if(snap.size===251)deny("resource-exhausted","Student directory search requires pagination.");
       const rows=snap.docs.filter(doc=>{
         const row=doc.data();
-        if(row.schoolId!==ctx.schoolId||row.kind!=="student")return false;
+        if(row.schoolId!==ctx.schoolId)return false;
         if(!query)return true;
         return [row.displayName,row.studentNumber].some(value=>
           String(value||"").toLocaleLowerCase("en").includes(query));
-      }).slice(0,80).map(doc=>({
+      }).sort((a,b)=>String(a.data().displayName||"").localeCompare(String(b.data().displayName||"")))
+        .slice(0,80).map(doc=>({
         personId:doc.id,displayName:doc.data().displayName||"Student",
         studentNumber:doc.data().studentNumber||"",status:doc.data().status||"active",
         revision:Number(doc.data().revision)||1
@@ -136,15 +137,23 @@ function createSchoolStudentRecordsService({db}){
         db.doc(root+"class_record_finalizations/"+id(offeringId,"Course offering ID",330)).get()));
       const released=new Map(finalizations.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId)
         .map(doc=>[doc.id,Number(doc.data().releasedRevision)||0]));
-      const releasedGrades=gradeRows.filter(doc=>
-        released.get(doc.data().offeringId)===Number(doc.data().finalizationRevision))
-        .map(doc=>({
-          offeringId:doc.data().offeringId,yearId:doc.data().yearId,termId:doc.data().termId,
-          subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,
-          initialGrade:Number(doc.data().initialGrade),periodGrade:Number(doc.data().periodGrade),
-          finalGrade:Number(doc.data().finalGrade),revision:Number(doc.data().finalizationRevision)||1,
-          releasedRevision:released.get(doc.data().offeringId),finalizedAt:millis(doc.data().finalizedAt)
-        }));
+      const releasedGradeDocs=await Promise.all(gradeRows.map(async doc=>{
+        const releasedRevision=released.get(doc.data().offeringId)||0;
+        if(releasedRevision<1)return null;
+        if(Number(doc.data().finalizationRevision)===releasedRevision)return doc;
+        const historical=await doc.ref.collection("revisions").doc(String(releasedRevision)).get();
+        if(!historical.exists||historical.data().schoolId!==ctx.schoolId||
+           historical.data().personId!==personId||historical.data().offeringId!==doc.data().offeringId||
+           Number(historical.data().finalizationRevision)!==releasedRevision)return null;
+        return historical;
+      }));
+      const releasedGrades=releasedGradeDocs.filter(Boolean).map(doc=>({
+        offeringId:doc.data().offeringId,yearId:doc.data().yearId,termId:doc.data().termId,
+        subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,
+        initialGrade:Number(doc.data().initialGrade),periodGrade:Number(doc.data().periodGrade),
+        finalGrade:Number(doc.data().finalGrade),revision:Number(doc.data().finalizationRevision)||1,
+        releasedRevision:released.get(doc.data().offeringId),finalizedAt:millis(doc.data().finalizedAt)
+      }));
 
       const labelRefs=new Set();
       for(const row of registrations){
@@ -243,6 +252,8 @@ function createSchoolStudentRecordsService({db}){
           deny("failed-precondition","The student identity or guardian snapshot changed. Refresh before adoption.");
         if(contact.exists&&contact.data().schoolId!==ctx.schoolId)
           deny("failed-precondition","Guardian contact identity collision requires review.");
+        if(contact.exists&&contact.data().status!=="active")
+          deny("failed-precondition","The matching guardian contact is inactive. Review it before adoption.");
         if(relationship.exists&&relationship.data().schoolId!==ctx.schoolId)
           deny("failed-precondition","Guardian relationship identity collision requires review.");
         const now=FieldValue.serverTimestamp();
@@ -414,17 +425,17 @@ function createSchoolStudentRecordsService({db}){
 
     if(input.action==="create_document_request"){
       const personId=id(input.personId,"Person ID"),a=await student(personId);
-      if(a.data.status!=="active")deny("failed-precondition","Document requests require an active student record.");
+      if(!["active","archived"].includes(a.data.status))
+        deny("failed-precondition","Document requests require a retained active or archived student record.");
       const type=String(input.type||"").trim();
       if(!REQUEST_TYPES.has(type))deny("invalid-argument","Choose a supported student record request type.");
       const purpose=required(input.purpose,"Request purpose",300),notes=optional(input.notes,500)||"",
-        requestId="req_"+key(personId,type,Date.now(),ctx.uid).slice(0,40),
-        requestRef=db.doc(root+"student_document_requests/"+requestId);
+        requestRef=db.collection(root+"student_document_requests").doc(),requestId=requestRef.id;
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
         const currentStudent=await tx.get(a.ref);
         if(!currentStudent.exists||currentStudent.data().schoolId!==ctx.schoolId||
-           currentStudent.data().status!=="active")
+           !["active","archived"].includes(currentStudent.data().status))
           deny("failed-precondition","The student record changed. Refresh before creating the request.");
         const now=FieldValue.serverTimestamp();
         tx.create(requestRef,{schoolId:ctx.schoolId,personId,type,status:"requested",purpose,notes,
