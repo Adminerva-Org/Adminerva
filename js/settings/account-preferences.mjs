@@ -10,24 +10,6 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 const root=document.querySelector("[data-account-preferences]");
 if(root){
   const staff=root.dataset.accountPreferences==="staff";
-  const pushChoices=staff
-    ?[['submission','Student submissions & evidence'],['grading','Grading alerts'],['issue','Reports & replies'],['release','Website updates']]
-    :[['assessment','New assessments'],['submission','Submission updates / action required'],['grade','Published or corrected grades'],['issue','Reports & replies'],['release','Website updates']];
-  const pushMarkup=`
-    <fieldset class="mt-6" data-push-settings>
-      <legend class="font-bold">Device notifications</legend>
-      <p class="av-form-hint">Push alerts are on by default. Enable this device once to receive them.</p>
-      <label class="av-preference-option mt-3"><input type="checkbox" data-push-master checked> ${staff?'Push important teaching alerts to my enabled devices':'Push important student alerts to my enabled devices'}</label>
-      <div class="av-preference-options mt-2" data-push-options>
-        ${pushChoices.map(([value,label])=>`<label class="av-preference-option"><input type="checkbox" value="${value}" checked> ${label}</label>`).join('')}
-      </div>
-      <div class="flex flex-wrap gap-2 mt-3">
-        <button type="button" data-enable-push class="av-primary-button">Enable notifications on this device</button>
-        <button type="button" data-test-push class="hidden border rounded px-4 py-2 text-sm font-bold text-blue-700">Send test ping</button>
-        <button type="button" data-disable-push class="hidden border rounded px-4 py-2 text-sm font-bold">Disable on this device</button>
-      </div>
-      <p data-push-status role="status" class="av-badge mt-3"></p>
-    </fieldset>`;
   root.innerHTML=\`
     <div class="av-settings-section-head">
       <div>
@@ -113,18 +95,39 @@ if(root){
         <button type="submit" class="av-primary-button">Save preferences</button>
       </div>
     </form>\`;
-  const categories=staff
-    ?[["submission","Student submissions"],["grading","Grading alerts"],["issue","Reports & replies"],["release","Website updates"]]
-    :[["assessment","Assignments"],["submission","Submission updates"],["grade","Published grades"],["issue","Reports & replies"],["release","Website updates"]];
-  const options=root.querySelector("[data-notification-options]");
-  for(const [value,title]of categories){const label=document.createElement("label"),input=document.createElement("input");label.className="av-preference-option";input.type="checkbox";input.value=value;input.name="notificationCategory";label.append(input,document.createTextNode(title));options.append(label);}
+  let settingsRole={role:staff?"staff":"student",canTeach:false};
+  function supportedChoices(){
+    if(!staff)return [["assessment","Assignments"],["submission","Submission updates"],["grade","Published grades"],["issue","Reports & replies"],["release","Website updates"]];
+    if(settingsRole.canTeach)return [["submission","Student submissions"],["grading","Grading alerts"],["issue","Reports & replies"],["release","Website updates"]];
+    return [["issue","Reports & replies"],["release","Website updates"]];
+  }
+  const options=root.querySelector("[data-notification-options]"),pushHost=root.querySelector("[data-push-options]");
   const pushMaster=root.querySelector("[data-push-master]");
-  const pushOptions=[...root.querySelectorAll("[data-push-options] input")];
+  let pushOptions=[];
+  function renderNotificationChoices(){
+    const choices=supportedChoices();
+    options.replaceChildren();pushHost.replaceChildren();
+    for(const [value,title] of choices){
+      const inboxLabel=document.createElement("label"),inbox=document.createElement("input");
+      inboxLabel.className="av-preference-option";inbox.type="checkbox";inbox.value=value;inbox.name="notificationCategory";
+      inbox.checked=!muted.has(value);inboxLabel.append(inbox,document.createTextNode(title));options.append(inboxLabel);
+      const pushLabel=document.createElement("label"),push=document.createElement("input");
+      pushLabel.className="av-preference-option";push.type="checkbox";push.value=value;push.checked=true;
+      pushLabel.append(push,document.createTextNode(title));pushHost.append(pushLabel);
+    }
+    pushOptions=[...pushHost.querySelectorAll("input")];
+  }
   const enablePush=root.querySelector("[data-enable-push]");
   const testPush=root.querySelector("[data-test-push]");
   const disablePush=root.querySelector("[data-disable-push]");
   const pushStatus=root.querySelector("[data-push-status]");
   let owner="",muted=new Set(),authVersion=0,savingPreferences=false,pushTurn=0;
+  renderNotificationChoices();
+  document.addEventListener("adminerva:settings-role-context",event=>{
+    settingsRole={...settingsRole,...(event.detail||{})};
+    renderNotificationChoices();
+    if(owner)void refreshPush(authVersion);
+  });
 
   function setPushBusy(value){
     if(enablePush)enablePush.disabled=value;
