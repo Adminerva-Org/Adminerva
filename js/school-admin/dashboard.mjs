@@ -9,6 +9,7 @@ const profileApi=httpsCallable(functions,"schoolProfile");
 const academicsApi=httpsCallable(functions,"schoolAcademics");
 const schedulesApi=httpsCallable(functions,"schoolSchedules");
 const classRecordApi=httpsCallable(functions,"schoolClassRecordAdmin");
+const gradingPolicyApi=httpsCallable(functions,"schoolClassRecord");
 const supportApi=httpsCallable(functions,"schoolSupport");
 const status=get("adminOverviewStatus"),attentionList=get("adminAttentionList"),recordList=get("adminClassRecordList");
 const refresh=get("adminRefresh"),attentionFilter=get("adminAttentionFilter"),recordFilter=get("adminRecordFilter"),recordSearch=get("adminRecordSearch");
@@ -40,7 +41,7 @@ function applyEnrollmentRoute(scope){
 function renderRecommendation({final=false}={}){
   const title=get("adminNextActionTitle"),detail=get("adminNextActionDetail"),link=get("adminNextActionLink"),panel=get("adminNextAction");
   if(!title||!detail||!link||!panel)return;
-  const sources=[model.profile,model.academics,model.overview,model.reconciliation,model.classes,model.schedules,model.records,model.support],
+  const sources=[model.profile,model.academics,model.overview,model.reconciliation,model.classes,model.schedules,model.grading,model.records,model.support],
     complete=sources.every(value=>value!==undefined);
   if(!final&&!complete){
     title.textContent="Checking school operations…";
@@ -113,6 +114,11 @@ function renderRecommendation({final=false}={}){
     title:"Complete student enrollment",
     detail:"People records exist but no enrollment relationships are loaded. Use the enrollment workflow available to this school.",
     href:enrollmentHref,label:"Open enrollment",tone:"blue"
+  };
+  else if(model.grading!==null&&model.grading!==undefined&&!(model.grading.schemes||[]).length)action={
+    title:"Configure a grading policy",
+    detail:"No active school grading policy is available yet. Define the category weights, transmutation rule and applicability before teachers finalize Class Records.",
+    href:"school-grading-schemes.html",label:"Configure grading policy",tone:"blue"
   };
   else if(open>0)action={
     title:open+" open support report"+(open===1?"":"s")+" remain",
@@ -236,7 +242,7 @@ function reset(){
   model={};attentionLimit=10;recordLimit=20;
   for(const id of ["adminPeopleCount","adminAttentionCount","adminClassRecordCount","adminReportCount","adminSupportOpen","adminSupportCritical","adminSupportWaiting","adminEnrollmentCount","adminAssignmentCount","adminInvitationCount"])set(id,"—");
   set("adminIntegrityMeta","Not checked");set("adminClassRecordMeta","Not checked");set("adminReportMeta","Not checked");
-  for(const id of ["adminWorkflowProfile","adminWorkflowAcademics","adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
+  for(const id of ["adminWorkflowProfile","adminWorkflowAcademics","adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowGrading","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
   set("adminAttentionCoverage","");set("adminRecordCoverage","");get("adminAttentionMore").hidden=true;get("adminRecordMore").hidden=true;
   message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");message(get("adminActivityList"),"Waiting for verified school activity…");renderRecommendation();
 }
@@ -270,6 +276,10 @@ function renderSource(name,data){
     set("adminAttentionCount",count(data?.counts?.total));
     set("adminIntegrityMeta",data?count(data.counts?.integrity)+" integrity · "+count(data.counts?.attention)+" attention":"Relationship checks unavailable");
     renderAttention();
+  }else if(name==="grading"){
+    model.grading=data;
+    const node=get("adminWorkflowGrading"),total=Array.isArray(data?.schemes)?data.schemes.length:null;
+    if(node){node.textContent=data===null?"Unavailable":total?total+" active polic"+(total===1?"y":"ies"):"Not configured";node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(data===null?"bg-amber-100 text-amber-900":total?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");}
   }else if(name==="records"){
     model.records=Array.isArray(data?.records)?data.records:null;
     set("adminClassRecordCount",model.records?count(model.records.length):"—");
@@ -295,6 +305,7 @@ async function loadDashboard(){
     ["relationships","Relationship checks",peopleApi,"reconcile_directory"],
     ["classes","Active classes",academicsApi,"faculty_workload"],
     ["schedules","Official schedules",schedulesApi,"admin_overview"],
+    ["grading","Grading policies",gradingPolicyApi,"list_schemes"],
     ["records","Class Records",classRecordApi,"overview"],
     ["support","Support reports",supportApi,"overview"]
   ];
@@ -306,7 +317,7 @@ async function loadDashboard(){
   }));
   if(!current())return;
   refresh.disabled=false;set("adminLastChecked","Checked "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
-  status.textContent=failed.length?"Unavailable: "+failed.join(", ")+". Other results remain usable.":"All eight school operation sources loaded.";
+  status.textContent=failed.length?"Unavailable: "+failed.join(", ")+". Other results remain usable.":"All nine school operation sources loaded.";
   renderRecommendation({final:true});
 }
 refresh.addEventListener("click",()=>{if(picker.scope.current?.roles.includes("school_admin"))void loadDashboard();else void picker.load().catch(error=>{status.textContent=error?.message||"School access unavailable.";});});
