@@ -114,7 +114,10 @@ function renderClasses(rows){
     const r=make("tr","align-top hover:bg-slate-50");
     const title=make("td","px-3 py-3");title.append(make("strong","block text-slate-900",classLabel(row)),make("span","block text-xs text-slate-500 mt-1",row.programName||""));
     const period=make("td","px-3 py-3 text-slate-600", [row.termName,row.yearName].filter(Boolean).join(" · "));
-    const names=(row.teacherUids||[]).map(uid=>teachers.get(uid)?.name||("Teacher "+uid.slice(0,8)));
+    const names=(row.teacherUids||[]).map(uid=>{
+      const name=teachers.get(uid)?.name||("Teacher "+uid.slice(0,8));
+      return name+(uid===row.primaryTeacherUid?" (Primary)":" (Co-teacher)");
+    });
     const staff=make("td","px-3 py-3",names.length?names.join(", "):"Unassigned");if(!names.length)staff.className+=" font-bold text-amber-700";
     const rosterLabels={section:"Official section",selective:"Selective",legacy:"Legacy / review"};
     const roster=make("td","px-3 py-3 font-bold",rosterLabels[row.rosterMode]||"Legacy / review");
@@ -122,8 +125,12 @@ function renderClasses(rows){
     const meetings=scheduleFor(row)?.meetings||[];
     const schedule=make("td","px-3 py-3",meetings.length?meetings.length+" meeting"+(meetings.length===1?"":"s"):"Unscheduled");
     schedule.className+=" "+(meetings.length?"text-violet-700 font-bold":"text-slate-500");
-    const status=make("td","px-3 py-3",row.invalidGrantCount?row.invalidGrantCount+" assignment issue"+(row.invalidGrantCount===1?"":"s"):"Ready");
-    if(row.invalidGrantCount)status.className+=" text-rose-700 font-bold";else status.className+=" text-emerald-700";
+    const statusText=row.invalidGrantCount?row.invalidGrantCount+" assignment issue"+(row.invalidGrantCount===1?"":"s"):
+      row.primaryNeedsReview?"Primary teacher needs review":"Ready";
+    const status=make("td","px-3 py-3",statusText);
+    if(row.invalidGrantCount)status.className+=" text-rose-700 font-bold";
+    else if(row.primaryNeedsReview)status.className+=" text-amber-700 font-bold";
+    else status.className+=" text-emerald-700";
     const action=make("td","px-3 py-3 text-right");action.append(button("Manage",()=>void openClass(row.offeringId),"bg-blue-700 text-white"));
     r.append(title,period,staff,roster,schedule,status,action);body.append(r);
   }
@@ -145,7 +152,8 @@ function renderTeachers(rows){
     if(!item.classes.length)list.append(make("p","text-sm text-slate-500","No active classes in the selected period."));
     for(const row of item.classes.slice(0,8)){
       const link=make("button","block w-full text-left rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm","");link.type="button";
-      link.append(make("strong","block",classLabel(row)),make("span","block text-xs text-slate-500",classMeta(row)));link.addEventListener("click",()=>void openClass(row.offeringId));list.append(link);
+      const role=row.primaryTeacherUid===item.teacher.uid?"Primary Teacher":"Co-teacher";
+      link.append(make("strong","block",classLabel(row)),make("span","block text-xs text-slate-500",role+" · "+classMeta(row)));link.addEventListener("click",()=>void openClass(row.offeringId));list.append(link);
     }
     card.append(list);grid.append(card);
   }host.append(grid);
@@ -160,7 +168,10 @@ function renderSections(rows){
     const list=make("div","mt-3 divide-y divide-slate-100");
     for(const row of entry.classes.sort((a,b)=>String(a.subjectName).localeCompare(String(b.subjectName)))){
       const line=make("button","w-full py-2 text-left text-sm","");line.type="button";
-      const names=(row.teacherUids||[]).map(uid=>teachers.get(uid)?.name||uid.slice(0,8)).join(", ")||"Unassigned";
+      const names=(row.teacherUids||[]).map(uid=>{
+        const name=teachers.get(uid)?.name||uid.slice(0,8);
+        return name+(uid===row.primaryTeacherUid?" · Primary":" · Co-teacher");
+      }).join(", ")||"Unassigned";
       line.append(make("strong","block",row.subjectName||row.subjectId),make("span","block text-xs "+(names==="Unassigned"?"text-amber-700 font-bold":"text-slate-500"),names+" · "+(row.termName||"")));
       line.addEventListener("click",()=>void openClass(row.offeringId));list.append(line);
     }card.append(list);grid.append(card);
@@ -176,7 +187,10 @@ function renderSchedules(rows){
     text.append(make("h3","font-extrabold",classLabel(row)),make("p","text-xs text-slate-500 mt-1",classMeta(row)));
     const manage=button(meetings.length?"Edit schedule":"Schedule class",()=>void openClass(row.offeringId),"bg-violet-700 text-white");
     top.append(text,manage);card.append(top);
-    const staff=(row.teacherUids||[]).map(uid=>teachers.get(uid)?.name||("Teacher "+uid.slice(0,8))).join(", ")||"Unassigned teacher";
+    const staff=(row.teacherUids||[]).map(uid=>{
+      const name=teachers.get(uid)?.name||("Teacher "+uid.slice(0,8));
+      return name+(uid===row.primaryTeacherUid?" · Primary":" · Co-teacher");
+    }).join(", ")||"Unassigned teacher";
     card.append(make("p","text-xs text-slate-600 mt-3",staff));
     if(!meetings.length)card.append(make("p","mt-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-500","No official meeting times."));
     else{
@@ -199,7 +213,10 @@ function renderTeacherSelectors(){
     handoverTo.add(new Option(row.name,row.uid));
   }
   const from=el("csHandoverFrom");from.replaceChildren(new Option("Current teacher…",""));
-  for(const row of (roster?.teachers||[]).filter(row=>row.status==="active"))from.add(new Option(row.name,row.teacherUid));
+  for(const row of (roster?.teachers||[]).filter(row=>row.status==="active"))
+    from.add(new Option(row.name+(row.role==="primary"?" · Primary":" · Co-teacher"),row.teacherUid));
+  if(roster?.primaryTeacherUid&&[...from.options].some(option=>option.value===roster.primaryTeacherUid))
+    from.value=roster.primaryTeacherUid;
   el("csAssignForm").hidden=assign.options.length<=1;
   el("csHandoverForm").hidden=from.options.length<=1||handoverTo.options.length<=1;
 }
@@ -280,12 +297,22 @@ function renderDetail(){
   const item=selected();if(!item){el("csDetail").hidden=true;el("csDetailEmpty").hidden=false;return;}
   el("csDetailEmpty").hidden=true;el("csDetail").hidden=false;el("csDetailTitle").textContent=classLabel(item);el("csDetailMeta").textContent=classMeta(item);
   const staff=el("csStaffList");staff.replaceChildren();const active=(roster?.teachers||[]).filter(row=>row.status==="active");
-  el("csStaffCount").textContent=active.length+" active";
+  el("csStaffCount").textContent=active.length+" active"+(roster?.primaryTeacherUid?" · Primary set":"");
   if(!active.length)staff.append(empty("No teacher is assigned to this class."));
+  if(roster?.primaryNeedsReview&&active.length){
+    staff.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-900",
+      "This class has multiple active teachers but no valid explicit Primary Teacher. Choose Make primary before relying on class-lead ownership."));
+  }
   for(const row of active){
-    const card=make("div","flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3");
-    const text=make("div","min-w-0");text.append(make("strong","block truncate",row.name),make("span","block text-xs text-slate-500","Teaching assignment"));
-    const end=button("Remove",()=>void endAssignment(row),"border border-rose-200 bg-white text-rose-700");card.append(text,end);staff.append(card);
+    const card=make("div","flex items-center justify-between gap-3 rounded-lg border p-3 "+(row.role==="primary"?"border-emerald-200 bg-emerald-50/50":"border-slate-200"));
+    const text=make("div","min-w-0");
+    text.append(make("strong","block truncate",row.name),
+      make("span","block text-xs mt-1 "+(row.role==="primary"?"font-bold text-emerald-800":"text-slate-500"),
+        row.role==="primary"?"Primary Teacher":"Co-teacher · shared class access; assessment reviews remain explicitly assigned"));
+    const actions=make("div","flex flex-wrap justify-end gap-2");
+    if(row.role!=="primary")actions.append(button("Make primary",()=>void setPrimaryTeacher(row),"border border-emerald-200 bg-white text-emerald-700"));
+    actions.append(button("Remove",()=>void endAssignment(row),"border border-rose-200 bg-white text-rose-700"));
+    card.append(text,actions);staff.append(card);
   }
   const allStudents=roster?.students||[],students=allStudents.filter(row=>row.status==="active"),
     endedStudents=allStudents.filter(row=>row.status==="ended"),rosterHost=el("csRoster"),
@@ -371,6 +398,22 @@ async function mutate(action,details,success){
     await loadOverview({preserveSelection:true,force:true});
     say(success);
   }catch(error){say(error?.message||"The class assignment could not be changed.",true);}
+  finally{setBusy(false);}
+}
+async function setPrimaryTeacher(row){
+  const item=selected();if(!item||busy||row.role==="primary")return;
+  const reason=prompt("Reason for making "+row.name+" the Primary Teacher (at least 12 characters):",
+    "Primary teaching responsibility updated");
+  if(reason===null)return;if(reason.trim().length<12){say("Explain the primary-teacher change in at least 12 characters.",true);return;}
+  setBusy(true);say("Updating class primary teacher…");
+  try{
+    const result=await scoped("set_primary_teacher",{
+      offeringId:item.offeringId,teacherUid:row.teacherUid,expectedRevision:Number(item.revision)||1,reason:reason.trim()
+    });
+    await loadOverview({preserveSelection:true,force:true});
+    say(result.alreadyCurrent?row.name+" is already the Primary Teacher.":
+      row.name+" is now the Primary Teacher. Existing assessment review ownership was not changed.");
+  }catch(error){say(error?.message||"The Primary Teacher could not be changed.",true);}
   finally{setBusy(false);}
 }
 async function endAssignment(row){
@@ -465,14 +508,32 @@ el("csAdviserRemove").addEventListener("click",()=>{
 });
 el("csAssignForm").addEventListener("submit",event=>{
   event.preventDefault();const teacherUid=el("csAssignTeacher").value;if(!teacherUid||!selectedId)return;
-  void mutate("assign_teacher",{teacherUid,offeringId:selectedId},"Teacher assigned. Their teaching load now includes this class.");
+  void (async()=>{
+    if(busy)return;setBusy(true);say("Adding teacher to class…");
+    try{
+      const result=await scoped("assign_teacher",{teacherUid,offeringId:selectedId});
+      await loadOverview({preserveSelection:true,force:true});
+      say(result.role==="primary"?"Teacher assigned as Primary Teacher. Their teaching load now includes this class.":
+        "Teacher added as Co-teacher. Their teaching load includes this class; existing assessment reviews were not reassigned.");
+    }catch(error){say(error?.message||"The teacher could not be added to this class.",true);}
+    finally{setBusy(false);}
+  })();
 });
 el("csHandoverForm").addEventListener("submit",event=>{
   event.preventDefault();const fromTeacherUid=el("csHandoverFrom").value,toTeacherUid=el("csHandoverTo").value,reason=el("csHandoverReason").value.trim();
   if(!fromTeacherUid||!toTeacherUid){say("Choose both the current and replacement teacher.",true);return;}
   if(fromTeacherUid===toTeacherUid){say("Choose a different replacement teacher.",true);return;}
   if(reason.length<12){say("Explain the teacher change in at least 12 characters.",true);return;}
-  void mutate("handover_offering",{offeringId:selectedId,fromTeacherUid,toTeacherUid,reason},"Teaching responsibility transferred with assessment review ownership.");
+  void (async()=>{
+    if(busy)return;setBusy(true);say("Handing over teaching responsibility…");
+    try{
+      const result=await scoped("handover_offering",{offeringId:selectedId,fromTeacherUid,toTeacherUid,reason});
+      await loadOverview({preserveSelection:true,force:true});
+      say("Teaching assignment handed over. "+result.assessmentCount+" assessment review"+(result.assessmentCount===1?"":"s")+
+        " transferred."+(result.primaryTransferred?" Primary Teacher leadership also moved to the replacement.":" Class primary leadership was unchanged."));
+    }catch(error){say(error?.message||"Teaching responsibility could not be handed over.",true);}
+    finally{setBusy(false);}
+  })();
 });
 for(const node of [el("csSearch"),el("csYearFilter"),el("csTermFilter")])node.addEventListener(node.tagName==="INPUT"?"input":"change",renderList);
 for(const node of document.querySelectorAll("[data-cs-view]"))node.addEventListener("click",()=>setView(node.dataset.csView));
