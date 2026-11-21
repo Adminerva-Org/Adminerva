@@ -224,6 +224,7 @@ Status definitions:
 | System Admin Operations Center | In development | Draft PR #194 contains the first-party observability/incident-management implementation. |
 | V4 verified-school / multi-school foundation | Foundation | PR #113 contains the broad V4 foundation; PR #186 staged selective main-first integration. These are not the roadmap anymore; their architectural invariants remain inputs to this document. |
 | Games / Practice modernization | Evolving | School-scoped progress, challenges, analytics and game UX have been developed through the recent Practice/Games PR series. |
+| Public editorial system / Opportunity Hunter | In development (mainline-based review PR); not merged/released/operational | Public and role homepage discovery components, Opportunity Hunter listing directory, Pulse archive, four editorial manifests, and review-only Codex automation runbook have been implemented. Source verification, expiry, published-only display, static access boundaries and PR-based publication are enforced. Schedules must still be configured in Codex; no school-private announcements or automated push delivery are included. |
 | Cloudflare edge services | Foundation / optional | Worker/R2/Queues/CheerpJ work exists. Firebase remains authoritative for school identity, academics, grades and evidence unless a separately approved change is made. |
 | Registrar full SIS lifecycle | Released; E2E verification pending | PR #238 merged to main at `e9b95b055852a7e8349d59f5fe44da77d0714699`. The production Firebase deployment completed successfully, including creation of `schoolStudentRecords` and update of `schoolEnrollment`; GitHub Pages successfully released the post-merge cache-bumped frontend from `3217fbd7402033e4297bc2ba7165b66f115310a5`. A narrow verified `registrar` school membership role is staff-bound and limited to Enrollment & Registration plus Student Records / 201 File unless another role is separately granted. Released scope includes admissions review already inside Enrollment, official registration/placement, withdrawal/transfer classification, progression workflows, canonical Student Records aggregation, guardian relationship/contact lifecycle, exact released Class Record result display and registrar document-request tracking. Authenticated school end-to-end testing is still required before calling the workflow operational. Actual transcript/report-card/certificate file generation, parent/guardian portal authority, richer records retention/release controls and Registrar reporting remain future work. |
 | Parent/Guardian services | Partial foundation released | PR #238 released canonical school-scoped guardian contacts and distinct student-to-guardian relationships, including primary-contact selection, lifecycle preservation, legacy primary-guardian snapshot adoption and enrollment seeding. People & Access no longer edits guardian relationships in the normal UI; Student Records is the relationship authority. Parent/Guardian account invitation/authentication, consent/authority rules, portal views and messaging remain future work. |
@@ -398,6 +399,8 @@ Future departments should join this same action-oriented model rather than addin
 - Preserve usable mobile layouts from 320 px upward.
 - Use meaningful empty, loading, stale, conflict and permission states.
 - Do not expose future placeholder modules as though they are already functional.
+- Public, guest, student, teacher, School Admin and System Admin entrypoints can reuse immersive illustrative activities and approved editorial cards without replacing canonical classroom/administration workflows. Scenes must not imply private user activity is publicly visible; respect reduced-motion and mobile accessibility.
+- The Opportunity Hunter may show source-checked public training, scholarship, competition, internship and career opportunities with checked eligibility and application deadlines where available. Use public-only sources, never student or school-private data. Keep provider links, verification and expiry visible.
 
 ## 9. Security, privacy and audit boundaries
 
@@ -425,6 +428,7 @@ Future departments should join this same action-oriented model rather than addin
    - operationally enabled.
 7. Do not describe a feature as live merely because its PR exists.
 8. Avoid broad release process expansion unless it materially reduces a real production risk.
+9. Codex Scheduled Tasks may prepare public editorial changes in four independent channels: daily experiences, daily release notes/announcements, daily Opportunity Hunter and Friday Pulse. New content is approved by review/merge of a PR, not an automatic rewrite of the live site. Public release claims still require confirmed shipped status; existing patch-history remains canonical. See `ops/public-editorial-automation.md` for the implementation contract.
 
 ## 11. Documents and planning governance
 

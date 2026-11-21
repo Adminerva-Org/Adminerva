@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Adminerva Pulse | Discover what's happening</title>
+<meta name="description" content="Read the approved Adminerva Pulse recap, platform announcements, and featured public experiences.">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/adminerva-favicon-32.png">
+<link rel="stylesheet" href="css/adminerva-ui.css?v=19642d96faa9">
+<link rel="stylesheet" href="css/public-shell.css?v=20261121-editorial2">
+<link rel="stylesheet" href="css/public-content.css?v=20261121-2">
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col">
+<div id="adminerva-public-nav" data-page="pulse"></div>
+<main class="av-home av-public-pulse flex-1" id="pulse-main">
+  <header class="av-opportunities-hero av-pulse-hero">
+    <div>
+      <p class="av-opportunities-kicker">THE ADMINERVA PULSE</p>
+      <h1>A place for what's new, what's next, and worth exploring.</h1>
+      <p>Discover the latest approved announcements, Friday highlights and hands-on public experiences from Adminerva.</p>
+      <div class="av-button-row mt-6"><a class="av-opportunities-explore" href="patch-notes.html">Verified release history ↗</a><a class="av-opportunities-explore" href="opportunities.html">Opportunity Hunter ↗</a></div>
+    </div>
+    <div class="av-opportunities-orbit" aria-hidden="true"><span>EXPLORE</span><span>NEWS</span><span>RECAP</span></div>
+  </header>
+  <p class="av-opportunities-info">Pulse only shows reviewed, public announcements and platform updates. School-private notices and student activity are never published here. Updates are prepared independently from official release notes.</p>
+  <section class="av-pulse-section" aria-labelledby="pulse-announcements-heading">
+    <div class="av-opportunities-heading">
+      <div><p class="av-opportunities-kicker">PLATFORM NEWS</p><h2 id="pulse-announcements-heading">Announcements</h2></div>
+      <a href="patch-notes.html" class="av-pulse-more">See published releases ↗</a>
+    </div>
+    <div id="pulse-announcements" class="av-pulse-list"></div>
+    <p class="av-pulse-empty" id="pulse-announcements-empty" role="status">Checking announcements…</p>
+  </section>
+  <section class="av-pulse-section" aria-labelledby="pulse-weekly-heading">
+    <div class="av-opportunities-heading"><div><p class="av-opportunities-kicker">EVERY FRIDAY</p><h2 id="pulse-weekly-heading">Weekly Adminerva Pulse</h2></div></div>
+    <div id="pulse-weekly-pulse" class="av-pulse-list"></div>
+    <p class="av-pulse-empty" id="pulse-weekly-pulse-empty" role="status">Checking weekly highlights…</p>
+  </section>
+  <section class="av-pulse-section" aria-labelledby="pulse-experiences-heading">
+    <div class="av-opportunities-heading"><div><p class="av-opportunities-kicker">TRY SOMETHING DIFFERENT</p><h2 id="pulse-experiences-heading">Featured discoveries</h2></div><a href="guest-home.html" class="av-pulse-more">Explore public tools ↗</a></div>
+    <div id="pulse-experiences" class="av-pulse-list"></div>
+    <p class="av-pulse-empty" id="pulse-experiences-empty" role="status">Finding discoveries…</p>
+  </section>
+</main>
+<script type="module" src="js/core/public-shell.mjs?v=20261121-editorial2"></script>
+<script defer src="js/core/release-footer.js?v=19642d96faa9"></script>
+<script src="js/core/adminerva-loader.js?v=19642d96faa9"></script>
+<script type="module" src="js/core/pulse-page.mjs?v=20261121-2"></script>
+</body>
+</html>

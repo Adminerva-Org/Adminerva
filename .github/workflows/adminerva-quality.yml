@@ -23,6 +23,9 @@ jobs:
       - name: Audit sitewide interactive controls
         continue-on-error: true
         run: node scripts/audit-interactive-controls.mjs
+      - name: Validate public editorial publishing content
+        run: node --test js/core/public-content.test.mjs
+
       - name: Test grading evidence and feedback regressions
         run: |
           node --test tests/google-docs-export.test.mjs

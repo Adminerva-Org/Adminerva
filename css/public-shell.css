@@ -22,7 +22,7 @@
 .av-public-shell__menu-panel a[aria-current="page"]{background:#164e63;color:#ecfeff}
 .av-public-shell :is(a,button,summary):focus-visible{outline:3px solid #67e8f9;outline-offset:2px}
 .av-public-content{width:min(1180px,100%);margin-inline:auto}
-@media(max-width:900px){
+@media(max-width:1180px){
   .av-public-shell__inner{grid-template-columns:minmax(0,1fr) auto;min-height:60px;padding:.45rem .7rem}
   .av-public-shell__links,.av-public-shell__actions{display:none}
   .av-public-shell__menu{display:block}
