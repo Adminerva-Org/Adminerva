@@ -467,6 +467,43 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
             deny("failed-precondition","The grading scheme section is unavailable or inactive.");
           if(section&&requestedApplicability.programId&&section.data().programId!==requestedApplicability.programId)
             deny("failed-precondition","The selected section belongs to another program/division.");
+
+          const [activeSchemes,activeOfferings]=await Promise.all([
+            tx.get(db.collection(prefix+"grading_schemes").where("status","==","active").limit(51)),
+            tx.get(db.collection(prefix+"course_offerings").where("status","==","active").limit(201))
+          ]);
+          if(activeSchemes.size===51)
+            deny("resource-exhausted","Active grading policies require pagination before overlap can be validated safely.");
+          if(activeOfferings.size===201)
+            deny("resource-exhausted","Active class offerings require pagination before grading-policy overlap can be validated safely.");
+          const termIds=[...new Set(activeOfferings.docs.filter(doc=>doc.data().schoolId===ctx.schoolId)
+            .map(doc=>doc.data().termId).filter(Boolean))];
+          const termDocs=await Promise.all(termIds.map(termId=>
+            tx.get(db.doc(prefix+"terms/"+checkId(String(termId),"Academic period ID",80)))));
+          const periodTypeByTerm=new Map(termDocs.map((doc,index)=>[
+            termIds[index],doc.exists&&doc.data().schoolId===ctx.schoolId?
+              String(doc.data().periodType||"term").trim().toLowerCase():"term"
+          ]));
+          const requestedSpecificity=schemeSpecificity(requestedApplicability);
+          const sameSpecificity=activeSchemes.docs.filter(doc=>{
+            const data=doc.data();
+            return doc.id!==schemeId&&data.schoolId===ctx.schoolId&&data.status==="active"&&
+              schemeSpecificity(data.applicability||{})===requestedSpecificity;
+          });
+          if(sameSpecificity.length){
+            for(const offering of activeOfferings.docs){
+              const data=offering.data();
+              if(data.schoolId!==ctx.schoolId)continue;
+              const periodType=periodTypeByTerm.get(data.termId)||"term";
+              if(!schemeMatchesOffering(requestedApplicability,data,periodType))continue;
+              const collision=sameSpecificity.find(other=>
+                schemeMatchesOffering(other.data().applicability||{},data,periodType));
+              if(collision)
+                deny("failed-precondition","This grading policy overlaps active policy “"+
+                  String(collision.data().name||collision.id).slice(0,120)+
+                  "” at the same specificity for an active class. Narrow one policy's applicability or archive the conflicting policy.");
+            }
+          }
           const revision=priorRevision+1;
           const values={schoolId:ctx.schoolId,name,description,status:"active",
             settings:storedSettings,applicability:requestedApplicability,
