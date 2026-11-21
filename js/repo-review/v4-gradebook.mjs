@@ -721,11 +721,31 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? This confirmation is the teacher approval step. Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
     try{
       setBusy(true,"Publishing all valid drafts…");
-      const result=currentTask.legacyCompatibility?
-        await scoped(migrationApi,"legacy_review_bulk_publish",{
-          legacyAssessmentId:currentTask.legacyAssessmentId
-        }):
-        await scoped(gradeApi,"publish_task_drafts",{taskId:currentTask.taskId});
+      let result;
+      if(currentTask.legacyCompatibility){
+        const totals={published:0,failed:0,zeroSkipped:0};
+        let cursor="",pages=0;
+        for(;;){
+          const part=await scoped(migrationApi,"legacy_review_bulk_publish",{
+            legacyAssessmentId:currentTask.legacyAssessmentId,
+            ...(cursor?{cursor}:{})
+          });
+          totals.published+=Number(part.published||0);
+          totals.failed+=Number(part.failed||0);
+          totals.zeroSkipped+=Number(part.zeroSkipped||0);
+          pages++;
+          if(!part.hasMore)break;
+          if(!part.nextCursor||part.nextCursor===cursor||pages>25)
+            throw Error("Bulk publication paused because the next page could not be verified. Already published grades are preserved. Refresh to continue.");
+          cursor=part.nextCursor;
+          status.textContent="Historical bulk publication: "+totals.published+
+            " published, "+totals.zeroSkipped+" zero-score drafts held, "+
+            totals.failed+" failed or changed. Preparing next class page…";
+        }
+        result=totals;
+      }else{
+        result=await scoped(gradeApi,"publish_task_drafts",{taskId:currentTask.taskId});
+      }
       const summary="Published "+result.published+" draft"+(result.published===1?"":"s")+
         (result.zeroSkipped?" · "+result.zeroSkipped+" zero-score draft"+(result.zeroSkipped===1?" remains":"s remain")+" for attention":"")+
         (result.failed?" · "+result.failed+" draft"+(result.failed===1?" was":"s were")+" skipped after validation":"")+".";
