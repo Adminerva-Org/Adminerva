@@ -7,6 +7,8 @@ const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const status=el("ac-status");
 let picker=null,busy=false,loading=false,catalogReady=false,currentStep=1,wizardInitialized=false,toastTimer=null;
 let years=[],programs=[],terms=[],subjects=[],sections=[],offerings=[];
+let allCatalog={academic_years:[],academic_programs:[],terms:[],subjects:[],sections:[]},
+  editingCatalog=null,lifecycleChange=null;
 const WIZARD=[
   {key:"years",title:"School year"},
   {key:"programs",title:"Division / program"},
@@ -94,7 +96,8 @@ function itemStartYear(item){
 function suggestedYear(){
   const now=new Date(),startMonth=7,endMonth=5;
   let startYear=now.getMonth()+1>=startMonth?now.getFullYear():now.getFullYear()-1;
-  const used=new Set(years.map(itemStartYear).filter(Number.isInteger));
+  const used=new Set((allCatalog.academic_years.length?allCatalog.academic_years:years)
+    .map(itemStartYear).filter(Number.isInteger));
   while(used.has(startYear))startYear++;
   return deriveYearRange(startYear,startMonth,endMonth);
 }
@@ -116,7 +119,24 @@ function fillSelect(select,items,{placeholder="Choose…",filter=()=>true,prefer
     available.length===1?available[0].id:"";
   select.value=next;
 }
-function renderList(host,items,meta){
+function catalogLabel(kind){
+  return {academic_years:"Academic year",academic_programs:"Program / division",terms:"Academic period",
+    subjects:"Subject",sections:"Section"}[kind]||"Academic record";
+}
+function catalogForm(kind){
+  return {
+    academic_years:el("ac-year-form"),academic_programs:el("ac-program-form"),
+    terms:el("ac-term-form"),subjects:el("ac-subject-form"),sections:el("ac-section-form")
+  }[kind]||null;
+}
+function ensureCancelEditButton(form){
+  let button=form?.querySelector("[data-cancel-catalog-edit]");
+  if(button)return button;
+  button=document.createElement("button");button.type="button";button.className="ac-btn";
+  button.dataset.cancelCatalogEdit="true";button.textContent="Cancel edit";button.hidden=true;
+  form?.append(button);button.addEventListener("click",cancelCatalogEdit);return button;
+}
+function renderList(host,items,meta,kind){
   host.replaceChildren();
   if(!items.length){
     const empty=document.createElement("p");empty.className="ac-muted py-2";empty.textContent="No records yet.";host.append(empty);return;
@@ -127,8 +147,23 @@ function renderList(host,items,meta){
     const name=document.createElement("strong");name.textContent=item.name||item.id;
     const detail=document.createElement("p");detail.className="ac-muted";detail.textContent=meta(item);
     left.append(name,detail);
-    const state=document.createElement("span");state.className="ac-muted";state.textContent=item.status||"active";
-    row.append(left,state);host.append(row);
+    const actions=document.createElement("div");actions.className="ac-row-actions";
+    const state=document.createElement("span");state.className="ac-state";
+    state.dataset.state=item.status||"active";state.textContent=item.status||"active";actions.append(state);
+    if(item.status==="active"){
+      const edit=document.createElement("button");edit.type="button";edit.className="ac-btn";
+      edit.textContent="Edit";edit.addEventListener("click",()=>beginCatalogEdit(kind,item));actions.append(edit);
+      const archive=document.createElement("button");archive.type="button";archive.className="ac-btn danger";
+      archive.textContent="Archive";archive.addEventListener("click",()=>openLifecycle({
+        type:"catalog",mode:"archive",kind,item
+      }));actions.append(archive);
+    }else if(item.status==="archived"){
+      const restore=document.createElement("button");restore.type="button";restore.className="ac-btn success";
+      restore.textContent="Restore";restore.addEventListener("click",()=>openLifecycle({
+        type:"catalog",mode:"restore",kind,item
+      }));actions.append(restore);
+    }
+    row.append(left,actions);host.append(row);
   }
 }
 function configuredCount(step){
