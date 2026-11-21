@@ -773,4 +773,4 @@ function createSchoolAssessmentService({db}){
   deny("invalid-argument","Unknown school assessment operation.");
  };
 }
-module.exports={createSchoolAssessmentService,timestamp};
+module.exports={createSchoolAssessmentService,timestamp,activeOfferingPeople};
