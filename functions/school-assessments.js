@@ -11,6 +11,7 @@ const {rowKey,checkId}=require("./school-academics.js");
 const {digestProject,digestSource}=require("./school-studio-projects.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 const {blueprintFingerprint,personalizationContent,PERSONALIZATION_MODE}=require("./teacher-blueprints.js");
+const {planPersonalizationForOfferings}=require("./assessment-personalization-planning.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function timestamp(value,label){
  if(typeof value!=="string"||!/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(value)||
@@ -126,6 +127,14 @@ function createSchoolAssessmentService({db}){
       deny("failed-precondition","Personalized assessments currently require Adminerva Studio submission.");
     let personalizedTask={enabled:false,mode:"standard"};
     if(personalization.enabled){
+      // A pool is reusable between independently scoped class deployments.
+      // Capacity is checked against the authoritative current class roster,
+      // not the teacher's original draft-stage target estimate.
+      const rosterPlan=await planPersonalizationForOfferings({
+        db,schoolId:ctx.schoolId,teacherUid:ctx.uid,offeringIds:[offeringId],
+        platformOverride:ctx.platformOverride
+      });
+      const requiredVariants=rosterPlan.requiredVariants;
       const fingerprint=blueprintFingerprint(original),
         poolRef=db.doc(prefix+"assessment_blueprint_private/"+blueprintId+"/pools/"+fingerprint),
         pool=await tx.get(poolRef),
@@ -134,12 +143,12 @@ function createSchoolAssessmentService({db}){
       if(!pool.exists||poolData.schoolId!==ctx.schoolId||poolData.ownerUid!==ctx.uid||
          poolData.blueprintId!==blueprintId||
          poolData.fingerprint!==fingerprint||poolData.ready!==true||
-         variantIds.length<personalization.variantTarget||variantIds.length>600)
-        deny("failed-precondition","Activate a complete private personalization pool before deployment.");
+         variantIds.length<requiredVariants||variantIds.length>600)
+        deny("failed-precondition","Activate a private personalization pool with enough variants for this class roster before deployment.");
       personalizedTask={
         enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
         uniqueWithinAssessment:true,poolFingerprint:fingerprint,
-        poolSize:variantIds.length,poolTarget:personalization.variantTarget,
+        poolSize:variantIds.length,poolTarget:requiredVariants,
         variantIds:[...variantIds]
       };
     }
@@ -697,55 +706,6 @@ function createSchoolAssessmentService({db}){
    return {taskId,checkingInstructions:String(data.checkingInstructions||"").slice(0,8000)};
   }
 
-  if(input.action==="list_class_teacher"){
-   if(!ctx.roles.includes("teacher")&&!ctx.platformOverride)
-    deny("permission-denied","Teacher access is required.");
-   const offeringId=checkId(input.offeringId,"Course offering ID",330),
-    offeringRef=db.doc(prefix+"course_offerings/"+offeringId),
-    grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
-   const [offering,grant,snap]=await Promise.all([
-    offeringRef.get(),
-    ctx.platformOverride?Promise.resolve(null):grantRef.get(),
-    tasks.where("offeringId","==",offeringId).limit(201).get()
-   ]);
-   if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
-    deny("not-found","This active class is unavailable.");
-   if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-      grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==offeringId||
-      grant.data().status!=="active"))
-    deny("permission-denied","You are not actively assigned to this class.");
-   if(snap.size===201)deny("resource-exhausted","This class has too many assessment deployments for the current Classroom view.");
-   const docs=snap.docs.filter(doc=>{
-    const data=doc.data(),lifecycle=data.lifecycle||"active";
-    return data.schoolId===ctx.schoolId&&data.status==="deployed"&&
-      !["archived","cancelled"].includes(lifecycle);
-   });
-   return {offeringId,assessments:docs.map(doc=>{
-    const data=doc.data(),reviewerUid=data.reviewerUid||data.ownerUid;
-    return {
-     taskId:doc.id,title:data.title,description:data.description||"",
-     instructions:data.instructions||"",subject:data.subject||data.subjectId||"General",
-     assessmentType:data.assessmentType||"Assessment",rubricMax:data.rubricMax||0,
-     offeringId:data.offeringId,yearId:data.yearId,termId:data.termId,
-     subjectId:data.subjectId,sectionId:data.sectionId,
-     ownerUid:data.ownerUid,reviewerUid,
-     canReview:ctx.platformOverride||reviewerUid===ctx.uid,
-     opensAt:data.opensAt?.toMillis(),dueAt:data.dueAt?.toMillis(),
-     allowLateSubmissions:data.allowLateSubmissions===true,
-     submissionSource:data.submissionSource,
-     studioProjectProfile:data.studioProjectProfile||"auto",
-     personalizedTask:data.personalizedTask?.enabled===true?{
-      enabled:true,mode:data.personalizedTask.mode,poolSize:data.personalizedTask.poolSize
-     }:{enabled:false,mode:"standard"},
-     status:data.status,published:data.published===true,
-     manualOpenRequired:data.manualOpenRequired===true,
-     manualAccessState:data.manualOpenRequired===true?(data.manualAccessState||"waiting"):"scheduled",
-     manualSessionEpoch:Number(data.manualSessionEpoch||0),
-     lifecycle:data.lifecycle||"active",revision:data.revision||1
-    };
-   }).sort((a,b)=>(a.dueAt||0)-(b.dueAt||0))};
-  }
-
   if(input.action==="list_teacher"){
    if(!ctx.roles.includes("teacher"))deny("permission-denied","Teacher access is required.");
    let docs;
@@ -767,7 +727,9 @@ function createSchoolAssessmentService({db}){
     docs=[...unique.values()];
    }
    return {assessments:docs.map(doc=>({
-      taskId:doc.id,title:doc.data().title,description:doc.data().description||"",
+      taskId:doc.id,blueprintId:doc.data().blueprintId||null,
+      blueprintRevision:doc.data().blueprintRevision||null,
+      title:doc.data().title,description:doc.data().description||"",
       instructions:doc.data().instructions||"",subject:doc.data().subject||doc.data().subjectId||"General",
       assessmentType:doc.data().assessmentType||"Assessment",
       rubric:doc.data().rubric||[],
