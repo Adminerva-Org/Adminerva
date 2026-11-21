@@ -354,9 +354,6 @@ function createSchoolEnrollmentService({db}){
           row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.sectionId===sectionId&&
           row.rosterMode!=="selective";
       });
-      if(!offerings.length)
-        deny("failed-precondition",
-          "This section has no active whole-section class offerings for the selected period. Configure the section subjects first, or manage selective/elective classes separately.");
 
       const activationEmailHash=studentEmail?rosterEmailHash(studentEmail):null;
       const lookups=[];
