@@ -99,11 +99,14 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
        schoolCopy.data().legacyImport?.assessmentId!==legacyAssessmentId)
       deny("failed-precondition","Import this assessment blueprint into the selected school before reviewing its historical work here.");
     const rubric=parseLegacyRubric(original.evalCriteria,Number(original.maxScore||20));
+    // Original class assignments may have been archived or edited after
+    // submission. An owner-verified frozen receipt must not vanish from V4
+    // merely because it is no longer in the current deployment array.
     const linkedSections=new Set((original.deployments||[]).map(x=>String(x?.section||"")).filter(Boolean));
     const allowedHead=data=>data.assessmentId===legacyAssessmentId&&
       typeof data.studentId==="string"&&data.studentId.length>0&&
       typeof data.ownerUid==="string"&&data.ownerUid.length>0&&
-      linkedSections.has(String(data.section||""));
+      typeof data.section==="string"&&data.section.length>0;
     const taskInfo={
       taskId:"legacy:"+legacyAssessmentId,legacyCompatibility:true,
       legacyAssessmentId,title:String(original.title||"Historical Studio assessment").slice(0,140),
@@ -191,6 +194,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
           student=students[index].exists?students[index].data():null;
         return {submissionId:doc.id,studentUid:data.ownerUid,studentName:String(student?.name||data.studentId),
           legacyStudentId:data.studentId,section:data.section||"",
+          historicSectionUnlisted:!linkedSections.has(data.section||""),
           status:data.status==="revision_requested"?"reopened":data.status||"submitted",
           version:data.revision,
           gradeStatus:grade?grade.published===true?"published":"draft":null,
