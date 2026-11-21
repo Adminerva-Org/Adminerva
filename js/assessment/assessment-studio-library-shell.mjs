@@ -155,9 +155,8 @@ if(host){
               </select>
             </label>
             <div id="tl-personalization-fields" hidden class="rounded-xl border border-violet-200 bg-violet-50 p-3">
-              <label class="text-sm font-bold text-violet-950">Private variant pool target
-                <input name="variantTarget" type="number" min="10" max="600" value="30" class="tl-input">
-              </label>
+              <p class="text-sm font-semibold text-violet-950">Variant requirements are calculated from your selected classes during deployment.</p>
+              <p class="text-xs text-violet-900">Existing private variants can be reused across independent class deployments. Previously assigned student variants are never replaced.</p>
               <label class="text-sm font-bold text-violet-950">Variation guidance
                 <textarea name="variationGuidance" class="tl-input" maxlength="3000" rows="4" placeholder="What may vary and what must remain fixed across learner scenarios."></textarea>
               </label>
@@ -216,7 +215,7 @@ if(host){
       <div class="tl-dialog-inner">
         <header class="bg-slate-800 px-5 py-5 text-white"><h2 class="text-xl font-extrabold">Personalized Variants</h2><p id="tl-personalization-title" class="mt-1 text-xs text-slate-300"></p></header>
         <div class="tl-dialog-body">
-          <section class="tl-section border-violet-200"><p id="tl-personalization-status" class="text-sm text-violet-950" role="status"></p><div id="tl-personalization-samples" class="grid gap-2 mt-3"></div></section>
+          <section class="tl-section border-violet-200"><p id="tl-personalization-status" class="text-sm text-violet-950" role="status"></p><p id="tl-personalization-roster-note" class="mt-2 text-xs text-violet-800"></p><div id="tl-personalization-samples" class="grid gap-2 mt-3"></div></section>
           <section class="tl-section">
             <div class="tl-actions"><button id="tl-personalization-copy" type="button" class="tl-action alt">Copy next external AI package</button><button id="tl-personalization-activate" type="button" class="tl-action">Activate pool</button></div>
             <label class="mt-4 block text-sm font-bold">External response JSON<textarea id="tl-personalization-response" class="tl-input font-mono text-xs" rows="9"></textarea></label>
@@ -242,6 +241,7 @@ if(host){
               <div id="tl-deploy-selected" class="mb-2 flex min-h-10 flex-wrap items-center gap-2" aria-live="polite"></div>
               <div id="tl-deploy-offerings" class="max-h-52 overflow-y-auto rounded-lg border border-slate-300 bg-white" role="group" aria-label="Assigned classes"></div>
               <p id="tl-deploy-selection-status" class="mt-2 text-xs text-slate-600" role="status">Loading your assigned classes…</p>
+              <div id="tl-deploy-variant-review" hidden class="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950" role="status" aria-live="polite"></div>
             </div>
             <label class="text-sm font-bold">How will learners respond?
               <select name="submissionSource" class="tl-input" required>
@@ -282,7 +282,7 @@ if(host){
             <p id="tl-deploy-feedback" class="text-sm text-slate-700" role="status" aria-live="polite"></p>
           </section>
         </div>
-        <footer class="tl-dialog-footer"><button type="button" id="tl-cancel-deploy" class="tl-action alt">Cancel</button><button type="submit" class="tl-action" id="tl-deploy-submit">Deploy to selected classes</button></footer>
+        <footer class="tl-dialog-footer"><button type="button" id="tl-cancel-deploy" class="tl-action alt">Cancel</button><button type="submit" class="tl-action" id="tl-deploy-submit">Continue to variant review</button></footer>
       </form>
     </dialog>
 
