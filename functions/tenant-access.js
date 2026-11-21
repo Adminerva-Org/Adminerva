@@ -35,6 +35,10 @@ function activeRoles(membership) {
   if(membership?.status!=="active" || !Array.isArray(membership.roles)) return [];
   return [...new Set(membership.roles.filter(role=>VALID_ROLES.has(role)))];
 }
+function schoolEnrollmentMode(school){
+  return school?.compatibilityMode==="v4_only" && (school?.provisioningMode||"standard")==="standard"?
+    "canonical":"compatibility";
+}
 async function getSchoolContext({db,request,schoolId,roles=[],allowDraftAdmin=false}) {
   const uid=verifiedUid(request), id=checkedSchoolId(schoolId);
   const schoolRef=db.doc("platform_schools/"+id);
@@ -50,7 +54,8 @@ async function getSchoolContext({db,request,schoolId,roles=[],allowDraftAdmin=fa
   if(platformOverride){
     const overrideRoles=["school_admin","teacher","student"];
     return Object.freeze({uid,schoolId:id,roles:overrideRoles,membershipRevision:0,
-      schoolState:data.state,productionAuthorized:data.productionAuthorized===true,platformOverride:true});
+      schoolState:data.state,productionAuthorized:data.productionAuthorized===true,compatibilityMode:data.compatibilityMode||"legacy_allowed",
+      enrollmentMode:schoolEnrollmentMode(data),platformOverride:true});
   }
   const stateAllowed=["active","pilot"].includes(data?.state) ||
     (allowDraftAdmin===true&&data?.state==="draft"&&memberRoles.includes("school_admin"));
@@ -59,7 +64,8 @@ async function getSchoolContext({db,request,schoolId,roles=[],allowDraftAdmin=fa
   if(roles.length && !roles.some(role=>memberRoles.includes(role)))
     throw new TenantAccessError("permission-denied","This action is not granted for your school role.");
   return Object.freeze({uid,schoolId:id,roles:memberRoles,membershipRevision:grant.revision||0,
-    schoolState:data.state,productionAuthorized:data.productionAuthorized===true,platformOverride:false});
+    schoolState:data.state,productionAuthorized:data.productionAuthorized===true,compatibilityMode:data.compatibilityMode||"legacy_allowed",
+    enrollmentMode:schoolEnrollmentMode(data),platformOverride:false});
 }
 async function platformAuthority({db,request}) {
   const uid=verifiedUid(request);
@@ -81,6 +87,7 @@ async function listVerifiedSchools({db,request}) {
       schoolState:doc.data().state,
       productionAuthorized:doc.data().productionAuthorized===true,
       compatibilityMode:doc.data().compatibilityMode||"legacy_allowed",
+      enrollmentMode:schoolEnrollmentMode(doc.data()),
       platformOverride:true
     })).sort((a,b)=>a.name.localeCompare(b.name)||a.schoolId.localeCompare(b.schoolId));
   }
@@ -96,6 +103,7 @@ async function listVerifiedSchools({db,request}) {
         roles:ctx.roles,schoolState:ctx.schoolState,
         productionAuthorized:ctx.productionAuthorized,
         compatibilityMode:school.data()?.compatibilityMode||"legacy_allowed",
+        enrollmentMode:schoolEnrollmentMode(school.data()),
         platformOverride:false
       };
     }catch(error) {
@@ -111,4 +119,4 @@ function selectVerifiedSchool(options,preferredId) {
   const preferred=options.find(option=>option.schoolId===preferredId);
   return {state:preferred?"ready":"choose_school",schoolId:preferred?.schoolId||null,showSwitcher:true};
 }
-module.exports={TenantAccessError,checkedSchoolId,verifiedUid,activeRoles,getSchoolContext,listVerifiedSchools,selectVerifiedSchool,platformAuthority};
+module.exports={TenantAccessError,checkedSchoolId,verifiedUid,activeRoles,schoolEnrollmentMode,getSchoolContext,listVerifiedSchools,selectVerifiedSchool,platformAuthority};
