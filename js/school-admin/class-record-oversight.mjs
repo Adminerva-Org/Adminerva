@@ -51,17 +51,19 @@ function visible(record){
   if(filter.value==="finalized")return Boolean(record.finalization);
   if(filter.value==="released")return Boolean(record.finalization?.releasedRevision);
   if(filter.value==="layout_changed")return Boolean(record.finalization?.layoutChangedSinceFinalization);
+  if(filter.value==="policy_issue")return ["missing","ambiguous"].includes(record.gradingPolicy?.state);
   return true;
 }
 function renderSummary(){
   if(records===null){
-    for(const id of ["cro-total","cro-finalized","cro-released","cro-changed"])el(id).textContent="—";
+    for(const id of ["cro-total","cro-finalized","cro-released","cro-changed","cro-policy-issues"])el(id).textContent="—";
     return;
   }
   el("cro-total").textContent=records.length;
   el("cro-finalized").textContent=records.filter(row=>row.finalization).length;
   el("cro-released").textContent=records.filter(row=>row.finalization?.releasedRevision).length;
   el("cro-changed").textContent=records.filter(row=>row.finalization?.layoutChangedSinceFinalization).length;
+  el("cro-policy-issues").textContent=records.filter(row=>["missing","ambiguous"].includes(row.gradingPolicy?.state)).length;
 }
 function chip(text,kind=""){
   const c=node("span","cro-chip "+(kind==="released"?"border-emerald-200 bg-emerald-50 text-emerald-800":
@@ -99,6 +101,10 @@ function renderRecords(){
       chip(record.assessmentColumnCount+" linked"),
       chip(record.archivedColumnCount+" archived")
     );
+    const policy=record.gradingPolicy||{state:"missing",label:"No grading policy"};
+    metrics.append(chip(policy.state==="resolved"?"Policy · "+policy.label:
+      policy.state==="ambiguous"?"Grading policy conflict":"No grading policy",
+      policy.state==="resolved"?"released":"warning"));
     card.append(metrics);
     const final=node("p","text-sm font-semibold mt-3 "+(record.finalization?.layoutChangedSinceFinalization?"text-amber-800":"text-slate-700"),
       finalizationLabel(record));
@@ -107,6 +113,12 @@ function renderRecords(){
     const actions=node("div","flex flex-wrap gap-2 mt-4");
     const audit=node("button","cro-btn primary","View audit history");audit.type="button";
     audit.addEventListener("click",()=>void openAudit(record));actions.append(audit);
+    if(["missing","ambiguous"].includes(record.gradingPolicy?.state)){
+      const policyLink=node("a","cro-btn","Fix grading policy");
+      policyLink.href="school-grading-schemes.html";
+      policyLink.textContent=record.gradingPolicy.state==="ambiguous"?"Resolve policy conflict":"Add matching policy";
+      actions.append(policyLink);
+    }
     card.append(actions);list.append(card);
   }
 }
