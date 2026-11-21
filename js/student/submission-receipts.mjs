@@ -3,6 +3,14 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {doc,getDoc,setDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const el=id=>document.getElementById(id);
+function sessionGithubToken(){
+  const uid=auth.currentUser?.uid;
+  return uid?String(sessionStorage.getItem("Adminerva_GitHub_Token_"+uid)||"").trim():"";
+}
+function sessionGithubUsername(){
+  const uid=auth.currentUser?.uid;
+  return uid?String(sessionStorage.getItem("Adminerva_GitHub_Username_"+uid)||"").trim().replace(/^@/,""):"";
+}
 function repositoryUrl(value){
   let url;try{url=new URL(String(value||""))}catch{throw Error("Link a repository in Profile Settings first.")}
   const segments=url.pathname.replace(/\/$/,"").replace(/\.git$/i,"").split("/").filter(Boolean);
@@ -12,9 +20,12 @@ function repositoryUrl(value){
   return {owner:segments[0],repo:segments[1],url:"https://github.com/"+segments.join("/")};
 }
 async function githubJson(url){
-  const res=await fetch(url,{headers:{Accept:"application/vnd.github+json"}});
+  const token=sessionGithubToken(),headers={Accept:"application/vnd.github+json"};
+  const res=await fetch(url,{headers:token?{...headers,Authorization:"Bearer "+token}:headers});
   if(!res.ok)throw Error("GitHub returned HTTP "+res.status+
-    ". Private repositories will need a future secure account connection.");
+    (res.status===401||res.status===403||res.status===404
+      ?". Reconnect GitHub and confirm this account can read the repository."
+      :"."));
   return res.json();
 }
 async function submit(){
@@ -22,7 +33,10 @@ async function submit(){
   const task=context?.task,profile=context?.profile,user=auth.currentUser;
   const button=el("submitAssessmentReview"),status=el("submissionReviewStatus");
   if(!task||!profile||!user){status.textContent="No student or assessment selected.";return;}
-  if((profile.email||"").toLowerCase()!==(user.email||"").toLowerCase()){
+  const projectedOwner=String(profile.accountUid||"");
+  const legacyEmail=String(profile.email||"").toLowerCase();
+  const currentEmail=String(user.email||"").toLowerCase();
+  if(projectedOwner?projectedOwner!==user.uid:legacyEmail!==currentEmail){
     status.textContent="Submission is unavailable while viewing an impersonated profile.";return;
   }
   const relativePath=el("submissionSourcePath").value.trim().replaceAll("\\","/");
@@ -51,7 +65,7 @@ async function submit(){
       await setDoc(ref,{
         studentId:profile.id,assessmentId:task.id,submittedByUid:user.uid,
         studentName:profile.name||"Student",assessmentTitle:task.title||"Assessment",
-        repoUrl:repository.url,githubLogin:profile.githubUsername||"",
+        repoUrl:repository.url,githubLogin:sessionGithubUsername()||profile.githubUsername||"",
         revisionSha:commit.sha,sourcePath:relativePath,
         section:context.section,submittedAt:serverTimestamp()
       });
