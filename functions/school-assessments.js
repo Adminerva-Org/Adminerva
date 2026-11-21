@@ -252,7 +252,8 @@ function createSchoolAssessmentService({db}){
    const taskId=checkId(input.taskId,"Assessment task",128),
      task=await tasks.doc(taskId).get();
    if(!task.exists||task.data().schoolId!==ctx.schoolId||
-      task.data().submissionSource!=="studio"||task.data().manualOpenRequired!==true||
+      task.data().submissionSource!=="studio"||
+      (task.data().manualOpenRequired!==true&&Number(task.data().manualSessionEpoch||0)<1)||
       (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid))
     deny("permission-denied","This exam is not assigned to you.");
    if(!ctx.platformOverride){
@@ -333,7 +334,8 @@ function createSchoolAssessmentService({db}){
    }).sort((a,b)=>a.displayName.localeCompare(b.displayName));
    const confirmed=students.filter(row=>row.checkpointConfirmed).length;
    const sessionClosed=epoch<currentEpoch||
-     ["closed","closing","held"].includes(task.data().manualAccessState);
+     ["closed","closing","held"].includes(task.data().manualAccessState)||
+     Boolean(task.data().manualClosedAt);
    return {taskId,sessionEpoch:epoch,currentSessionEpoch:currentEpoch,
      sessionClosed,rosterSource:hasCapturedRoster?"close_snapshot":"current_fallback",
      confirmed,enrolledStudents:students.length,students};
