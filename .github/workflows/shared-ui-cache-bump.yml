@@ -18,6 +18,9 @@ on:
       - "js/school-admin/people-access.mjs"
       - "js/student/assessments.js"
       - "js/student/student-access.mjs"
+      - "js/student/dashboard.js"
+      - "js/student/assessment-evidence.mjs"
+      - "js/student/submission-receipts.mjs"
       - ".github/workflows/shared-ui-cache-bump.yml"
 
 permissions:
@@ -72,6 +75,17 @@ jobs:
               if updated!=text:
                   assessments.write_text(updated,encoding="utf-8")
 
+          dashboard=Path("js/student/dashboard.js")
+          if dashboard.exists():
+              text=dashboard.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'student-access\.mjs\?v=[^"\']+',
+                  f'student-access.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  dashboard.write_text(updated,encoding="utf-8")
+
           changed=0
           for path in Path(".").rglob("*.html"):
               if ".git" in path.parts:
@@ -88,6 +102,9 @@ jobs:
               updated=re.sub(r'js/core/auth-guard-v4-pilot\.js\?v=[^"\']+', f'js/core/auth-guard-v4-pilot.js?v={version}', updated)
               updated=re.sub(r'js/school-admin/people-access\.mjs\?v=[^"\']+', f'js/school-admin/people-access.mjs?v={version}', updated)
               updated=re.sub(r'js/student/assessments\.js\?v=[^"\']+', f'js/student/assessments.js?v={version}', updated)
+              updated=re.sub(r'js/student/dashboard\.js\?v=[^"\']+', f'js/student/dashboard.js?v={version}', updated)
+              updated=re.sub(r'js/student/assessment-evidence\.mjs\?v=[^"\']+', f'js/student/assessment-evidence.mjs?v={version}', updated)
+              updated=re.sub(r'js/student/submission-receipts\.mjs\?v=[^"\']+', f'js/student/submission-receipts.mjs?v={version}', updated)
               if 'js/core/adminerva-loader.js' in updated and 'js/core/release-footer.js' not in updated:
                   match=re.search(r'<script[^>]+src=["\']((?:\.\./)*js/core/adminerva-loader\.js\?v=[^"\']+)["\'][^>]*></script>', updated)
                   if match:
@@ -105,13 +122,13 @@ jobs:
       - name: Commit refreshed references
         shell: bash
         run: |
-          if git diff --quiet -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js'; then
+          if git diff --quiet -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js' 'js/student/dashboard.js'; then
             echo "No shared shell references needed updating."
             exit 0
           fi
           git config user.name "Adminerva UI Sync"
           git config user.email "actions@users.noreply.github.com"
-          git add -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js'
+          git add -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js' 'js/student/dashboard.js'
           git commit -m "chore(ui): refresh shared shell and access assets [skip ci]"
           git pull --rebase origin main
           git push origin HEAD:main

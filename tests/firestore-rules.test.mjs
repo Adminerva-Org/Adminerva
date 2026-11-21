@@ -443,6 +443,42 @@ test('students can submit their own pinned revision, not another section or miss
   await assertSucceeds(getDoc(doc(db,'student_submissions','alice_peta_123')));
   await assertFails(getDoc(doc(client('bob',EMAIL_B),'student_submissions','alice_peta_123')));
 });
+test('recovered student access projection owns legacy submissions and V2 evidence without email equality',async()=>{
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await updateDoc(doc(db,'students','alice'),{repoUrl:repository});
+    await setDoc(doc(db,'student_access','recovered'),{
+      ownerUid:'recovered',email:'replacement@example.edu',
+      sections:['11-A'],studentIds:['alice'],
+      profiles:[{id:'alice',section:'11-A',name:'Alice',repoUrl:repository,githubUsername:'alice',accountUid:'recovered'}],
+      identitySource:'canonical_account_history',updatedAt:Timestamp.now()
+    });
+  });
+  const recovered=client('recovered','replacement@example.edu');
+  const receipt={...submission('alice','11-A'),submittedByUid:'recovered'};
+  await assertSucceeds(setDoc(doc(recovered,'student_submissions','recovered_receipt'),receipt));
+  await assertSucceeds(getDoc(doc(recovered,'student_submissions','recovered_receipt')));
+
+  const evidence={studentId:'alice',assessmentId:'v2',section:'11-A',repository,
+    selectedCommits:[SHA],checkpointSha:SHA,status:'submitted',
+    submittedAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(recovered,'assessment_evidence','alice_v2'),evidence));
+  await assertSucceeds(getDoc(doc(recovered,'assessment_evidence','alice_v2')));
+
+  await assertFails(setDoc(doc(recovered,'student_submissions','wrong_student'),
+    {...receipt,studentId:'bob',section:'11-B'}));
+  await assertFails(getDoc(doc(recovered,'students','bob')));
+
+  const unverified=env.authenticatedContext('recovered-unverified',
+    {email:'replacement@example.edu',email_verified:false}).firestore();
+  await env.withSecurityRulesDisabled(async ctx=>setDoc(doc(ctx.firestore(),'student_access','recovered-unverified'),{
+    ownerUid:'recovered-unverified',email:'replacement@example.edu',
+    sections:['11-A'],studentIds:['alice'],updatedAt:Timestamp.now()
+  }));
+  await assertFails(getDoc(doc(unverified,'assessment_evidence','alice_v2')));
+});
+
 test('students cannot access draft grades belonging to teachers',async()=>{
   await env.withSecurityRulesDisabled(async ctx=>{
     await setDoc(doc(ctx.firestore(),'student_grades','alice_peta'),{
