@@ -1059,10 +1059,14 @@ function createSchoolAcademicsService({db}) {
         });
       });
       const nextRevision=revision+1;
-      tx.update(offeringRef,{status:"active",restoredByUid:uid,restoredAt:now,restoreReason:reason,
+      tx.update(offeringRef,{status:"active",primaryTeacherUid:null,
+        restoredByUid:uid,restoredAt:now,restoreReason:reason,
         revision:nextRevision,updatedByUid:uid,updatedAt:now});
       tx.create(auditRef,audit("course_offering_restored",{
-        offeringId,reason,rosterMode:mode,restoredEnrollments,createdEnrollments,alreadyActive,
+        offeringId,reason,rosterMode:mode,
+        previousPrimaryTeacherUid:typeof data.primaryTeacherUid==="string"&&data.primaryTeacherUid?
+          data.primaryTeacherUid:null,
+        restoredEnrollments,createdEnrollments,alreadyActive,
         normalizedEnrollments,normalizedAssignments,adoptedActiveEnrollments,normalizedSchedule,
         revision:nextRevision
       }));
