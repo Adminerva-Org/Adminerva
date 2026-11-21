@@ -108,7 +108,7 @@ function createSchoolEnrollmentService({db}){
   return async request=>{
     const input=request.data||{};
     const ctx=await getSchoolContext({
-      db,request,schoolId:input.schoolId,roles:["school_admin"],allowDraftAdmin:true
+      db,request,schoolId:input.schoolId,roles:["school_admin","registrar"],allowDraftAdmin:true
     });
     const root="schools/"+ctx.schoolId+"/";
     const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
@@ -124,7 +124,8 @@ function createSchoolEnrollmentService({db}){
       if(!currentSchool.exists||!["draft","pilot","active"].includes(currentSchool.data().state)||
          !standardSchool(currentSchool.data())||!member.exists||
          member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
-         !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
+         !Array.isArray(member.data().roles)||
+         !member.data().roles.some(role=>["school_admin","registrar"].includes(role)))
         deny("permission-denied","School enrollment authority changed. Refresh before saving.");
     }
 
