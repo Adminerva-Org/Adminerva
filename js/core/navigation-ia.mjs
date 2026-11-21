@@ -295,34 +295,15 @@ export function buildNavigationIA(ctx){
   };
 
   const system=()=>[
-    ws("system-analytics","Analytics","owner-schools.html","Platform-wide analytics and operational intelligence",[
-      group("Platform Analytics",[
-        needs("users-analytics","Users","admin-analytics.html","Existing administration analytics; needs expansion into the full platform analytics model."),
-        live("schools-analytics","Schools","owner-schools.html"),
-        future("games-analytics","Games"),future("laboratory-analytics","Laboratory"),
-        future("assessment-analytics","Assessments"),future("finance-analytics","Finance"),
-        future("usage-analytics","Usage & Performance")
-      ])
-    ]),
-    ws("directory","Directory","system-users.html","Users, schools and platform directory administration",[
-      group("Users",[
-        live("system-users","Users","system-users.html","Read-only platform account directory with on-demand school membership metadata")
+    ws("platform-admin","Platform Administration","owner-schools.html","Institution registry, platform users, operational monitoring and releases",[
+      group("Institutions & Access",[
+        live("system-schools","School Registry","owner-schools.html","Provision, activate, suspend, recover and assist verified school tenants."),
+        live("system-users","Platform Users","system-users.html","Read-only account directory with on-demand school membership metadata.")
       ]),
-      group("Schools",[
-        live("system-schools","Schools","owner-schools.html"),live("school-details","School Details","owner-schools.html"),
-        future("school-announcement","School Announcement"),future("school-integration","School Integration"),
-        future("school-configuration","Configuration")
-      ])
-    ]),
-    ws("system","System","patch-notes.html","Platform operations, configuration and releases",[
-      group("Operations",[
-        future("alerts","Alerts & Warnings"),live("updates","Updates & Releases","patch-notes.html"),
-        future("service-health","Service Health"),future("background-jobs","Background Jobs"),
-        future("migrations","Data Migrations"),future("backups","Backups / Recovery")
-      ]),
-      group("Configuration",[
-        future("system-config","Configurations"),future("feature-flags","Feature Flags"),
-        future("system-announcement","Announcement"),future("email-templates","Notification Templates")
+      group("Platform Operations",[
+        needs("platform-monitoring","Monitoring & Maintenance","admin-analytics.html","Legacy-compatible operational telemetry and maintenance controls; not a school academic administration surface."),
+        live("updates","Updates & Releases","patch-notes.html"),
+        future("operations-center","Operations Center","Incidents, service health, observability, background jobs and controlled platform operations · In development separately.")
       ])
     ]),
     ws("platform-governance","Governance & Security","future-workspace.html?workspace=platform-governance","Platform roles, permissions, privacy, audit and compliance",[
@@ -400,8 +381,7 @@ export function buildNavigationIA(ctx){
     return sections;
   };
   const workspaceSections=systemDefault?sectionize([
-      {id:"intelligence",label:"Platform Intelligence",ids:["system-analytics"]},
-      {id:"administration",label:"Administration",ids:["directory","system"]},
+      {id:"administration",label:"Platform Administration",ids:["platform-admin"]},
       {id:"governance",label:"Governance & Ecosystem",ids:["platform-governance","platform-integrations"]},
       {id:"support",label:"Support",ids:["platform-support"]}
     ]):studentView?sectionize([
