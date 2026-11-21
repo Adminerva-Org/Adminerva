@@ -19,6 +19,7 @@ const picker=createTenantSchoolPicker({
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];legacyDeploymentHistory=[];legacyDeploymentWarning="";editing=null;sharing=null;deploying=null;
     deployOfferings=[];deploymentOfferingNames.clear();deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
+    bulkSettingsDialog?.close();bulkSettingsTasks=[];bulkSettingsSucceeded.clear();
     deployVariantReview=null;deployVariantLoading=false;personalizingOfferings=[];
     lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
@@ -220,6 +221,197 @@ function openDeploymentSettings(task){
   form.elements.manualOpenRequired.checked=task.manualOpenRequired===true;
   dialog.showModal();
 }
+
+let bulkSettingsTasks=[],bulkSettingsSucceeded=new Set(),bulkSettingsDialog=null;
+function bulkSettingsModal(){
+  if(bulkSettingsDialog)return bulkSettingsDialog;
+  const host=el("schoolAssessmentStudioHost");
+  const dialog=document.createElement("dialog");dialog.id="tl-bulk-settings-dialog";dialog.className="tl-dialog";
+  dialog.setAttribute("aria-labelledby","tl-bulk-settings-heading");
+  dialog.innerHTML=`
+    <form id="tl-bulk-settings-form" class="tl-dialog-inner">
+      <header class="bg-slate-800 px-5 py-5 text-white">
+        <p class="text-[10px] font-extrabold uppercase tracking-widest text-cyan-300">Assessment group</p>
+        <h2 id="tl-bulk-settings-heading" class="mt-1 text-xl font-extrabold">Bulk deployment settings</h2>
+        <p id="tl-bulk-settings-subtitle" class="mt-1 text-sm text-slate-300"></p>
+      </header>
+      <div class="tl-dialog-body">
+        <section class="tl-section">
+          <h3 class="font-extrabold">1. Choose affected classes</h3>
+          <p class="tl-muted mt-1">Each class retains its own assessment, evidence, grades, and revision. Uncheck classes you do not want to change.</p>
+          <div id="tl-bulk-settings-classes" class="mt-3 grid gap-2"></div>
+        </section>
+        <section class="tl-section">
+          <h3 class="font-extrabold">2. Select the settings to change</h3>
+          <p class="tl-muted mt-1">Unchecked settings retain their existing value for each class.</p>
+          <label class="tl-bulk-setting-field"><input type="checkbox" name="changeDates">
+            <span class="font-bold">Opening and deadline</span></label>
+          <div id="tl-bulk-dates" class="grid sm:grid-cols-2 gap-3 mt-2" hidden>
+            <label class="text-sm font-bold">Opens at<input name="opensAt" class="tl-input" type="datetime-local"></label>
+            <label class="text-sm font-bold">Deadline<input name="dueAt" class="tl-input" type="datetime-local"></label>
+          </div>
+          <label class="tl-bulk-setting-field"><input type="checkbox" name="changeLate">
+            <span class="font-bold">Late submissions</span></label>
+          <label id="tl-bulk-late" class="tl-bulk-setting-value" hidden><input type="checkbox" name="allowLateSubmissions"> Allow late submissions</label>
+          <label class="tl-bulk-setting-field"><input type="checkbox" name="changeManual">
+            <span class="font-bold">Teacher-controlled Studio sessions</span></label>
+          <label id="tl-bulk-manual" class="tl-bulk-setting-value" hidden><input type="checkbox" name="manualOpenRequired"> Require teacher to open/close exam sessions</label>
+          <p id="tl-bulk-manual-hint" class="tl-muted mt-2"></p>
+          <label class="block text-sm font-bold mt-3">Reason for change
+            <textarea name="reason" rows="3" class="tl-input" minlength="12" maxlength="1000" required placeholder="Explain why these class deployments are being updated."></textarea>
+          </label>
+        </section>
+        <section class="tl-section">
+          <h3 class="font-extrabold">3. Review changes before applying</h3>
+          <div id="tl-bulk-settings-preview" class="mt-2 text-sm text-slate-700" aria-live="polite"></div>
+          <p id="tl-bulk-settings-result" class="mt-3 text-sm text-slate-700" role="status" aria-live="polite"></p>
+        </section>
+      </div>
+      <footer class="tl-dialog-footer">
+        <button type="button" id="tl-bulk-settings-cancel" class="tl-action alt">Close</button>
+        <button type="submit" id="tl-bulk-settings-save" class="tl-action">Apply to selected classes</button>
+      </footer>
+    </form>
+  `;
+  host.append(dialog);
+  const form=dialog.querySelector("form");
+  const update=()=>{
+    const selected=bulkSettingsTasks.filter(task=>
+      form.querySelector('input[data-task-id="'+CSS.escape(task.taskId)+'"]')?.checked&&!bulkSettingsSucceeded.has(task.taskId));
+    const dates=form.elements.changeDates.checked;
+    const late=form.elements.changeLate.checked;
+    const manual=form.elements.changeManual.checked;
+    el("tl-bulk-dates").hidden=!dates;
+    el("tl-bulk-late").hidden=!late;
+    el("tl-bulk-manual").hidden=!manual;
+    const manualAllowed=selected.length>0&&selected.every(task=>task.submissionSource==="studio");
+    form.elements.changeManual.disabled=!manualAllowed;
+    if(!manualAllowed){form.elements.changeManual.checked=false;el("tl-bulk-manual").hidden=true;}
+    el("tl-bulk-manual-hint").textContent=manualAllowed?
+      "Only the teacher-control requirement changes; this does not open or close active sessions.":
+      "Teacher control can be changed only when all selected classes use Adminerva Studio.";
+    const preview=el("tl-bulk-settings-preview");preview.replaceChildren();
+    const heading=document.createElement("p");heading.className="font-bold mb-2";
+    heading.textContent=selected.length+" class"+(selected.length===1?"":"es")+" selected.";
+    preview.append(heading);
+    const actualChanges=dates||late||(manual&&manualAllowed);
+    for(const task of selected){
+      const line=document.createElement("p");line.className="tl-bulk-preview-line";
+      const changes=[];
+      if(dates)changes.push("Schedule: "+(task.opensAt?new Date(task.opensAt).toLocaleString():"not set")+
+        " → "+(form.elements.opensAt.value||"choose opening")+", "+
+        (task.dueAt?new Date(task.dueAt).toLocaleString():"not set")+" → "+(form.elements.dueAt.value||"choose deadline"));
+      if(late)changes.push("Late: "+(task.allowLateSubmissions?"allowed":"not allowed")+
+        " → "+(form.elements.allowLateSubmissions.checked?"allowed":"not allowed"));
+      if(manual&&manualAllowed)changes.push("Teacher control: "+(task.manualOpenRequired?"on":"off")+
+        " → "+(form.elements.manualOpenRequired.checked?"on":"off"));
+      line.textContent=deploymentClassLabel(task)+" — "+(changes.join("; ")||"No changes selected");
+      preview.append(line);
+    }
+    form.elements.opensAt.required=dates;
+    form.elements.dueAt.required=dates;
+    const button=el("tl-bulk-settings-save");
+    button.disabled=pendingWrite||!selected.length||!actualChanges;
+    button.textContent="Apply to "+selected.length+" class"+(selected.length===1?"":"es");
+  };
+  form.addEventListener("change",update);
+  form.addEventListener("input",update);
+  dialog.querySelector("#tl-bulk-settings-cancel").addEventListener("click",()=>{if(!pendingWrite)dialog.close();});
+  dialog.addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
+  form.addEventListener("submit",event=>{
+    event.preventDefault();
+    if(pendingWrite||!form.reportValidity())return;
+    const selected=bulkSettingsTasks.filter(task=>
+      form.querySelector('input[data-task-id="'+CSS.escape(task.taskId)+'"]')?.checked&&!bulkSettingsSucceeded.has(task.taskId));
+    if(!selected.length)return;
+    const dates=form.elements.changeDates.checked,late=form.elements.changeLate.checked,manual=form.elements.changeManual.checked;
+    if(!dates&&!late&&!manual)return;
+    const opensAt=dates?new Date(form.elements.opensAt.value):null;
+    const dueAt=dates?new Date(form.elements.dueAt.value):null;
+    if(dates&&(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt)){
+      el("tl-bulk-settings-result").textContent="Choose a valid opening time and later deadline.";return;
+    }
+    const reason=String(form.elements.reason.value||"").trim();
+    if(reason.length<12){el("tl-bulk-settings-result").textContent="Provide at least 12 characters explaining the change.";return;}
+    if(!confirm("Apply these audited settings to "+selected.length+" independent class deployments? Each class is updated separately."))return;
+    void (async()=>{
+      pendingWrite=true;const button=el("tl-bulk-settings-save");
+      const result=el("tl-bulk-settings-result");const failures=[];let completed=0;
+      for(const input of form.querySelectorAll("input,textarea,button"))input.disabled=true;
+      try{
+        for(const task of selected){
+          result.textContent="Updating "+(completed+failures.length+1)+" of "+selected.length+": "+deploymentClassLabel(task)+"…";
+          try{
+            const originalOpens=new Date(task.opensAt),originalDue=new Date(task.dueAt);
+            if(!dates&&(!Number.isFinite(originalOpens.getTime())||!Number.isFinite(originalDue.getTime())))
+              throw new Error("Original schedule unavailable; edit this class individually.");
+            const details={
+              taskId:task.taskId,expectedRevision:task.revision||1,
+              opensAt:dates?opensAt.toISOString():originalOpens.toISOString(),
+              dueAt:dates?dueAt.toISOString():originalDue.toISOString(),
+              allowLateSubmissions:late?form.elements.allowLateSubmissions.checked:task.allowLateSubmissions===true,
+              manualOpenRequired:manual?form.elements.manualOpenRequired.checked:task.manualOpenRequired===true,
+              reason
+            };
+            await performScoped(scopedAssessmentApi,"update_settings",details);
+            bulkSettingsSucceeded.add(task.taskId);completed++;
+            const selection=form.querySelector('input[data-task-id="'+CSS.escape(task.taskId)+'"]');
+            if(selection){selection.checked=false;selection.disabled=true;}
+          }catch(error){failures.push(deploymentClassLabel(task)+": "+(error?.message||"Could not save"));}
+        }
+        result.textContent="Updated "+completed+" of "+selected.length+" classes."+
+          (failures.length?" Failed: "+failures.join(" | ")+". Unchanged classes can be retried.":" All selected settings saved.");
+        // Refresh source revisions before permitting a retry; never send stale revision IDs.
+        try{
+          const refreshed=await performScoped(scopedAssessmentApi,"list_teacher");
+          deployments=refreshed.assessments||[];
+          const byId=new Map(deployments.map(task=>[task.taskId,task]));
+          bulkSettingsTasks=bulkSettingsTasks.map(task=>byId.get(task.taskId)||task);
+          render();
+        }catch(error){
+          result.textContent+=" Refresh Deployed Tasks before retrying; current class revisions could not be verified.";
+          button.disabled=true;
+          return;
+        }
+        if(!failures.length){dialog.close();say("Bulk deployment settings updated for "+completed+" classes.");}
+      }finally{
+        pendingWrite=false;
+        for(const input of form.querySelectorAll("input,textarea,button"))input.disabled=false;
+        update();
+      }
+    })();
+  });
+  bulkSettingsDialog=dialog;
+  return dialog;
+}
+function openBulkDeploymentSettings(tasks){
+  if(pendingWrite||!tasks.length)return;
+  bulkSettingsTasks=tasks.filter(task=>["active","closed"].includes(task.lifecycle||"active"));
+  bulkSettingsSucceeded.clear();
+  const dialog=bulkSettingsModal(),form=dialog.querySelector("form");
+  form.reset();
+  el("tl-bulk-settings-subtitle").textContent=tasks[0].title+" · "+bulkSettingsTasks.length+" eligible classes";
+  const classes=el("tl-bulk-settings-classes");classes.replaceChildren();
+  for(const task of bulkSettingsTasks){
+    const label=document.createElement("label");label.className="tl-bulk-class-select";
+    const input=document.createElement("input");input.type="checkbox";input.checked=true;
+    input.dataset.taskId=task.taskId;
+    const desc=document.createElement("span");desc.textContent=deploymentClassLabel(task)+
+      " · "+(task.published?"Published":"Private")+" · Revision "+(task.revision||1);
+    label.append(input,desc);classes.append(label);
+  }
+  el("tl-bulk-settings-result").textContent="";
+  form.elements.changeManual.disabled=false;
+  const first=bulkSettingsTasks[0];
+  if(first){
+    if(first.opensAt)form.elements.opensAt.value=localDateInput(new Date(first.opensAt));
+    if(first.dueAt)form.elements.dueAt.value=localDateInput(new Date(first.dueAt));
+    form.elements.allowLateSubmissions.checked=first.allowLateSubmissions===true;
+    form.elements.manualOpenRequired.checked=first.manualOpenRequired===true;
+  }
+  dialog.showModal();
+  form.dispatchEvent(new Event("change"));
+}
 function showPreview(item){
   el("tl-preview-heading").textContent=item.title;
   el("tl-preview-meta").textContent=(item.subject||"General")+" · "+(item.assessmentType||"Assessment")+" · "+sourceLabel(item.defaultSubmissionSource||"text")+
@@ -361,6 +553,11 @@ function renderDeployedTasks(){
       sourceLabel(tasks[0].submissionSource)+" · "+
       tasks.filter(task=>task.published).length+" published";
     label.append(h,meta);header.append(label);
+    if(tasks.length>1){
+      const bulk=actionButton("Bulk settings",()=>openBulkDeploymentSettings(tasks),true);
+      bulk.classList.add("tl-deploy-bulk-button");
+      header.append(bulk);
+    }
     group.append(header);
     for(const task of tasks.sort((a,b)=>deploymentClassLabel(a).localeCompare(deploymentClassLabel(b))))
       group.append(deploymentClassRow(task));
