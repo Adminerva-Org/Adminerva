@@ -1498,5 +1498,6 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
 }
 module.exports={
   createSchoolClassRecordService,cleanColumns,cleanSettings,
+  schemeMatchesOffering,schemeSpecificity,
   SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE
 };
