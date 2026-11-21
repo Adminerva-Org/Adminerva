@@ -400,8 +400,10 @@ function render(){
     controls.append(actionButton("Preview",()=>showPreview(item),true));
     if(item.canShare&&item.legacyImport?.assessmentId){
       const legacy=document.createElement("a");legacy.className="tl-action alt";
-      legacy.href="repository-assessment-studio.html?legacyAssessment="+encodeURIComponent(item.legacyImport.assessmentId);
-      legacy.textContent="Open historical assessment";controls.append(legacy);
+      legacy.href="repository-assessment-studio.html?"+new URLSearchParams({
+        legacyAssessment:item.legacyImport.assessmentId,legacyView:"deployments"
+      }).toString();
+      legacy.textContent="View original deployments";controls.append(legacy);
     }
     if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
@@ -481,8 +483,16 @@ async function refresh(){
   const legacyRead=(async()=>{
     try{return await performScoped(migrationApi,"list_legacy_deployments");}
     catch(error){
-      console.warn("Legacy deployment listing unavailable:",error);
-      return {items:[],error:String(error?.message||"Service unavailable")};
+      // Older deployed school callables may not yet have the dedicated list.
+      // The existing owner-scoped legacy listing carries the same deployment
+      // summaries and is already used by the assessment migration.
+      try{
+        const fallback=await performScoped(migrationApi,"list_legacy");
+        return {items:(fallback.items||[]).filter(row=>row.deploymentCount>0)};
+      }catch(fallbackError){
+        console.warn("Legacy deployment listing unavailable:",error,fallbackError);
+        return {items:[],error:String(fallbackError?.message||"Service unavailable")};
+      }
     }
   })();
   const [result,deployed,historical]=await Promise.all([
