@@ -175,6 +175,20 @@
               <p id="pa-detail-placement-status" class="pa-muted" role="status"></p>
             </form>
           </section>
+          <section id="pa-account-recovery-card" class="pa-card" style="margin-top:1rem" hidden>
+            <h3 style="font-weight:750">Student account recovery</h3>
+            <p class="pa-muted">Use this when the learner's old login is unavailable and a new login was accidentally linked to a second student record. Adminerva keeps this student record and its academic history, moves the verified login here, suspends the previous school login when present, and archives the duplicate identity without deleting evidence.</p>
+            <form id="pa-account-recovery-form" style="display:grid;gap:.65rem;margin-top:.7rem">
+              <input name="personId" type="hidden">
+              <label>Find the new linked account<input id="pa-account-recovery-search" type="search" class="pa-field" autocomplete="off" placeholder="Search the accidental student name"></label>
+              <label>Linked student record<select id="pa-account-recovery-replacement" name="replacementPersonId" class="pa-field" required><option value="">Search for a linked student account</option></select></label>
+              <button id="pa-account-recovery-preview" type="button" class="pa-action" style="background:#0f766e">Preview account recovery</button>
+              <div id="pa-account-recovery-summary" class="pa-muted" role="status">Preview the account change before saving.</div>
+              <label>Recovery reason<textarea name="reason" class="pa-field" minlength="20" maxlength="500" rows="3" required placeholder="Old account is unavailable; replace it with the student's newly verified login"></textarea></label>
+              <button id="pa-account-recovery-confirm" type="submit" class="pa-action" style="background:#9a3412" disabled>Recover this student account</button>
+              <p class="pa-muted">This does not copy or re-create grades, submissions, registrations, or the student's canonical class history. If the duplicate account already owns assessed work or an official registration, automatic recovery stops for manual review.</p>
+            </form>
+          </section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Invitations</h3><div id="pa-person-detail-invites"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Enrollments / teaching assignments</h3><div id="pa-person-detail-links"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Recent audit history</h3><div id="pa-person-detail-audit"></div></section>
@@ -428,6 +442,6 @@
 <script defer src="js/core/adminerva-nav.js?v=e9b95b055852"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=e9b95b055852"></script>
 <script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=1.0.4"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=e9b95b055852"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=20261121-account-recovery"></script>
 </body>
 </html>
