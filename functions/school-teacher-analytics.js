@@ -90,16 +90,18 @@ function createSchoolTeacherAnalyticsService({db}){
    if(includeDrafts&&!isTeacher)
     deny("permission-denied","Private teacher drafts are unavailable to school-administrator-only accounts.");
 
-   const [enrollments,assessmentSnap,gradeSnap,studioSnap,generalSnap,githubSnap]=await Promise.all([
+   const [enrollments,assessmentSnap,gradeSnap,studioSnap,generalSnap,githubSnap,planSnap]=await Promise.all([
     db.collection(prefix+"enrollments").where("offeringId","==",offeringId).limit(501).get(),
     db.collection(prefix+"assessments").where("offeringId","==",offeringId).limit(201).get(),
     db.collection(prefix+"student_grades").where("offeringId","==",offeringId).limit(1001).get(),
     db.collection(prefix+"studio_submissions").where("offeringId","==",offeringId).limit(1001).get(),
     db.collection(prefix+"assessment_submissions").where("offeringId","==",offeringId).limit(1001).get(),
-    db.collection(prefix+"github_evidence").where("offeringId","==",offeringId).limit(1001).get()
+    db.collection(prefix+"github_evidence").where("offeringId","==",offeringId).limit(1001).get(),
+    isTeacher?db.collection("staff_workspaces/"+ctx.uid+"/lesson_plans")
+      .where("offering_id","==",offeringId).limit(51).get():Promise.resolve(null)
    ]);
    if(enrollments.size===501||assessmentSnap.size===201||gradeSnap.size===1001||
-      studioSnap.size===1001||generalSnap.size===1001||githubSnap.size===1001)
+      studioSnap.size===1001||generalSnap.size===1001||githubSnap.size===1001||planSnap?.size===51)
     deny("resource-exhausted","This class exceeds the current analytics page limits.");
 
    const activeEnrollments=enrollments.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
@@ -206,6 +208,18 @@ function createSchoolTeacherAnalyticsService({db}){
     };
    }).sort((a,b)=>(a.dueAt||0)-(b.dueAt||0));
 
+   const preparation=isTeacher&&planSnap?planSnap.docs.map(doc=>({id:doc.id,...doc.data()}))
+    .filter(plan=>!plan.is_archived&&plan.school_id===ctx.schoolId&&plan.offering_id===offeringId)
+    .map(plan=>({
+     planId:plan.id,subject:String(plan.subject_title||offeringLabels.subject||"Lesson plan").slice(0,180),
+     gradeLevel:String(plan.grade_level||"").slice(0,80),
+     academicTerm:String(plan.academic_term||"").slice(0,160),
+     courseWeek:String(plan.course_week||"").slice(0,80),
+     dateRange:String(plan.date_range||"").slice(0,180),
+     version:Number(plan.version)||1,
+     updatedAt:typeof plan.timestamp==="string"?plan.timestamp:""
+    }))
+    .sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))).slice(0,12):[];
    const published=grades.filter(grade=>grade.status==="published");
    const visible=includeDrafts&&isTeacher?grades:published;
    const classworkSummary=assessments.reduce((sum,row)=>({
@@ -227,7 +241,7 @@ function createSchoolTeacherAnalyticsService({db}){
      studentsWithPublishedGrade:new Set(published.map(row=>row.studentUid)).size,
      classwork:classworkSummary
     },
-    assessments,students,
+    assessments,students,preparation,
     note:"Not submitted counts only active enrolled students with linked accounts. Revision requests are tracked separately. Missing grades are excluded from averages and are not treated as zero. Repository commit counts are not used as mastery or effort metrics."
    };
   }
