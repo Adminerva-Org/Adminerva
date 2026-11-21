@@ -76,19 +76,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   const platformTestMode = root.dataset.platformTestMode === "true";
-  let platformSchoolMode="";
-  try{platformSchoolMode=sessionStorage.getItem("Adminerva_platform_school_mode")||"";}catch{}
-  const platformModeBanner=platformTestMode&&["assist","preview"].includes(platformSchoolMode)
-    ?`<aside id="av-platform-school-mode" role="status" aria-live="polite" class="av-platform-school-mode av-platform-school-mode--${platformSchoolMode}">
-        <div>
-          <strong>${platformSchoolMode==="assist"?"System Admin Assist":"System Admin Preview"}</strong>
-          <span>${platformSchoolMode==="assist"
-            ?"Changes in this school are real and are recorded in the System Admin assistance audit."
-            :"School-role preview only. School mutations are blocked by the server."}</span>
-        </div>
-        <button id="av-platform-mode-exit" type="button">Return to System Admin</button>
-      </aside>`
-    :"";
   const {buildNavigationIA}=await import("./navigation-ia.mjs?v=47eba756913e");
   if(turn!==navigationEpoch)return;
   const ia=buildNavigationIA({
@@ -173,26 +160,6 @@ document.addEventListener("DOMContentLoaded", () => {
       #adminerva-nav .av-workspace-card-description{-webkit-line-clamp:1}
       #adminerva-nav .av-workspace-quicklinks{display:none!important}
       #adminerva-nav .av-active-workspace{text-decoration:none}
-      #adminerva-nav .av-platform-school-mode{
-        display:flex;align-items:center;justify-content:space-between;gap:1rem;
-        padding:.65rem clamp(.75rem,2vw,1.5rem);border-top:1px solid rgba(255,255,255,.18);
-        font-size:.78rem;line-height:1.35
-      }
-      #adminerva-nav .av-platform-school-mode>div{display:flex;align-items:baseline;gap:.65rem;min-width:0}
-      #adminerva-nav .av-platform-school-mode strong{font-weight:900;white-space:nowrap}
-      #adminerva-nav .av-platform-school-mode span{overflow-wrap:anywhere}
-      #adminerva-nav .av-platform-school-mode--assist{background:#78350f;color:#fffbeb}
-      #adminerva-nav .av-platform-school-mode--preview{background:#164e63;color:#ecfeff}
-      #adminerva-nav .av-platform-school-mode button{
-        flex:0 0 auto;min-height:36px;padding:.4rem .7rem;border:1px solid currentColor;
-        border-radius:.55rem;background:rgba(255,255,255,.12);font-weight:800
-      }
-      @media(max-width:640px){
-        #adminerva-nav .av-platform-school-mode{align-items:stretch;flex-direction:column;gap:.5rem}
-        #adminerva-nav .av-platform-school-mode>div{display:block}
-        #adminerva-nav .av-platform-school-mode span{display:block;margin-top:.2rem}
-        #adminerva-nav .av-platform-school-mode button{width:100%}
-      }
       #adminerva-nav details[open]>.av-nav-chevron{transform:rotate(180deg)}
       #adminerva-nav .av-nav-chevron{transition:transform .12s ease}
       @media(min-width:1500px){
@@ -261,15 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         <div id="av-mobile-nav" class="xl:hidden border-t border-slate-700"></div>
       </div>
-    </nav>${platformModeBanner}`;
-  const modeExit=root.querySelector("#av-platform-mode-exit");
-  if(modeExit)modeExit.addEventListener("click",()=>{
-    try{
-      for(const key of ["Adminerva_platform_view_school","Adminerva_platform_view_role",
-        "Adminerva_platform_test_mode","Adminerva_platform_school_mode"])sessionStorage.removeItem(key);
-    }catch{}
-    location.href="owner-schools.html";
-  });
+    </nav>`;
   if (accountControls) {
     root.querySelector("#av-account-controls").replaceWith(accountControls);
     const roleDisplay = accountControls.querySelector(".av-nav-role");
