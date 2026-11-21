@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "channel": "opportunities",
+  "items": [
+    {
+      "id": "tesda-online-program-2026",
+      "status": "published",
+      "publishedAt": "2026-11-21T18:00:00+08:00",
+      "expiresAt": "2026-12-21T23:59:59+08:00",
+      "verifiedAt": "2026-11-21",
+      "title": "Explore free skills courses with TESDA Online Program",
+      "summary": "Browse TESDA's technical-vocational learning catalog, including ICT, entrepreneurship and digital literacy. Check the provider's current enrollment conditions before registering.",
+      "provider": "TESDA Online Program",
+      "category": "Training",
+      "audience": [
+        "all"
+      ],
+      "location": "Philippines · Online",
+      "cost": "Free courses",
+      "eligibility": "Course-specific requirements may apply; verify on the official site.",
+      "url": "https://e-tesda.gov.ph/course/",
+      "sourceUrl": "https://e-tesda.gov.ph/local/staticpage/view.php?page=TOP",
+      "tags": [
+        "Technical skills",
+        "ICT",
+        "Entrepreneurship"
+      ]
+    },
+    {
+      "id": "cisco-networking-academy-2026",
+      "status": "published",
+      "publishedAt": "2026-11-21T18:00:00+08:00",
+      "expiresAt": "2026-12-21T23:59:59+08:00",
+      "verifiedAt": "2026-11-21",
+      "title": "Explore technology skills with Cisco Networking Academy",
+      "summary": "Discover introductory learning opportunities in cybersecurity, networking and programming. Available courses and enrollment conditions are set by Cisco.",
+      "provider": "Cisco Networking Academy",
+      "category": "Training",
+      "audience": [
+        "all"
+      ],
+      "location": "Online",
+      "cost": "Free introductory courses",
+      "eligibility": "Check individual course access, account and age requirements.",
+      "url": "https://www.netacad.com/",
+      "sourceUrl": "https://www.cisco.com/site/us/en/learn/training-certifications/training/netacad/index.html",
+      "tags": [
+        "Cybersecurity",
+        "Networking",
+        "Programming"
+      ]
+    },
+    {
+      "id": "microsoft-learn-student-hub-2026",
+      "status": "published",
+      "publishedAt": "2026-11-21T18:00:00+08:00",
+      "expiresAt": "2026-12-21T23:59:59+08:00",
+      "verifiedAt": "2026-11-21",
+      "title": "Build digital skills through Microsoft Learn Student Hub",
+      "summary": "Explore self-paced learning materials and student-oriented technology resources. Check eligibility for any tools, credentials or additional benefits separately.",
+      "provider": "Microsoft Learn",
+      "category": "Training",
+      "audience": [
+        "all"
+      ],
+      "location": "Online",
+      "cost": "Free learning resources",
+      "eligibility": "Some programs and benefits have separate eligibility requirements.",
+      "url": "https://learn.microsoft.com/en-us/training/student-hub/",
+      "sourceUrl": "https://learn.microsoft.com/en-us/training/student-hub/",
+      "tags": [
+        "Technology",
+        "Student learning",
+        "Career skills"
+      ]
+    }
+  ]
+}
