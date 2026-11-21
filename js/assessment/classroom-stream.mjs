@@ -12,7 +12,8 @@ const el=id=>document.getElementById(id);
 const form=el("teacherClassroomForm"),select=el("teacherClassroomOffering");
 let picker=null,offerings=[],posts=[],classwork=[],rosterStudents=[],busy=false,epoch=0,loadedOffering="",editing=null,composerOffering="";
 let canPost=false,canComment=false,classworkError="",classworkHealthError="",rosterError="",classroomSettings={participationMode:"teacher_only",revision:0},mutedPersonIds=new Set();
-let classworkHealth=new Map(),classworkSummary=null,preparationPlans=[],officialMeetings=[];
+let classworkHealth=new Map(),classworkSummary=null,preparationPlans=[],officialMeetings=[],teachingTeam=[],
+  primaryTeacherUid="",primaryNeedsReview=false;
 const fields=["Kind","Title","Body","Link","Pinned"];
 function make(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;}
 function date(value){return value?new Date(value).toLocaleString():"";}
@@ -128,6 +129,28 @@ function renderPosts(){
     renderComments(post,card);host.append(card);
   }
 }
+function currentTeachingRole(){
+  const row=teachingTeam.find(teacher=>teacher.uid===auth.currentUser?.uid);
+  return row?.role||"";
+}
+function renderTeachingTeam(){
+  const host=el("teacherClassroomTeachingTeam");host.replaceChildren();
+  if(!current()||!loadedOffering)return;
+  if(!teachingTeam.length){
+    host.append(make("span","rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-900","No active teaching team"));
+    return;
+  }
+  for(const teacher of teachingTeam){
+    const mine=teacher.uid===auth.currentUser?.uid,primary=teacher.role==="primary",
+      cls=primary?"border-emerald-200 bg-emerald-50 text-emerald-900":"border-slate-200 bg-white text-slate-700";
+    host.append(make("span","rounded-full border px-3 py-1.5 text-xs font-bold "+cls,
+      (primary?"Primary Teacher: ":"Co-teacher: ")+teacher.name+(mine?" · You":"")));
+  }
+  if(primaryNeedsReview){
+    host.append(make("span","rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-extrabold text-amber-950",
+      "Primary Teacher needs School Admin review"));
+  }
+}
 const scheduleDayNames={mon:"Mon",tue:"Tue",wed:"Wed",thu:"Thu",fri:"Fri",sat:"Sat"};
 function renderOfficialSchedule(){
   const host=el("teacherClassroomSchedule");host.replaceChildren();
@@ -177,6 +200,7 @@ function renderActionQueue(){
   if(!loadedOffering||classworkHealthError)return;
   const queue=[];
   for(const item of classwork){
+    if(item.canReview!==true)continue;
     const health=classworkHealth.get(item.taskId);if(!health)continue;
     if(Number(health.awaitingGrade)>0)queue.push({
       priority:0,item,label:health.awaitingGrade+" submission"+(health.awaitingGrade===1?"":"s")+" awaiting grade",
@@ -281,16 +305,24 @@ function renderClasswork(){
     );
   }
   if(classworkHealthError)healthStatus.textContent=classworkHealthError;
-  else if(classworkSummary)healthStatus.textContent="Counts are student-task states for active enrolled learners with linked accounts. A revision request is not counted as never submitted.";
+  else if(classworkSummary)healthStatus.textContent="Counts are classwide student-task states. Needs Action includes only assessments assigned to you for review; Co-teacher access does not change review ownership.";
   if(!classwork.length){host.append(make("p","rounded-lg bg-slate-50 border border-dashed border-slate-300 p-4 text-sm text-slate-600","No assessments have been deployed to this class yet."));return;}
   for(const item of classwork){
     const row=make("article","rounded-xl border border-slate-200 p-3"),top=make("div","flex items-start justify-between gap-3"),text=make("div","min-w-0");
     text.append(make("strong","block text-sm",item.title||"Assessment"));
     const state=item.lifecycle==="closed"?"Closed":item.published===true?"Visible to students":"Teacher draft";
     text.append(make("span","block text-xs text-slate-500 mt-1",[item.assessmentType,state,item.dueAt?"Due "+date(item.dueAt):""].filter(Boolean).join(" · ")));
-    const link=make("a","shrink-0 text-xs font-bold text-indigo-700 underline","Review");
-    link.href="school-gradebook.html?view=review&offeringId="+encodeURIComponent(item.offeringId)+"&task="+encodeURIComponent(item.taskId);
-    top.append(text,link);row.append(top);
+    if(item.canReview===true){
+      const link=make("a","shrink-0 text-xs font-bold text-indigo-700 underline","Review");
+      link.href="school-gradebook.html?view=review&offeringId="+encodeURIComponent(item.offeringId)+"&task="+encodeURIComponent(item.taskId);
+      top.append(text,link);
+    }else{
+      const reviewer=teachingTeam.find(teacher=>teacher.uid===item.reviewerUid),
+        badge=make("span","shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-600",
+          "Reviewer: "+(reviewer?.name||"another teacher"));
+      top.append(text,badge);
+    }
+    row.append(top);
     const health=classworkHealth.get(item.taskId);
     if(health){
       const record=health.classRecord||{status:"unlinked"};
@@ -306,12 +338,20 @@ function renderClasswork(){
         recordText.append(make("strong","block text-xs text-slate-700","Not linked to Class Record"),
           make("span","block text-[11px] text-slate-500 mt-0.5","Published Gradebook results do not enter the formal Class Record until you link this assessment."));
       }
-      const recordLink=make("a","shrink-0 text-xs font-extrabold underline "+(record.status==="linked"?"text-emerald-800":record.status==="archived"?"text-amber-800":"text-blue-700"),
-        record.status==="linked"?"Open record":record.status==="archived"?"Review archived link":"Link to record");
-      recordLink.href=record.status==="unlinked"?
-        "class-record.html?"+new URLSearchParams({offering:item.offeringId,assessment:item.taskId,source:"school"}).toString():
-        "class-record.html?offering="+encodeURIComponent(item.offeringId);
-      recordRow.append(recordText,recordLink);row.append(recordRow);
+      const isPrimary=currentTeachingRole()==="primary";
+      if(record.status==="linked"||record.status==="archived"||isPrimary){
+        const recordLink=make("a","shrink-0 text-xs font-extrabold underline "+(record.status==="linked"?"text-emerald-800":record.status==="archived"?"text-amber-800":"text-blue-700"),
+          record.status==="linked"?"Open record":record.status==="archived"?"Review archived link":"Link to record");
+        recordLink.href=record.status==="unlinked"?
+          "class-record.html?"+new URLSearchParams({offering:item.offeringId,assessment:item.taskId,source:"school"}).toString():
+          "class-record.html?offering="+encodeURIComponent(item.offeringId);
+        recordRow.append(recordText,recordLink);
+      }else{
+        const owner=teachingTeam.find(teacher=>teacher.role==="primary");
+        recordRow.append(recordText,make("span","shrink-0 text-[11px] font-bold text-slate-500",
+          primaryNeedsReview?"Primary Teacher must be set by School Admin":"Primary Teacher "+(owner?.name||"")+" must link"));
+      }
+      row.append(recordRow);
       const chips=make("div","flex flex-wrap gap-1.5 mt-3");
       const add=(label,value,cls)=>{if(Number(value)>0)chips.append(make("span","rounded-full border px-2 py-1 text-[11px] font-bold "+cls,label+" "+Number(value).toLocaleString()));};
       add("Not submitted",health.notSubmitted,"border-slate-200 bg-slate-50 text-slate-700");
@@ -347,13 +387,14 @@ function beginEdit(post){
 }
 async function loadPosts(){
   const item=current(),turn=++epoch;loadedOffering="";canPost=false;canComment=false;posts=[];classwork=[];rosterStudents=[];mutedPersonIds=new Set();
-  classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];officialMeetings=[];classroomSettings={participationMode:"teacher_only",revision:0};
-  renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();
+  classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];officialMeetings=[];
+  teachingTeam=[];primaryTeacherUid="";primaryNeedsReview=false;classroomSettings={participationMode:"teacher_only",revision:0};
+  renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderTeachingTeam();renderOfficialSchedule();updateClassLinks();syncControls();
   if(!item)return false;
   try{
     const results=await Promise.allSettled([
       scoped(streamApi,"list",{offeringId:item.offeringId}),
-      scoped(assessmentApi,"list_teacher"),
+      scoped(assessmentApi,"list_class_teacher",{offeringId:item.offeringId}),
       scoped(academicsApi,"class_roster",{offeringId:item.offeringId}),
       scoped(analyticsApi,"class",{offeringId:item.offeringId,includeDrafts:true})
     ]);
@@ -361,7 +402,9 @@ async function loadPosts(){
     if(results[0].status!=="fulfilled")throw results[0].reason;
     const stream=results[0].value;
     posts=stream.posts||[];canPost=stream.canPost===true;canComment=stream.canComment===true;
-    classroomSettings=stream.settings||classroomSettings;officialMeetings=stream.schedule?.meetings||[];mutedPersonIds=new Set(stream.mutedPersonIds||[]);loadedOffering=item.offeringId;
+    classroomSettings=stream.settings||classroomSettings;officialMeetings=stream.schedule?.meetings||[];
+    teachingTeam=stream.teachers||[];primaryTeacherUid=stream.primaryTeacherUid||"";primaryNeedsReview=stream.primaryNeedsReview===true;
+    mutedPersonIds=new Set(stream.mutedPersonIds||[]);loadedOffering=item.offeringId;
     if(results[1].status==="fulfilled")
       classwork=(results[1].value.assessments||[]).filter(task=>task.offeringId===item.offeringId&&!["archived","cancelled"].includes(task.lifecycle)).sort((a,b)=>(a.dueAt||0)-(b.dueAt||0));
     else classworkError="Classwork could not load. The classroom stream is still available.";
@@ -372,9 +415,9 @@ async function loadPosts(){
       classworkSummary=results[3].value.summary?.classwork||null;
       preparationPlans=results[3].value.preparation||[];
     }else classworkHealthError="Submission and grading counts are temporarily unavailable. Classwork links still work.";
-    renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();return true;
+    renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderTeachingTeam();renderOfficialSchedule();updateClassLinks();syncControls();return true;
   }catch(error){
-    if(turn===epoch){say(error?.message||"Classroom could not load.",true);renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();}
+    if(turn===epoch){say(error?.message||"Classroom could not load.",true);renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderTeachingTeam();renderOfficialSchedule();}
     return false;
   }
 }
@@ -387,7 +430,7 @@ async function refresh(){
     for(const item of offerings)select.add(new Option(label(item),item.offeringId));
     if(offerings.some(item=>item.offeringId===previous))select.value=previous;
     else if(initialOfferingId&&offerings.some(item=>item.offeringId===initialOfferingId))select.value=initialOfferingId;
-    if(!offerings.length){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];officialMeetings=[];renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();say("No active class is assigned to this teacher account.",true);return;}
+    if(!offerings.length){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];officialMeetings=[];teachingTeam=[];primaryTeacherUid="";primaryNeedsReview=false;renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();say("No active class is assigned to this teacher account.",true);return;}
     syncOfferingUrl(select.value);restoreDraft(select.value);if(await loadPosts())say("Classroom ready for "+label(current())+".");
   }catch(error){loadedOffering="";posts=[];classwork=[];rosterStudents=[];preparationPlans=[];renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();say(error?.message||"Classroom could not load.",true);}
   finally{setBusy(false);}
@@ -453,7 +496,7 @@ el("teacherClassroomSearch").addEventListener("input",renderPosts);
 picker=createTenantSchoolPicker({host:el("teacherClassroomSchoolSwitcher"),status:null,onBeforeChange:async()=>{
   if(busy||editing)throw Error("Finish or cancel the current classroom action before switching schools.");
   keepDraft();++epoch;offerings=[];posts=[];classwork=[];rosterStudents=[];loadedOffering="";canPost=false;canComment=false;composerOffering="";
-  classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];officialMeetings=[];mutedPersonIds=new Set();classroomSettings={participationMode:"teacher_only",revision:0};
+  classworkError="";classworkHealthError="";rosterError="";classworkHealth=new Map();classworkSummary=null;preparationPlans=[];officialMeetings=[];teachingTeam=[];primaryTeacherUid="";primaryNeedsReview=false;mutedPersonIds=new Set();classroomSettings={participationMode:"teacher_only",revision:0};
   syncOfferingUrl("");select.replaceChildren();fillComposer();renderPosts();renderPreparation();renderMaterials();renderClasswork();renderRoster();renderParticipation();renderOfficialSchedule();updateClassLinks();syncControls();
 },onReady:scope=>{if(scope.current?.roles.includes("teacher"))void refresh();else say("Teacher access is required.",true);}});
 renderClasswork();renderRoster();renderParticipation();updateClassLinks();syncControls();
