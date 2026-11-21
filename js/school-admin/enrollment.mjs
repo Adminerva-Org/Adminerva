@@ -5,8 +5,12 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 const get=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
+const requestedPersonId=(()=>{try{
+  const value=new URL(location.href).searchParams.get("personId")||"";
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)?value:"";
+}catch{return "";}})();
 let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]},
-  saving=false,draftDirty=false,loadedApplication=null,registrations=[],registrationChange=null;
+  saving=false,draftDirty=false,loadedApplication=null,loadedPerson=null,registrations=[],registrationChange=null;
 const requestVersions={catalog:0,applications:0,registrations:0};
 let refreshVersion=0;
 
@@ -304,6 +308,7 @@ function applicationMeta(item){
 }
 function loadApplicationIntoForm(item){
   if(saving||loadedApplication?.applicationId===item.applicationId||!discardDraft())return;
+  loadedPerson=null;form.elements.personId.value="";
   loadedApplication=item;
   form.elements.applicationId.value=item.applicationId;
   form.elements.displayName.value=item.displayName||"";
@@ -328,10 +333,12 @@ function loadApplicationIntoForm(item){
   form.elements.displayName.focus();
 }
 function clearLoadedApplication({resetIdentity=false}={}){
-  loadedApplication=null;form.elements.applicationId.value="";
+  loadedApplication=null;loadedPerson=null;
+  form.elements.applicationId.value="";form.elements.personId.value="";
   get("en-register-title").textContent="Onsite / manual enrollment";
-  get("en-register-help").textContent="Use this for walk-in enrollees. Online applications can be loaded here from the review queue before official placement.";
+  get("en-register-help").textContent="Use this for walk-in enrollees. Online applications and reviewed directory students can be loaded here before official placement.";
   get("en-clear-application").hidden=true;
+  get("en-clear-application").textContent="Clear loaded student";
   if(resetIdentity){
     for(const name of ["displayName","birthDate","studentNumber","guardianName","guardianRelationship","guardianEmail","guardianMobile","studentEmail"])
       form.elements[name].value="";
@@ -340,6 +347,54 @@ function clearLoadedApplication({resetIdentity=false}={}){
   refreshPlacement();
   draftDirty=false;
 }
+async function loadStudentCandidate(personId,{scroll=true}={}){
+  if(saving||!personId)return false;
+  status.textContent="Loading the reviewed student directory record…";
+  try{
+    const result=await perform("student_candidate",{personId}),person=result.person;
+    if(result.activeRegistrations?.length){
+      const current=result.activeRegistrations[0],section=catalog.sections.find(row=>row.id===current.sectionId)?.name||current.sectionId||"assigned section";
+      get("en-registration-search").value=person.displayName||person.studentNumber||"";
+      renderRegistrations();
+      status.textContent=person.displayName+" already has an active official registration"+(section?" · "+section:"")+
+        ". Use the Current registrations controls to correct or end that placement.";
+      if(scroll)get("en-registration-list").scrollIntoView({behavior:"smooth",block:"start"});
+      return false;
+    }
+    if(draftDirty&&!discardDraft())return false;
+    loadedApplication=null;loadedPerson=person;
+    form.elements.applicationId.value="";form.elements.personId.value=person.personId;
+    form.elements.displayName.value=person.displayName||"";
+    form.elements.birthDate.value=person.birthDate||"";
+    form.elements.studentNumber.value=person.studentNumber||"";
+    form.elements.guardianName.value=person.guardianName||"";
+    form.elements.guardianRelationship.value=person.guardianRelationship||"";
+    form.elements.guardianEmail.value=person.guardianEmail||"";
+    form.elements.guardianMobile.value=person.guardianMobile||"";
+    form.elements.studentEmail.value="";
+    form.elements.studentEmailType.value=person.studentEmailType||"personal";
+    form.elements.yearId.value="";form.elements.programId.value="";
+    form.elements.termId.value="";form.elements.sectionId.value="";
+    get("en-register-title").textContent="Place existing student";
+    get("en-register-help").textContent="This form is bound to the reviewed school directory record for "+person.displayName+
+      ". Complete any missing registrar details, then choose the official academic placement. Adminerva will not create a second person record.";
+    get("en-clear-application").hidden=false;
+    get("en-clear-application").textContent="Clear loaded student";
+    refreshPlacement();draftDirty=false;
+    status.textContent=person.activationReady
+      ?person.displayName+" loaded from the school directory. Their sign-in identity is already protected; confirm the student email only if the selected grade requires it."
+      :person.displayName+" loaded from the school directory. Complete the required contact and placement fields.";
+    if(scroll){
+      form.scrollIntoView({behavior:"smooth",block:"start"});
+      (form.elements.birthDate.value?form.elements.yearId:form.elements.birthDate).focus();
+    }
+    return true;
+  }catch(error){
+    status.textContent=error?.message||"The reviewed student directory record could not be loaded.";
+    return false;
+  }
+}
+
 async function reviewApplication(item,nextStatus){
   if(saving)return;
   const label=nextStatus==="rejected"?"rejection":"request for more information";
@@ -400,6 +455,8 @@ async function refreshAll(){
   if(version!==refreshVersion)return;
   const unavailable=["Online applications","Current registrations"].filter((_,index)=>outcomes[index].status==="rejected");
   status.textContent=unavailable.length?unavailable.join(" and ")+" could not refresh. Available results remain usable; use Refresh to retry.":"";
+  if(requestedPersonId&&!loadedApplication&&!loadedPerson&&version===refreshVersion)
+    await loadStudentCandidate(requestedPersonId);
 }
 let activation="";
 function renderActivation(schoolId){
@@ -451,10 +508,13 @@ form.addEventListener("submit",event=>{
     setSaving(true);
     status.textContent=loadedApplication
       ?"Creating official enrollment from the reviewed application…"
-      :"Registering onsite student and creating section subject enrollments…";
+      :loadedPerson
+        ?"Creating official placement for the reviewed directory student…"
+        :"Registering onsite student and creating section subject enrollments…";
     try{
       const result=await perform("register_student",{
         applicationId:String(data.get("applicationId")||""),
+        personId:String(data.get("personId")||""),
         displayName:String(data.get("displayName")||"").trim(),
         birthDate:String(data.get("birthDate")||""),
         studentNumber:String(data.get("studentNumber")||"").trim(),
@@ -490,7 +550,7 @@ picker=createTenantSchoolPicker({
     if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
     ++refreshVersion;
     for(const source of Object.keys(requestVersions))++requestVersions[source];
-    loadedApplication=null;registrationChange=null;draftDirty=false;registrations=[];
+    loadedApplication=null;loadedPerson=null;registrationChange=null;draftDirty=false;registrations=[];
     catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]};
     if(get("en-registration-change-dialog").open)get("en-registration-change-dialog").close();
     form.reset();clearLoadedApplication({resetIdentity:true});
