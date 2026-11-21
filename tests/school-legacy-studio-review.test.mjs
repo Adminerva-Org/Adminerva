@@ -16,7 +16,10 @@ function install(){
  }
  vm.runInNewContext(text,{module,Buffer,console,Date,require:name=>{
   if(name==="node:crypto")return {createHash};
-  if(name==="firebase-admin/firestore")return {FieldValue:{serverTimestamp:()=>({testTimestamp:true})}};
+  if(name==="firebase-admin/firestore")return {
+    FieldValue:{serverTimestamp:()=>({testTimestamp:true})},
+    FieldPath:{documentId:()=>"__name__"}
+  };
   if(name==="./tenant-access.js")return {TenantAccessError};
   throw Error("Unknown dependency "+name);
  }},{filename:"school-legacy-studio-review.js"});
@@ -62,13 +65,23 @@ function dbHarness({tamper=false,unauthorized=false,grade=null}={}){
     doc(id){return doc(path+"/"+(id||"revision-"+(++newId)));},
     where(field,op,value){
      assert.equal(op,"==");
-     return {limit(n){return {async get(){
-      const rows=[...map].filter(([key,row])=>key.startsWith(path+"/")&&
-       key.split("/").length===path.split("/").length+1&&row[field]===value)
-       .slice(0,n).map(([key])=>({...map.get(key),...{id:key.split("/").at(-1),ref:doc(key),
-         data:()=>map.get(key)}}));
-      return {size:rows.length,docs:rows};
-     }};}};
+     return {orderBy(name){
+       assert.equal(name,"__name__");
+       let cursor="";
+       const query={
+        startAfter(value){cursor=typeof value==="string"?value:value.id;return query;},
+        limit(n){return {async get(){
+         const rows=[...map].filter(([key,row])=>key.startsWith(path+"/")&&
+          key.split("/").length===path.split("/").length+1&&row[field]===value&&
+          key.split("/").at(-1)>cursor).sort((a,b)=>a[0].localeCompare(b[0]))
+          .slice(0,n).map(([key])=>({
+           id:key.split("/").at(-1),ref:doc(key),data:()=>map.get(key)
+          }));
+         return {size:rows.length,docs:rows};
+        }};}
+       };
+       return query;
+     }};
     }
    };
   },
@@ -154,4 +167,19 @@ test("stale historical grade version cannot be published",async()=>{
    legacySubmissionId:submittedId,expectedGradeRevision:4}}),error=>
    error.code==="failed-precondition");
  assert.equal(writes.length,0);
+});
+
+test("historical inbox pages through more than 100 learner receipts without dropping any",async()=>{
+ const {service,map}=dbHarness();
+ const seed=data();
+ for(let i=2;i<=195;i++){
+   const student="student-"+String(i).padStart(3,"0"),ref=student+"_"+legacyId;
+   map.set("studio_submissions/"+ref,{...seed.head,studentId:student,
+     ownerUid:"learner-"+i,projectId:"project-"+i});
+   map.set("students/"+student,{name:"Learner "+i});
+ }
+ const result=await service(input("legacy_review_inbox"));
+ assert.equal(result.submissions.length,195);
+ const keys=new Set(result.submissions.map(row=>row.submissionId));
+ assert.equal(keys.size,195);
 });
