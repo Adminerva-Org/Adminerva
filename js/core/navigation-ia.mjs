@@ -342,7 +342,9 @@ export function buildNavigationIA(ctx){
 
   const workspaces=systemDefault?system():studentView?student(modelCtx):teacher(modelCtx);
   const route=(location.pathname.split("/").pop()||"").toLowerCase();
-  const requestedWorkspace=new URLSearchParams(location.search).get("workspace")||"";
+  const rawRequestedWorkspace=new URLSearchParams(location.search).get("workspace")||"";
+  const requestedWorkspace=systemDefault&&["system-analytics","directory","system"].includes(rawRequestedWorkspace)?
+    "platform-admin":rawRequestedWorkspace;
   const routePath=value=>String(value||"").split("#")[0].split("?")[0].toLowerCase();
   const routeQueryMatches=value=>{
     const raw=String(value||""),query=raw.includes("?")?raw.split("?")[1].split("#")[0]:"";
