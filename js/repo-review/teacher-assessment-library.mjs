@@ -10,14 +10,14 @@ const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
 const requestedFilter=new URL(location.href).searchParams.get("view");
-let items=[],deployments=[],filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,
+let items=[],deployments=[],legacyDeploymentHistory=[],legacyDeploymentWarning="",filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,
   lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
-    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];editing=null;sharing=null;deploying=null;
+    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];legacyDeploymentHistory=[];legacyDeploymentWarning="";editing=null;sharing=null;deploying=null;
     deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
     deployVariantReview=null;deployVariantLoading=false;personalizingOfferings=[];
     lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
@@ -245,10 +245,18 @@ function render(){
   list.replaceChildren();
   const uid=picker.scope.current?.uid;
   if(filter==="deployed"){
-    if(!deployments.length){
+    if(!deployments.length&&!legacyDeploymentHistory.length){
       const empty=document.createElement("p");empty.className="tl-muted";
-      empty.textContent="No class assessment deployments yet.";
+      empty.textContent=legacyDeploymentWarning
+        ?"School-scoped deployments are empty, but historical deployments could not be checked. Open Repository Assessment Studio to manage existing legacy schedules."
+        :"No class assessment deployments yet.";
       list.append(empty);
+    }
+    if(legacyDeploymentWarning){
+      const warning=document.createElement("p");warning.className="tl-muted";
+      warning.textContent="Historical Repository Management deployments could not be verified: "+legacyDeploymentWarning+
+        ". Your existing legacy records have not been modified.";
+      list.append(warning);
     }
     for(const task of deployments){
       const lifecycle=task.lifecycle||"active";
@@ -311,6 +319,59 @@ function render(){
       }
       row.append(text,controls);list.append(row);
     }
+    if(legacyDeploymentHistory.length){
+      const heading=document.createElement("section");
+      heading.className="tl-row";
+      const title=document.createElement("h3");title.style.fontWeight="800";
+      title.textContent="Historical Repository Management deployments";
+      const explanation=document.createElement("p");explanation.className="tl-muted";
+      explanation.textContent="These deployments remain attached to the original legacy assessments. Edit their existing class deadlines or late-submission policy here; Deploy new creates a separate school assessment and does not change them.";
+      heading.append(title,explanation);list.append(heading);
+      for(const historical of legacyDeploymentHistory){
+        const row=document.createElement("article");row.className="tl-row";row.setAttribute("role","listitem");
+        const header=document.createElement("h3");header.style.fontWeight="750";
+        header.textContent=historical.title||"Historical assessment";
+        const meta=document.createElement("p");meta.className="tl-muted";
+        meta.textContent=(historical.published?"Published":"Unpublished")+" · Legacy "+
+          (historical.submissionSource==="studio"?"Adminerva Studio":"GitHub repository")+
+          " · "+(historical.deploymentCount||historical.deployments?.length||0)+" original class deployment(s)";
+        row.append(header,meta);
+        const entries=Array.isArray(historical.deployments)?historical.deployments:[];
+        for(const assigned of entries){
+          const detail=document.createElement("div");
+          detail.className="mt-2 flex flex-wrap items-center justify-between gap-2";
+          const line=document.createElement("p");line.className="tl-muted";
+          const rawDue=assigned.deadline?new Date(assigned.deadline):null;
+          const validDue=rawDue&&Number.isFinite(rawDue.getTime());
+          const due=assigned.deadlineEnabled===false?"No enforced deadline":
+            validDue?"Due "+rawDue.toLocaleString():"Deadline not set";
+          const expired=assigned.deadlineEnabled!==false&&validDue&&rawDue.getTime()<Date.now();
+          line.textContent=(assigned.section||"Unassigned section")+" · "+due+
+            (expired?" · Past due":"")+
+            (assigned.allowLateSubmissions?" · Late submissions permitted":"");
+          const link=document.createElement("a");link.className="tl-action alt";
+          link.href="repository-assessment-studio.html?"+new URLSearchParams({
+            legacyAssessment:historical.legacyAssessmentId,legacyDeployment:assigned.id
+          }).toString();
+          link.textContent="Edit deadline / late submissions";
+          detail.append(line,link);row.append(detail);
+        }
+        if(historical.submissionSource==="studio"){
+          const review=document.createElement("a");review.className="tl-action";
+          review.href="school-gradebook.html?"+new URLSearchParams({
+            view:"review",task:"legacy:"+historical.legacyAssessmentId
+          }).toString();
+          review.textContent="Review submissions in V4";
+          row.append(review);
+        }
+        const origin=document.createElement("a");origin.className="tl-action alt";
+        origin.href="repository-assessment-studio.html?"+new URLSearchParams({
+          legacyAssessment:historical.legacyAssessmentId,legacyView:"deployments"
+        }).toString();
+        origin.textContent="View original assessment and deployments";
+        row.append(origin);list.append(row);
+      }
+    }
     return;
   }
   const visible=items.filter(item=>{
@@ -347,8 +408,10 @@ function render(){
     controls.append(actionButton("Preview",()=>showPreview(item),true));
     if(item.canShare&&item.legacyImport?.assessmentId){
       const legacy=document.createElement("a");legacy.className="tl-action alt";
-      legacy.href="repository-assessment-studio.html?legacyAssessment="+encodeURIComponent(item.legacyImport.assessmentId);
-      legacy.textContent="Open historical assessment";controls.append(legacy);
+      legacy.href="repository-assessment-studio.html?"+new URLSearchParams({
+        legacyAssessment:item.legacyImport.assessmentId,legacyView:"deployments"
+      }).toString();
+      legacy.textContent="View original deployments";controls.append(legacy);
     }
     if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
@@ -422,13 +485,35 @@ async function migrateOwnedLegacyAssessments(){
   }
 }
 async function refresh(){
-  const [result,deployed]=await Promise.all([
-    perform("list"),performScoped(scopedAssessmentApi,"list_teacher")
+  // The V4 deployed list is not the authoritative source for historical
+  // Repository Management deployments. Read their owner-scoped summaries
+  // separately without importing, re-deploying or mutating legacy records.
+  const legacyRead=(async()=>{
+    try{return await performScoped(migrationApi,"list_legacy_deployments");}
+    catch(error){
+      // Older deployed school callables may not yet have the dedicated list.
+      // The existing owner-scoped legacy listing carries the same deployment
+      // summaries and is already used by the assessment migration.
+      try{
+        const fallback=await performScoped(migrationApi,"list_legacy");
+        return {items:(fallback.items||[]).filter(row=>row.deploymentCount>0)};
+      }catch(fallbackError){
+        console.warn("Legacy deployment listing unavailable:",error,fallbackError);
+        return {items:[],error:String(fallbackError?.message||"Service unavailable")};
+      }
+    }
+  })();
+  const [result,deployed,historical]=await Promise.all([
+    perform("list"),performScoped(scopedAssessmentApi,"list_teacher"),legacyRead
   ]);
   items=result.items||[];
   deployments=deployed.assessments||[];
+  legacyDeploymentHistory=historical.items||[];
+  legacyDeploymentWarning=historical.error||"";
   render();
   if(result.truncated)say("Only the first assessment records are shown. Pagination is required for more.");
+  if(filter==="deployed"&&legacyDeploymentWarning)
+    say("School deployments loaded, but historical deployments could not be checked. The original records are unchanged.");
 }
 document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListener("click",()=>{
   filter=button.dataset.filter;
