@@ -6,12 +6,12 @@ const rosterSourceApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolR
 const get=id=>document.getElementById(id);
 const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 let schoolPrograms=[],schoolTerms=[],schoolSections=[],schoolOfferings=[];
-let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0,inviteRun=0,staffSearchRun=0,detailRun=0,academicRun=0,membershipRun=0;
+let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0,inviteRun=0,staffSearchRun=0,detailRun=0,academicRun=0,membershipRun=0,recoverySearchRun=0;
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false,peopleReloadQueued=false,peopleRun=0;
 let accessChange=null,personChange=null,lifecycleChange=null,invitationChange=null,currentDetailPerson=null,
-  currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false,
-  linkedStaffById=new Map();
+  currentRosterOfferingId=null,peopleSearchTimer=null,recoverySearchTimer=null,recoveryPreview=null,recoveryCanonicalPersonId=null,
+  importRows=[],importDigest=null,importPreview=null,importCommitted=false,linkedStaffById=new Map();
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
@@ -94,7 +94,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    schoolReady=false;++peopleRun;peopleReloadQueued=false;clearTimeout(peopleSearchTimer);++workloadRun;++rosterRun;++inviteRun;++staffSearchRun;++detailRun;++academicRun;++membershipRun;workload=null;resetWorkload();
+    schoolReady=false;++peopleRun;peopleReloadQueued=false;clearTimeout(peopleSearchTimer);clearTimeout(recoverySearchTimer);++recoverySearchRun;recoveryPreview=null;recoveryCanonicalPersonId=null;++workloadRun;++rosterRun;++inviteRun;++staffSearchRun;++detailRun;++academicRun;++membershipRun;workload=null;resetWorkload();
     linkedStaffById=new Map();workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-person-detail-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
@@ -1270,6 +1270,21 @@ async function openPersonDetail(person){
       recordsAction.style.display=p.kind==="student"?"inline-flex":"none";
       if(p.kind==="student")recordsAction.href="school-student-records.html?personId="+encodeURIComponent(p.personId);
     }
+    const recoveryCard=get("pa-account-recovery-card");
+    recoveryCard.hidden=p.kind!=="student"||p.status!=="active";
+    recoveryPreview=null;recoveryCanonicalPersonId=recoveryCard.hidden?null:p.personId;
+    if(!recoveryCard.hidden){
+      const recoveryForm=get("pa-account-recovery-form");
+      recoveryForm.reset();recoveryForm.elements.personId.value=p.personId;
+      get("pa-account-recovery-search").value="";
+      get("pa-account-recovery-replacement").replaceChildren(
+        new Option("Search for a linked student account","")
+      );
+      get("pa-account-recovery-summary").textContent=p.accountLinked?
+        "This student already has a linked account. Preview will show whether the previous school login will be suspended.":
+        "Search for the student's newly verified duplicate account, then preview the recovery.";
+      get("pa-account-recovery-confirm").disabled=true;
+    }
     const placementCard=get("pa-detail-placement-card");
     placementCard.hidden=p.kind!=="student"||standardEnrollmentMode;
     if(!placementCard.hidden){
@@ -1294,6 +1309,87 @@ async function openPersonDetail(person){
     if(dialog.open&&run===detailRun&&schoolReady)get("pa-person-detail-meta").textContent=error?.message||"Person details are unavailable.";
   }
 }
+
+function resetRecoveryPreview(message="Preview the account replacement before saving."){
+  recoveryPreview=null;
+  get("pa-account-recovery-summary").textContent=message;
+  get("pa-account-recovery-confirm").disabled=true;
+}
+get("pa-account-recovery-search")?.addEventListener("input",event=>{
+  clearTimeout(recoverySearchTimer);resetRecoveryPreview();
+  const query=event.currentTarget.value.trim(),select=get("pa-account-recovery-replacement");
+  select.replaceChildren(new Option(query?"Searching…":"Search for a linked student account",""));
+  const run=++recoverySearchRun;
+  if(query.length<2)return;
+  recoverySearchTimer=setTimeout(()=>{
+    void perform("search_people",{query,kind:"student",status:"active"}).then(result=>{
+      if(run!==recoverySearchRun||!recoveryCanonicalPersonId)return;
+      const matches=(result.items||[]).filter(person=>
+        person.personId!==recoveryCanonicalPersonId&&person.accountLinked);
+      select.replaceChildren(new Option(matches.length?
+        "Choose the newly linked student record":"No other linked student records found",""));
+      for(const person of matches)
+        select.add(new Option(person.displayName+
+          (person.studentNumber?" · "+person.studentNumber:""),person.personId));
+    }).catch(error=>{
+      if(run===recoverySearchRun)resetRecoveryPreview(error?.message||"Account search failed.");
+    });
+  },250);
+});
+get("pa-account-recovery-replacement")?.addEventListener("change",()=>resetRecoveryPreview());
+get("pa-account-recovery-preview")?.addEventListener("click",()=>{
+  const form=get("pa-account-recovery-form"),
+    personId=String(form.elements.personId.value||""),
+    replacementPersonId=String(form.elements.replacementPersonId.value||"");
+  if(!personId||!replacementPersonId||pendingWrite)return;
+  const button=get("pa-account-recovery-preview");button.disabled=true;
+  resetRecoveryPreview("Checking identity, enrollment and academic-history conflicts…");
+  void perform("preview_student_account_recovery",{personId,replacementPersonId}).then(preview=>{
+    if(personId!==recoveryCanonicalPersonId||
+       replacementPersonId!==String(form.elements.replacementPersonId.value||""))return;
+    recoveryPreview=preview;
+    const lines=[
+      "Keep "+preview.canonical.displayName+" as the canonical student.",
+      "Move the login currently linked to "+preview.replacement.displayName+" to this student.",
+      preview.previousAccountWillBeSuspended?
+        "The previous school login will be suspended.":"No active previous school login needs suspension."
+    ];
+    if(preview.blockers?.length)lines.push("Blocked: "+preview.blockers.join(" "));
+    else lines.push("No duplicate registration, enrollment, grade, submission, evidence or record-history blockers were found.");
+    get("pa-account-recovery-summary").textContent=lines.join(" ");
+    get("pa-account-recovery-confirm").disabled=Boolean(preview.blockers?.length);
+  }).catch(error=>resetRecoveryPreview(error?.message||"Account recovery preview failed."))
+    .finally(()=>{button.disabled=false;});
+});
+get("pa-account-recovery-form")?.addEventListener("submit",event=>{
+  event.preventDefault();
+  const form=event.currentTarget,d=new FormData(form),preview=recoveryPreview;
+  if(!preview||preview.blockers?.length||pendingWrite||!form.reportValidity())return;
+  const personId=String(d.get("personId")||""),
+    replacementPersonId=String(d.get("replacementPersonId")||""),
+    reason=String(d.get("reason")||"").trim();
+  if(personId!==preview.canonical.personId||replacementPersonId!==preview.replacement.personId){
+    resetRecoveryPreview("The selected account changed. Preview the recovery again.");return;
+  }
+  if(!confirm("Replace this student's school login with the selected verified account? The existing student identity, registration, classes and academic history remain canonical."))return;
+  const button=get("pa-account-recovery-confirm");
+  pendingWrite=true;button.disabled=true;
+  get("pa-account-recovery-summary").textContent=
+    "Recovering the login while preserving the canonical student record…";
+  void perform("recover_student_account",{
+    personId,replacementPersonId,reason,
+    expectedCanonicalRevision:preview.expected.canonicalRevision,
+    expectedReplacementRevision:preview.expected.replacementRevision,
+    expectedReplacementMembershipRevision:preview.expected.replacementMembershipRevision,
+    expectedCanonicalMembershipRevision:preview.expected.canonicalMembershipRevision
+  }).then(async result=>{
+    say(result.displayName+" now uses the replacement verified login. Existing registration and academic history were preserved.");
+    ++detailRun;get("pa-person-detail-dialog").close();
+    recoveryPreview=null;recoveryCanonicalPersonId=null;
+    await Promise.allSettled([loadPeople(false),loadOverview(),loadMemberships()]);
+  }).catch(error=>resetRecoveryPreview(error?.message||"Student account recovery failed."))
+    .finally(()=>{pendingWrite=false;button.disabled=false;});
+});
 
 let directoryPlacementCatalog=null;
 async function loadPlacementCatalog(){
@@ -1380,7 +1476,10 @@ get("pa-invitation-lifecycle-form").addEventListener("submit",event=>{
   }).catch(error=>say(error?.message||"The invitation was not revoked."))
     .finally(()=>{pendingWrite=false;button.disabled=false;});
 });
-get("pa-person-detail-close").addEventListener("click",()=>get("pa-person-detail-dialog").close());
+get("pa-person-detail-close").addEventListener("click",()=>{
+  recoveryPreview=null;recoveryCanonicalPersonId=null;clearTimeout(recoverySearchTimer);
+  get("pa-person-detail-dialog").close();
+});
 
 function directoryFilters(){
   const values=new FormData(get("pa-person-search"));
