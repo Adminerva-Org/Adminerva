@@ -536,7 +536,7 @@ async function showExamCloseSnapshot(task,epoch,student){
     const meta=document.createElement("p");meta.id="tl-close-source-meta";
     meta.className="mt-2 text-xs text-slate-600";
     const label=document.createElement("label");label.className="mt-4 block text-sm font-bold text-slate-700";
-    label.textContent="Saved source file";
+    label.textContent="Saved file / project data";
     const fileSelect=document.createElement("select");fileSelect.id="tl-close-source-file";
     fileSelect.className="tl-input";label.append(fileSelect);
     const pre=document.createElement("pre");pre.id="tl-close-source-code";
@@ -550,7 +550,7 @@ async function showExamCloseSnapshot(task,epoch,student){
     fileSelect=dialog.querySelector("#tl-close-source-file"),
     pre=dialog.querySelector("#tl-close-source-code");
   title.textContent=student.displayName+" · Session "+epoch;
-  meta.textContent="Loading the immutable school-received source snapshot…";
+  meta.textContent="Loading the immutable school-received project checkpoint…";
   fileSelect.replaceChildren();fileSelect.disabled=true;pre.textContent="";
   if(!dialog.open)dialog.showModal();
   try{
@@ -560,18 +560,34 @@ async function showExamCloseSnapshot(task,epoch,student){
     if(!dialog.open)return;
     meta.textContent="School received project revision "+frozen.projectRevision+
       (frozen.savedAt?" · "+new Date(frozen.savedAt).toLocaleString():"")+
-      " · Immutable source digest "+String(frozen.sourceDigest||"").slice(0,20)+
-      "… · Not a graded submission.";
+      " · Project SHA-256 "+String(frozen.contentDigest||"").slice(0,20)+
+      "… · Evidence of the server-received checkpoint, not a graded submission.";
     const files=Array.isArray(frozen.files)?frozen.files:[];
     fileSelect.replaceChildren();
     for(let i=0;i<files.length;i++){
       const option=document.createElement("option");
       option.value=String(i);option.textContent=files[i].path||"Source file "+(i+1);fileSelect.append(option);
     }
-    const renderFile=()=>{pre.textContent=files[Number(fileSelect.value)||0]?.content||"";};
-    fileSelect.onchange=renderFile;fileSelect.disabled=!files.length;
-    pre.textContent=files.length?"": "The captured project contained no source files.";
-    if(files.length)renderFile();
+    const artifacts=frozen.artifacts||{};
+    for(const [key,label] of [
+      ["database","Database tables / history"],["design","Design / diagrams"],
+      ["config","Project configuration"],["workspace","Workspace structure"],
+      ["evidence","Execution evidence"],["assessment","Assessment binding"]
+    ]){
+      if(!Object.prototype.hasOwnProperty.call(artifacts,key))continue;
+      const option=document.createElement("option");option.value="artifact:"+key;
+      option.textContent=label;fileSelect.append(option);
+    }
+    const renderFile=()=>{
+      const value=String(fileSelect.value||"");
+      if(value.startsWith("artifact:")){
+        const key=value.slice(9);
+        pre.textContent=JSON.stringify(artifacts[key]??{},null,2);
+      }else pre.textContent=files[Number(value)||0]?.content||"";
+    };
+    fileSelect.onchange=renderFile;fileSelect.disabled=!fileSelect.options.length;
+    pre.textContent=fileSelect.options.length?"": "No files or project artifacts were captured.";
+    if(fileSelect.options.length)renderFile();
   }catch(error){
     if(dialog.open){
       meta.textContent=error?.message||"The saved exam source could not be opened.";
