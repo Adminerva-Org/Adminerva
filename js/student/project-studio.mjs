@@ -304,7 +304,11 @@ export function createProjectStudio({
       await cloudWrites.get(id);
       return flushOneAfterWrite(id,closingSessionEpoch);
     }
-    const snapshot=cloudPending.get(id);if(!snapshot||deletedProjects.has(id))return true;
+    const snapshot=cloudPending.get(id);
+    // A normal autosave may have consumed the pending write before this
+    // call obtained the per-project lock. An empty queue is NOT proof of
+    // the teacher-close receipt: only an examFinalized server response is.
+    if(!snapshot||deletedProjects.has(id))return closingSessionEpoch?false:true;
     const work=(async()=>{
       try{
         if(auth.currentUser?.uid!==uid)throw Error("Sign in with the original project account.");
@@ -358,7 +362,8 @@ export function createProjectStudio({
     if(closingSessionEpoch){
       // Finalize only the active assessment project. Do not overwrite a
       // different project or accidentally bless an earlier cloud revision.
-      if(!activeProject?.id||activeProject.assessment?.provisionedBy!=="assessment-launch")
+      if(!activeProject?.id||activeProject.assessment?.provisionedBy!=="assessment-launch"||
+         Number(activeProject.assessment.sessionEpoch||0)!==closingSessionEpoch)
         return false;
       const id=activeProject.id;
       scheduleCloudSave(activeProject);
