@@ -13,14 +13,14 @@ const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
 const pageParams=new URL(location.href).searchParams;
 const requestedFilter=pageParams.get("view");
 const requestedOfferingId=String(pageParams.get("offeringId")||"");
-let items=[],deployments=[],recordLinks=new Map(),filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
+let items=[],deployments=[],recordLinks=new Map(),recordPermissions=new Map(),filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
   lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
-    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];recordLinks=new Map();editing=null;sharing=null;deploying=null;deployRequestKey=null;
+    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];recordLinks=new Map();recordPermissions=new Map();editing=null;sharing=null;deploying=null;deployRequestKey=null;
     lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
@@ -250,22 +250,34 @@ function render(){
         // Class Record remains the formal consolidation layer. Assessment Studio only
         // exposes the current link state and routes the teacher into that policy-controlled workflow.
         if(task.offeringId&&task.taskId){
-          const state=recordLinks.get(task.taskId)||{status:"unlinked"};
-          const classRecord=document.createElement("a");classRecord.className="tl-action alt";
-          if(state.status==="linked"){
-            classRecord.href="class-record.html?offering="+encodeURIComponent(task.offeringId);
-            classRecord.textContent="Open Class Record";
-            classRecord.title=(state.category||"Uncategorized")+" · "+(state.studentVisibility==="released"?"visible to students":"hidden from students");
-          }else if(state.status==="archived"){
-            classRecord.href="class-record.html?offering="+encodeURIComponent(task.offeringId);
-            classRecord.textContent="Review archived Class Record link";
+          const state=recordLinks.get(task.taskId)||{status:"unlinked"},
+            authority=recordPermissions.get(task.offeringId)||{
+              primaryTeacherUid:"",primaryNeedsReview:false,canEditClassRecord:false
+            };
+          if(state.status==="linked"||state.status==="archived"||authority.canEditClassRecord){
+            const classRecord=document.createElement("a");classRecord.className="tl-action alt";
+            if(state.status==="linked"){
+              classRecord.href="class-record.html?offering="+encodeURIComponent(task.offeringId);
+              classRecord.textContent="Open Class Record";
+              classRecord.title=(state.category||"Uncategorized")+" · "+(state.studentVisibility==="released"?"visible to students":"hidden from students");
+            }else if(state.status==="archived"){
+              classRecord.href="class-record.html?offering="+encodeURIComponent(task.offeringId);
+              classRecord.textContent="Review archived Class Record link";
+            }else{
+              classRecord.href="class-record.html?"+new URLSearchParams({
+                offering:task.offeringId,assessment:task.taskId,source:"school"
+              }).toString();
+              classRecord.textContent="Link to Class Record";
+            }
+            controls.append(classRecord);
           }else{
-            classRecord.href="class-record.html?"+new URLSearchParams({
-              offering:task.offeringId,assessment:task.taskId,source:"school"
-            }).toString();
-            classRecord.textContent="Link to Class Record";
+            const recordNote=document.createElement("span");
+            recordNote.className="tl-muted";
+            recordNote.textContent=authority.primaryNeedsReview?
+              "Class Record: Primary Teacher needs School Admin review":
+              "Class Record: Primary Teacher must link";
+            controls.append(recordNote);
           }
-          controls.append(classRecord);
         }
         controls.append(actionButton("Deployment settings",()=>openDeploymentSettings(task),true));
       }
@@ -402,7 +414,7 @@ async function loadClassRecordLinks(tasks){
     if(!task.offeringId||!task.taskId)continue;
     const list=groups.get(task.offeringId)||[];list.push(task);groups.set(task.offeringId,list);
   }
-  const next=new Map();
+  const next=new Map(),permissions=new Map();
   const entries=[...groups.entries()];
   if(entries.length>40){
     say("Assessment Studio loaded, but Class Record link status is limited to the first 40 assigned classes.");
@@ -413,10 +425,14 @@ async function loadClassRecordLinks(tasks){
   }));
   for(const result of results){
     if(result.status!=="fulfilled")continue;
+    permissions.set(result.value.offeringId,result.value.permissions||{
+      primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,classRole:"co_teacher",canEditClassRecord:false
+    });
     for(const link of result.value.links){
       if(link.sourceType==="school")next.set(link.taskId,link);
     }
   }
+  recordPermissions=permissions;
   return next;
 }
 async function refresh(){
@@ -425,6 +441,7 @@ async function refresh(){
   ]);
   items=result.items||[];
   deployments=deployed.assessments||[];
+  recordPermissions=new Map();
   recordLinks=await loadClassRecordLinks(deployments);
   render();
   if(result.truncated)say("Only the first assessment records are shown. Pagination is required for more.");
