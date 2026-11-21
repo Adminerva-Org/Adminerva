@@ -48,6 +48,19 @@ export function preserveRecoveryAssessmentDraft(storage,context,row){
     return true;
   }catch{return false;}
 }
+export function readRecoveryAssessmentDraft(storage,context){
+  try{
+    const raw=storage.getItem(assessmentDraftKey(context)+"_recovery");
+    const row=raw?JSON.parse(raw):null;
+    if(!row||row.uid!==context.uid||row.schoolId!==context.schoolId||
+       row.taskId!==context.taskId||row.source!==context.source||
+       !row.payload)return null;
+    const payload=draftPayload(context.source,row.payload);
+    if(payload.response?.length>50000||payload.url?.length>4096||
+       payload.note?.length>10000)return null;
+    return {...row,payload};
+  }catch{return null;}
+}
 export function clearDeviceAssessmentDraft(storage,context){
   try{storage.removeItem(assessmentDraftKey(context));}catch{}
 }
