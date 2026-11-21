@@ -1121,7 +1121,7 @@ function openPersonDialog(person,mode){
   get("pa-person-dialog-help").textContent=mode==="archive"?
     "Archiving is blocked until active school access, enrollments or teaching assignments are ended. Nothing is deleted.":
     mode==="restore"?"Restoring the person record does not automatically restore school access, enrollments or teaching assignments.":
-    "Edit school identity and student number here. Guardian contacts and relationships belong to Student Records; section placement belongs to Enrollment.";
+    "Edit school identity and student number here. Guardian relationships belong to Student Records; guardian contact data is maintained there too. Section placement belongs to Enrollment.";
   get("pa-person-dialog").showModal();
 }
 get("pa-person-dialog-cancel").addEventListener("click",()=>{
