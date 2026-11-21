@@ -235,6 +235,14 @@ function createSchoolStudioProjectService({db}){
      deny("permission-denied","This project ID belongs to a different school account.");
     if(data.status==="archived")
      deny("failed-precondition","Restore this archived school project before synchronizing changes.");
+    // Fail closed on an accidental empty editor snapshot. Without this guard,
+    // a transient empty workspace may overwrite an existing student's source
+    // using a valid same-device revision and leave no working copy to reopen.
+    const hadSource=Array.isArray(data.files)&&data.files.some(row=>
+      typeof row.content==="string"&&row.content.trim().length>0);
+    const incomingEmpty=files.length===0||files.every(row=>!row.content.trim());
+    if(hadSource&&incomingEmpty)
+     deny("failed-precondition","The school project still contains source code. An empty editor snapshot cannot replace it. Reload the school copy or ask your teacher for recovery assistance.");
     // A matching payload already exists in the cloud. It is safe to confirm
     // the same code even when a new device has no local revision marker,
     // including when that device is creating a final-close receipt.

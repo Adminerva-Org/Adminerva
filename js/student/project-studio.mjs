@@ -1,19 +1,21 @@
 /** Project-first Code Studio orchestration, Adminerva DB lab, design and evidence surfaces. */
 import {db,auth} from "../core/firebase-core.js?v=1.3.0";
 import {
-  collection,deleteDoc,doc,getDocFromServer,getDocsFromServer,runTransaction
+  collection,deleteDoc,doc,getDocFromServer,getDocsFromServer,runTransaction,query,where,limit
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {
   CODE_PROJECT_TEMPLATES,createCodeProject,deleteCodeProject,findCodeProject,
   projectTemplateLabel,readCodeProjects,saveCodeProject,writeCodeProjects,normalizeProject
 } from "./code-projects.mjs?v=2.1.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
+import {verifyLegacyStudioRecovery} from "./studio-assessment-model.mjs?v=20261121-legacy-recovery";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
 import {analyzeProjectEvidence,evidenceSnippet} from "./project-competency-evidence.mjs?v=2.1.0";
 import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,listV4StudioAssignments,loadV4StudioProject,
+  getV4StudioSubmissionStatus,getV4StudioSubmittedRecovery,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
-} from "./v4-studio-service.mjs?v=20261121-exam-data-audit";
+} from "./v4-studio-service.mjs?v=20261121-recovery-guard";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -550,6 +552,7 @@ export function createProjectStudio({
     el("legacyDraftProjectBtn")?.addEventListener("click",()=>{
       if(typeof importLegacyDraft==="function")importLegacyDraft();
     });
+    el("restoreSubmittedSourceBtn")?.addEventListener("click",()=>void restoreLastSubmittedSource());
     el("guestUpgradeBtn")?.addEventListener("click",()=>{location.href="login.html";});
     el("evidenceFilter")?.addEventListener("change",renderEvidence);
     el("evidenceRefresh")?.addEventListener("click",renderEvidence);
@@ -720,6 +723,45 @@ export function createProjectStudio({
     return "assessment-"+raw.slice(0,55)+"-"+hash.toString(36);
   }
 
+  // Legacy Studio submissions freeze their project ID and source at the time of
+  // submission. That identity is authoritative for restoring old named projects.
+  // Never infer ownership from project titles or silently replace another task.
+  async function submittedLegacyProject(assessmentId){
+    const user=auth.currentUser;
+    if(!user||user.uid!==uid||!user.emailVerified||!user.email)return null;
+    const profiles=await getDocsFromServer(query(
+      collection(db,"students"),where("email","==",user.email.toLowerCase()),limit(20)
+    ));
+    let matched=null;
+    for(const profile of profiles.docs){
+      const evidenceId=profile.id+"_"+assessmentId;
+      const headSnap=await getDocFromServer(doc(db,"studio_submissions",evidenceId));
+      if(!headSnap.exists())continue;
+      const head=headSnap.data();
+      if(head?.ownerUid!==uid||head?.studentId!==profile.id||
+         head?.assessmentId!==assessmentId||!Number.isInteger(head.revision)||
+         head.revision<1||head.revision>30)
+        throw Error("The historical submission cannot be verified for this student account.");
+      if(matched)throw Error("Multiple historical submissions match this account. Ask your teacher to inspect the original submission records.");
+      const versionSnap=await getDocFromServer(doc(
+        db,"studio_submissions",evidenceId,"versions",String(head.revision)
+      ));
+      if(!versionSnap.exists())
+        throw Error("Your submitted Studio revision exists, but its source copy is unavailable. No blank project was created.");
+      matched=await verifyLegacyStudioRecovery(head,versionSnap.data(),{
+        uid,studentId:profile.id,assessmentId
+      });
+    }
+    if(auth.currentUser?.uid!==uid)throw Error("Student account changed during Studio recovery.");
+    return matched;
+  }
+
+  function isUntouchedAssessmentStarter(project){
+    if(!project||project.assessment?.provisionedBy!=="assessment-launch")return false;
+    const template=CODE_PROJECT_TEMPLATES[project.template];
+    return Boolean(template&&matchesTemplateStarter(project,template));
+  }
+
   async function ensureAssessmentProject(context={}){
     const assessmentId=String(context.assessmentId||"").trim();
     if(!assessmentId)throw Error("Assessment project provisioning requires an assessment ID.");
@@ -727,7 +769,19 @@ export function createProjectStudio({
     let project=findCodeProject(projectStorage,uid,projectId)||
       readCodeProjects(projectStorage,uid).find(item=>item.assessment?.assessmentId===assessmentId);
 
-    if(cloudEnabled){
+    // Personalized task metadata can arrive while the student is editing.
+    // Do not replace the active Monaco workspace with an older local/cloud
+    // snapshot: first capture the in-memory editor and keep that editor open.
+    const sameOpenAssessment=Boolean(activeProject&&project&&
+      activeProject.id===project.id&&activeProject.assessment?.assessmentId===assessmentId);
+    if(sameOpenAssessment){
+      const live=captureState();
+      if(!live?.files||!Object.keys(live.files).length)
+        throw Error("Cannot refresh assessment details until the open editor is ready.");
+      project=store({...activeProject,state:live},true);
+    }
+
+    if(cloudEnabled&&!sameOpenAssessment){
       const lookupId=project?.id||projectId;
       try{
         project=await resolveCloudProject(lookupId,{local:project});
@@ -740,6 +794,106 @@ export function createProjectStudio({
         }else{
           if(!project)throw Error("Could not check for an existing cloud assessment project. Reconnect before creating a new one.");
           setCloudStatus("Cloud unavailable · device draft retained","error");
+        }
+      }
+    }
+
+    let recoveredSubmittedVersion=0;
+    if(!project&&cloudEnabled&&context.offeringId){
+      // A fresh device must not silently create an empty starter when the
+      // student has already submitted this assessment. Recover from the
+      // immutable submission only if the working school project is genuinely
+      // missing. Permission, connectivity and exam locks fail closed.
+      const school=await currentV4StudioSchool();
+      if(!school)throw Error("Reconnect your verified school before restoring this assessment project.");
+      const submitted=await getV4StudioSubmissionStatus(assessmentId);
+      if(submitted?.submitted){
+        const frozen=await getV4StudioSubmittedRecovery(assessmentId);
+        if(!frozen?.found||!frozen.projectId||!Array.isArray(frozen.files)||!frozen.files.length)
+          throw Error("Your previous submission exists, but its source could not be verified. No empty project was created. Contact your teacher to inspect the frozen submission.");
+        const bound=frozen.artifacts?.assessment;
+        if(bound?.provisionedBy==="assessment-launch"&&
+           (bound.taskId||bound.assessmentId)!==assessmentId)
+          throw Error("The submitted project belongs to another assessment. Recovery was stopped.");
+        const recoveredId=String(frozen.projectId);
+        // Older submissions may have used a non-deterministic project ID.
+        // Recheck that exact ID before restoring anything into school storage.
+        let existing=null;
+        try{existing=await loadV4StudioProject(recoveredId,{rememberRevision:false});}
+        catch(error){if(!String(error?.code||"").includes("not-found"))throw error;}
+        if(existing){
+          project=v4ProjectToLocal(uid,existing);
+          rememberV4StudioRevision(recoveredId,existing.revision);
+          writeMarker(recoveredId,{kind:"school",schoolId:school.schoolId,
+            revision:existing.revision,pending:false});
+        }else{
+          project=v4ProjectToLocal(uid,{
+            projectId:recoveredId,title:String(context.projectTitle||context.title||"Recovered assessment").slice(0,120),
+            language:frozen.language,files:frozen.files,artifacts:frozen.artifacts||{},
+            createdAt:frozen.submittedAt,updatedAt:frozen.submittedAt
+          });
+          recoveredSubmittedVersion=Number(frozen.version)||1;
+          writeMarker(recoveredId,{pending:true});
+        }
+        validateProject(project);
+      }
+    }
+
+    let recoveredLegacyRevision=0;
+    if(!context.offeringId&&cloudEnabled){
+      const historical=await submittedLegacyProject(assessmentId);
+      // Only replace a never-edited generated starter. A student might already
+      // have changed a new assessment workspace since its creation.
+      if(historical&&(!project||isUntouchedAssessmentStarter(project))){
+        let source=findCodeProject(projectStorage,uid,historical.projectId);
+        if(source&&source.status==="archived")source=null;
+        try{
+          source=await resolveCloudProject(historical.projectId,{local:source})||source;
+        }catch(error){
+          if(!source)console.warn("Historical Studio working copy unavailable, using the verified submitted revision.",error);
+        }
+        // If the working project has newer changes, prefer those. Original
+        // projects remain untouched and keep their own identity/cloud history.
+        if(source?.assessment?.assessmentId&&
+           source.assessment.assessmentId!==assessmentId)source=null;
+        const useSource=source&&Object.values(source.state?.files||{}).some(text=>
+          typeof text==="string"&&text.trim().length>0);
+        const label=useSource?source.title:historical.projectTitle;
+        const accepted=confirm("Your submitted "+historical.revision+
+          " revision of this assessment came from '"+label+"'.\n\n"+
+          (useSource?"Continue from that saved working project's code?":
+            "Restore the exact source from your frozen submission?")+
+          "\n\nAdminerva will copy it into the assessment workspace. The original project and submitted evidence will remain unchanged.");
+        if(accepted){
+          const snapshot=historical.snapshot;
+          const restoredState=useSource?clone(source.state):{
+            lang:snapshot.lang,files:clone(snapshot.files),
+            fileOrder:[...snapshot.fileOrder],activeFile:snapshot.fileOrder[0],
+            folders:[],projectOrder:[...snapshot.fileOrder]
+          };
+          const recovered=normalizeProject({
+            id:projectId,ownerUid:uid,title:String(context.projectTitle||context.title||"Recovered Studio assessment").slice(0,120),
+            template:useSource?source.template:(context.templateId||"java-console"),
+            lang:useSource?source.lang:snapshot.lang,
+            state:restoredState,
+            config:useSource?clone(source.config):clone(snapshot.config||{}),
+            database:useSource?clone(source.database):clone(snapshot.database||{tables:{},history:[]}),
+            design:useSource?clone(source.design):clone(snapshot.design||{}),
+            evidence:useSource?clone(source.evidence||{events:[],runs:[]}):{events:[],runs:[]},
+            assessment:null,
+            createdAt:project?.createdAt||new Date().toISOString(),
+            updatedAt:new Date().toISOString()
+          });
+          if(!recovered)throw Error("The verified submission could not be converted to a Studio workspace. No files were changed.");
+          validateProject(recovered);
+          // The deterministic generated starter is replaced only after
+          // validating the entire recovered source; the old named project,
+          // immutable submission, and any edited new project remain intact.
+          project=saveCodeProject(projectStorage,uid,recovered);
+          writeMarker(project.id,{...readMarker(project.id),pending:true});
+          recoveredLegacyRevision=historical.revision;
+        }else if(!project){
+          throw Error("No empty project was created. Open your original named Studio project or return here to restore the submitted source.");
         }
       }
     }
@@ -798,9 +952,21 @@ export function createProjectStudio({
         JSON.stringify(project.assessment||{})!==JSON.stringify(ownership)||
         project.template!==next.template||project.lang!==next.lang||
         JSON.stringify(project.config||{})!==JSON.stringify(next.config||{});
+      if(sameOpenAssessment){
+        // Updating the variant or session binding is not a request to
+        // reopen/reset source code. Keep the existing editor models intact.
+        if(changed)project=store(next,true);
+        syncAssessmentCapabilities();updateProjectHeading();
+        return {project:activeProject,created:false,projectId:activeProject.id};
+      }
       if(changed){project=saveCodeProject(projectStorage,uid,next);if(cloudEnabled)writeMarker(project.id,{...readMarker(project.id),pending:true});}
       activateProject(project);
-      return {project:activeProject,created:false,projectId:activeProject.id};
+      if(recoveredSubmittedVersion){
+        setCloudStatus("Recovered from submitted version "+recoveredSubmittedVersion+
+          " · cloud sync pending","info",activeProject.id);
+      }
+      return {project:activeProject,created:false,projectId:activeProject.id,
+        recoveredSubmittedVersion,recoveredLegacyRevision};
     }
 
     if(context.allowCreate===false)return {project:null,created:false,projectId};
@@ -818,6 +984,78 @@ export function createProjectStudio({
       deleteCodeProject(projectStorage,uid,project.id);
       throw error;
     }
+  }
+
+  async function restoreLastSubmittedSource(){
+    const button=el("restoreSubmittedSourceBtn"),current=activeProject,
+      binding=current?.assessment;
+    if(!current||binding?.provisionedBy!=="assessment-launch"||!binding.offeringId)
+      return alert("Open an assigned assessment project before restoring a submitted version.");
+    button.disabled=true;
+    try{
+      await verifyAssessmentProjectOpen(current);
+      const school=await currentV4StudioSchool();
+      if(!school)throw Error("Connect to your verified school before restoring submitted work.");
+      const live=captureState();
+      if(!live?.files||!Object.keys(live.files).length)
+        throw Error("The current editor is not ready. No source was changed.");
+      saveState(live);
+      if(!await flushCloudSaves())
+        throw Error("The current project could not be confirmed in school cloud storage. Save it first so your existing work is preserved.");
+      if(activeProject?.id!==current.id)
+        throw Error("The active project changed while recovery was being checked.");
+      const taskId=binding.taskId||binding.assessmentId;
+      const frozen=await getV4StudioSubmittedRecovery(taskId);
+      if(!frozen?.found||frozen.projectId!==current.id||!frozen.files?.length)
+        throw Error("No matching frozen submission is available for this project. Ask your teacher to inspect its assessment history.");
+      const frozenBinding=frozen.artifacts?.assessment;
+      if(frozenBinding?.provisionedBy==="assessment-launch"&&
+        (frozenBinding.taskId||frozenBinding.assessmentId)!==taskId)
+        throw Error("The frozen source belongs to another assessment and cannot be restored.");
+      const remote=await loadV4StudioProject(current.id,{rememberRevision:false});
+      const base=readMarker(current.id);
+      if(!remote||base.kind!=="school"||base.schoolId!==school.schoolId||
+        base.revision!==remote.revision)
+        throw Error("This school project has a newer revision. Reopen its current cloud copy before restoring an earlier submission.");
+      const frozenProject=v4ProjectToLocal(uid,{
+        projectId:current.id,title:current.title,language:frozen.language,
+        files:frozen.files,artifacts:frozen.artifacts||{},
+        createdAt:frozen.submittedAt,updatedAt:frozen.submittedAt
+      });
+      const answer=confirm("Restore your frozen submission version "+frozen.version+
+        " into this project? Your current source, database and diagrams will first be preserved as a separate Device recovery copy. The submitted assessment version will not be changed.");
+      if(!answer)return;
+      if(activeProject?.id!==current.id)
+        throw Error("The active project changed. No restoration was applied.");
+      const copyId=recoverCopy({...activeProject,state:captureState()});
+      const restored={...activeProject,
+        state:clone(frozenProject.state),
+        lang:frozenProject.lang,
+        template:frozenProject.template,
+        config:clone(frozenProject.config),
+        database:clone(frozenProject.database),
+        design:clone(frozenProject.design),
+        // Existing execution/evidence history remains intact.
+        evidence:clone(activeProject.evidence||{events:[],runs:[]}),
+        assessment:clone(activeProject.assessment)
+      };
+      validateProject(restored);
+      store(restored,true);
+      openProject(activeProject);
+      switchStudioView("code");
+      renderEvidence();renderDatabase();loadDesignEditor();
+      if(!await flushCloudSaves()){
+        setCloudStatus("Submitted source restored on device · school cloud sync pending","error",current.id);
+        alert("Your submitted code is visible and retained on this device, but school cloud saving is not confirmed. Reconnect and use Save. Your pre-restore device copy was saved separately as "+copyId+".");
+        return;
+      }
+      setCloudStatus("Submitted version "+frozen.version+" restored · cloud confirmed","success",current.id);
+      alert("Submitted source restored from version "+frozen.version+
+        ". School cloud saving is confirmed. The previous working copy was preserved as a Device recovery project.");
+    }catch(error){
+      setCloudStatus("Recovery not completed · current source retained","error",current.id);
+      alert("Submitted source could not be restored: "+(error?.message||error));
+    }finally{button.disabled=false;}
   }
 
   async function verifyAssessmentProjectOpen(project){
@@ -964,6 +1202,9 @@ export function createProjectStudio({
     databaseButton?.classList.toggle("hidden",!databaseAllowed);
     el("studioPanelDesign")?.setAttribute("data-capability-enabled",String(designAllowed));
     el("studioPanelDatabase")?.setAttribute("data-capability-enabled",String(databaseAllowed));
+    const submittedRestore=el("restoreSubmittedSourceBtn");
+    if(submittedRestore)submittedRestore.classList.toggle("hidden",
+      !assessmentProject||!activeProject.assessment?.offeringId);
     const reset=el("resetBtn");
     if(reset){
       reset.textContent=assessmentProject?"Reset assessment starter":"Reset files";

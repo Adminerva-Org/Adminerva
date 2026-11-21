@@ -3,9 +3,9 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=20261121-exam-final";
+import {createProjectStudio} from "./project-studio.mjs?v=20261121-studio-reopen-hotfix2";
 import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
-import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261121-exam-data-audit";
+import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261121-recovery-guard";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=46763fd68540";
@@ -632,7 +632,11 @@ async function provisionAssessmentProject(assessmentId,studioSchool){
   });
   window.adminervaAssessmentProjectContext={...context,projectId:result?.projectId||"",created:result?.created===true};
   if(result?.project){
-    showSaveStatus(result.created?"Assessment project created automatically":"Assessment project reopened");
+    showSaveStatus(result.recoveredSubmittedVersion
+      ?"Recovered school submission version "+result.recoveredSubmittedVersion+" · cloud saving"
+      :result.recoveredLegacyRevision
+        ?"Restored previous Studio submission "+result.recoveredLegacyRevision+" · preserving original project"
+        :result.created?"Assessment project created automatically":"Assessment project reopened");
     window.dispatchEvent(new CustomEvent("adminerva:assessment-project-ready",{detail:{
       assessmentId:context.assessmentId,projectId:result.projectId,created:result.created===true
     }}));
@@ -1498,6 +1502,17 @@ window.adminervaStudioSubmissionState=()=>{
   const project=projectStudio?.getActiveProject();
   if(!project)throw Error("Open an Adminerva Studio project before submitting.");
   if(!persistWorkspace())throw Error("Your latest edits could not be saved locally. Export a ZIP and check storage before submitting.");
+  return {project:projectStudio.getActiveProject(),state:currentState()};
+};
+window.adminervaFlushStudioSubmission=async expectedProjectId=>{
+  const project=projectStudio?.getActiveProject();
+  if(!project||project.id!==expectedProjectId)
+    throw Error("The active project changed before submission. Reopen the assigned project.");
+  if(!persistWorkspace())
+    throw Error("The current code could not be saved on this device. Export a ZIP before leaving.");
+  const confirmed=await projectStudio.flushCloudSaves();
+  if(!confirmed)
+    throw Error("Your latest project was not confirmed in school cloud storage. Submission was stopped to protect your code. Reconnect and try Save before submitting.");
   return {project:projectStudio.getActiveProject(),state:currentState()};
 };
 window.adminervaImportLegacyPlayground = function () {
