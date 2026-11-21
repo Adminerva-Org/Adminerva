@@ -32,7 +32,7 @@ function repoInfo(value){
    deny("failed-precondition","Historical evidence must reference a valid GitHub repository.");
  return {fullName:parts.join("/"),url:"https://github.com/"+parts.join("/")};
 }
-function approvedEvidence(evidence,assessmentId,documentId,{requireApproved=false}={}){
+function approvedEvidence(evidence,assessmentId,documentId,{requireSubmitted=false}={}){
  const studentId=legacyDocumentId(evidence?.studentId,"Historical student",220);
  if(evidence.assessmentId!==assessmentId||documentId!==studentId+"_"+assessmentId)
    deny("failed-precondition","Historical evidence belongs to a different learner or assessment.");
@@ -51,11 +51,17 @@ function approvedEvidence(evidence,assessmentId,documentId,{requireApproved=fals
  if(verified.some(sha=>!validSha(sha)||!selected.some(x=>x.toLowerCase()===sha.toLowerCase()))||
     new Set(verified.map(x=>x.toLowerCase())).size!==verified.length)
    deny("failed-precondition","Verified individual contributions do not match the frozen commit selection.");
- if(requireApproved&&!approved)
-   deny("failed-precondition","Original checkpoint approval is required before saving a historical GitHub grade.");
+ // A teacher-discovered snapshot is NOT a student submission even if it was
+ // subsequently teacher-approved. A historical student-resubmission may retain
+ // source="teacher_discovered", so require the submittedAt receipt, not source.
+ const hasSubmission=Boolean(evidence.submittedAt)&&selected.length>0&&
+   ["submitted","approved","reviewed"].includes(evidence.status);
+ if(requireSubmitted&&!hasSubmission)
+   deny("failed-precondition","No student-submitted selected commits exist. Teacher-discovered snapshots cannot create grades.");
  return {studentId,repository,selected:selected.map(x=>x.toLowerCase()),
    verified:verified.map(x=>x.toLowerCase()),revision,
    checkpointSha:evidence.checkpointSha.toLowerCase(),approved,
+   hasSubmission,discoveryOnly:!evidence.submittedAt&&evidence.source==="teacher_discovered",
    contributionScope:clean(evidence.contributionScope,3000)};
 }
 function validateCriteria(entries,rubric){
@@ -160,7 +166,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
            section:clean(data.section,160),status:data.status||"submitted",
            version:meta.revision||1,updatedAt:data.submittedAt?.toMillis?.()||null,
            selectedCount:meta.selected.length,verifiedCount:meta.verified.length,
-           approved:meta.approved});
+           approved:meta.approved,hasSubmission:meta.hasSubmission,
+           discoveryOnly:meta.discoveryOnly});
        }
        if(page.size<80)break;
        cursor=page.docs[page.docs.length-1].id;
@@ -201,6 +208,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        clean(imported.data().checkingInstructions,5000)].filter(Boolean).join("\n\n").slice(0,8000);
      return {task:taskInfo,
        snapshot:{status:record.data.status||"submitted",version:meta.revision||1,
+         hasSubmission:meta.hasSubmission,discoveryOnly:meta.discoveryOnly,
          repository:meta.repository,checkpointSha:meta.checkpointSha,
          selectedCommitShas:meta.selected,verifiedContributionCommits:meta.verified,
          contributionScope:meta.contributionScope,
@@ -212,8 +220,9 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    }
    if(!["legacy_github_save_draft","legacy_github_publish"].includes(input.action))
      deny("invalid-argument","Unknown historical repository review operation.");
-   // Historical grading is allowed only against the original APPROVED SHA.
-   approvedEvidence(record.data,id,recordId,{requireApproved:true});
+   // The original student-selected SHA receipt is authoritative. A teacher's
+   // forced discovery or optional checkpoint approval does not create a grade.
+   approvedEvidence(record.data,id,recordId,{requireSubmitted:true});
    const expectedRevision=Number(input.expectedEvidenceRevision);
    const expectedSha=String(input.expectedCheckpointSha||"").toLowerCase();
    if(!Number.isInteger(expectedRevision)||expectedRevision!==meta.revision||
@@ -237,13 +246,13 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
         freshImport.data().legacyImport?.assessmentId!==id)
        deny("permission-denied","Historical assessment ownership or school access changed.");
      const latest=approvedEvidence(freshEvidence.exists?freshEvidence.data():null,id,recordId,
-       {requireApproved:true});
+       {requireSubmitted:true});
      if(latest.revision!==expectedRevision||latest.checkpointSha!==expectedSha||
         latest.repository.fullName.toLowerCase()!==meta.repository.fullName.toLowerCase()||
         latest.contributionScope!==meta.contributionScope||
         JSON.stringify(latest.selected)!==JSON.stringify(meta.selected)||
         JSON.stringify(latest.verified)!==JSON.stringify(meta.verified))
-       deny("failed-precondition","The approved repository evidence changed during review.");
+       deny("failed-precondition","The frozen student-submitted repository evidence changed during review.");
      const before=prior.exists?prior.data():null;
      checkGrade(before,meta.studentId);
      const priorVersion=before?Number(before.gradeVersion||1):0;
@@ -277,7 +286,9 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
          contributionEvidence:{...(before?.contributionEvidence||{}),
            repository:latest.repository.fullName,selectedCommits:latest.selected,
            verifiedContributionCommits:latest.verified,
-           approvedCheckpointSha:latest.checkpointSha,authorshipIndependentlyProven:false}
+           submittedCheckpointSha:latest.checkpointSha,
+           approvedCheckpointSha:latest.approved?latest.checkpointSha:null,
+           authorshipIndependentlyProven:false}
        };
        if(prior.exists)tx.set(gradeDocument,{...before,...values});
        else tx.create(gradeDocument,values);

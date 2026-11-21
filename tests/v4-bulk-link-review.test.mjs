@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
-const {validatedBulkLinkReview}=require("../functions/school-gradebook.js");
+const {validatedBulkLinkReview,githubHasSubmission}=require("../functions/school-gradebook.js");
 test("external link bulk drafts require individual teacher evidence review",()=>{
  assert.throws(()=>validatedBulkLinkReview("link",{
    onlyIfUngraded:true,artifactReviewNote:"Inspected the linked submission carefully."
@@ -22,4 +22,14 @@ test("native written, Studio and approved GitHub bulk grades do not require link
  for(const source of ["studio","github","text"])
    assert.equal(validatedBulkLinkReview(source,{onlyIfUngraded:true}),"");
  assert.equal(validatedBulkLinkReview("link",{onlyIfUngraded:false}),"");
+});
+
+test("native V4 GitHub grading requires an actual student-selected frozen submission, not checkpoint approval",()=>{
+ const submitted={status:"submitted",selectedCommitShas:["a".repeat(40)],submittedAt:{toMillis:()=>1}};
+ assert.equal(githubHasSubmission(submitted),true);
+ assert.equal(githubHasSubmission({...submitted,status:"approved"}),true);
+ assert.equal(githubHasSubmission({...submitted,status:"reviewed"}),true);
+ assert.equal(githubHasSubmission({...submitted,submittedAt:null}),false);
+ assert.equal(githubHasSubmission({...submitted,selectedCommitShas:[]}),false);
+ assert.equal(githubHasSubmission({...submitted,status:"reopened"}),false);
 });

@@ -13,6 +13,10 @@ const frozen=()=>({
 });
 function mockClient(){
   return {
+    async listCommits({repository,ref}){
+      assert.equal(repository,"student/example");assert.equal(ref,checkpoint);
+      return {commits:[{sha:checkpoint},{sha:changed}],historyComplete:true};
+    },
     async loadCommit(repo,sha){
       assert.equal(repo,"student/example");assert.equal(sha,changed);
       return {sha,parents:[{sha:"b".repeat(40)}],filesTruncated:false,
@@ -33,7 +37,7 @@ test("V4 repository evaluation reuses substantive-diff analysis and pins source"
   assert.equal(evidence.analysis.complete,true);
   assert.equal(evidence.pinnedSource[0].checkpointSha,checkpoint);
   assert.equal(evidence.commits[0].files[0].substantive,true);
-  assert.match(evidence.limitations.join(" " ),/do not independently prove student identity/);
+  assert.match(evidence.limitations.join(" " ),/do not independently prove individual authorship/);
   const payload=buildGeneralExternalEvaluationData({
     task:{title:"Java assessment",submissionSource:"github",instructions:"Create a Java class",
       rubric:[{name:"Code correctness",points:5}],maxScore:5},
@@ -44,10 +48,18 @@ test("V4 repository evaluation reuses substantive-diff analysis and pins source"
   assert.equal(payload.evidence.analysis.complete,true);
   assert.match(payload.gradingRules.repositoryBoundary,/independently prove individual authorship/);
 });
-test("V4 refuses unapproved GitHub evidence and mismatched commit objects",async()=>{
-  await assert.rejects(
-    buildV4RepositoryEvaluationSnapshot({snapshot:{...frozen(),status:"submitted"},client:mockClient()}),
-    /Approve this exact frozen/);
+test("submitted GitHub commits are eligible without approval, but missing receipt or unreachable commits fail closed",async()=>{
+  const submitted=await buildV4RepositoryEvaluationSnapshot({
+    snapshot:{...frozen(),status:"submitted",hasSubmission:true},client:mockClient()
+  });
+  assert.equal(submitted.analysis.selectedCount,1);
+  await assert.rejects(buildV4RepositoryEvaluationSnapshot({
+    snapshot:{...frozen(),hasSubmission:false},client:mockClient()
+  }),/student-submitted/);
+  await assert.rejects(buildV4RepositoryEvaluationSnapshot({
+    snapshot:frozen(),client:{...mockClient(),listCommits:async()=>({
+      commits:[{sha:checkpoint}],historyComplete:false})}
+  }),/Cannot verify 1 submitted commit/);
   await assert.rejects(
     buildV4RepositoryEvaluationSnapshot({snapshot:frozen(),client:{
       ...mockClient(),loadCommit:async()=>({sha:"b".repeat(40),files:[]})

@@ -16,6 +16,12 @@ const {studentRecordUidAllowed}=require("./student-account-history.js");
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function deny(code,message){throw new TenantAccessError(code,message)}
 const DRAFT_SOURCES=new Set(["teacher","internal_ai","external_ai"]);
+function githubHasSubmission(data){
+ return Boolean(data?.submittedAt)&&
+   Array.isArray(data?.selectedCommitShas)&&
+   data.selectedCommitShas.length>0&&
+   ["submitted","approved","reviewed"].includes(data?.status);
+}
 function validateScores(criteria,rubric){
  if(!Array.isArray(rubric)||!rubric.length||!Array.isArray(criteria)||
     criteria.length!==rubric.length)
@@ -160,7 +166,7 @@ function createSchoolGradebookService({db}){
       if(!submission.exists||submission.data().schoolId!==ctx.schoolId||
          submission.data().taskId!==taskId||submission.data().studentUid!==grade.studentUid||
          submission.data().offeringId!==offeringId||
-         !((source==="github"&&["approved","reviewed"].includes(submission.data().status))||
+         !((source==="github"&&githubHasSubmission(submission.data()))||
            (source!=="github"&&["submitted","reviewed"].includes(submission.data().status)))||
          submission.data().currentVersion!==grade.submissionVersion||
          digestOf(submission.data())!==grade.submissionDigest)
@@ -218,7 +224,7 @@ function createSchoolGradebookService({db}){
   const evidenceDigest=data=>source==="studio"?data.contentDigest:
     source==="github"?data.evidenceDigest:data.submissionDigest;
   const gradeable=data=>source==="github"?
-    ["approved","reviewed"].includes(data.status):["submitted","reviewed"].includes(data.status);
+    githubHasSubmission(data):["submitted","reviewed"].includes(data.status);
   const verifyFrozen=snapshot=>{
     if(!snapshot.exists)return false;
     const data=snapshot.data();
@@ -300,7 +306,7 @@ function createSchoolGradebookService({db}){
      deny("failed-precondition","Published grades require a formal correction workflow.");
     if(!gradeable(submission))
      deny("failed-precondition",source==="github"?
-       "Teacher-approved GitHub evidence is required before grading.":
+       "Student-submitted GitHub commits are required before grading; a teacher-only discovery is not a submission.":
        source==="studio"?"Only the currently submitted Studio revision may be graded.":
        "Only the currently submitted assessment response may be graded.");
     if(submission.currentVersion!==submissionVersion)
@@ -494,4 +500,4 @@ function createSchoolGradebookService({db}){
   deny("invalid-argument","Unknown Gradebook operation.");
  };
 }
-module.exports={createSchoolGradebookService,validateScores,validatedBulkLinkReview};
+module.exports={createSchoolGradebookService,validateScores,validatedBulkLinkReview,githubHasSubmission};
