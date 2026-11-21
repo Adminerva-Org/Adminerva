@@ -1143,6 +1143,17 @@ el("tl-deploy-form").addEventListener("submit",event=>{
   if(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt){
     el("tl-deploy-feedback").textContent="Choose a valid opening time and a later deadline.";return;
   }
+  if(personalized(deploying)&&!deployAttempted){
+    const key=deploySelectionKey();
+    if(!deployVariantReview||deployVariantReview.key!==key){
+      void reviewDeploymentPersonalization(deploying,ids);
+      return;
+    }
+    if(!deployVariantReview.ready){
+      void loadPersonalization(deploying,ids,deployVariantReview.status);
+      return;
+    }
+  }
   const resource=deploying,settings={
     blueprintId:resource.id,
     submissionSource:personalized(resource)?"studio":form.elements.submissionSource.value,
@@ -1195,9 +1206,12 @@ form.elements.personalizationMode.addEventListener("change",togglePersonalizatio
 form.elements.defaultSubmissionSource.addEventListener("change",toggleStudioProjectProfile);
 el("tl-personalization-close").addEventListener("click",()=>{if(!pendingWrite)personalizationDialog.close();});
 personalizationDialog.addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
-personalizationDialog.addEventListener("close",()=>{personalizing=null;personalizationState=null;});
+personalizationDialog.addEventListener("close",()=>{
+  personalizing=null;personalizationState=null;personalizingOfferings=[];
+  if(el("tl-deploy-dialog").open)renderDeploymentOfferings();
+});
 el("tl-personalization-copy").addEventListener("click",()=>void (async()=>{
-  if(!personalizing||!personalizationState)return;
+  if(!personalizing||!personalizationState||!personalizingOfferings.length)return;
   const count=Number(personalizationState.count||0),target=Number(personalizationState.variantTarget||0),
     missing=Math.max(0,target-count);
   if(!missing){say("The private pool already meets its target.");return;}
@@ -1220,7 +1234,7 @@ el("tl-personalization-copy").addEventListener("click",()=>void (async()=>{
   }catch(error){el("tl-personalization-status").textContent="Package not copied: "+(error?.message||"unknown error");}
 })());
 el("tl-personalization-import").addEventListener("click",()=>void (async()=>{
-  if(!personalizing||!personalizationState||pendingWrite)return;
+  if(!personalizing||!personalizationState||pendingWrite||!personalizingOfferings.length)return;
   const missing=Math.max(0,Number(personalizationState.variantTarget||0)-Number(personalizationState.count||0)),
     expectedCount=Math.min(15,missing);
   if(!expectedCount){el("tl-personalization-status").textContent="The pool already meets its target.";return;}
@@ -1233,11 +1247,15 @@ el("tl-personalization-import").addEventListener("click",()=>void (async()=>{
     });
     if(personalizing!==item)throw Error("The assessment selection changed.");
     const result=await perform("personalization_import",{
-      resourceId:item.id,expectedRevision:item.contentRevision,variants
+      resourceId:item.id,expectedRevision:item.contentRevision,variants,
+      offeringIds:personalizingOfferings
     });
     saved=true;
-    personalizationState=await perform("personalization_status",{resourceId:item.id});
+    personalizationState=await perform("personalization_status",{
+      resourceId:item.id,offeringIds:personalizingOfferings
+    });
     el("tl-personalization-response").value="";renderPersonalizationState();
+    syncDeploymentPersonalizationReview();
     say("Imported "+variants.length+" private personalized variants. "+result.count+" saved for this blueprint revision.");
   }catch(error){
     if(saved){personalizationState=null;el("tl-personalization-response").value="";for(const id of ["tl-personalization-copy","tl-personalization-import","tl-personalization-activate"])el(id).disabled=true;}
@@ -1246,16 +1264,20 @@ el("tl-personalization-import").addEventListener("click",()=>void (async()=>{
   }finally{pendingWrite=false;el("tl-personalization-close").disabled=false;}
 })());
 el("tl-personalization-activate").addEventListener("click",()=>void (async()=>{
-  if(!personalizing||!personalizationState||pendingWrite)return;
+  if(!personalizing||!personalizationState||pendingWrite||!personalizingOfferings.length)return;
   let saved=false;
   try{
     pendingWrite=true;el("tl-personalization-activate").disabled=true;el("tl-personalization-close").disabled=true;
     await perform("personalization_activate",{
-      resourceId:personalizing.id,expectedRevision:personalizing.contentRevision
+      resourceId:personalizing.id,expectedRevision:personalizing.contentRevision,
+      offeringIds:personalizingOfferings
     });
     saved=true;
-    personalizationState=await perform("personalization_status",{resourceId:personalizing.id});
-    renderPersonalizationState();say("Private personalization pool activated. This blueprint can now be deployed to Adminerva Studio.");
+    personalizationState=await perform("personalization_status",{
+      resourceId:personalizing.id,offeringIds:personalizingOfferings
+    });
+    renderPersonalizationState();syncDeploymentPersonalizationReview();
+    say("Private personalization pool activated for the selected class roster. Return to deployment settings and confirm.");
   }catch(error){
     if(saved){personalizationState=null;for(const id of ["tl-personalization-copy","tl-personalization-import","tl-personalization-activate"])el(id).disabled=true;}
     else renderPersonalizationState();
