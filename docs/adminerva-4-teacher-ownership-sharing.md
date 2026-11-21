@@ -1,3 +1,5 @@
+> **Planning authority:** This document is retained only as a technical/historical reference. The canonical Adminerva product roadmap, development status and future priorities are maintained in [Adminerva School OS — Master Development Plan](https://github.com/Adminerva-Org/Adminerva/blob/main/docs/adminerva-school-os-master-plan.md). Any older sequencing, milestone, status or future-work statement here is subordinate to the master plan.
+
 # Adminerva 4.0 — Teacher ownership, private resources and explicit sharing
 
 **Status: planning only.** Teacher-owned work is a separate permission boundary beneath the school boundary. Source gap: current `firestore.rules` assessment read permits `ownerUid` OR overlapping `sectionIds`; `assessment_private`, evidence and Studio submission reads also rely partly on shared section. Replace this access model for v4.
