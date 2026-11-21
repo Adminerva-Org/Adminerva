@@ -191,6 +191,17 @@
           <div id="en-registration-list" class="en-list mt-3" role="list" aria-live="polite"></div>
         </section>
 
+        <section id="en-legacy-reconciliation-card" class="en-card">
+          <div class="flex justify-between gap-3 items-start flex-wrap">
+            <div>
+              <h2 class="text-lg font-extrabold">Pre-canonical enrollment reconciliation</h2>
+              <p class="en-muted mt-1">Older Adminerva section/class assignments can exist without a canonical registration. These records are shown only when a student has active class enrollments but no active official registration. End them here before identity recovery or canonical re-enrollment; history is preserved.</p>
+            </div>
+            <span class="en-badge" data-state="ended">Migration safety</span>
+          </div>
+          <div id="en-legacy-registration-list" class="en-list mt-3" role="list" aria-live="polite"></div>
+        </section>
+
         <section class="en-card">
           <div class="flex items-start justify-between gap-3 flex-wrap">
             <div>
@@ -297,6 +308,27 @@
     </form>
   </dialog>
 
+  <dialog id="en-legacy-reconciliation-dialog" class="en-dialog" aria-labelledby="en-legacy-reconciliation-title">
+    <form id="en-legacy-reconciliation-form" class="en-card" method="dialog">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-extrabold uppercase tracking-wider text-amber-700">Migration reconciliation</p>
+          <h2 id="en-legacy-reconciliation-title" class="text-lg font-extrabold mt-1">End pre-canonical enrollments</h2>
+          <p id="en-legacy-reconciliation-target" class="en-muted mt-1"></p>
+        </div>
+        <button id="en-legacy-reconciliation-close" type="button" class="en-btn secondary">Close</button>
+      </div>
+      <p class="en-notice mt-4">This action is available only when the student has no active canonical registration. It ends the reviewed older class-enrollment relationships without deleting the student, login, submissions, grades or enrollment history.</p>
+      <label class="text-sm font-bold block mt-4">Reconciliation reason
+        <textarea name="reason" class="en-input mt-1" rows="3" minlength="12" maxlength="500" required placeholder="Explain why these pre-canonical enrollments should be ended."></textarea>
+      </label>
+      <div class="flex flex-wrap gap-2 mt-4">
+        <button id="en-legacy-reconciliation-confirm" class="en-btn" type="submit" style="background:#9a3412;border-color:#9a3412">End reviewed legacy enrollments</button>
+        <button id="en-legacy-reconciliation-cancel" class="en-btn secondary" type="button">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="en-progression-dialog" class="en-dialog" aria-labelledby="en-progression-title">
     <form id="en-progression-form" class="en-card" method="dialog">
       <div class="flex items-start justify-between gap-3">
@@ -371,7 +403,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-sis-progression1"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-legacy-reconcile1"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
