@@ -105,6 +105,14 @@ function createSchoolStudioSubmissionService({db}){
     if(!project.exists||project.data().schoolId!==ctx.schoolId||
        project.data().ownerUid!==ctx.uid)
      deny("permission-denied","Choose one of your saved school Studio projects.");
+    if(assessment.manualOpenRequired===true){
+     const binding=project.data().artifacts?.assessment;
+     if(binding?.provisionedBy!=="assessment-launch"||
+        (binding.taskId||binding.assessmentId)!==taskId||
+        binding.offeringId!==offeringId||
+        Number(binding.sessionEpoch||0)!==Number(assessment.manualSessionEpoch||0))
+      deny("failed-precondition","Submit the project opened from this examination's current class session.");
+    }
     if(project.data().revision!==revision)
      deny("failed-precondition","Project changed. Save the latest revision before submitting.");
     const files=project.data().files;
