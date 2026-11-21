@@ -454,6 +454,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           deny("failed-precondition","This grading scheme changed. Reload it before saving.");
         const now=FieldValue.serverTimestamp();
         if(input.action==="save_scheme"){
+          if(prior&&(prior.status||"active")!=="active")
+            deny("failed-precondition","Restore this grading policy before editing it.");
           const name=text(input.name,"Grading scheme name",120);
           const description=String(input.description||"").trim();
           if(description.length>300)deny("invalid-argument","Grading scheme description cannot exceed 300 characters.");
