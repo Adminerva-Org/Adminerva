@@ -74,7 +74,8 @@ export function createV4BulkEvaluationController({
   const key=row=>String(row.submissionId||row.recordId||"");
   const selectedEligible=()=>rows.filter(row=>selection.has(key(row))&&
     !row.gradeStatus&&!["reopened","revision_requested"].includes(row.status));
-  const candidates=()=>selectedEligible().filter(row=>!staged.has(key(row)));
+  const candidates=()=>selectedEligible().filter(row=>
+    !staged.has(key(row))&&!exceptions.has(key(row)));
   const appendStatus=(message)=>{status.textContent=message;};
   const taskKey=t=>t?(t.legacyCompatibility?"legacy:":"native:")+
     String(t.legacyAssessmentId||t.taskId):"";
@@ -92,6 +93,7 @@ export function createV4BulkEvaluationController({
       ![...staged.values()].some(v=>v.review.saveEligible&&ready.some(r=>key(r)===v.key));
     btn("gbV4BulkSelect").disabled=running||isBusy();
     btn("gbV4BulkClear").disabled=running||isBusy();
+    btn("gbV4BulkRetry").disabled=running||isBusy()||exceptions.size===0;
     btn("gbV4BulkStop").hidden=!running;
     checkboxList.replaceChildren();
     for(const row of rows){
@@ -258,7 +260,13 @@ export function createV4BulkEvaluationController({
         expectedResponse:{format:BULK_RESPONSE_FORMAT,batchId,
           results:[{ref:"One exact anonymous ref from items",
             response:{format:"adminerva-general-external-evaluation-response-v1",
-              criteria:"Published criterion array with scores, comments, rationale and confidence",
+              criteria:(task.rubric||[]).map(part=>({
+                name:part.name,maximumPoints:Number(part.points||0),
+                awardedPoints:"number",pendingPoints:"number",
+                comment:"Evidence-based feedback",
+                rationale:"Concrete source or runtime evidence",
+                confidence:"high | moderate | teacher_confirmation"
+              })),
               feedback:"At least 20 characters",limitations:"Evidence limitations"}}]},
         items
       },null,2);
@@ -344,6 +352,11 @@ export function createV4BulkEvaluationController({
     render();
   });
   btn("gbV4BulkClear").addEventListener("click",()=>{selection.clear();render();});
+  btn("gbV4BulkRetry").addEventListener("click",()=>{
+    exceptions.clear();
+    appendStatus("Exceptions cleared. Failed submissions may now be retried.");
+    render();
+  });
   btn("gbV4BulkCopy").addEventListener("click",async()=>{
     if(!payload.value)return;
     try{
