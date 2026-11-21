@@ -363,17 +363,18 @@ function createSchoolEnrollmentService({db}){
     if(input.action==="student_candidate"){
       const personId=checkId(input.personId,"Person ID",128),
         personRef=db.doc(root+"people/"+personId);
-      const [person,registrations]=await Promise.all([
+      const [person,registrations,enrollments]=await Promise.all([
         personRef.get(),
-        db.collection(root+"student_registrations").where("personId","==",personId).limit(51).get()
+        db.collection(root+"student_registrations").where("personId","==",personId).limit(51).get(),
+        db.collection(root+"enrollments").where("personId","==",personId).limit(101).get()
       ]);
       if(!person.exists||person.data().schoolId!==ctx.schoolId)
         deny("not-found","The student is not in this school directory.");
       const data=person.data();
       if(data.kind!=="student"||data.status!=="active")
         deny("failed-precondition","Only an active student directory record can be placed through Enrollment & Registration.");
-      if(registrations.size===51)
-        deny("resource-exhausted","This student has too many registration records for a safe enrollment handoff.");
+      if(registrations.size===51||enrollments.size===101)
+        deny("resource-exhausted","This student has too much registration or class-enrollment history for a safe enrollment handoff.");
       const activeRegistrations=registrations.docs.filter(doc=>{
         const row=doc.data();
         return row.schoolId===ctx.schoolId&&row.status==="active";
@@ -395,7 +396,16 @@ function createSchoolEnrollmentService({db}){
           accountLinked:Boolean(data.authUid),activationReady:Boolean(data.activationEmailHash),
           revision:Number(data.revision)||1
         },
-        activeRegistrations
+        activeRegistrations,
+        activeLegacyEnrollments:enrollments.docs.filter(doc=>{
+          const row=doc.data();
+          return row.schoolId===ctx.schoolId&&row.status==="active";
+        }).map(doc=>({
+          enrollmentId:doc.id,expectedRevision:Number(doc.data().revision)||1,
+          offeringId:doc.data().offeringId||null,yearId:doc.data().yearId||null,
+          termId:doc.data().termId||null,sectionId:doc.data().sectionId||null,
+          subjectId:doc.data().subjectId||null,registrationId:doc.data().registrationId||null
+        }))
       };
     }
 
