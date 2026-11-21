@@ -32,6 +32,15 @@ test('publication and duplicate filters are conservative',()=>{
   assert.deepEqual(parsePublicChannel(data,'opportunities',{now,role:'teacher'}).map(x=>x.id),['verified-training','private']);
   assert.throws(()=>parsePublicChannel({...data,channel:'announcements'},'opportunities',{now}),/Unsupported/);
 });
+test('scheduled visual atmosphere is a small validated choice',()=>{
+  const base={id:'experience-visual',status:'published',publishedAt:'2026-11-20T08:00:00+08:00',
+    expiresAt:'2026-12-15T23:59:00+08:00',title:'Try public practice',summary:'Explore a public activity',
+    audience:['all'],url:'guest-practice.html',label:'FEATURED'};
+  const now=Date.parse('2026-11-21T12:00:00Z');
+  assert.equal(normalizePublicItem({...base,sceneTone:'sky'},'experiences',now)?.sceneTone,'sky');
+  assert.equal(normalizePublicItem({...base,sceneTone:'invalid'},'experiences',now),null);
+});
+
 test('future-dated entries and content without expiry remain unpublished',()=>{
   const item={...opportunity,publishedAt:'2027-01-01T00:00:00+08:00'};
   assert.equal(normalizePublicItem(item,'opportunities',now),null);
