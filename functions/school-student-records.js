@@ -62,7 +62,7 @@ function createSchoolStudentRecordsService({db}){
   return async request=>{
     const input=request.data||{};
     const ctx=await getSchoolContext({
-      db,request,schoolId:input.schoolId,roles:["school_admin"],allowDraftAdmin:true
+      db,request,schoolId:input.schoolId,roles:["school_admin","registrar"],allowDraftAdmin:true
     });
     const root="schools/"+ctx.schoolId+"/",
       schoolRef=db.doc("platform_schools/"+ctx.schoolId),
@@ -73,7 +73,8 @@ function createSchoolStudentRecordsService({db}){
       const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(adminRef)]);
       if(!school.exists||!["draft","pilot","active"].includes(school.data().state)||
          !member.exists||member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
-         !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
+         !Array.isArray(member.data().roles)||
+         !member.data().roles.some(role=>["school_admin","registrar"].includes(role)))
         deny("permission-denied","School records authority changed. Refresh before saving.");
     }
     async function student(personId,read=ref=>ref.get()){
