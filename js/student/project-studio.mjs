@@ -12,6 +12,7 @@ import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
 import {analyzeProjectEvidence,evidenceSnippet} from "./project-competency-evidence.mjs?v=2.1.0";
 import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,listV4StudioAssignments,loadV4StudioProject,
+  getV4StudioSubmissionStatus,getV4StudioSubmittedRecovery,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
 } from "./v4-studio-service.mjs?v=20261121-exam-data-audit";
 
@@ -756,6 +757,47 @@ export function createProjectStudio({
       }
     }
 
+    let recoveredSubmittedVersion=0;
+    if(!project&&cloudEnabled&&context.offeringId){
+      // A fresh device must not silently create an empty starter when the
+      // student has already submitted this assessment. Recover from the
+      // immutable submission only if the working school project is genuinely
+      // missing. Permission, connectivity and exam locks fail closed.
+      const school=await currentV4StudioSchool();
+      if(!school)throw Error("Reconnect your verified school before restoring this assessment project.");
+      const submitted=await getV4StudioSubmissionStatus(assessmentId);
+      if(submitted?.submitted){
+        const frozen=await getV4StudioSubmittedRecovery(assessmentId);
+        if(!frozen?.found||!frozen.projectId||!Array.isArray(frozen.files)||!frozen.files.length)
+          throw Error("Your previous submission exists, but its source could not be verified. No empty project was created. Contact your teacher to inspect the frozen submission.");
+        const bound=frozen.artifacts?.assessment;
+        if(bound?.provisionedBy==="assessment-launch"&&
+           (bound.taskId||bound.assessmentId)!==assessmentId)
+          throw Error("The submitted project belongs to another assessment. Recovery was stopped.");
+        const recoveredId=String(frozen.projectId);
+        // Older submissions may have used a non-deterministic project ID.
+        // Recheck that exact ID before restoring anything into school storage.
+        let existing=null;
+        try{existing=await loadV4StudioProject(recoveredId,{rememberRevision:false});}
+        catch(error){if(!String(error?.code||"").includes("not-found"))throw error;}
+        if(existing){
+          project=v4ProjectToLocal(uid,existing);
+          rememberV4StudioRevision(recoveredId,existing.revision);
+          writeMarker(recoveredId,{kind:"school",schoolId:school.schoolId,
+            revision:existing.revision,pending:false});
+        }else{
+          project=v4ProjectToLocal(uid,{
+            projectId:recoveredId,title:String(context.projectTitle||context.title||"Recovered assessment").slice(0,120),
+            language:frozen.language,files:frozen.files,artifacts:frozen.artifacts||{},
+            createdAt:frozen.submittedAt,updatedAt:frozen.submittedAt
+          });
+          recoveredSubmittedVersion=Number(frozen.version)||1;
+          writeMarker(recoveredId,{pending:true});
+        }
+        validateProject(project);
+      }
+    }
+
     const templateId=CODE_PROJECT_TEMPLATES[context.templateId]?context.templateId:"java-console";
     const template=CODE_PROJECT_TEMPLATES[templateId]||CODE_PROJECT_TEMPLATES["java-console"];
     const desiredConfig={...template.config,...(context.config||{})};
@@ -819,6 +861,10 @@ export function createProjectStudio({
       }
       if(changed){project=saveCodeProject(projectStorage,uid,next);if(cloudEnabled)writeMarker(project.id,{...readMarker(project.id),pending:true});}
       activateProject(project);
+      if(recoveredSubmittedVersion){
+        setCloudStatus("Recovered from submitted version "+recoveredSubmittedVersion+
+          " · cloud sync pending","info",activeProject.id);
+      }
       return {project:activeProject,created:false,projectId:activeProject.id};
     }
 
