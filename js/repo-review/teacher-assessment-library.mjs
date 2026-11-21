@@ -652,8 +652,12 @@ async function showExamCloseReport(task){
         taskId:task.taskId,sessionEpoch:epoch
       });
       if(turn!==generation||!dialog.open)return;
-      summary.textContent=report.confirmed+" of "+report.enrolledStudents+
-        " enrolled students have a confirmed final cloud save for session "+report.sessionEpoch+".";
+      summary.textContent=report.sessionClosed
+        ?report.confirmed+" of "+report.enrolledStudents+
+          " students have a confirmed final cloud save for class session "+report.sessionEpoch+"."
+        :"Class session "+report.sessionEpoch+" is still open. Final checkpoints are not expected until the teacher closes it.";
+      if(report.rosterSource!=="close_snapshot")
+        summary.textContent+=" Historical roster unavailable; showing the current enrollment roster.";
       const table=document.createElement("table");table.className="min-w-full text-left text-sm";
       const thead=document.createElement("thead");thead.className="bg-slate-100";
       const headings=document.createElement("tr");
@@ -667,7 +671,7 @@ async function showExamCloseReport(task){
         const tr=document.createElement("tr");tr.className="border-t border-slate-200";
         const cells=[
           student.displayName||"Student",
-          student.checkpointConfirmed?"Saved to school cloud":"Unconfirmed",
+          student.checkpointConfirmed?"Saved to school cloud":report.sessionClosed?"Unconfirmed":"In progress",
           student.projectRevision?"Revision "+student.projectRevision:"—",
           student.savedAt?new Date(student.savedAt).toLocaleString():"—"
         ];
