@@ -732,4 +732,4 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     fail("invalid-argument","Unknown platform school operation.");
   };
 }
-module.exports={addSchoolAdminRole,createPlatformSchoolService,ownerContext};
+module.exports={addSchoolAdminRole,createPlatformSchoolService,ownerContext,standardSetupStatus};
