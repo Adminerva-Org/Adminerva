@@ -325,6 +325,27 @@ export function createV4BulkEvaluationController({
         (data.review.pending?" · "+data.review.pending+" pending":"")+
         (data.review.reason?" · "+data.review.reason:" · eligible private draft");
       line.append(summary);
+      // External artifacts remain available for actual teacher inspection.
+      // Never replace an exact pinned GitHub SHA with a moving branch URL.
+      const links=data.reviewLinks||{};
+      const addEvidenceLink=(title,url)=>{
+        if(typeof url!=="string"||!url.startsWith("https://"))return;
+        const anchor=document.createElement("a");
+        anchor.textContent=title;
+        anchor.href=url;anchor.target="_blank";anchor.rel="noopener noreferrer";
+        anchor.className="mt-2 mr-3 inline-block font-bold text-indigo-700 underline";
+        line.append(anchor);
+      };
+      if(links.repository&&/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(links.repository)&&
+         /^[a-f0-9]{40}$/i.test(links.checkpointSha||"")){
+        addEvidenceLink("Open approved checkpoint ↗",
+          "https://github.com/"+links.repository+"/tree/"+links.checkpointSha);
+        for(const sha of links.commits||[])
+          if(/^[a-f0-9]{40}$/i.test(sha))
+            addEvidenceLink("Commit "+sha.slice(0,10)+" ↗",
+              "https://github.com/"+links.repository+"/commit/"+sha);
+      }
+      if(links.submissionUrl)addEvidenceLink("Open submitted artifact ↗",links.submissionUrl);
       const submitted=rows.find(row=>key(row)===data.key);
       const stillGradeable=Boolean(submitted&&!submitted.gradeStatus&&
         !["reopened","revision_requested"].includes(submitted.status)&&
@@ -520,10 +541,15 @@ export function createV4BulkEvaluationController({
       snapshot.evidenceDigest||(
         source==="github"?snapshot.checkpointSha+":"+
           String(snapshot.evidenceRevision??snapshot.version):"");
+    const reviewLinks=source==="github"?{
+      repository:snapshot.repository,
+      checkpointSha:snapshot.checkpointSha,
+      commits:(snapshot.selectedCommitShas||[]).slice(0,20)
+    }:source==="link"?{submissionUrl:snapshot.payload.url}:{};
     const context={
       task,snapshot,checkingInstructions:result.checkingInstructions||""
     };
-    return {key:id,row,version:snapshot.version,digest,
+    return {key:id,row,version:snapshot.version,digest,reviewLinks,
       evidenceRevision:Number(snapshot.evidenceRevision??snapshot.version),
       checkpointSha:snapshot.checkpointSha||"",
       sourceLanguage:snapshot.sourceLanguage||"",
