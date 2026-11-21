@@ -3,10 +3,13 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.1";
 
 const el=id=>document.getElementById(id);
-const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
+const functions=getFunctions(app,"asia-southeast1");
+const api=httpsCallable(functions,"schoolAcademics");
+const scheduleApi=httpsCallable(functions,"schoolSchedules");
 const params=new URLSearchParams(location.search);
-let picker=null,busy=false,epoch=0,view=["classes","teachers","sections"].includes(params.get("view"))?params.get("view"):"classes";
-let model={teachers:[],offerings:[],advisories:[]},selectedId=String(params.get("offeringId")||""),roster=null;
+let picker=null,busy=false,epoch=0,view=["classes","teachers","sections","schedule"].includes(params.get("view"))?params.get("view"):"classes";
+let model={teachers:[],offerings:[],advisories:[],schedules:new Map()},selectedId=String(params.get("offeringId")||""),roster=null;
+let scheduleDraft=[],scheduleRevision=0,scheduleDirty=false;
 
 function platformMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":undefined;}catch{return undefined;}
@@ -18,6 +21,15 @@ function make(tag,cls,text){const node=document.createElement(tag);if(cls)node.c
 function teacherMap(){return new Map((model.teachers||[]).map(row=>[row.uid,row]));}
 function classLabel(item){return [item.subjectName,item.sectionName].filter(Boolean).join(" · ")||item.offeringId;}
 function classMeta(item){return [item.termName,item.yearName,item.programName].filter(Boolean).join(" · ");}
+const dayNames={mon:"Monday",tue:"Tuesday",wed:"Wednesday",thu:"Thursday",fri:"Friday",sat:"Saturday"};
+function minutes(value){const match=/^([0-9]{2}):([0-9]{2})$/.exec(String(value||""));return match?Number(match[1])*60+Number(match[2]):null;}
+function scheduleFor(item){return item?model.schedules.get(item.offeringId)||null:null;}
+function scheduleMinutes(item){
+  return (scheduleFor(item)?.meetings||[]).reduce((sum,row)=>{
+    const start=minutes(row.startTime),end=minutes(row.endTime);return sum+(start!==null&&end!==null&&end>start?end-start:0);
+  },0);
+}
+function meetingText(row){return [dayNames[row.day]||row.day,row.startTime+"–"+row.endTime,row.room||""].filter(Boolean).join(" · ");}
 function selected(){return (model.offerings||[]).find(row=>row.offeringId===selectedId)||null;}
 function currentAdviser(item=selected()){
   if(!item)return null;
@@ -32,6 +44,12 @@ async function scoped(action,details={}){
   if(!picker?.scope.current)throw Error("Choose a verified school first.");
   const lease=picker.scope.lease(),mode=platformMode();
   const response=await api({schoolId:lease.schoolId,action,...details,...(mode?{platformMode:mode}:{})});
+  picker.scope.assertLease(lease);return response.data;
+}
+async function scopedSchedule(action,details={}){
+  if(!picker?.scope.current)throw Error("Choose a verified school first.");
+  const lease=picker.scope.lease(),mode=platformMode();
+  const response=await scheduleApi({schoolId:lease.schoolId,action,...details,...(mode?{platformMode:mode}:{})});
   picker.scope.assertLease(lease);return response.data;
 }
 function setBusy(value){
@@ -60,11 +78,11 @@ function filterOfferings(){
   });
 }
 function renderSummary(){
-  const classes=model.offerings||[],sections=new Set(classes.map(row=>row.sectionId).filter(Boolean));
+  const classes=model.offerings||[];
   el("csClassCount").textContent=classes.length.toLocaleString();
   el("csUnstaffedCount").textContent=classes.filter(row=>!(row.teacherUids||[]).length).length.toLocaleString();
   el("csTeacherCount").textContent=(model.teachers||[]).length.toLocaleString();
-  el("csSectionCount").textContent=sections.size.toLocaleString();
+  el("csScheduledCount").textContent=classes.filter(row=>(scheduleFor(row)?.meetings||[]).length).length.toLocaleString();
 }
 function setView(next,{replace=false}={}){
   view=next;
@@ -76,7 +94,8 @@ function setView(next,{replace=false}={}){
   const copy={
     classes:["Class offerings","Classes","Each row is one subject taught to one section in one academic period."],
     teachers:["Derived workload","Teachers","Teacher load is calculated from active class assignments. It is not maintained as a separate record."],
-    sections:["Section coverage","Sections","See every class attached to a section and which teachers currently cover it."]
+    sections:["Section coverage","Sections","See every class attached to a section and which teachers currently cover it."],
+    schedule:["Official timetable","Schedule","School-owned meeting times and rooms for each class offering. Conflicts are rejected before saving."]
   }[view];
   el("csViewEyebrow").textContent=copy[0];el("csViewTitle").textContent=copy[1];el("csViewHelp").textContent=copy[2];
   const url=new URL(location.href);if(view==="classes")url.searchParams.delete("view");else url.searchParams.set("view",view);
@@ -89,7 +108,7 @@ function empty(message){return make("div","rounded-xl border border-dashed borde
 function renderClasses(rows){
   const host=el("csList");host.replaceChildren();if(!rows.length){host.append(empty("No classes match these filters."));return;}
   const wrap=make("div","overflow-x-auto"),table=make("table","w-full text-sm"),thead=make("thead","bg-slate-50 text-left text-xs uppercase text-slate-500"),tr=make("tr");
-  for(const label of ["Class","Period","Teacher(s)","Status",""])tr.append(make("th","px-3 py-3 font-extrabold",label));thead.append(tr);table.append(thead);
+  for(const label of ["Class","Period","Teacher(s)","Schedule","Status",""])tr.append(make("th","px-3 py-3 font-extrabold",label));thead.append(tr);table.append(thead);
   const body=make("tbody","divide-y divide-slate-200"),teachers=teacherMap();
   for(const row of rows){
     const r=make("tr","align-top hover:bg-slate-50");
@@ -97,10 +116,13 @@ function renderClasses(rows){
     const period=make("td","px-3 py-3 text-slate-600", [row.termName,row.yearName].filter(Boolean).join(" · "));
     const names=(row.teacherUids||[]).map(uid=>teachers.get(uid)?.name||("Teacher "+uid.slice(0,8)));
     const staff=make("td","px-3 py-3",names.length?names.join(", "):"Unassigned");if(!names.length)staff.className+=" font-bold text-amber-700";
+    const meetings=scheduleFor(row)?.meetings||[];
+    const schedule=make("td","px-3 py-3",meetings.length?meetings.length+" meeting"+(meetings.length===1?"":"s"):"Unscheduled");
+    schedule.className+=" "+(meetings.length?"text-violet-700 font-bold":"text-slate-500");
     const status=make("td","px-3 py-3",row.invalidGrantCount?row.invalidGrantCount+" assignment issue"+(row.invalidGrantCount===1?"":"s"):"Ready");
     if(row.invalidGrantCount)status.className+=" text-rose-700 font-bold";else status.className+=" text-emerald-700";
     const action=make("td","px-3 py-3 text-right");action.append(button("Manage",()=>void openClass(row.offeringId),"bg-blue-700 text-white"));
-    r.append(title,period,staff,status,action);body.append(r);
+    r.append(title,period,staff,schedule,status,action);body.append(r);
   }
   table.append(body);wrap.append(table);host.append(wrap);
 }
@@ -113,7 +135,9 @@ function renderTeachers(rows){
   const grid=make("div","grid md:grid-cols-2 gap-3");
   for(const item of teachers){
     const card=make("article","rounded-xl border border-slate-200 p-4");
-    card.append(make("h3","font-extrabold",item.teacher.name),make("p","text-xs text-slate-500 mt-1",item.classes.length+" active class"+(item.classes.length===1?"":"es")));
+    const weekly=item.classes.reduce((sum,row)=>sum+scheduleMinutes(row),0);
+    card.append(make("h3","font-extrabold",item.teacher.name),make("p","text-xs text-slate-500 mt-1",
+      item.classes.length+" active class"+(item.classes.length===1?"":"es")+" · "+Math.floor(weekly/60)+"h "+weekly%60+"m scheduled/week"));
     const list=make("div","mt-3 space-y-2");
     if(!item.classes.length)list.append(make("p","text-sm text-slate-500","No active classes in the selected period."));
     for(const row of item.classes.slice(0,8)){
@@ -139,8 +163,29 @@ function renderSections(rows){
     }card.append(list);grid.append(card);
   }host.append(grid);
 }
+function renderSchedules(rows){
+  const host=el("csList");host.replaceChildren();
+  if(!rows.length){host.append(empty("No classes match these schedule filters."));return;}
+  const grid=make("div","grid lg:grid-cols-2 gap-3"),teachers=teacherMap();
+  for(const row of rows){
+    const schedule=scheduleFor(row),meetings=schedule?.meetings||[],card=make("article","rounded-xl border border-slate-200 p-4");
+    const top=make("div","flex items-start justify-between gap-3"),text=make("div","min-w-0");
+    text.append(make("h3","font-extrabold",classLabel(row)),make("p","text-xs text-slate-500 mt-1",classMeta(row)));
+    const manage=button(meetings.length?"Edit schedule":"Schedule class",()=>void openClass(row.offeringId),"bg-violet-700 text-white");
+    top.append(text,manage);card.append(top);
+    const staff=(row.teacherUids||[]).map(uid=>teachers.get(uid)?.name||("Teacher "+uid.slice(0,8))).join(", ")||"Unassigned teacher";
+    card.append(make("p","text-xs text-slate-600 mt-3",staff));
+    if(!meetings.length)card.append(make("p","mt-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-500","No official meeting times."));
+    else{
+      const list=make("div","mt-3 space-y-1");
+      for(const meeting of meetings)list.append(make("p","rounded-lg bg-violet-50 border border-violet-100 px-3 py-2 text-xs font-bold text-violet-900",meetingText(meeting)));
+      card.append(list);
+    }
+    grid.append(card);
+  }host.append(grid);
+}
 function renderList(){
-  const rows=filterOfferings();if(view==="teachers")renderTeachers(rows);else if(view==="sections")renderSections(rows);else renderClasses(rows);
+  const rows=filterOfferings();if(view==="teachers")renderTeachers(rows);else if(view==="sections")renderSections(rows);else if(view==="schedule")renderSchedules(rows);else renderClasses(rows);
 }
 function renderTeacherSelectors(){
   const active=new Set((roster?.teachers||[]).filter(row=>row.status==="active").map(row=>row.teacherUid));
@@ -154,6 +199,24 @@ function renderTeacherSelectors(){
   for(const row of (roster?.teachers||[]).filter(row=>row.status==="active"))from.add(new Option(row.name,row.teacherUid));
   el("csAssignForm").hidden=assign.options.length<=1;
   el("csHandoverForm").hidden=from.options.length<=1||handoverTo.options.length<=1;
+}
+function resetScheduleDraft(item=selected()){
+  const saved=scheduleFor(item);scheduleDraft=structuredClone(saved?.meetings||[]);
+  scheduleRevision=Number(saved?.revision)||0;scheduleDirty=false;
+}
+function renderScheduleEditor(){
+  const item=selected(),host=el("csScheduleMeetings"),status=el("csScheduleStatus");
+  host.replaceChildren();
+  if(!item){status.textContent="";return;}
+  el("csScheduleRevision").textContent=scheduleRevision?"Revision "+scheduleRevision:"Not scheduled";
+  if(!scheduleDraft.length)host.append(make("p","rounded-lg border border-dashed border-violet-200 bg-white/70 p-3 text-xs text-violet-900","No official meetings yet."));
+  scheduleDraft.forEach((meeting,index)=>{
+    const row=make("div","flex items-center justify-between gap-2 rounded-lg border border-violet-100 bg-white p-2"),
+      label=make("span","text-xs font-bold text-violet-950",meetingText(meeting)),
+      remove=button("Remove",()=>{scheduleDraft.splice(index,1);scheduleDirty=true;renderScheduleEditor();},"border border-rose-200 bg-white text-rose-700");
+    row.append(label,remove);host.append(row);
+  });
+  status.textContent=scheduleDirty?"Unsaved official schedule changes.":"Official schedule changes are audited and checked for teacher, section and room conflicts.";
 }
 function renderDetail(){
   const item=selected();if(!item){el("csDetail").hidden=true;el("csDetailEmpty").hidden=false;return;}
@@ -183,11 +246,13 @@ function renderDetail(){
     "Current adviser: "+(teacherById.get(adviser.teacherUid)?.name||("Teacher "+adviser.teacherUid.slice(0,8)))+" · "+(item.yearName||"school year"):
     "No adviser assigned for "+(item.yearName||"this school year")+".";
   el("csAdviserRemove").disabled=!adviser||busy;
+  renderScheduleEditor();
   el("csRecordLink").href="school-class-records.html?offeringId="+encodeURIComponent(item.offeringId);
   el("csEnrollmentClassLink").href=enrollmentRoute();
 }
 async function openClass(offeringId){
-  selectedId=offeringId;roster=null;renderDetail();say("Loading class roster…");
+  if(scheduleDirty&&offeringId!==selectedId&&!confirm("Discard unsaved official schedule changes before opening another class?"))return;
+  selectedId=offeringId;roster=null;resetScheduleDraft();renderDetail();say("Loading class roster…");
   const url=new URL(location.href);url.searchParams.set("offeringId",offeringId);history.replaceState({},"",url);
   const turn=++epoch;
   try{const result=await scoped("class_roster",{offeringId});if(turn!==epoch||selectedId!==offeringId)return;roster=result;renderDetail();say("Class ready: "+classLabel(selected())+".");}
@@ -210,14 +275,45 @@ async function endAssignment(row){
 async function loadOverview({preserveSelection=false,force=false}={}){
   if(!picker?.scope.current||(busy&&!force))return;const turn=++epoch;say("Loading classes and teaching assignments…");
   try{
-    const result=await scoped("faculty_workload");if(turn!==epoch)return;
-    model={teachers:result.teachers||[],offerings:result.offerings||[],advisories:result.advisories||[]};renderSummary();fillFilters();renderList();
+    const [result,scheduleResult]=await Promise.all([
+      scoped("faculty_workload"),scopedSchedule("admin_overview")
+    ]);if(turn!==epoch)return;
+    model={teachers:result.teachers||[],offerings:result.offerings||[],advisories:result.advisories||[],
+      schedules:new Map((scheduleResult.schedules||[]).map(row=>[row.offeringId,row]))};
+    renderSummary();fillFilters();renderList();
     const enroll=enrollmentRoute();el("csEnrollmentLink").href=enroll;el("csEnrollmentClassLink").href=enroll;
     const requested=preserveSelection?selectedId:(selectedId&&model.offerings.some(row=>row.offeringId===selectedId)?selectedId:"");
-    selectedId=requested;roster=null;renderDetail();
+    selectedId=requested;roster=null;resetScheduleDraft();renderDetail();
     if(selectedId)await openClass(selectedId);else say(model.offerings.length?"Scheduling workspace ready.":"No active classes exist yet. Create course offerings in Academic Configuration.");
-  }catch(error){if(turn===epoch){model={teachers:[],offerings:[],advisories:[]};renderSummary();renderList();say(error?.message||"Classes & Scheduling could not load.",true);}}
+  }catch(error){if(turn===epoch){model={teachers:[],offerings:[],advisories:[],schedules:new Map()};renderSummary();renderList();say(error?.message||"Classes & Scheduling could not load.",true);}}
 }
+el("csScheduleAdd").addEventListener("click",()=>{
+  const item=selected();if(!item||busy)return;
+  const day=el("csScheduleDay").value,startTime=el("csScheduleStart").value,endTime=el("csScheduleEnd").value,
+    room=el("csScheduleRoom").value.trim(),start=minutes(startTime),end=minutes(endTime);
+  if(start===null||end===null||start>=end){say("Choose a valid meeting start and later end time.",true);return;}
+  const overlap=scheduleDraft.some(row=>row.day===day&&start<minutes(row.endTime)&&minutes(row.startTime)<end);
+  if(overlap){say("This class already has an overlapping meeting on "+(dayNames[day]||day)+".",true);return;}
+  scheduleDraft.push({day,startTime,endTime,room});
+  scheduleDraft.sort((a,b)=>Object.keys(dayNames).indexOf(a.day)-Object.keys(dayNames).indexOf(b.day)||minutes(a.startTime)-minutes(b.startTime));
+  scheduleDirty=true;el("csScheduleRoom").value="";renderScheduleEditor();say("Meeting added locally. Save the official schedule to commit it.");
+});
+el("csScheduleForm").addEventListener("submit",event=>{
+  event.preventDefault();const item=selected(),reason=el("csScheduleReason").value.trim();if(!item||busy)return;
+  if(reason.length<12){say("Explain the official schedule change in at least 12 characters.",true);return;}
+  void (async()=>{
+    setBusy(true);say("Checking conflicts and saving the official class schedule…");
+    try{
+      const saved=await scopedSchedule("save_class_schedule",{offeringId:item.offeringId,meetings:scheduleDraft,
+        expectedRevision:scheduleRevision,reason});
+      model.schedules.set(item.offeringId,{...saved,yearId:item.yearId,termId:item.termId,programId:item.programId,
+        sectionId:item.sectionId,subjectId:item.subjectId});
+      scheduleRevision=saved.revision;scheduleDirty=false;el("csScheduleReason").value="";
+      renderSummary();renderList();renderScheduleEditor();say("Official class schedule saved. Teacher, section and room conflicts were checked.");
+    }catch(error){say(error?.message||"The official class schedule could not be saved.",true);}
+    finally{setBusy(false);renderScheduleEditor();}
+  })();
+});
 el("csAdviserForm").addEventListener("submit",event=>{
   event.preventDefault();const item=selected(),teacherUid=el("csAdviserTeacher").value;if(!item||!teacherUid)return;
   const existing=currentAdviser(item),name=teacherMap().get(teacherUid)?.name||"selected teacher";
@@ -248,12 +344,13 @@ el("csHandoverForm").addEventListener("submit",event=>{
 for(const node of [el("csSearch"),el("csYearFilter"),el("csTermFilter")])node.addEventListener(node.tagName==="INPUT"?"input":"change",renderList);
 for(const node of document.querySelectorAll("[data-cs-view]"))node.addEventListener("click",()=>setView(node.dataset.csView));
 el("csRefresh").addEventListener("click",()=>void loadOverview({preserveSelection:true}));
-window.addEventListener("popstate",()=>{const next=new URLSearchParams(location.search).get("view");setView(["teachers","sections"].includes(next)?next:"classes",{replace:true});});
+window.addEventListener("popstate",()=>{const next=new URLSearchParams(location.search).get("view");setView(["teachers","sections","schedule"].includes(next)?next:"classes",{replace:true});});
 
 picker=createTenantSchoolPicker({host:el("csSchoolSwitcher"),status:null,onBeforeChange:async()=>{
-  if(busy)throw Error("Finish the current class assignment action before switching schools.");
-  ++epoch;model={teachers:[],offerings:[],advisories:[]};selectedId="";roster=null;renderSummary();renderList();renderDetail();
+  if(busy||scheduleDirty)throw Error("Save or discard the current official schedule changes before switching schools.");
+  ++epoch;model={teachers:[],offerings:[],advisories:[],schedules:new Map()};selectedId="";roster=null;resetScheduleDraft();renderSummary();renderList();renderDetail();
 },onReady:scope=>{if(scope.current?.roles.includes("school_admin")||platformMode()==="assist")void loadOverview();else say("School Administrator access is required.",true);}});
+window.addEventListener("beforeunload",event=>{if(scheduleDirty){event.preventDefault();event.returnValue="";}});
 setView(view,{replace:true});renderSummary();renderDetail();
 await auth.authStateReady();
 try{const state=await picker.load();if(!auth.currentUser)say("Sign in with a verified School Administrator account.",true);else if(state?.state==="choose_school")say("Choose the school whose classes you want to manage.");}
