@@ -66,7 +66,7 @@
       <div id="csList" class="p-4 sm:p-5"></div>
     </section>
 
-    <aside class="rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-20 overflow-hidden">
+    <aside id="csDetailPanel" class="rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-20 overflow-hidden scroll-mt-24">
       <div class="bg-slate-50 border-b border-slate-200 p-4 sm:p-5">
         <p class="text-xs uppercase tracking-wider font-bold text-slate-500">Selected class</p>
         <h2 id="csDetailTitle" class="text-xl font-extrabold mt-1">Choose a class</h2>
@@ -74,6 +74,12 @@
       </div>
       <div id="csDetailEmpty" class="p-5 text-sm text-slate-600">Teaching load and section handling are derived from active class assignments. There is no separate load record to maintain.</div>
       <div id="csDetail" hidden class="p-4 sm:p-5 space-y-5">
+        <div class="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Selected class controls">
+          <button type="button" data-cs-detail-tab="team" class="rounded-lg bg-slate-900 text-white px-3 py-2 text-sm font-extrabold whitespace-nowrap" aria-selected="true">Teaching team</button>
+          <button type="button" data-cs-detail-tab="schedule" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold whitespace-nowrap" aria-selected="false">Schedule</button>
+          <button type="button" data-cs-detail-tab="roster" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold whitespace-nowrap" aria-selected="false">Roster</button>
+        </div>
+        <div data-cs-detail-panel="team" class="space-y-5">
         <section class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <div><p class="text-xs uppercase tracking-wider font-bold text-emerald-800">Section responsibility</p><h3 class="font-extrabold text-emerald-950 mt-1">Adviser / Homeroom</h3><p class="text-xs text-emerald-900 mt-1">Separate from subject teaching. This assignment applies to the selected section for the school year, not to every subject taught in it.</p></div>
           <p id="csAdviserCurrent" class="text-sm font-bold text-emerald-950 mt-3">No adviser assigned.</p>
@@ -101,7 +107,8 @@
           <textarea id="csHandoverReason" rows="2" maxlength="500" class="w-full rounded-lg border border-amber-300 bg-white p-3 text-sm" placeholder="Reason for teacher change (at least 12 characters)" required></textarea>
           <button type="submit" class="w-full rounded-lg bg-amber-700 text-white px-4 py-2.5 text-sm font-extrabold">Handover responsibility</button>
         </form>
-        <section class="rounded-xl border border-violet-200 bg-violet-50 p-4">
+        </div>
+        <section data-cs-detail-panel="schedule" class="rounded-xl border border-violet-200 bg-violet-50 p-4">
           <div class="flex items-start justify-between gap-3">
             <div><p class="text-xs uppercase tracking-wider font-bold text-violet-800">Official timetable</p><h3 class="font-extrabold text-violet-950 mt-1">Class meetings</h3><p class="text-xs text-violet-900 mt-1">School Administration owns the official class time and room. Teacher timetables are derived from these meetings.</p></div>
             <span id="csScheduleRevision" class="text-xs font-bold text-violet-800"></span>
@@ -122,6 +129,7 @@
           </form>
           <p id="csScheduleStatus" class="text-xs text-violet-900 mt-2" role="status"></p>
         </section>
+        <div data-cs-detail-panel="roster" class="space-y-5" hidden>
         <section class="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
           <div><p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Roster authority</p><h3 class="font-extrabold text-cyan-950 mt-1">Roster source</h3><p class="text-xs text-cyan-900 mt-1">Normal classes should follow official section placement. Selective mode is reserved for electives, irregular learners, and intentional exceptions.</p></div>
           <p id="csRosterModeCurrent" class="text-sm font-bold text-cyan-950 mt-3"></p>
@@ -149,6 +157,7 @@
           </section>
           <div id="csRoster" class="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-200"></div>
         </section>
+        </div>
         <div class="grid sm:grid-cols-2 gap-2">
           <a id="csRecordLink" href="school-class-records.html" class="rounded-lg border border-slate-300 px-3 py-2.5 text-center text-sm font-bold">Class Record oversight</a>
           <a id="csEnrollmentClassLink" href="school-enrollment.html" class="rounded-lg border border-slate-300 px-3 py-2.5 text-center text-sm font-bold">Student placement</a>
