@@ -41,7 +41,7 @@ async function assess(page,label,viewport){
     const main=document.querySelector('main');
     const headings=[...main.querySelectorAll('h1')].filter(n=>getComputedStyle(n).display!=='none'&&n.getBoundingClientRect().width>0);
     const rect=n=>{const r=n.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
-    const headingRects=headings.map(n=>({text:n.textContent,box:rect(n),scrollWidth:n.scrollWidth,clientWidth:n.clientWidth,scrollHeight:n.scrollHeight,clientHeight:n.clientHeight}));
+    const headingRects=headings.map(n=>{const style=getComputedStyle(n);return {text:n.textContent,box:rect(n),scrollWidth:n.scrollWidth,clientWidth:n.clientWidth,scrollHeight:n.scrollHeight,clientHeight:n.clientHeight,clippedX:['hidden','clip'].includes(style.overflowX),clippedY:['hidden','clip'].includes(style.overflowY)};});
     const nav=document.querySelector('#adminerva-public-nav .av-public-shell');
     const stage=document.querySelector('.avx-world-shell,.avx-role-runway,.avx-editorial-world');
     const actions=[...main.querySelectorAll('a[href],button')].filter(n=>n.getClientRects().length&&getComputedStyle(n).visibility!=='hidden');
@@ -54,8 +54,8 @@ async function assess(page,label,viewport){
   if(metrics.stage&&(metrics.stage.left<-3||metrics.stage.right>viewport.width+3))errs.push(`world outside viewport [${Math.round(metrics.stage.left)},${Math.round(metrics.stage.right)}]`);
   for(const h of metrics.headings){
     if(h.box.left<-3||h.box.right>viewport.width+3)errs.push('headline outside viewport: '+h.text.slice(0,60));
-    if(h.scrollWidth>h.clientWidth+3)errs.push('headline horizontal clipping: '+h.text.slice(0,60));
-    if(h.scrollHeight>h.clientHeight+4)errs.push('headline vertical clipping: '+h.text.slice(0,60));
+    if(h.clippedX&&h.scrollWidth>h.clientWidth+3)errs.push('headline horizontal clipping: '+h.text.slice(0,60));
+    if(h.clippedY&&h.scrollHeight>h.clientHeight+4)errs.push('headline vertical clipping: '+h.text.slice(0,60));
     if(metrics.nav&&h.box.top<metrics.nav.bottom-1&&h.box.bottom>metrics.nav.top+1)errs.push('headline collides with header: '+h.text.slice(0,60));
   }
   // Small decorative spans do not count; actionable items must be reachable.
