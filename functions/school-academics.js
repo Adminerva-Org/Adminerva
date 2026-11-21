@@ -414,6 +414,29 @@ function createSchoolAcademicsService({db}) {
    return {students:snap.docs.filter(doc=>doc.data().status==="active"&&doc.data().schoolId===ctx.schoolId)
      .map(doc=>({personId:doc.id,name:doc.data().displayName}))};
   }
+  if(input.action==="search_students"){
+   requireAdmin();
+   const query=String(input.query||"").trim().toLocaleLowerCase("en");
+   if(query.length<2)deny("invalid-argument","Enter at least 2 characters to search students.");
+   if(query.length>120)deny("invalid-argument","Student search is too long.");
+   const people=db.collection("schools/"+ctx.schoolId+"/people");
+   const [nameSnap,numberSnap]=await Promise.all([
+    people.orderBy("searchKey").startAt(query).endAt(query+"\uf8ff").limit(31).get(),
+    people.where("studentNumber","==",String(input.query||"").trim()).limit(4).get()
+   ]);
+   const unique=new Map();
+   for(const doc of [...numberSnap.docs,...nameSnap.docs]){
+    const row=doc.data();
+    if(row.schoolId!==ctx.schoolId||row.kind!=="student"||row.status!=="active")continue;
+    unique.set(doc.id,{
+     personId:doc.id,name:String(row.displayName||"Student").slice(0,140),
+     studentNumber:String(row.studentNumber||"").slice(0,80),
+     accountLinked:Boolean(row.authUid)
+    });
+    if(unique.size>=20)break;
+   }
+   return {students:[...unique.values()].sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}))};
+  }
   if(input.action==="create_catalog"){
    requireAdmin();
    const kind=input.kind;
@@ -906,7 +929,9 @@ function createSchoolAcademicsService({db}) {
       deny("failed-precondition","Select an active student person in this school.");
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
       deny("failed-precondition","Select an active school course offering.");
-    if(prior.exists)deny("already-exists","The student already has an enrollment for this offering. Preserve its history.");
+    if(offering.data().rosterMode==="section")
+      deny("failed-precondition","This class follows official section placement. Change the student's official registration instead of manually adding them to the class.");
+    if(prior.exists)deny("already-exists","The student already has enrollment history for this class. Restore an ended enrollment instead of recreating it.");
     tx.create(ref,{schoolId:ctx.schoolId,personId,offeringId,
       programId:offering.data().programId,yearId:offering.data().yearId,termId:offering.data().termId,
       sectionId:offering.data().sectionId,subjectId:offering.data().subjectId,
@@ -1093,19 +1118,21 @@ function createSchoolAcademicsService({db}) {
     const record=await tx.get(ref);
     if(!record.exists||record.data().schoolId!==ctx.schoolId)
       deny("not-found","The enrollment is not in this school.");
-    const data=record.data(),ending=input.action==="end_enrollment";
+    const data=record.data(),ending=input.action==="end_enrollment",
+     offering=await tx.get(schoolRoot.doc("course_offerings/"+data.offeringId));
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId)
+      deny("failed-precondition","The class offering no longer exists.");
+    if(offering.data().rosterMode==="section")
+      deny("failed-precondition","This class follows official section placement. Change the student's official registration instead of manually changing class enrollment.");
+
     if(ending&&data.status!=="active")
       deny("failed-precondition","Only an active enrollment can be ended.");
     if(!ending&&data.status!=="ended")
       deny("failed-precondition","Only an ended enrollment can be restored.");
     if(!ending){
-      const [person,offering]=await Promise.all([
-        tx.get(schoolRoot.doc("people/"+data.personId)),
-        tx.get(schoolRoot.doc("course_offerings/"+data.offeringId))
-      ]);
+      const person=await tx.get(schoolRoot.doc("people/"+data.personId));
       if(!person.exists||person.data().schoolId!==ctx.schoolId||
          person.data().kind!=="student"||person.data().status!=="active"||
-         !offering.exists||offering.data().schoolId!==ctx.schoolId||
          offering.data().status!=="active")
         deny("failed-precondition","The student and course offering must both be active before restoring enrollment.");
     }
