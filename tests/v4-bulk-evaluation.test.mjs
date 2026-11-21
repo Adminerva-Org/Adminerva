@@ -35,7 +35,7 @@ test("bulk response validates exact anonymous batch identity and rubric order",(
  assert.equal(rows[0].review.saveEligible,true);
  assert.match(rows[0].review.criteria[0].comment,/Evidence: Source contains derived class/);
  assert.equal(BULK_MAX_BATCH,10);
- assert.match(BULK_PACKAGE_FORMAT,/bulk-evaluation-package-v1/);
+ assert.match(BULK_PACKAGE_FORMAT,/bulk-evaluation-package-v2/);
 });
 test("zero scores and unresolved rubric points are not eligible for saving",()=>{
  const zero={...suggestion,criteria:suggestion.criteria.map(x=>({...x,awardedPoints:0}))};
