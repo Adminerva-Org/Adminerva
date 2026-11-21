@@ -1038,8 +1038,8 @@ picker=createTenantSchoolPicker({
   },
   onReady:scope=>{
     const current=scope.current;
-    if(!current?.roles.includes("school_admin")){
-      workspace.hidden=true;status.textContent="School Administrator access is required for Enrollment during this phase.";return;
+    if(!current?.roles.some(role=>["school_admin","registrar"].includes(role))){
+      workspace.hidden=true;status.textContent="School Administrator or Registrar access is required for Enrollment.";return;
     }
     if(current.enrollmentMode!=="canonical"){
       workspace.hidden=true;
