@@ -73,3 +73,20 @@ test("progression blocks mismatched canonical registration rosters",()=>{
 test("placement history includes the initial registration audit event",()=>{
   assert.match(source,/\^student_\(\?:registration_\|registered_\)/);
 });
+
+
+test("cohort progression reuses individual preview and audited progression transactions",()=>{
+  const frontend=readFileSync(new URL("../js/school-admin/enrollment.mjs",import.meta.url),"utf8");
+  assert.match(frontend,/mapLimit\(candidates,4/);
+  assert.match(frontend,/perform\("preview_progression",payload\)/);
+  assert.match(frontend,/perform\("progress_registration",\{\.\.\.row\.payload,reason\}\)/);
+  assert.match(frontend,/Each registration will be committed and audited independently/);
+  assert.match(frontend,/exceeds 60 active registrations/);
+});
+
+test("cohort preview is invalidated when canonical registrations refresh",()=>{
+  const frontend=readFileSync(new URL("../js/school-admin/enrollment.mjs",import.meta.url),"utf8");
+  assert.match(frontend,/Registration data changed\. Preview the cohort again/);
+  assert.match(frontend,/cohortPreview=null/);
+  assert.match(frontend,/cohortForm\(\)\.reset\(\)/);
+});
