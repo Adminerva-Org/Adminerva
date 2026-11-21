@@ -194,3 +194,11 @@
  .av-atlas-universe,.av-signal-art{transform:none!important}
 }
 html[data-motion="reduce"] .av-cine *,html[data-motion="reduce"] .av-cine *::before,html[data-motion="reduce"] .av-cine *::after,html[data-adminerva-reduce-motion="true"] .av-cine *,html[data-adminerva-reduce-motion="true"] .av-cine *::before,html[data-adminerva-reduce-motion="true"] .av-cine *::after{animation:none!important;transition:none!important}
+
+
+/* Explicit motion control lets visitors switch from the cinematic to static view. */
+.av-cine-motion-toggle{color:#c5ffee;background:#16354994;border:1px solid #80d1c67a;border-radius:99px;font-size:.68rem;letter-spacing:.03em;font-weight:850;cursor:pointer;min-height:36px;padding:.45rem .75rem}
+.av-cine-motion-toggle:hover{background:#265868}
+.av-cine-motion-toggle:disabled{cursor:default;opacity:.64}
+.av-cine-hero[data-motion-paused="true"] *, .av-cine-hero[data-motion-paused="true"] *::before,.av-cine-hero[data-motion-paused="true"] *::after{animation-play-state:paused!important;transition:none!important}
+@media(max-width:520px){.av-cine-topline>span:nth-child(2){display:none}.av-cine-motion-toggle{margin-left:auto;font-size:.62rem;padding:.42rem .55rem}}
