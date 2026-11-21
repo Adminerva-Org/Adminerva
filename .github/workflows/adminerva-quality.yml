@@ -42,6 +42,10 @@ jobs:
           node --check js/repo-review/v4-gradebook.mjs
           node --check functions/school-legacy-github-review.js
           node --test tests/v4-bulk-evaluation.test.mjs
+          node --test tests/v4-bulk-link-review.test.mjs
+          node --check js/repo-review/v4-bulk-evaluation.mjs
+          node --check js/repo-review/v4-gradebook.mjs
+          node --check functions/school-gradebook.js
           node --test tests/v4-repository-evaluation.test.mjs
           node --test tests/studio-student-recovery-guard.test.mjs tests/studio-legacy-reopen.test.mjs
           node --test js/school-admin/enrollment.test.mjs tests/platform-school-setup-readiness.test.mjs tests/grading-policy-overlap.test.mjs tests/school-enrollment-ownership.test.mjs tests/school-enrollment-progression.test.mjs tests/school-student-records.test.mjs tests/registrar-role-access.test.mjs tests/school-enrollment-capability.test.mjs tests/verified-school-enrollment-mode.test.mjs tests/academic-crud-lifecycle.test.mjs tests/people-invitation-lifecycle.test.mjs tests/people-lifecycle-dependencies.test.mjs tests/student-account-recovery.test.mjs
