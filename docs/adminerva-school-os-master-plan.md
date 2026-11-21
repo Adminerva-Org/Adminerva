@@ -200,6 +200,7 @@ Status definitions:
 | --- | --- | --- |
 | Existing LMS, Studio, assessment and grading base | Operational / evolving | Mature legacy/current functionality exists; school-scoped consolidation is ongoing. |
 | People & Access directory improvements | Merged | PRs #220, #221 and #222 added existing-student placement, legacy section repair, central directory search/profile editing and direct section placement. |
+| Core administrative CRUD / record lifecycle | In development | PR #215 now standardizes Create / Read / Update / Archive / Restore for canonical school people and core academic master data. Students and teachers/staff remain canonical people rather than duplicate role-specific person tables; sections, subjects/courses, programs/divisions, academic years/periods and class offerings gain revision-safe edit/archive/restore behavior. Ordinary UI uses archive/retire instead of destructive delete, with dependency checks and audit history. |
 | System Admin + School Admin workflow consolidation | In development | Draft PR #215 remains the primary administration integration track. School Admin recommendations now follow verified foundation readiness; standard-school activation requires an active administrator, saved profile and at least one coherent active academic offering; Preview remains non-mutating and Assist remains explicit/audited. The branch is being kept content-current with newer mainline assessment work and will receive one final ancestry sync before merge readiness. |
 | Classes & Scheduling | In development | PR #215 provides canonical class offerings, staffing, derived load, section coverage, official schedules, adviser assignment and roster authority. |
 | Enrollment & Registration lifecycle | In development | Standard registration exists and PR #215 now adds exact directory-student deep links, reviewed-person binding, history-preserving same-grade/same-period section correction, automatic-roster synchronization that excludes selective/elective classes, registration lifecycle ownership that preserves unrelated selective enrollments, and explicit withdrawal / transfer-out / cancellation / other end classifications without deleting historical records. |
@@ -246,6 +247,21 @@ Complete the architectural direction already implemented in PR #215:
 8. Class Record Oversight
 
 Remove normal administrator dependence on duplicated legacy teacher/section/subject assignment pages. Retain legacy paths only as controlled compatibility/migration surfaces.
+
+#### CRUD and record-lifecycle rule
+
+Canonical administrator-owned records must expose the lifecycle needed for real school maintenance:
+
+- **Create** new canonical records without creating duplicate identities or duplicate academic authorities.
+- **Read/search** active and archived records with school-scoped context and deep links.
+- **Update** active records with optimistic revision checks; structural edits must be blocked when they would rewrite active dependent relationships.
+- **Archive / retire** records instead of deleting them when historical relationships, grades, submissions, attendance, payments, audit trails or other evidence may exist.
+- **Restore** archived records deliberately, revalidating parent/dependency state rather than blindly reviving old access, staffing or schedules.
+- Ordinary School Admin UI must not expose hard delete for people, registrations, classes, grades, assessments or other historically meaningful records. Permanent deletion is reserved for narrowly reviewed recovery/migration cases where the record is proven unreferenced and retention rules allow it.
+- Teacher CRUD means lifecycle management of the canonical **staff person**, school membership/access and teaching assignments; do not create a separate competing teacher-person table.
+- Course CRUD distinguishes the reusable **subject/course catalog record** from the year/period/section-specific **class offering**.
+- Continue this lifecycle audit across campuses, grading policies, schedules, departments, facilities/assets, inventory/catalog items and future School OS master data as those modules become canonical.
+
 
 ### Priority 2 — Complete the SIS student lifecycle
 
@@ -412,6 +428,6 @@ When useful information from an older plan changes the product direction, move t
 1. Continue PR #215 as the primary School Admin/System Admin consolidation workstream.
 2. Confirm the merged practical-exam backend/frontend release state and perform only the focused classroom-readiness check required before ordinary use; do not reopen it as a broad development workstream unless a defect appears.
 3. Keep PR #215 content-current with current main and perform one final ancestry reconciliation before merge readiness; do not overwrite newer Class Record, Studio, practical-exam, Games or assessment-personalization work.
-4. Finish the standard SIS student lifecycle before building many independent service modules.
+4. Finish the standard SIS student lifecycle and complete dependency-aware CRUD/archive/restore coverage for canonical administrator-owned master data before building many independent service modules.
 5. Use the canonical school/person/class/enrollment model as the foundation for Finance, Clinic, Cafeteria, Uniforms and the remaining School OS modules.
 6. Keep this file updated whenever a major workstream is merged, deployed, superseded or newly prioritized.
