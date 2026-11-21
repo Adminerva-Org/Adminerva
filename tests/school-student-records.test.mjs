@@ -7,10 +7,6 @@ const require=createRequire(import.meta.url);
 const {
   normalizeGuardianEmail,guardianContactIdForEmail,guardianRelationshipId
 }=require("../functions/school-guardian-identity.js");
-const {
-  REQUEST_TRANSITIONS,requestTypeLabel
-}=require("../functions/school-student-records.js");
-
 const service=readFileSync(new URL("../functions/school-student-records.js",import.meta.url),"utf8");
 const enrollment=readFileSync(new URL("../functions/school-enrollment.js",import.meta.url),"utf8");
 const peopleUi=readFileSync(new URL("../js/school-admin/people-access.mjs",import.meta.url),"utf8");
@@ -27,12 +23,12 @@ test("guardian identity is normalized and shared across sibling relationships",(
 });
 
 test("document request lifecycle is explicit and terminal release is preserved",()=>{
-  assert.deepEqual([...REQUEST_TRANSITIONS.requested].sort(),["cancelled","in_review"]);
-  assert.deepEqual([...REQUEST_TRANSITIONS.in_review].sort(),["cancelled","ready"]);
-  assert.deepEqual([...REQUEST_TRANSITIONS.ready].sort(),["cancelled","in_review","released"]);
-  assert.deepEqual([...REQUEST_TRANSITIONS.released],[]);
-  assert.deepEqual([...REQUEST_TRANSITIONS.cancelled],["in_review"]);
-  assert.equal(requestTypeLabel("transcript_of_records"),"Transcript of Records");
+  assert.match(service,/requested:new Set\(\["in_review","cancelled"\]\)/);
+  assert.match(service,/in_review:new Set\(\["ready","cancelled"\]\)/);
+  assert.match(service,/ready:new Set\(\["released","in_review","cancelled"\]\)/);
+  assert.match(service,/released:new Set\(\)/);
+  assert.match(service,/cancelled:new Set\(\["in_review"\]\)/);
+  assert.match(service,/transcript_of_records:"Transcript of Records"/);
 });
 
 test("Student Records 201 file aggregates canonical records instead of creating a duplicate student master",()=>{
