@@ -233,6 +233,7 @@ async function checkAccess(user){
       "student-home.html","school-student-projects.html","school-student-settings.html",
       "school-student-assessments.html","school-student-grades.html",
       "student-dashboard.html","student-settings.html","student-assessments.html",
+      "student-classroom.html","student-subject.html",
       "student-practice.html","student-playground.html","student-xml-lab.html","student-support.html",
       "issues.html","join-school.html","wiki.html"
     ]);
