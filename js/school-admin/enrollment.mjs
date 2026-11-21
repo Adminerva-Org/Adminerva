@@ -437,7 +437,7 @@ picker=createTenantSchoolPicker({
     if(!current?.roles.includes("school_admin")){
       workspace.hidden=true;status.textContent="School Administrator access is required for Enrollment during this phase.";return;
     }
-    if(current.compatibilityMode!=="v4_only"){
+    if(current.enrollmentMode!=="canonical"){
       workspace.hidden=true;
       status.textContent="This school is still using its reviewed compatibility enrollment workflow. Use People & Access for legacy class relationships until the school adopts the canonical workflow.";
       return;
