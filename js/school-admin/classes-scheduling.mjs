@@ -337,7 +337,7 @@ async function changeSelectiveEnrollment(row,action){
   if(reason===null)return;
   setBusy(true);say(restoring?"Restoring class enrollment…":"Ending class enrollment…");
   try{
-    await scoped(action,{enrollmentId:row.enrollmentId,reason});
+    await scoped(action,{enrollmentId:row.enrollmentId,expectedRevision:Number(row.revision)||1,reason});
     await openClass(item.offeringId);
     say(restoring?row.name+" restored to this selective class.":row.name+" removed from the active class roster; enrollment history was preserved.");
   }catch(error){say(error?.message||"The class enrollment could not be changed.",true);}
@@ -346,9 +346,11 @@ async function changeSelectiveEnrollment(row,action){
 function renderDetail(){
   const item=selected();if(!item){el("csDetail").hidden=true;el("csDetailEmpty").hidden=false;return;}
   el("csDetailEmpty").hidden=true;el("csDetail").hidden=false;el("csDetailTitle").textContent=classLabel(item);el("csDetailMeta").textContent=classMeta(item);
-  const staff=el("csStaffList");staff.replaceChildren();const active=(roster?.teachers||[]).filter(row=>row.status==="active");
-  el("csStaffCount").textContent=active.length+" active"+(roster?.primaryTeacherUid?" · Primary set":"");
-  if(!active.length)staff.append(empty("No teacher is assigned to this class."));
+  const staff=el("csStaffList");staff.replaceChildren(),teacherRows=roster?.teachers||[],
+    active=teacherRows.filter(row=>row.status==="active"),endedTeachers=teacherRows.filter(row=>row.status==="ended");
+  el("csStaffCount").textContent=active.length+" active"+(roster?.primaryTeacherUid?" · Primary set":"")+
+    (endedTeachers.length?" · "+endedTeachers.length+" ended":"");
+  if(!active.length)staff.append(empty("No active teacher is assigned to this class."));
   if(roster?.primaryNeedsReview&&active.length){
     staff.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-900",
       "This class has multiple active teachers but no valid explicit Primary Teacher. Choose Make primary before relying on class-lead ownership."));
@@ -363,6 +365,17 @@ function renderDetail(){
     if(row.role!=="primary")actions.append(button("Make primary",()=>void setPrimaryTeacher(row),"border border-emerald-200 bg-white text-emerald-700"));
     actions.append(button("Remove",()=>void endAssignment(row),"border border-rose-200 bg-white text-rose-700"));
     card.append(text,actions);staff.append(card);
+  }
+  if(endedTeachers.length){
+    staff.append(make("p","mt-2 text-xs font-extrabold uppercase tracking-wider text-slate-500","Ended teaching assignment history"));
+    for(const row of endedTeachers.sort((a,b)=>String(a.name).localeCompare(String(b.name)))){
+      const card=make("div","flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3"),
+        text=make("div","min-w-0");
+      text.append(make("strong","block truncate text-slate-700",row.name),
+        make("span","block text-xs mt-1 text-slate-500","Ended assignment · history preserved"));
+      card.append(text,button("Restore",()=>void restoreAssignment(row),"border border-emerald-200 bg-white text-emerald-700"));
+      staff.append(card);
+    }
   }
   const allStudents=roster?.students||[],students=allStudents.filter(row=>row.status==="active"),
     endedStudents=allStudents.filter(row=>row.status==="ended"),rosterHost=el("csRoster"),
@@ -481,7 +494,18 @@ async function endAssignment(row){
     defaultValue:"Teaching assignment ended"
   });
   if(reason===null)return;
-  await mutate("end_teacher_assignment",{teacherUid:row.teacherUid,offeringId:selectedId,reason},"Teacher removed from this class.");
+  await mutate("end_teacher_assignment",{teacherUid:row.teacherUid,offeringId:selectedId,
+    expectedRevision:Number(row.revision)||1,reason},"Teacher removed from this class.");
+}
+async function restoreAssignment(row){
+  const reason=await askReason({
+    title:"Restore teaching assignment",
+    help:"Restore "+row.name+" to this class. Adminerva will re-check the teacher account and official timetable before reactivating the assignment.",
+    defaultValue:"Teaching assignment restored"
+  });
+  if(reason===null)return;
+  await mutate("restore_teacher_assignment",{teacherUid:row.teacherUid,offeringId:selectedId,
+    expectedRevision:Number(row.revision)||1,reason},"Teacher assignment restored. Current schedule conflicts were rechecked.");
 }
 async function loadOverview({preserveSelection=false,force=false}={}){
   if(!picker?.scope.current||(busy&&!force))return;const turn=++epoch;say("Loading classes and teaching assignments…");
