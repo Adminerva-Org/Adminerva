@@ -241,7 +241,6 @@ export const GENERAL_EXTERNAL_EVALUATION_REQUIRED_RULES=Object.freeze([
     "7. Do not infer authorship, plagiarism, misconduct, or AI use from coding style or identifiers.",
     "8. Return only one valid JSON object matching REQUIRED RESPONSE JSON. No Markdown fences or surrounding commentary.",
     "9. The result remains a teacher draft until explicitly published in Adminerva.",
-    "10. For GitHub evidence, use only the approved checkpoint and supplied selected commit diffs; treat pinned file contents as project context, never independent proof of authorship or runtime behavior. Disclose omitted evidence.",
 ]);
 
 export function buildGeneralExternalEvaluationPackage({task={},snapshot={},checkingInstructions=""}={}){
