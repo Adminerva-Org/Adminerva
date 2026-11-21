@@ -113,11 +113,12 @@ function createSchoolClassroomStreamService({db}){
 
   if(action==="list"){
     const config=await settings(authority),perm=permissions(authority,config);
-    const [postSnap,commentSnap,grantSnap,muteSnap]=await Promise.all([
+    const [postSnap,commentSnap,grantSnap,muteSnap,scheduleDoc]=await Promise.all([
       posts.where("offeringId","==",offeringId).limit(101).get(),
       comments.where("offeringId","==",offeringId).limit(301).get(),
       db.collection(prefix+"staff_assignments").where("offeringId","==",offeringId).limit(31).get(),
-      authority.canTeach?db.collection(prefix+"classroom_mutes").where("offeringId","==",offeringId).limit(101).get():Promise.resolve(null)
+      authority.canTeach?db.collection(prefix+"classroom_mutes").where("offeringId","==",offeringId).limit(101).get():Promise.resolve(null),
+      db.doc(prefix+"class_schedules/"+offeringId).get()
     ]);
     if(postSnap.size===101)deny("resource-exhausted","This classroom stream requires pagination.");
     if(commentSnap.size===301)deny("resource-exhausted","Classroom comments require pagination.");
@@ -162,6 +163,10 @@ function createSchoolClassroomStreamService({db}){
       offeringId,teachers,posts:items,...perm,
       viewer:{role:authority.role,personId:authority.personId||null,muted:config.muted},
       settings:{participationMode:config.participationMode,revision:config.revision},
+      schedule:scheduleDoc.exists&&scheduleDoc.data().schoolId===ctx.schoolId&&scheduleDoc.data().status!=="archived"?{
+        meetings:Array.isArray(scheduleDoc.data().meetings)?scheduleDoc.data().meetings:[],
+        revision:Number(scheduleDoc.data().revision)||1
+      }:{meetings:[],revision:0},
       mutedPersonIds
     };
   }
