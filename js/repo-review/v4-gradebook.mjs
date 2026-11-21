@@ -239,34 +239,19 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     currentTask=task||null;currentClassRecordStatus=null;inbox.replaceChildren();renderClassRecordHandoff();
     if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
     if(!task){bulkEvaluator?.reset();status.textContent="Choose an assessment to load submissions.";return;}
-    if(task.legacyCompatibility&&task.submissionSource!=="studio"){
-      status.textContent="Historical GitHub submission review still uses its verified original repository evidence workspace.";
-      if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;}
-      const card=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
-      card.append(make("h3","font-extrabold text-amber-950",task.title));
-      card.append(make("p","text-sm text-amber-900 mt-1",
-        sourceLabel(task.submissionSource)+" · "+task.deploymentCount+" historical deployment"+(task.deploymentCount===1?"":"s")+
-        (task.published?" · published":" · private")));
-      const sections=(task.legacyDeployments||[]).map(item=>item.section).filter(Boolean);
-      if(sections.length)card.append(make("p","text-xs text-amber-800 mt-2","Sections: "+[...new Set(sections)].join(" · ")));
-      const actions=make("div","flex flex-wrap gap-2 mt-3");
-      const review=make("a","rounded-lg bg-amber-800 text-white font-bold px-3 py-2 text-sm",
-        task.submissionSource==="studio"?"Open historical Studio review":"Open historical GitHub review");
-      review.href=task.submissionSource==="studio"
-        ?"studio-submissions.html?assessment="+encodeURIComponent(task.legacyAssessmentId)
-        :"repofetch.html?assessment="+encodeURIComponent(task.legacyAssessmentId);
-      actions.append(review);card.append(actions);inbox.append(card);
-      return;
-    }
     status.textContent="Loading frozen "+sourceLabel(task.submissionSource).toLowerCase()+" submissions…";
     try{
       const historicalStudio=task.legacyCompatibility&&task.submissionSource==="studio";
+      const historicalGithub=task.legacyCompatibility&&task.submissionSource==="github";
+      const historical=historicalStudio||historicalGithub;
       const evidenceApi=sourceApi(task.submissionSource,{
         studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
       });
       let result,resultData=null,classRecordStatus={status:"unavailable"};
-      if(historicalStudio){
-        result=await scoped(migrationApi,"legacy_review_inbox",{legacyAssessmentId:task.legacyAssessmentId});
+      if(historical){
+        result=await scoped(migrationApi,historicalStudio?"legacy_review_inbox":"legacy_github_inbox",{
+          legacyAssessmentId:task.legacyAssessmentId
+        });
         currentTask={...task,...result.task};
       }else{
         [result,resultData,classRecordStatus]=await Promise.all([
@@ -280,8 +265,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       if(token!==generation)return;
       currentClassRecordStatus=classRecordStatus;renderClassRecordHandoff();
       let rows=task.submissionSource==="github"?(result.evidence||[]):(result.submissions||[]);
-      const gradeMap=new Map(historicalStudio?
-        (result.submissions||[]).filter(item=>item.gradeStatus).map(item=>[item.studentUid,{
+      const gradeMap=new Map(historical?
+        rows.filter(item=>item.gradeStatus).map(item=>[item.studentUid,{
           studentUid:item.studentUid,status:item.gradeStatus,awarded:item.awarded,
           total:currentTask.rubric.reduce((sum,part)=>sum+Number(part.points),0),pending:0
         }]):
@@ -297,8 +282,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const publishableDrafts=draftRows.filter(item=>Number(item.awarded)>0&&Number(item.pending||0)===0).length;
       const zeroDrafts=draftRows.filter(item=>Number(item.awarded)===0).length;
       if(bulkPublish){
-        bulkPublish.dataset.ready=publishableDrafts?"true":"false";
-        bulkPublish.disabled=busy||!publishableDrafts;
+        bulkPublish.dataset.ready=historicalGithub?"false":publishableDrafts?"true":"false";
+        bulkPublish.disabled=busy||historicalGithub||!publishableDrafts;
         bulkPublish.textContent="Publish all drafts ("+publishableDrafts+")";
         bulkPublish.title=zeroDrafts
           ?zeroDrafts+" zero-score draft"+(zeroDrafts===1?" is":"s are")+" excluded from bulk publication."
@@ -308,6 +293,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         task:currentTask,rows,gradeMap,
         schoolId:picker.scope.current?.schoolId||picker.scope.lease().schoolId
       });
+      if(historicalGithub){
+        const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
+        notice.append(make("h3","font-bold text-violet-950","Historical GitHub evidence · V4 review interface"));
+        notice.append(make("p","text-violet-900 mt-1",
+          "This class's original approved commits and grades remain in legacy records. V4 can review and save individual approved grades there without creating duplicate school grades. Unapproved evidence requires the original verification workspace until that approval workflow is integrated."));
+        inbox.append(notice);
+      }
       if(historicalStudio){
         const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
         notice.append(make("h3","font-bold text-violet-950",
@@ -344,7 +336,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         notice.append(button,output);inbox.append(notice);
       }
       status.textContent=rows.length?
-        (historicalStudio?"Historical Studio evidence · ":"")+rows.length+" submitted · "+
+        (historical?"Historical "+(historicalStudio?"Studio":"GitHub")+" evidence · ":"")+rows.length+" submitted · "+
           published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
         "No student evidence yet for this assessment.";
       if(!rows.length){
@@ -369,7 +361,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         details.append(make("p","text-xs font-bold mt-1 "+(grade?.status==="published"?"text-emerald-700":grade?"text-amber-700":"text-slate-600"),resultLine));
         const button=make("button","rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5 text-sm",
           view==="results"?(grade?"Open result":"Grade response"):
-            task.submissionSource==="github"?"Verify evidence":"Review response");
+            task.submissionSource==="github"?(historicalGithub?"Review repository":"Verify evidence"):"Review response");
         button.type="button";
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
@@ -385,13 +377,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       if(token!==generation)return;
       bulkEvaluator?.reset();
       status.textContent=error?.message||"Submission inbox is unavailable.";
-      if(task?.legacyCompatibility&&task.submissionSource==="studio"){
+      if(task?.legacyCompatibility){
         const help=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
         help.append(make("p","text-sm text-amber-950",
-          "The historical submissions could not be loaded in V4. The original submissions and student work are unchanged. Use the original review below while the problem is resolved."));
+          "Historical submissions could not be loaded in V4. Original student evidence and grades remain unchanged; use the original review only for recovery."));
         const link=make("a","mt-2 inline-flex rounded-lg border border-amber-500 px-3 py-2 text-sm font-bold text-amber-950",
-          "Open original Studio submissions");
-        link.href="studio-submissions.html?assessment="+encodeURIComponent(task.legacyAssessmentId);
+          task.submissionSource==="studio"?"Open original Studio submissions":"Open original Repository Review");
+        link.href=(task.submissionSource==="studio"?"studio-submissions.html":"repofetch.html")+
+          "?assessment="+encodeURIComponent(task.legacyAssessmentId);
         help.append(link);inbox.append(help);
       }
     }
