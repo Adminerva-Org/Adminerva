@@ -576,9 +576,13 @@ el("ac-offering-form").addEventListener("submit",event=>{
   const submit=form.querySelector('button[type="submit"]'),original=submit?.textContent||"Create course offering";
   if(submit)submit.textContent="Saving…";
   setBusy(true,"Creating course offering…");
-  void scoped("create_offering",data).then(async()=>{
+  void scoped("create_offering",data).then(async result=>{
     form.reset();clearManual(form);const refreshed=await load({afterWrite:true});
-    const message="Course offering saved successfully."+(refreshed?"":" Refresh failed; reload before creating another offering.");
+    const roster=Number(result?.officialRegistrationCount)||0,added=Number(result?.autoEnrolled)||0;
+    const rosterMessage=roster?
+      " "+added+" officially placed student"+(added===1?" was":"s were")+" automatically added to the new class roster.":
+      " No active official section placements needed roster synchronization.";
+    const message="Class offering saved successfully."+rosterMessage+(refreshed?"":" Refresh failed; reload before creating another class.");
     say(message);notify(message,refreshed?"success":"info");
   }).catch(error=>{
     const message=friendlyError(error,"Course offering was not created.");
