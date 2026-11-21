@@ -65,5 +65,10 @@ test("school draft and submitted evidence remain server-authoritative and separa
   assert.match(backend,/rowKey\(personId,offeringId\)/);
   assert.match(backend,/newer cloud draft is already saved/);
   assert.match(backend,/tx\.delete\(draftRef\)/);
+  const indexPolicy=JSON.parse(readFileSync("firestore.indexes.json","utf8"));
+  assert.deepEqual(indexPolicy.fieldOverrides.find(row=>
+    row.collectionGroup==="assessment_response_drafts"&&row.fieldPath==="payload"),{
+      collectionGroup:"assessment_response_drafts",fieldPath:"payload",indexes:[]
+    });
   assert.match(rules,/match \/schools\/\{schoolId\}\/\{record=\*\*\} \{ allow read, write: if false;/);
 });
