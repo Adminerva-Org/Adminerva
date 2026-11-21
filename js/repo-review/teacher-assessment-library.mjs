@@ -10,14 +10,15 @@ const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
 const requestedFilter=new URL(location.href).searchParams.get("view");
-let items=[],deployments=[],filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
+let items=[],deployments=[],filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,
   lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
-    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
+    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];editing=null;sharing=null;deploying=null;
+    deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
     lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
@@ -772,6 +773,117 @@ async function setExamOpening(task,opening){
   }catch(error){say(error?.message||"Exam access could not be changed.");}
   finally{pendingWrite=false;}
 }
+const MAX_BULK_DEPLOYMENTS=20;
+let deployOfferings=[],deploySelectedOfferings=new Set(),deploySucceededOfferings=new Set(),
+  deployRequestKeys=new Map(),deployDatePicker=null,deployTimesEdited=false,deployAttempted=false;
+
+function deploymentOfferingLabel(offering){
+  return [offering.subjectName||offering.subjectId||"Subject",
+    offering.sectionName||offering.sectionId||"Section",
+    offering.yearName||offering.yearId,
+    offering.termName||offering.termId].filter(Boolean).join(" · ");
+}
+function previouslyDeployedOfferingIds(){
+  return new Set(deployments.filter(task=>task.blueprintId===deploying?.id &&
+    task.lifecycle!=="cancelled").map(task=>task.offeringId).filter(Boolean));
+}
+function matchingDeployOfferings(){
+  const term=el("tl-deploy-offering-search").value.trim().toLocaleLowerCase();
+  return deployOfferings.filter(offering=>deploymentOfferingLabel(offering).toLocaleLowerCase().includes(term));
+}
+function renderDeploymentOfferings(){
+  const selected=el("tl-deploy-selected"),list=el("tl-deploy-offerings"),
+    status=el("tl-deploy-selection-status"),existing=previouslyDeployedOfferingIds();
+  selected.replaceChildren();list.replaceChildren();
+  const visible=matchingDeployOfferings();
+  if(!deploySelectedOfferings.size){
+    const hint=document.createElement("span");hint.className="text-xs text-slate-500";
+    hint.textContent="No classes selected.";selected.append(hint);
+  }
+  for(const id of deploySelectedOfferings){
+    const offering=deployOfferings.find(entry=>entry.offeringId===id);
+    if(!offering)continue;
+    const chip=document.createElement("span");
+    chip.className="inline-flex max-w-full items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-900";
+    const label=document.createElement("span");label.className="min-w-0 break-words";
+    label.textContent=deploymentOfferingLabel(offering);
+    const remove=document.createElement("button");remove.type="button";remove.className="rounded-full px-1 text-blue-800 hover:bg-blue-100";
+    remove.setAttribute("aria-label","Remove "+deploymentOfferingLabel(offering));
+    remove.textContent="×";remove.disabled=pendingWrite;
+    remove.addEventListener("click",()=>{deploySelectedOfferings.delete(id);deployRequestKeys.delete(id);renderDeploymentOfferings();});
+    chip.append(label,remove);selected.append(chip);
+  }
+  for(const offering of visible){
+    const already=existing.has(offering.offeringId)||deploySucceededOfferings.has(offering.offeringId);
+    const label=document.createElement("label");
+    label.className="flex min-h-11 cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0";
+    if(already)label.className+=" bg-slate-50 text-slate-500";
+    const checkbox=document.createElement("input");checkbox.type="checkbox";
+    checkbox.className="mt-1 h-4 w-4 shrink-0";
+    checkbox.checked=deploySelectedOfferings.has(offering.offeringId);
+    checkbox.disabled=already||pendingWrite;
+    checkbox.addEventListener("change",()=>{
+      if(checkbox.checked){
+        if(deploySelectedOfferings.size>=MAX_BULK_DEPLOYMENTS){
+          checkbox.checked=false;el("tl-deploy-feedback").textContent="Select no more than "+MAX_BULK_DEPLOYMENTS+" classes at a time.";return;
+        }
+        deploySelectedOfferings.add(offering.offeringId);
+      }else{deploySelectedOfferings.delete(offering.offeringId);deployRequestKeys.delete(offering.offeringId);}
+      renderDeploymentOfferings();
+    });
+    const span=document.createElement("span");span.className="min-w-0 break-words";
+    span.textContent=deploymentOfferingLabel(offering)+(already?" · already deployed":"");
+    label.append(checkbox,span);list.append(label);
+  }
+  if(!visible.length){
+    const empty=document.createElement("p");empty.className="p-3 text-xs text-slate-500";
+    empty.textContent=deployOfferings.length?"No classes match this search.":"No active teaching assignments available.";
+    list.append(empty);
+  }
+  status.textContent=deploySelectedOfferings.size+" selected · "+visible.length+" visible · "+MAX_BULK_DEPLOYMENTS+" maximum per operation."+
+    (existing.size?" Classes already deployed from this blueprint cannot be selected again.":"");
+  const submit=el("tl-deploy-submit");
+  submit.disabled=!deployReady||!deploySelectedOfferings.size||pendingWrite;
+  submit.textContent="Deploy to "+deploySelectedOfferings.size+" class"+(deploySelectedOfferings.size===1?"":"es");
+  el("tl-deploy-select-visible").disabled=!deployReady||pendingWrite;
+  el("tl-deploy-clear").disabled=!deploySelectedOfferings.size||pendingWrite;
+}
+function calendarDateStamp(date){
+  return [date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-");
+}
+function setDeploymentRange(first,second){
+  const dates=[first,second].sort((a,b)=>a.getTime()-b.getTime());
+  const form=el("tl-deploy-form");
+  const opensTime=deployTimesEdited?String(form.elements.opensAt.value).slice(11)||"00:00":"00:00";
+  const dueTime=deployTimesEdited?String(form.elements.dueAt.value).slice(11)||"23:59":"23:59";
+  form.elements.opensAt.value=calendarDateStamp(dates[0])+"T"+opensTime;
+  form.elements.dueAt.value=calendarDateStamp(dates[1])+"T"+dueTime;
+  if(!deployAttempted)deployRequestKeys.clear();
+  el("tl-deploy-feedback").textContent="Schedule set: "+dates[0].toLocaleDateString()+
+    " to "+dates[1].toLocaleDateString()+". Review the exact times below.";
+}
+function ensureDeploymentCalendar(){
+  if(deployDatePicker)return;
+  if(typeof window.flatpickr!=="function"){
+    el("tl-deploy-feedback").textContent="The two-click calendar is unavailable. Enter opening and deadline dates in the fields below.";
+    return;
+  }
+  deployDatePicker=window.flatpickr(el("tl-deploy-date-range"),{
+    mode:"range",dateFormat:"M j, Y",allowInput:false,disableMobile:true,
+    onChange(selectedDates){
+      if(selectedDates.length===1)el("tl-deploy-feedback").textContent="Choose the second date to complete this range.";
+      if(selectedDates.length===2)setDeploymentRange(selectedDates[0],selectedDates[1]);
+    }
+  });
+}
+function freezeBulkDeploymentSettings(){
+  const form=el("tl-deploy-form");
+  for(const name of ["submissionSource","manualOpenRequired","opensAt","dueAt","allowLateSubmissions"])
+    form.elements[name].disabled=true;
+  for(const button of form.querySelectorAll("[data-deploy-range-days], #tl-deploy-custom-range"))
+    button.disabled=true;
+  el("tl-deploy-date-range").disabled=true;
+}
 async function prepareDeployment(item){
   if(pendingWrite)return;
   const turn=++deployEpoch;deployReady=false;
@@ -786,43 +898,43 @@ async function prepareDeployment(item){
     }catch(error){say(error?.message||"Personalization readiness could not be verified.");return;}
   }
   if(turn!==deployEpoch)return;
-  deploying=item;deployRequestKey=crypto.randomUUID();
+  deploying=item;deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();
+  deployRequestKeys.clear();deployAttempted=false;deployTimesEdited=false;
   el("tl-deploy-title").textContent=item.title;
-  const form=el("tl-deploy-form");
-  form.reset();
+  const form=el("tl-deploy-form");form.reset();
   form.elements.submissionSource.disabled=personalized(item);
   form.elements.submissionSource.value=personalized(item)?"studio":(item.defaultSubmissionSource||"text");
+  for(const name of ["manualOpenRequired","opensAt","dueAt","allowLateSubmissions"])
+    form.elements[name].disabled=false;
+  for(const button of form.querySelectorAll("[data-deploy-range-days], #tl-deploy-custom-range"))
+    button.disabled=false;
+  el("tl-deploy-date-range").disabled=false;
+  el("tl-deploy-offering-search").value="";
+  el("tl-deploy-feedback").textContent="";
   toggleManualOpening();
-  // Practical-exam deployments default to teacher-controlled class sessions;
-  // ordinary Studio assignments keep their original scheduled behavior.
+  // Practical-exam deployments default to teacher-controlled class sessions.
   form.elements.manualOpenRequired.checked=
     form.elements.submissionSource.value==="studio"&&
-    /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(item.assessmentType||""));
+    /\\b(?:practical\\s+)?exam(?:ination)?\\b/i.test(String(item.assessmentType||""));
   const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   form.elements.opensAt.value=localDateInput(now);
   form.elements.dueAt.value=localDateInput(tomorrow);
-  const select=el("tl-deploy-offering");
-  select.replaceChildren();
-  const placeholder=document.createElement("option");
-  placeholder.value="";placeholder.textContent="Loading your assigned classes…";
-  select.append(placeholder);select.disabled=true;form.querySelector('button[type="submit"]').disabled=true;
+  ensureDeploymentCalendar();
+  if(deployDatePicker)deployDatePicker.clear(false);
   el("tl-deploy-dialog").showModal();
+  renderDeploymentOfferings();
   try{
     const offerings=(await performScoped(schoolAcademicsApi,"planning_options",{assignmentScope:"teacher"})).offerings||[];
     if(turn!==deployEpoch||!el("tl-deploy-dialog").open||deploying?.id!==item.id)return;
-    select.replaceChildren();
-    const initial=document.createElement("option");
-    initial.value="";initial.textContent=offerings.length?"Choose your assigned class":"No active course offerings assigned";
-    initial.selected=true;initial.disabled=true;select.append(initial);
-    for(const offering of offerings.sort((a,b)=>String(a.subjectName+" "+a.sectionName).localeCompare(String(b.subjectName+" "+b.sectionName)))){
-      const option=document.createElement("option");
-      option.value=offering.offeringId;
-      option.textContent=[offering.subjectName||offering.subjectId,offering.sectionName||offering.sectionId,offering.yearName||offering.yearId,offering.termName||offering.termId].filter(Boolean).join(" · ");
-      select.append(option);
-    }
-    deployReady=select.options.length>1;select.disabled=!deployReady;form.querySelector('button[type="submit"]').disabled=!deployReady;
-    if(!deployReady)say("No active teaching assignments are available for deployment.");
-  }catch(error){say(error.message||"Could not load assigned classes.");}
+    deployOfferings=offerings.filter(o=>o?.offeringId).sort((a,b)=>
+      deploymentOfferingLabel(a).localeCompare(deploymentOfferingLabel(b)));
+    deployReady=deployOfferings.length>0;
+    renderDeploymentOfferings();
+    if(!deployReady)el("tl-deploy-feedback").textContent="No active teaching assignments are available for deployment.";
+  }catch(error){
+    el("tl-deploy-feedback").textContent=error?.message||"Could not load assigned classes.";
+    say("Could not load assigned classes.");
+  }
 }
 el("tl-deployment-settings-cancel").addEventListener("click",()=>{
   deploymentSettingsTask=null;el("tl-deployment-settings-dialog").close();
