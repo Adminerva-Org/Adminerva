@@ -1181,7 +1181,10 @@ function createSchoolAcademicsService({db}) {
    return {offeringId,students:rows.map((record,i)=>({
      personId:record.data().personId,enrollmentId:record.id,status:record.data().status,
      name:people[i].exists&&people[i].data().schoolId===ctx.schoolId?
-       people[i].data().displayName:"Unlinked student record"
+       people[i].data().displayName:"Unlinked student record",
+     studentNumber:people[i].exists&&people[i].data().schoolId===ctx.schoolId?
+       String(people[i].data().studentNumber||""):"",
+     accountLinked:Boolean(people[i].exists&&people[i].data().schoolId===ctx.schoolId&&people[i].data().authUid)
    })),teachers:staff};
   }
   deny("invalid-argument","Unknown academic operation.");
