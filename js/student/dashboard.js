@@ -1,5 +1,5 @@
 import {loadPublishedGrades} from "./published-grades.mjs?v=1.3.0";
-import {ensureStudentAccessProjection} from "./student-access.mjs?v=1.3.6";
+import {ensureStudentAccessProjection} from "./student-access.mjs?v=20261122-github-recovery";
 /** Legacy teacher analytics import compatibility entry. */
 import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
@@ -19,6 +19,7 @@ import {
   GithubAuthProvider,
   reauthenticateWithPopup,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 
 let userProfiles = [];
 let currentChart = null;
@@ -48,6 +49,17 @@ function githubConnectionRejected(){
   const overlay=document.getElementById("githubAuthOverlay");
   // Leave the analytics visible if anonymous GitHub access succeeds.
   if(overlay)overlay.classList.add("hidden");
+}
+function githubSessionKey(kind,uid=auth.currentUser?.uid){return uid?"Adminerva_GitHub_"+kind+"_"+uid:"";}
+function githubSessionToken(uid=auth.currentUser?.uid){
+  const key=githubSessionKey("Token",uid);return key?String(sessionStorage.getItem(key)||"").trim():"";
+}
+function githubSessionUsername(uid=auth.currentUser?.uid){
+  const key=githubSessionKey("Username",uid);return key?String(sessionStorage.getItem(key)||"").trim().replace(/^@/,""):"";
+}
+async function releaseRecoveredGithubProvider(){
+  const call=httpsCallable(getFunctions(undefined,"asia-southeast1"),"prepareRecoveredGithubLink");
+  return call({});
 }
 
 function escapeHTML(str) {
@@ -111,12 +123,14 @@ onAuthStateChanged(auth, async (user) => {
     refreshActivityBtn.dataset.bound="true";
     refreshActivityBtn.addEventListener("click",()=>{
       const profile=currentStudentProfile;
-      if(!profile?.githubToken||!profile.repoUrl||!profile.githubUsername){
+      const token=profile?.githubToken||githubSessionToken();
+      const username=profile?.githubUsername||githubSessionUsername();
+      if(!token||!profile?.repoUrl||!username){
         projectActivityStatus("Connect GitHub and configure a repository before refreshing activity.");
         return;
       }
       if(refreshActivityBtn.disabled)return;
-      void syncGitHubData(profile.repoUrl,profile.githubUsername,profile.githubToken,
+      void syncGitHubData(profile.repoUrl,username,token,
         doc(db,"student_dashboard_cache",profile.docId),profile.docId,
         dashboardLoadSequence,auth.currentUser?.uid);
     });
@@ -139,35 +153,52 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   try {
-    const q = query(
-      collection(db, "students"),
-      where("email", "==", targetEmail),
-    );
-    const snap = await getDocs(q);
+    userProfiles=[];
+    if(!impersonateEmail){
+      try{
+        const projection=await ensureStudentAccessProjection();
+        const sessionToken=githubSessionToken(user.uid),sessionUsername=githubSessionUsername(user.uid);
+        userProfiles=(Array.isArray(projection?.profiles)?projection.profiles:[])
+          .filter(profile=>profile&&profile.id&&profile.section)
+          .map(profile=>({
+            docId:profile.id,
+            section:profile.section,
+            name:profile.name||"Student",
+            repoUrl:String(profile.repoUrl||""),
+            githubUsername:sessionUsername||String(profile.githubUsername||""),
+            githubToken:sessionToken,
+            accountUid:user.uid
+          }));
+      }catch(error){
+        console.warn("Recovered student projection unavailable on dashboard; trying legacy email lookup.",error?.code||error?.message||"unknown");
+      }
+    }
+    if(!userProfiles.length){
+      const q = query(
+        collection(db, "students"),
+        where("email", "==", targetEmail),
+      );
+      const snap = await getDocs(q);
+      let masterToken = null,masterUsername = null;
+      snap.forEach((d) => {
+        const data = d.data();
+        if (data.githubToken) masterToken = data.githubToken;
+        if (data.githubUsername) masterUsername = data.githubUsername;
+        userProfiles.push({ docId: d.id, ...data, accountUid:user.uid });
+      });
+      userProfiles.forEach((p) => {
+        if (!p.githubToken && masterToken) p.githubToken = masterToken;
+        if (!p.githubUsername && masterUsername) p.githubUsername = masterUsername;
+      });
+    }
 
-    if (snap.empty) {
+    if (!userProfiles.length) {
       document.getElementById("repoSubtitle").innerHTML =
         "<span class='text-red-500'>Profile incomplete. Please contact your instructor.</span>";
       document.getElementById("commitListContainer").innerHTML =
         "<p class='text-sm text-red-500 font-bold'>No directory record found.</p>";
       return;
     }
-
-    userProfiles = [];
-    let masterToken = null;
-    let masterUsername = null;
-    snap.forEach((d) => {
-      const data = d.data();
-      if (data.githubToken) masterToken = data.githubToken;
-      if (data.githubUsername) masterUsername = data.githubUsername;
-      userProfiles.push({ docId: d.id, ...data });
-    });
-
-    userProfiles.forEach((p) => {
-      if (!p.githubToken && masterToken) p.githubToken = masterToken;
-      if (!p.githubUsername && masterUsername)
-        p.githubUsername = masterUsername;
-    });
 
     const selector = document.getElementById("sectionSelector");
     if (selector) {
@@ -309,7 +340,9 @@ async function loadDashboardProfile(studentData) {
     console.warn("Database read bypassed. Continuing to UI load.");
   }
 
-  if (!studentData.githubToken) {
+  const activeToken=studentData.githubToken||githubSessionToken(accountUid);
+  const activeUsername=studentData.githubUsername||githubSessionUsername(accountUid);
+  if (!activeToken) {
     overlay.classList.remove("hidden");
     projectActivityStatus("Saved activity is available. Connect GitHub to synchronize new commits.");
     return;
@@ -317,8 +350,8 @@ async function loadDashboardProfile(studentData) {
   if(cacheIsFresh)return;
   void syncGitHubData(
     studentData.repoUrl,
-    studentData.githubUsername,
-    studentData.githubToken,
+    activeUsername,
+    activeToken,
     cacheRef,
     profileId,
     loadSequence,
@@ -419,11 +452,22 @@ async function linkGithubAccount() {
     else result = await linkWithPopup(currentUser, provider);
   } catch (error) {
     if (error.code === "auth/credential-already-in-use") {
-      alert("This GitHub account is already linked to a different Adminerva sign-in. Your current school account has not changed. Sign in to the other account to disconnect GitHub there, or use a different GitHub account.");
+      try{
+        const released=await releaseRecoveredGithubProvider();
+        if(Number(released?.data?.released||0)>0){
+          result=await linkWithPopup(currentUser,provider);
+        }else{
+          alert("This GitHub account is linked to another Adminerva sign-in that is not part of this recovered student identity. Use a different GitHub account or ask a school administrator to review the identity link.");
+          return;
+        }
+      }catch(recoveryError){
+        alert("GitHub is still attached to the previous Adminerva login and could not be transferred automatically: "+recoveryError.message);
+        return;
+      }
+    }else{
+      alert("GitHub Connection Failed: " + error.message);
       return;
     }
-    alert("GitHub Connection Failed: " + error.message);
-    return;
   }
   if(auth.currentUser?.uid!==currentUser.uid){
     alert("Your Adminerva account changed before GitHub linking finished. Reload and retry from the school account you want to keep.");
@@ -440,17 +484,26 @@ async function linkGithubAccount() {
     )?.screenName;
 
   if (token && userProfiles.length > 0) {
-    const updateData = { githubToken: token };
-    if (verifiedUsername) updateData.githubUsername = verifiedUsername;
-    const updatePromises = userProfiles.map((p) => {
-      p.githubToken = token;
-      if (verifiedUsername) p.githubUsername = verifiedUsername;
-      return setDoc(doc(db, "students", p.docId), updateData, { merge: true });
+    const tokenKey=githubSessionKey("Token",currentUser.uid),
+      usernameKey=githubSessionKey("Username",currentUser.uid);
+    sessionStorage.setItem(tokenKey,token);
+    if(verifiedUsername)sessionStorage.setItem(usernameKey,verifiedUsername);
+    const normalLegacyProfiles=userProfiles.filter(profile=>
+      String(profile.email||"").toLowerCase()===String(currentUser.email||"").toLowerCase());
+    const updateData={githubToken:token};
+    if(verifiedUsername)updateData.githubUsername=verifiedUsername;
+    if(normalLegacyProfiles.length){
+      await Promise.all(normalLegacyProfiles.map(profile=>
+        setDoc(doc(db,"students",profile.docId),updateData,{merge:true})
+      ));
+    }
+    userProfiles.forEach(profile=>{
+      profile.githubToken=token;
+      if(verifiedUsername)profile.githubUsername=verifiedUsername;
     });
-    await Promise.all(updatePromises);
     const overlay = document.getElementById("githubAuthOverlay");
     if (overlay) overlay.classList.add("hidden");
-    githubConnectionNotice("");
+    githubConnectionNotice("GitHub is connected for this browser session. Your recovered school identity and historical repository records remain unchanged.");
     loadDashboardProfile(currentStudentProfile);
   }
 }
