@@ -61,7 +61,7 @@ export function readBulkExternalResponse(raw,{batchId,allowedRefs,task,parseResp
 }
 
 export function createV4BulkEvaluationController({
-  root,scoped,migrationApi,assessmentApi,submissionApi,gradeApi,
+  root,scoped,migrationApi,assessmentApi,submissionApi,gradeApi,verificationApi,
   buildPackage,parseResponse,generateContent,evaluationJSON,
   setBusy,isBusy,onSaved
 }){
@@ -182,12 +182,29 @@ export function createV4BulkEvaluationController({
     }
     if(result.grade||row.gradeStatus)
       throw Error("An existing private or published grade is protected from bulk replacement.");
-    const snapshot=result.snapshot;
+    let snapshot=result.snapshot;
     if(!snapshot||Number(snapshot.version)!==Number(row.version)||
       !snapshot.contentDigest||!Array.isArray(snapshot.files)||!snapshot.files.length)
       throw Error("Frozen source version or checksum changed; refresh submissions.");
     if(!["submitted","reviewed"].includes(snapshot.status))
       throw Error("This learner is not in a gradeable submitted state.");
+    if(!snapshot.automaticVerification&&verificationApi){
+      try{
+        const verified=task.legacyCompatibility?
+          await scoped(verificationApi,"verify_legacy",{
+            submissionId:id,revision:Number(snapshot.version)
+          }):
+          await scoped(verificationApi,"verify_school",{
+            taskId:task.taskId,submissionId:id,version:Number(snapshot.version)
+          });
+        snapshot={...snapshot,automaticVerification:verified?.verification||null};
+      }catch(error){
+        snapshot={...snapshot,automaticVerification:{
+          status:"verification_unavailable",matchesSubmittedSource:false,
+          limitations:[String(error?.message||"Runtime verification could not be established.")]
+        }};
+      }
+    }
     const text=buildPackage({
       task,snapshot,checkingInstructions:result.checkingInstructions||""
     });
