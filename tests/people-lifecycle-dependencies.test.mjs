@@ -28,3 +28,10 @@ test("school membership suspend and restore require the reviewed revision",()=>{
   assert.match(source,/restore_access[\s\S]*expectedRevision=Number\(input\.expectedRevision\)/);
   assert.match(source,/school access record changed after you reviewed it[\s\S]*restoring access/);
 });
+
+
+test("linked staff activation is pinned to the reviewed person revision",()=>{
+  assert.match(source,/search_people[\s\S]*revision:Number\(person\.data\(\)\.revision\)\|\|1/);
+  assert.match(source,/activate_linked_staff[\s\S]*expectedPersonRevision=Number\(input\.expectedPersonRevision\)/);
+  assert.match(source,/staff identity changed after you selected it/);
+});
