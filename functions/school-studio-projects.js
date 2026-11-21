@@ -4,6 +4,7 @@ const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {checkId,rowKey}=require("./school-academics.js");
+const {studentAccountUids,studentRecordUidAllowed}=require("./student-account-history.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function safeTitle(value){
  if(typeof value!=="string"||!value.trim()||value.trim().length>120)
@@ -83,6 +84,52 @@ function createSchoolStudioProjectService({db}){
   const projectCollection=db.collection(prefix+"student_code_projects/"+ctx.uid+"/projects");
   const membershipRef=db.doc(prefix+"memberships/"+ctx.uid);
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
+  async function loadStudentIdentity(tx=null){
+   const read=ref=>tx?tx.get(ref):ref.get();
+   const [school,member]=await Promise.all([read(schoolRef),read(membershipRef)]);
+   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
+      member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
+      !Array.isArray(member.data().roles)||!member.data().roles.includes("student"))
+    deny("permission-denied","Your school student membership is no longer active.");
+   const personId=checkId(member.data().personId,"Student person",128),
+     personRef=db.doc(prefix+"people/"+personId),person=await read(personRef);
+   if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
+      person.data().status!=="active"||person.data().authUid!==ctx.uid)
+    deny("permission-denied","Your verified school student identity is no longer active.");
+   return {personId,person:person.data(),accountUids:studentAccountUids(person.data(),ctx.uid)};
+  }
+  async function findProject(identity,projectId,tx=null){
+   const read=ref=>tx?tx.get(ref):ref.get(),
+     candidates=identity.accountUids.map(uid=>({
+       uid,ref:db.doc(prefix+"student_code_projects/"+uid+"/projects/"+projectId)
+     })),
+     docs=await Promise.all(candidates.map(row=>read(row.ref))),
+     matches=candidates.map((row,index)=>({...row,doc:docs[index]})).filter(row=>row.doc.exists&&
+       row.doc.data().schoolId===ctx.schoolId&&row.doc.data().ownerUid===row.uid&&
+       studentRecordUidAllowed(identity.person,ctx.uid,row.doc.data().ownerUid));
+   if(matches.length>1)
+    deny("data-loss","Multiple cloud projects share this project ID across recovered account history.");
+   const current=candidates[0],currentIndex=0;
+   return matches[0]||{...current,doc:docs[currentIndex]};
+  }
+  async function listProjectHistory(identity){
+   const pages=await Promise.all(identity.accountUids.map(uid=>
+     db.collection(prefix+"student_code_projects/"+uid+"/projects").limit(101).get()));
+   const rows=[];
+   for(let index=0;index<pages.length;index++){
+    const uid=identity.accountUids[index],page=pages[index];
+    for(const doc of page.docs){
+      const data=doc.data();
+      if(data.schoolId===ctx.schoolId&&data.ownerUid===uid&&
+         studentRecordUidAllowed(identity.person,ctx.uid,data.ownerUid))
+        rows.push(doc);
+    }
+   }
+   if(rows.length>100)
+    deny("resource-exhausted","Project history requires pagination after account recovery.");
+   return rows;
+  }
+
   async function authorizeAssessmentProject(tx,artifacts,{closingEpoch=0}={}){
    const binding=artifacts?.assessment;
    if(binding?.provisionedBy!=="assessment-launch")return {finalSave:false};
@@ -131,28 +178,18 @@ function createSchoolStudioProjectService({db}){
    deny("failed-precondition","The Studio exam is closed to edits. Only an authorized final closing checkpoint may be saved.");
   }
   async function authorizeTransaction(tx) {
-   const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
-   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
-      member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
-      !Array.isArray(member.data().roles)||!member.data().roles.includes("student"))
-    deny("permission-denied","Your school student membership is no longer active.");
+   return loadStudentIdentity(tx);
   }
   const action=input.action;
-  if(action==="list"){
-   const snap=await projectCollection.limit(100).get();
-   return {projects:snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&d.data().ownerUid===ctx.uid&&d.data().status!=="archived")
+  if(action==="list"||action==="list_archived"){
+   const identity=await loadStudentIdentity(),docs=await listProjectHistory(identity),
+     archived=action==="list_archived";
+   return {projects:docs.filter(d=>(d.data().status==="archived")===archived)
     .map(d=>({projectId:d.id,title:d.data().title,language:d.data().language,
       revision:d.data().revision,status:d.data().status||"active",
-      updatedAt:d.data().updatedAt?.toMillis?.()||null}))};
-  }
-  if(action==="list_archived"){
-   const snap=await projectCollection.limit(100).get();
-   return {projects:snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&
-      d.data().ownerUid===ctx.uid&&d.data().status==="archived")
-    .map(d=>({projectId:d.id,title:d.data().title,language:d.data().language,
-      revision:d.data().revision,status:"archived",
       updatedAt:d.data().updatedAt?.toMillis?.()||null,
-      archivedAt:d.data().archivedAt?.toMillis?.()||null}))};
+      ...(archived?{archivedAt:d.data().archivedAt?.toMillis?.()||null}:{})}))
+    .sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0))};
   }
   if(action==="create"){
    const title=safeTitle(input.title),files=validateFiles(input.files||[]),artifacts=validateArtifacts(input.artifacts);
@@ -175,14 +212,14 @@ function createSchoolStudioProjectService({db}){
    const artifacts=validateArtifacts(input.artifacts),language=input.language;
    if(!["java","web","python","csharp","cpp","dart","text"].includes(language))
     deny("invalid-argument","Choose a supported Studio project language.");
-   const ref=projectCollection.doc(projectId),digest=digestProject(files,artifacts),
+   const digest=digestProject(files,artifacts),
      closingEpoch=Number(input.closingSaveSessionEpoch||0);
    if(closingEpoch&&(!Number.isSafeInteger(closingEpoch)||closingEpoch<1))
     deny("invalid-argument","The closing exam session number is invalid.");
    let result;
    await db.runTransaction(async tx=>{
-    await authorizeTransaction(tx);
-    const current=await tx.get(ref);
+    const identity=await authorizeTransaction(tx),
+      located=await findProject(identity,projectId,tx),ref=located.ref,current=located.doc;
     const access=await authorizeAssessmentProject(tx,artifacts,{closingEpoch});
     if(current.exists){
      const oldBinding=current.data().artifacts?.assessment,
@@ -231,8 +268,9 @@ function createSchoolStudioProjectService({db}){
      result={projectId,revision:1,contentDigest:digest,created:true,examFinalized:Boolean(receiptRef)};return;
     }
     const data=current.data();
-    if(data.schoolId!==ctx.schoolId||data.ownerUid!==ctx.uid)
-     deny("permission-denied","This project ID belongs to a different school account.");
+    if(data.schoolId!==ctx.schoolId||
+       !studentRecordUidAllowed(identity.person,ctx.uid,data.ownerUid))
+     deny("permission-denied","This project ID belongs to a different school student identity.");
     if(data.status==="archived")
      deny("failed-precondition","Restore this archived school project before synchronizing changes.");
     // Fail closed on an accidental empty editor snapshot. Without this guard,
@@ -268,10 +306,11 @@ function createSchoolStudioProjectService({db}){
    return result;
   }
   const projectId=checkId(input.projectId,"Project ID",128);
-  const ref=projectCollection.doc(projectId);
   if(action==="get"){
-   const doc=await ref.get();
-   if(!doc.exists||doc.data().ownerUid!==ctx.uid||doc.data().schoolId!==ctx.schoolId)
+   const identity=await loadStudentIdentity(),located=await findProject(identity,projectId),
+     doc=located.doc;
+   if(!doc.exists||doc.data().schoolId!==ctx.schoolId||
+      !studentRecordUidAllowed(identity.person,ctx.uid,doc.data().ownerUid))
     deny("not-found","Project is unavailable.");
    const data=doc.data();
    const binding=data.artifacts?.assessment;
@@ -313,9 +352,10 @@ function createSchoolStudioProjectService({db}){
    const restoring=action==="restore";
    let result;
    await db.runTransaction(async tx=>{
-    await authorizeTransaction(tx);
-    const doc=await tx.get(ref);
-    if(!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().ownerUid!==ctx.uid)
+    const identity=await authorizeTransaction(tx),
+      located=await findProject(identity,projectId,tx),ref=located.ref,doc=located.doc;
+    if(!doc.exists||doc.data().schoolId!==ctx.schoolId||
+       !studentRecordUidAllowed(identity.person,ctx.uid,doc.data().ownerUid))
      deny("not-found","School project is unavailable.");
     const data=doc.data();
     if(data.revision!==expectedRevision)
@@ -348,10 +388,11 @@ function createSchoolStudioProjectService({db}){
     deny("invalid-argument","The existing saved project revision is required.");
    const digest=digestProject(files,artifacts);
    await db.runTransaction(async tx=>{
-    await authorizeTransaction(tx);
-    const doc=await tx.get(ref);
-    if(!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().ownerUid!==ctx.uid)
-     deny("permission-denied","This project is not yours in this school.");
+    const identity=await authorizeTransaction(tx),
+      located=await findProject(identity,projectId,tx),ref=located.ref,doc=located.doc;
+    if(!doc.exists||doc.data().schoolId!==ctx.schoolId||
+       !studentRecordUidAllowed(identity.person,ctx.uid,doc.data().ownerUid))
+     deny("permission-denied","This project is not owned by your canonical student identity.");
     if(doc.data().status==="archived")
      deny("failed-precondition","Restore this archived school project before saving.");
     if(doc.data().revision!==revision)

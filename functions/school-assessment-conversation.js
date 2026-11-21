@@ -9,6 +9,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
+const {studentAccountUids,studentRecordUidAllowed}=require("./student-account-history.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function clean(value,max=4000){return String(value??"").trim().slice(0,max)}
@@ -41,24 +42,27 @@ function createSchoolAssessmentConversationService({db}){
     if(!grant.exists||grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid||
       grant.data().offeringId!==offeringId||grant.data().status!=="active")
       deny("permission-denied","Assessment conversation access is no longer assigned to you.");
-    studentUid=checkId(input.studentUid,"Student account UID",128);
-    const studentMember=await db.doc(prefix+"memberships/"+studentUid).get();
+    const requestedStudentUid=checkId(input.studentUid,"Student account UID",128),
+      studentMember=await db.doc(prefix+"memberships/"+requestedStudentUid).get();
     studentPersonId=studentMember.exists&&studentMember.data().schoolId===ctx.schoolId?
       String(studentMember.data().personId||""):"";
-    if(!studentMember.exists||studentMember.data().status!=="active"||
-      !Array.isArray(studentMember.data().roles)||!studentMember.data().roles.includes("student")||!studentPersonId)
-      deny("failed-precondition","The learner is not an active student in this school.");
+    if(!studentMember.exists||!studentPersonId)
+      deny("failed-precondition","The learner account is not linked to a school student record.");
     checkId(studentPersonId,"Student person ID",128);
     const [person,enrollment]=await Promise.all([
       db.doc(prefix+"people/"+studentPersonId).get(),
       db.doc(prefix+"enrollments/"+rowKey(studentPersonId,offeringId)).get()
     ]);
+    const currentStudentUid=person.exists&&typeof person.data().authUid==="string"?
+      person.data().authUid:"";
     if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
-      person.data().status!=="active"||person.data().authUid!==studentUid||
+      person.data().status!=="active"||!currentStudentUid||
+      !studentRecordUidAllowed(person.data(),currentStudentUid,requestedStudentUid)||
       !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
       enrollment.data().personId!==studentPersonId||enrollment.data().offeringId!==offeringId||
       enrollment.data().status!=="active")
       deny("failed-precondition","The learner is not actively enrolled in this assessment's class.");
+    studentUid=currentStudentUid;
     studentName=clean(person.data().displayName||"Student",140)||"Student";
     teacherName=clean(member.data().displayName||member.data().name||"Teacher",140)||"Teacher";
     viewerRole="teacher";
@@ -85,15 +89,25 @@ function createSchoolAssessmentConversationService({db}){
   }else deny("permission-denied","Assessment conversation access is restricted to the learner and assigned teacher.");
 
   if(!teacherUid)deny("failed-precondition","This assessment has no responsible teacher.");
-  const id=threadKey(ctx.schoolId,taskId,studentUid),
+  const currentPerson=await db.doc(prefix+"people/"+studentPersonId).get();
+  if(!currentPerson.exists||currentPerson.data().schoolId!==ctx.schoolId||
+     currentPerson.data().kind!=="student"||currentPerson.data().status!=="active"||
+     currentPerson.data().authUid!==studentUid)
+    deny("failed-precondition","The learner's current canonical identity changed. Reload the conversation.");
+  const accountUids=studentAccountUids(currentPerson.data(),studentUid),
+    id=threadKey(ctx.schoolId,taskId,studentUid),
     threadRef=db.doc(prefix+"assessment_threads/"+id),
     messages=db.collection(prefix+"assessment_messages");
 
   if((input.action||"list")==="list"){
-    const snap=await messages.where("threadId","==",id).limit(101).get();
-    if(snap.size===101)deny("resource-exhausted","This assessment conversation requires pagination.");
-    const items=snap.docs.map(doc=>({id:doc.id,...doc.data()}))
-      .filter(row=>row.schoolId===ctx.schoolId&&row.taskId===taskId&&row.studentUid===studentUid&&row.status==="active")
+    const threadIds=accountUids.map(uid=>threadKey(ctx.schoolId,taskId,uid));
+    const pages=await Promise.all(threadIds.map(threadId=>
+      messages.where("threadId","==",threadId).limit(101).get()));
+    if(pages.some(page=>page.size===101))
+      deny("resource-exhausted","This assessment conversation requires pagination.");
+    const items=pages.flatMap(page=>page.docs).map(doc=>({id:doc.id,...doc.data()}))
+      .filter(row=>row.schoolId===ctx.schoolId&&row.taskId===taskId&&
+        row.studentPersonId===studentPersonId&&accountUids.includes(row.studentUid)&&row.status==="active")
       .sort((a,b)=>(millis(a.createdAt)||0)-(millis(b.createdAt)||0))
       .map(row=>({
         messageId:row.id,body:row.body||"",authorUid:row.authorUid||"",

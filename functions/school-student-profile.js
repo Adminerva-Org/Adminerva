@@ -8,6 +8,7 @@
 const {FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
+const {studentRecordUidAllowed}=require("./student-account-history.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function repository(value){
@@ -90,11 +91,14 @@ function createSchoolStudentProfileService({db}){
      term:labels.get("terms/"+data.termId),
      subject:labels.get("subjects/"+data.subjectId),
      section:labels.get("sections/"+data.sectionId),
-     repository:config?.schoolId===ctx.schoolId&&config?.studentUid===ctx.uid?
+     repository:config?.schoolId===ctx.schoolId&&
+      studentRecordUidAllowed(a.person.data(),ctx.uid,config?.studentUid)?
       String(config.repository||""):"",
-     repositoryUrl:config?.schoolId===ctx.schoolId&&config?.studentUid===ctx.uid?
+     repositoryUrl:config?.schoolId===ctx.schoolId&&
+      studentRecordUidAllowed(a.person.data(),ctx.uid,config?.studentUid)?
       String(config.repositoryUrl||""):"",
-     githubUsername:config?.schoolId===ctx.schoolId&&config?.studentUid===ctx.uid?
+     githubUsername:config?.schoolId===ctx.schoolId&&
+      studentRecordUidAllowed(a.person.data(),ctx.uid,config?.studentUid)?
       String(config.githubUsername||""):"",
      repositoryRevision:config?.revision||0
     };
@@ -144,7 +148,15 @@ function createSchoolStudentProfileService({db}){
       createdAt:now});
      result={offeringId,repository:"",repositoryUrl:"",githubUsername:"",revision};
     }else{
-     const data={schoolId:ctx.schoolId,personId:a.personId,studentUid:ctx.uid,offeringId,
+     if(current.exists&&current.data().schoolId===ctx.schoolId&&
+        current.data().personId===a.personId&&
+        !studentRecordUidAllowed(person.data(),ctx.uid,current.data().studentUid))
+       deny("data-loss","This repository configuration belongs to another student identity.");
+     const previousStudentUids=current.exists?[...new Set([
+       ...(Array.isArray(current.data().previousStudentUids)?current.data().previousStudentUids:[]),
+       ...(current.data().studentUid&&current.data().studentUid!==ctx.uid?[current.data().studentUid]:[])
+     ])].slice(-20):[];
+     const data={schoolId:ctx.schoolId,personId:a.personId,studentUid:ctx.uid,previousStudentUids,offeringId,
       repository:parsed.repository,repositoryUrl:parsed.url,githubUsername:gh,
       revision,updatedAt:now};
      if(current.exists)tx.update(configRef,data);

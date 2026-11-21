@@ -9,6 +9,7 @@ const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {digestProject,digestSource}=require("./school-studio-projects.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
+const {studentAccountUids,studentRecordUidAllowed}=require("./student-account-history.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function createSchoolStudioSubmissionService({db}){
@@ -44,17 +45,47 @@ function createSchoolStudioSubmissionService({db}){
    checkId(personId,"Person ID",128);
    const personRef=db.doc(prefix+"people/"+personId);
    const enrollmentRef=db.doc(prefix+"enrollments/"+rowKey(personId,offeringId));
-   const submissionId=hash(ctx.schoolId,taskId,ctx.uid);
-   const submissionRef=submissions.doc(submissionId);
+   const currentSubmissionId=hash(ctx.schoolId,taskId,ctx.uid),
+     currentSubmissionRef=submissions.doc(currentSubmissionId);
+   async function resolveStudentSubmission(personData,read=ref=>ref.get()){
+    const candidates=studentAccountUids(personData,ctx.uid).map(uid=>{
+      const submissionId=hash(ctx.schoolId,taskId,uid);
+      return {uid,submissionId,ref:submissions.doc(submissionId)};
+    }),docs=await Promise.all(candidates.map(row=>read(row.ref))),
+      existing=candidates.map((row,index)=>({...row,doc:docs[index]})).filter(row=>row.doc.exists);
+    for(const row of existing){
+      const data=row.doc.data();
+      if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||data.offeringId!==offeringId||
+         data.personId!==personId||!studentRecordUidAllowed(personData,ctx.uid,data.studentUid))
+       deny("data-loss","A Studio submission in this recovered account history does not match the canonical student.");
+    }
+    if(existing.length>1)
+     deny("failed-precondition","Multiple Studio submissions exist for this assessment across recovered accounts. Ask an administrator to reconcile them.");
+    return existing[0]||{uid:ctx.uid,submissionId:currentSubmissionId,ref:currentSubmissionRef,doc:docs[0]};
+   }
+   async function resolveStudentProject(personData,projectId,read=ref=>ref.get()){
+    const candidates=studentAccountUids(personData,ctx.uid).map(uid=>({
+      uid,ref:db.doc(prefix+"student_code_projects/"+uid+"/projects/"+projectId)
+    })),docs=await Promise.all(candidates.map(row=>read(row.ref))),
+      existing=candidates.map((row,index)=>({...row,doc:docs[index]})).filter(row=>row.doc.exists);
+    for(const row of existing){
+      const data=row.doc.data();
+      if(data.schoolId!==ctx.schoolId||data.ownerUid!==row.uid||
+         !studentRecordUidAllowed(personData,ctx.uid,data.ownerUid))
+       deny("data-loss","A Studio project in this recovered account history does not match the canonical student.");
+    }
+    if(existing.length>1)
+     deny("data-loss","Multiple Studio projects share this project ID across recovered accounts.");
+    return existing[0]||null;
+   }
    if(input.action==="my_status"){
-    const [person,enrollment,submission]=await Promise.all([
-     personRef.get(),enrollmentRef.get(),submissionRef.get()
-    ]);
+    const [person,enrollment]=await Promise.all([personRef.get(),enrollmentRef.get()]);
     if(!person.exists||person.data().schoolId!==ctx.schoolId||
       person.data().authUid!==ctx.uid||person.data().kind!=="student"||
       !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
       enrollment.data().personId!==personId||enrollment.data().offeringId!==offeringId)
      deny("permission-denied","You do not have a verified enrollment in this course.");
+    const located=await resolveStudentSubmission(person.data()),submission=located.doc;
     return {taskId,submitted:submission.exists,
       status:submission.exists?submission.data().status:"not_submitted",
       version:submission.exists?submission.data().currentVersion:0,
@@ -69,8 +100,8 @@ function createSchoolStudioSubmissionService({db}){
     // A student may retrieve only their own latest immutable submission after
     // verifying current school membership and enrollment. This is a recovery
     // source, never a substitute for or mutation of the working project.
-    const [school,member,person,enrollment,submission]=await Promise.all([
-      schoolRef.get(),membershipRef.get(),personRef.get(),enrollmentRef.get(),submissionRef.get()
+    const [school,member,person,enrollment]=await Promise.all([
+      schoolRef.get(),membershipRef.get(),personRef.get(),enrollmentRef.get()
     ]);
     if(!school.exists||!["active","pilot"].includes(school.data().state)||
        !member.exists||member.data().status!=="active"||
@@ -84,19 +115,23 @@ function createSchoolStudioSubmissionService({db}){
        enrollment.data().personId!==personId||enrollment.data().offeringId!==offeringId||
        enrollment.data().status!=="active")
       deny("permission-denied","Student school membership or enrollment could not be verified for recovery.");
+    const located=await resolveStudentSubmission(person.data()),submission=located.doc,
+      submissionRef=located.ref;
     if(task.data().manualOpenRequired===true&&
        (task.data().manualAccessState!=="open"||
         (task.data().lifecycle||"active")!=="active"))
       deny("failed-precondition","Your teacher must open this section's exam before you can restore submitted project source.");
     if(!submission.exists)return {taskId,found:false};
     const current=submission.data(),version=Number(current.currentVersion);
-    if(current.schoolId!==ctx.schoolId||current.studentUid!==ctx.uid||
+    if(current.schoolId!==ctx.schoolId||
+       !studentRecordUidAllowed(person.data(),ctx.uid,current.studentUid)||
        current.personId!==personId||current.offeringId!==offeringId||
        current.taskId!==taskId||!Number.isInteger(version)||version<1)
       deny("failed-precondition","The submitted project recovery reference is invalid.");
     const frozen=await submissionRef.collection("versions").doc(String(version)).get();
     const data=frozen.exists?frozen.data():null;
-    if(!data||data.schoolId!==ctx.schoolId||data.studentUid!==ctx.uid||
+    if(!data||data.schoolId!==ctx.schoolId||
+       !studentRecordUidAllowed(person.data(),ctx.uid,data.studentUid)||
        data.personId!==personId||data.taskId!==taskId||data.offeringId!==offeringId||
        data.version!==version||data.projectId!==current.projectId||
        !Array.isArray(data.files)||!data.files.length||
@@ -113,14 +148,20 @@ function createSchoolStudioSubmissionService({db}){
    const revision=input.projectRevision;
    if(!Number.isInteger(revision)||revision<1)
     deny("invalid-argument","Save the current project revision before submitting.");
-   const projectRef=db.doc(prefix+"student_code_projects/"+ctx.uid+"/projects/"+projectId);
    const auditRef=db.collection(prefix+"submission_audit").doc();
    let receipt;
    await db.runTransaction(async tx=>{
-    const [activeMember,person,enrollment,currentTask,project,submission]=await Promise.all([
-     verifySchool(tx,"student"),tx.get(personRef),tx.get(enrollmentRef),
-     tx.get(taskRef),tx.get(projectRef),tx.get(submissionRef)
+    const [activeMember,person,enrollment,currentTask]=await Promise.all([
+     verifySchool(tx,"student"),tx.get(personRef),tx.get(enrollmentRef),tx.get(taskRef)
     ]);
+    const locatedSubmission=person.exists?
+      await resolveStudentSubmission(person.data(),ref=>tx.get(ref)):
+      {submissionId:currentSubmissionId,ref:currentSubmissionRef,doc:await tx.get(currentSubmissionRef)},
+      submissionId=locatedSubmission.submissionId,submissionRef=locatedSubmission.ref,
+      submission=locatedSubmission.doc,
+      locatedProject=person.exists?
+        await resolveStudentProject(person.data(),projectId,ref=>tx.get(ref)):null,
+      projectRef=locatedProject?.ref,project=locatedProject?.doc;
     if(activeMember.personId!==personId||!person.exists||person.data().authUid!==ctx.uid||
        person.data().schoolId!==ctx.schoolId||person.data().status!=="active"||
        person.data().kind!=="student"||!enrollment.exists||
@@ -146,9 +187,9 @@ function createSchoolStudioSubmissionService({db}){
     if((assessment.manualOpenRequired!==true&&now<assessment.opensAt.toMillis())||
        (assessment.allowLateSubmissions!==true&&now>assessment.dueAt.toMillis()&&now>revisionDeadline))
      deny("failed-precondition","The Studio submission deadline has passed. Ask your teacher for an explicit revision extension.");
-    if(!project.exists||project.data().schoolId!==ctx.schoolId||
-       project.data().ownerUid!==ctx.uid)
-     deny("permission-denied","Choose one of your saved school Studio projects.");
+    if(!project?.exists||project.data().schoolId!==ctx.schoolId||
+       !studentRecordUidAllowed(person.data(),ctx.uid,project.data().ownerUid))
+     deny("permission-denied","Choose a saved Studio project owned by your canonical student identity.");
     if(assessment.manualOpenRequired===true){
      const binding=project.data().artifacts?.assessment;
      if(binding?.provisionedBy!=="assessment-launch"||
@@ -165,9 +206,10 @@ function createSchoolStudioSubmissionService({db}){
     let version=1;
     if(submission.exists){
      const prior=submission.data();
-     if(prior.schoolId!==ctx.schoolId||prior.studentUid!==ctx.uid||
+     if(prior.schoolId!==ctx.schoolId||prior.personId!==personId||
+        !studentRecordUidAllowed(person.data(),ctx.uid,prior.studentUid)||
         prior.taskId!==taskId||prior.offeringId!==offeringId)
-      deny("permission-denied","The stored submission belongs to a different context.");
+      deny("permission-denied","The stored submission belongs to a different student identity.");
      if(prior.status==="submitted"&&prior.projectId===projectId&&
        prior.projectRevision===revision){
       receipt={submissionId,version:prior.currentVersion,status:"submitted",alreadyExisted:true};return;
@@ -185,7 +227,8 @@ function createSchoolStudioSubmissionService({db}){
       const assignmentRef=db.doc(prefix+"studio_variant_assignments/"+submissionId+"/attempts/"+version),
         assigned=await tx.get(assignmentRef),data=assigned.exists?assigned.data():null;
       if(!assigned.exists||data.schoolId!==ctx.schoolId||data.taskId!==taskId||
-         data.studentUid!==ctx.uid||data.personId!==personId||data.attempt!==version||
+         !studentRecordUidAllowed(person.data(),ctx.uid,data.studentUid)||
+         data.personId!==personId||data.attempt!==version||
          data.variantId!==variantId||
          data.poolFingerprint!==assessment.personalizedTask.poolFingerprint||
          !Array.isArray(assessment.personalizedTask.variantIds)||
@@ -202,7 +245,12 @@ function createSchoolStudioSubmissionService({db}){
       projectId,projectRevision:revision,files,artifacts,contentDigest:frozenDigest,sourceDigest,
       sourceLanguage:project.data().language,variantId,variantPrompt,variantEvaluationNotes,submittedAt:when,version});
     if(submission.exists){
+     const prior=submission.data(),previousStudentUids=[...new Set([
+       ...(Array.isArray(prior.previousStudentUids)?prior.previousStudentUids:[]),
+       ...(prior.studentUid&&prior.studentUid!==ctx.uid?[prior.studentUid]:[])
+     ])].slice(-20);
      tx.update(submissionRef,{status:"submitted",currentVersion:version,
+       studentUid:ctx.uid,personId,previousStudentUids,
        projectId,projectRevision:revision,variantId,contentDigest:frozenDigest,
        revisionRequestMessage:null,revisionDueAt:null,updatedAt:when});
     }else{
@@ -313,7 +361,7 @@ function createSchoolStudioSubmissionService({db}){
    if(Date.now()>task.data().dueAt.toMillis()&&!extensionDueAt)
     deny("failed-precondition","The original deadline passed. Set an explicit revision extension before reopening.");
    const auditRef=db.collection(prefix+"submission_audit").doc();
-   let revisionStudentUid=null;
+   let revisionStudentUid=null,revisionNotificationUid=null;
    await db.runTransaction(async tx=>{
     const currentTask=await isAuthorized(tx),lifecycle=currentTask.lifecycle||"active";
     if(["archived","cancelled"].includes(lifecycle))
@@ -326,8 +374,13 @@ function createSchoolStudioSubmissionService({db}){
     // Grade publication is a separate guarded service; if a published grade
     // exists, this operation must fail closed and require formal correction.
     revisionStudentUid=submission.data().studentUid;
-    const gradeRef=db.doc(prefix+"student_grades/"+hash(taskId,submission.data().studentUid));
-    const grade=await tx.get(gradeRef);
+    const gradeRef=db.doc(prefix+"student_grades/"+hash(taskId,submission.data().studentUid)),
+      studentPersonRef=db.doc(prefix+"people/"+checkId(submission.data().personId,"Student person",128)),
+      [grade,studentPerson]=await Promise.all([tx.get(gradeRef),tx.get(studentPersonRef)]);
+    if(studentPerson.exists&&studentPerson.data().schoolId===ctx.schoolId&&
+       studentPerson.data().kind==="student"&&studentPerson.data().status==="active"&&
+       typeof studentPerson.data().authUid==="string")
+      revisionNotificationUid=studentPerson.data().authUid;
     if(grade.exists&&grade.data().status==="published")
      deny("failed-precondition","Published grades cannot be reopened without the correction workflow.");
     const now=FieldValue.serverTimestamp();
@@ -336,8 +389,8 @@ function createSchoolStudioSubmissionService({db}){
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,submissionId,
       actorUid:ctx.uid,action:"studio_revision_requested",createdAt:now});
    });
-   if(revisionStudentUid)await writeSchoolNotification({
-     db,schoolId:ctx.schoolId,uid:revisionStudentUid,
+   if(revisionNotificationUid)await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:revisionNotificationUid,
      id:"studio_revision_"+taskId+"_"+submissionId,
      title:"Studio revision requested",
      body:(task.data().title||"Assessment")+" · your teacher requested changes before grading.",
