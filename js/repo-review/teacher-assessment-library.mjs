@@ -775,7 +775,7 @@ async function setExamOpening(task,opening){
 }
 const MAX_BULK_DEPLOYMENTS=20;
 let deployOfferings=[],deploySelectedOfferings=new Set(),deploySucceededOfferings=new Set(),
-  deployRequestKeys=new Map(),deployDatePicker=null,deployTimesEdited=false,deployAttempted=false;
+  deployRequestKeys=new Map(),deployDatePicker=null,deployTimesEdited=false,deployAttempted=false,deployRangePending=false;
 
 function deploymentOfferingLabel(offering){
   return [offering.subjectName||offering.subjectId||"Subject",
@@ -843,7 +843,7 @@ function renderDeploymentOfferings(){
   status.textContent=deploySelectedOfferings.size+" selected · "+visible.length+" visible · "+MAX_BULK_DEPLOYMENTS+" maximum per operation."+
     (existing.size?" Classes already deployed from this blueprint cannot be selected again.":"");
   const submit=el("tl-deploy-submit");
-  submit.disabled=!deployReady||!deploySelectedOfferings.size||pendingWrite;
+  submit.disabled=!deployReady||!deploySelectedOfferings.size||pendingWrite||deployRangePending;
   submit.textContent="Deploy to "+deploySelectedOfferings.size+" class"+(deploySelectedOfferings.size===1?"":"es");
   el("tl-deploy-select-visible").disabled=!deployReady||pendingWrite;
   el("tl-deploy-clear").disabled=!deploySelectedOfferings.size||pendingWrite;
@@ -858,7 +858,9 @@ function setDeploymentRange(first,second){
   const dueTime=deployTimesEdited?String(form.elements.dueAt.value).slice(11)||"23:59":"23:59";
   form.elements.opensAt.value=calendarDateStamp(dates[0])+"T"+opensTime;
   form.elements.dueAt.value=calendarDateStamp(dates[1])+"T"+dueTime;
+  deployRangePending=false;
   if(!deployAttempted)deployRequestKeys.clear();
+  renderDeploymentOfferings();
   el("tl-deploy-feedback").textContent="Schedule set: "+dates[0].toLocaleDateString()+
     " to "+dates[1].toLocaleDateString()+". Review the exact times below.";
 }
@@ -872,7 +874,10 @@ function ensureDeploymentCalendar(){
     mode:"range",dateFormat:"M j, Y",allowInput:false,disableMobile:true,
     appendTo:el("tl-deploy-dialog"),
     onChange(selectedDates){
-      if(selectedDates.length===1)el("tl-deploy-feedback").textContent="Choose the second date to complete this range.";
+      if(selectedDates.length===1){
+        deployRangePending=true;el("tl-deploy-feedback").textContent="Choose the second date to complete this range.";
+        renderDeploymentOfferings();
+      }
       if(selectedDates.length===2)setDeploymentRange(selectedDates[0],selectedDates[1]);
     }
   });
@@ -900,7 +905,7 @@ async function prepareDeployment(item){
   }
   if(turn!==deployEpoch)return;
   deploying=item;deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();
-  deployRequestKeys.clear();deployAttempted=false;deployTimesEdited=false;
+  deployRequestKeys.clear();deployAttempted=false;deployTimesEdited=false;deployRangePending=false;
   el("tl-deploy-title").textContent=item.title;
   const form=el("tl-deploy-form");form.reset();
   form.elements.submissionSource.disabled=personalized(item);
@@ -1001,7 +1006,7 @@ el("tl-cancel-deploy").addEventListener("click",()=>{if(!pendingWrite)el("tl-dep
 el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
 el("tl-deploy-dialog").addEventListener("close",()=>{
   ++deployEpoch;deployReady=false;deploying=null;deployOfferings=[];
-  deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();deployAttempted=false;
+  deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();deployAttempted=false;deployRangePending=false;
 });
 el("tl-deploy-offering-search").addEventListener("input",renderDeploymentOfferings);
 el("tl-deploy-select-visible").addEventListener("click",()=>{
@@ -1049,7 +1054,8 @@ for(const name of ["manualOpenRequired","allowLateSubmissions"]){
 for(const name of ["opensAt","dueAt"]){
   el("tl-deploy-form").elements[name].addEventListener("change",()=>{
     if(deployAttempted)return;
-    deployTimesEdited=true;deployRequestKeys.clear();
+    deployTimesEdited=true;deployRangePending=false;deployRequestKeys.clear();
+    renderDeploymentOfferings();
     const form=el("tl-deploy-form");
     const opens=new Date(form.elements.opensAt.value),due=new Date(form.elements.dueAt.value);
     if(deployDatePicker&&Number.isFinite(opens.getTime())&&Number.isFinite(due.getTime())&&due>=opens)
@@ -1060,6 +1066,7 @@ el("tl-deploy-form").addEventListener("submit",event=>{
   event.preventDefault();if(!deploying||pendingWrite||!deployReady)return;
   const form=event.currentTarget;
   if(!form.reportValidity())return;
+  if(deployRangePending){el("tl-deploy-feedback").textContent="Choose the second calendar date before deploying.";return;}
   const ids=[...deploySelectedOfferings];
   if(!ids.length){el("tl-deploy-feedback").textContent="Select at least one assigned class.";return;}
   if(ids.length>MAX_BULK_DEPLOYMENTS){
