@@ -856,18 +856,27 @@ get("pa-handover-form").addEventListener("submit",event=>{
     toTeacherUid=String(d.get("toTeacherUid")||""),
     reason=String(d.get("reason")||"").trim();
   if(fromTeacherUid===toTeacherUid){say("Choose a different replacement teacher.");return;}
-  if(!confirm("Transfer this class to the replacement teacher? The current assignment will end and existing deployed assessment review responsibility will move. Private teacher resources will NOT transfer."))return;
-  void submitAcademic(form,"handover_offering",{
-    offeringId,fromTeacherUid,toTeacherUid,reason
-  },"Teacher handover completed. Private teacher resources kept their original ownership.")
-    .then(result=>{
-      if(!result)return;
-      say("Teacher handover completed · "+Number(result.assessmentCount||0)+
-        " deployed assessment review responsibilit"+(Number(result.assessmentCount||0)===1?"y":"ies")+
-        " transferred. Private resources were not transferred.");
-      if(currentRosterOfferingId===offeringId)
-        void loadClassRoster(offeringId).catch(error=>say(error.message||"Refresh class roster."));
-    });
+  void (async()=>{
+    let reviewed;
+    try{reviewed=await performAcademic("class_roster",{offeringId});}
+    catch(error){say(error?.message||"Refresh the class roster before handover.");return;}
+    const fromAssignment=(reviewed.teachers||[]).find(row=>row.teacherUid===fromTeacherUid&&row.status==="active")||null,
+      toAssignment=(reviewed.teachers||[]).find(row=>row.teacherUid===toTeacherUid)||null;
+    if(!fromAssignment){say("The current teacher assignment changed. Refresh the class roster before handover.");return;}
+    if(!confirm("Transfer this class to the replacement teacher? The current assignment will end and existing deployed assessment review responsibility will move. Private teacher resources will NOT transfer."))return;
+    const result=await submitAcademic(form,"handover_offering",{
+      offeringId,fromTeacherUid,toTeacherUid,
+      expectedOfferingRevision:Number(reviewed.offeringRevision)||1,
+      expectedFromRevision:Number(fromAssignment.revision)||1,
+      expectedToRevision:toAssignment?(Number(toAssignment.revision)||1):0,reason
+    },"Teacher handover completed. Private teacher resources kept their original ownership.");
+    if(!result)return;
+    say("Teacher handover completed · "+Number(result.assessmentCount||0)+
+      " deployed assessment review responsibilit"+(Number(result.assessmentCount||0)===1?"y":"ies")+
+      " transferred. Private resources were not transferred.");
+    if(currentRosterOfferingId===offeringId)
+      void loadClassRoster(offeringId).catch(error=>say(error.message||"Refresh class roster."));
+  })();
 });
 function lifecycleButton(label,action,details,targetName){
   const button=document.createElement("button");button.type="button";button.className="pa-action";
@@ -901,8 +910,12 @@ async function loadClassRoster(offeringId){
     name.textContent=student.name;meta.className="pa-muted";meta.textContent="Enrollment · "+student.status;
     info.append(name,meta);row.append(info);
     row.append(student.status==="active"?
-      lifecycleButton("End enrollment","end_enrollment",{enrollmentId:student.enrollmentId},student.name):
-      lifecycleButton("Restore enrollment","restore_enrollment",{enrollmentId:student.enrollmentId},student.name));
+      lifecycleButton("End enrollment","end_enrollment",{
+        enrollmentId:student.enrollmentId,expectedRevision:Number(student.revision)||1
+      },student.name):
+      lifecycleButton("Restore enrollment","restore_enrollment",{
+        enrollmentId:student.enrollmentId,expectedRevision:Number(student.revision)||1
+      },student.name));
     target.append(row);
   }
   const teacherHeading=document.createElement("h3");
@@ -918,10 +931,10 @@ async function loadClassRoster(offeringId){
     info.append(name,meta);row.append(info);
     row.append(teacher.status==="active"?
       lifecycleButton("End assignment","end_teacher_assignment",{
-        teacherUid:teacher.teacherUid,offeringId
+        teacherUid:teacher.teacherUid,offeringId,expectedRevision:Number(teacher.revision)||1
       },teacher.name):
       lifecycleButton("Restore assignment","restore_teacher_assignment",{
-        teacherUid:teacher.teacherUid,offeringId
+        teacherUid:teacher.teacherUid,offeringId,expectedRevision:Number(teacher.revision)||1
       },teacher.name));
     target.append(row);
   }
