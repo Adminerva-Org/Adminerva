@@ -223,8 +223,13 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
           fail("failed-precondition","Only an active governance role can be archived.");
         if(restoring&&data.status!=="archived")
           fail("failed-precondition","Only an archived governance role can be restored.");
-        if(archiving&&assignments.some(item=>item.exists&&item.data().status==="active"))
-          fail("failed-precondition","End this governance role's active school assignments before archiving the role definition.");
+        if(archiving){
+          const activeSchools=assignments.filter(item=>item.exists&&item.data().status==="active")
+            .map(item=>String(item.data().schoolId||"").slice(0,80)).filter(Boolean);
+          if(activeSchools.length)
+            fail("failed-precondition","End this governance role's active school assignments before archiving the role definition. Active in: "+
+              activeSchools.slice(0,8).join(", ")+(activeSchools.length>8?" and "+(activeSchools.length-8)+" more school(s).":"."));
+        }
         const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
         if(action==="update_governance_role")
           tx.update(ref,{displayName,description,revision:nextRevision,updatedByUid:uid,updatedAt:now});
