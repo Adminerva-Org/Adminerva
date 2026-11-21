@@ -305,3 +305,24 @@ html[data-adminerva-experience="quick"] .av-cine>.avfx-cine-progress{display:non
    so users do not pass through two introductory banners before real work. */
 html[data-adminerva-experience="full"] main[data-home-experience="student"]>.av-home-hero,
 html[data-adminerva-experience="full"] main[data-home-experience="teacher"]>.av-home-hero{display:none!important}
+
+
+/* Safe-area and touch behavior for notched phones/tablets and rotation. */
+.avfx-journey{touch-action:pan-y}
+.avfx-mode-switch{right:max(clamp(.55rem,2vw,1.3rem),env(safe-area-inset-right));bottom:max(clamp(.6rem,2vw,1.25rem),env(safe-area-inset-bottom))}
+@media(max-width:600px) and (orientation:portrait){
+ .avfx-scene{padding-left:max(.8rem,env(safe-area-inset-left));padding-right:max(.8rem,env(safe-area-inset-right));padding-bottom:max(4.7rem,calc(env(safe-area-inset-bottom) + 4rem))}
+ .avfx-mode-switch{bottom:max(.45rem,env(safe-area-inset-bottom))}
+}
+@media(max-height:620px) and (orientation:landscape) and (pointer:coarse){
+ .avfx-journey{touch-action:pan-x}
+ .avfx-scene{padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(4.6rem,calc(env(safe-area-inset-right) + 3.4rem))}
+ .avfx-role-stage{padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(4rem,calc(env(safe-area-inset-right) + 3rem))}
+ .avfx-mode-switch{right:max(.45rem,env(safe-area-inset-right));bottom:max(.3rem,env(safe-area-inset-bottom))}
+ html[data-adminerva-experience="full"] body.av-cine-page .av-atlas-console,
+ html[data-adminerva-experience="full"] body.av-cine-page .av-signal-room,
+ html[data-adminerva-experience="full"] body.av-cine-page .av-cine-next{
+   padding-right:max(4rem,calc(env(safe-area-inset-right) + 3rem));
+   padding-left:max(1rem,env(safe-area-inset-left))
+ }
+}
