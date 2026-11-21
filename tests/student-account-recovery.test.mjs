@@ -103,3 +103,18 @@ test("People & Access can safely end a compatibility placement before reassignme
   assert.match(academics,/student_section_placement_ended/);
   assert.match(academics,/registrationId/);
 });
+
+
+test("recovered verified students can enter Classroom and subject routes without a legacy student lookup",async()=>{
+  const [guard,profile]=await Promise.all([
+    readFile(new URL("../js/core/auth-guard-v4-pilot.js",import.meta.url),"utf8"),
+    readFile(new URL("../functions/school-student-profile.js",import.meta.url),"utf8")
+  ]);
+  assert.match(guard,/const v4OnlyStudent=access\.schoolStudent&&/);
+  assert.match(guard,/"student-classroom\.html"/);
+  assert.match(guard,/"student-subject\.html"/);
+  assert.match(guard,/"student-assessments\.html"/);
+  assert.match(profile,/member\.data\(\)\.personId/);
+  assert.match(profile,/person\.data\(\)\.authUid!==ctx\.uid/);
+  assert.match(profile,/collection\(prefix\+"enrollments"\)\.where\("personId","==",personId\)/);
+});
