@@ -428,7 +428,8 @@ async function reviewApplication(item,nextStatus){
   setSaving(true);
   status.textContent="Saving enrollment review…";
   try{
-    await perform("review_application",{applicationId:item.applicationId,status:nextStatus,reason});
+    await perform("review_application",{applicationId:item.applicationId,status:nextStatus,
+      expectedRevision:Number(item.revision)||1,reason});
     if(loadedApplication?.applicationId===item.applicationId)clearLoadedApplication({resetIdentity:true});
     const message=nextStatus==="rejected"?"Application rejected.":"Application marked as needing information.";
     status.textContent=message;
