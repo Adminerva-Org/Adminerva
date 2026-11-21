@@ -738,6 +738,10 @@ export function createProjectStudio({
       const headSnap=await getDocFromServer(doc(db,"studio_submissions",evidenceId));
       if(!headSnap.exists())continue;
       const head=headSnap.data();
+      if(head?.ownerUid!==uid||head?.studentId!==profile.id||
+         head?.assessmentId!==assessmentId||!Number.isInteger(head.revision)||
+         head.revision<1||head.revision>30)
+        throw Error("The historical submission cannot be verified for this student account.");
       if(matched)throw Error("Multiple historical submissions match this account. Ask your teacher to inspect the original submission records.");
       const versionSnap=await getDocFromServer(doc(
         db,"studio_submissions",evidenceId,"versions",String(head.revision)
