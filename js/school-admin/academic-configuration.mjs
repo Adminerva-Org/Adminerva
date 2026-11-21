@@ -374,11 +374,12 @@ function updateOfferingPreview(){
     section:get(sections,form.elements.sectionId.value),
     subject:get(subjects,form.elements.subjectId.value)
   };
+  const rosterLabel=form.elements.rosterMode.value==="selective"?"Selective / manual roster":"Official section placement";
   const ready=Object.values(selected).every(Boolean),host=el("ac-offering-preview");
   if(!ready){host.textContent="Choose the required fields to preview this course offering.";return;}
   host.replaceChildren();
   const title=document.createElement("strong");title.textContent=selected.subject+" · "+selected.section;
-  const meta=document.createElement("span");meta.className="ac-muted";meta.textContent=[selected.program,selected.year,selected.term].join(" · ");
+  const meta=document.createElement("span");meta.className="ac-muted";meta.textContent=[selected.program,selected.year,selected.term,rosterLabel].join(" · ");
   host.append(title,meta);
 }
 function renderCatalog(){
@@ -579,9 +580,11 @@ el("ac-offering-form").addEventListener("submit",event=>{
   void scoped("create_offering",data).then(async result=>{
     form.reset();clearManual(form);const refreshed=await load({afterWrite:true});
     const roster=Number(result?.officialRegistrationCount)||0,added=Number(result?.autoEnrolled)||0;
-    const rosterMessage=roster?
-      " "+added+" officially placed student"+(added===1?" was":"s were")+" automatically added to the new class roster.":
-      " No active official section placements needed roster synchronization.";
+    const rosterMessage=result?.rosterMode==="selective"?
+      " This class uses a selective/manual roster, so section-wide enrollment was not performed.":
+      roster?
+        " "+added+" officially placed student"+(added===1?" was":"s were")+" automatically added to the new class roster.":
+        " No active official section placements needed roster synchronization.";
     const message="Class offering saved successfully."+rosterMessage+(refreshed?"":" Refresh failed; reload before creating another class.");
     say(message);notify(message,refreshed?"success":"info");
   }).catch(error=>{
@@ -633,7 +636,7 @@ el("ac-term-form").elements.endDate.addEventListener("change",()=>updateTermSugg
 for(const name of ["programId","yearId"]){
   el("ac-offering-form").elements[name].addEventListener("change",renderCatalog);
 }
-for(const name of ["termId","sectionId","subjectId"]){
+for(const name of ["termId","sectionId","subjectId","rosterMode"]){
   el("ac-offering-form").elements[name].addEventListener("change",updateOfferingPreview);
 }
 for(const button of document.querySelectorAll("[data-reset-auto]")){
