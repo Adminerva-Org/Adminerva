@@ -3,7 +3,7 @@ import {loadPublishedGrades} from "./published-grades.mjs?v=1.3.0";
 import { app, db, auth } from "../core/firebase-core.js?v=1.3.0";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=1.3.0";
-import {ensureStudentAccessProjection} from "./student-access.mjs?v=5e818f3f1ba3";
+import {ensureStudentAccessProjection} from "./student-access.mjs?v=19642d96faa9";
 import {
   collection,
   getDocs,
