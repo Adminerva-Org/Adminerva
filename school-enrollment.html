@@ -49,8 +49,8 @@
   </header>
 
   <section id="en-boundary" class="en-notice">
-    <strong>Manila Cathedral School standard enrollment only.</strong>
-    <span> The legacy-compatible pilot school keeps its existing accounts and invitation workflow unchanged.</span>
+    <strong>Canonical Enrollment &amp; Registration.</strong>
+    <span> This workspace is available only for schools using the standard canonical enrollment model. Compatibility schools remain on their reviewed legacy workflow.</span>
   </section>
 
   <p id="en-status" class="en-muted" role="status" aria-live="polite">Checking school enrollment access…</p>
@@ -63,10 +63,11 @@
             <h2 id="en-register-title" class="text-lg font-extrabold">Onsite / manual enrollment</h2>
             <p id="en-register-help" class="en-muted mt-1">Use this for walk-in enrollees. Online applications can be loaded here from the review queue before official placement.</p>
           </div>
-          <button id="en-clear-application" class="en-btn secondary" type="button" hidden>Clear loaded application</button>
+          <button id="en-clear-application" class="en-btn secondary" type="button" hidden>Clear loaded student</button>
         </div>
         <form id="en-register-form" class="grid gap-3 mt-4">
           <input name="applicationId" type="hidden">
+          <input name="personId" type="hidden">
           <label class="text-sm font-bold">Student name
             <input name="displayName" class="en-input mt-1" maxlength="140" autocomplete="off" required>
           </label>
@@ -234,7 +235,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-placement-change1"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-exact-student1"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
