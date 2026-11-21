@@ -76,7 +76,9 @@ test('all configured public content is safe for publication as static JSON',asyn
       // Validate intrinsic shape while the publication window is valid, even
       // after a listing has naturally expired and disappeared from the UI.
       const first=Date.parse(item.publishedAt),last=Date.parse(item.expiresAt);
-      const at=first+Math.min(60_000,Math.max(1,(last-first)/2));
+      const verification=channel==='opportunities'?Date.parse(item.verifiedAt+'T00:00:00Z'):first;
+      const at=Math.max(first+1_000,verification+1_000);
+      assert.ok(at<last,channel+' has verification later than its expiry');
       assert.ok(normalizePublicItem({...item,status:'published'},channel,at),channel+' contains invalid item '+item.id);
     }
   }
