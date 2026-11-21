@@ -55,7 +55,8 @@ function renderRecommendation({final=false}={}){
     totalClasses=classRows.length,
     unstaffed=classRows.filter(row=>!(row.teacherUids||[]).length).length,
     scheduledIds=new Set((model.schedules?.schedules||[]).filter(row=>(row.meetings||[]).length).map(row=>row.offeringId)),
-    unscheduled=classRows.filter(row=>!scheduledIds.has(row.offeringId)).length;
+    unscheduled=classRows.filter(row=>!scheduledIds.has(row.offeringId)).length,
+    legacyRosterClasses=classRows.filter(row=>row.rosterMode==="legacy").length;
   const enrollments=Number(model.overview?.counts?.enrollments);
   const people=Number(model.overview?.counts?.people);
   if(critical>0)action={
@@ -82,6 +83,11 @@ function renderRecommendation({final=false}={}){
     title:unscheduled+" active class"+(unscheduled===1?" has":"es have")+" no official schedule",
     detail:"Add the institutional meeting time and room so teachers and students share the same class timetable and conflict checks remain authoritative.",
     href:"school-classes.html?view=schedule",label:"Complete class schedules",tone:"amber"
+  };
+  else if(legacyRosterClasses>0)action={
+    title:legacyRosterClasses+" active class"+(legacyRosterClasses===1?" needs":"es need")+" roster-source review",
+    detail:"These classes predate the explicit roster-source model. Adopt official section placement for normal classes, or mark true electives/irregular classes as selective.",
+    href:"school-classes.html",label:"Review roster sources",tone:"amber"
   };
   else if(Number.isFinite(enrollments)&&enrollments===0&&Number.isFinite(people)&&people>0)action={
     title:"Complete student enrollment",
@@ -172,6 +178,7 @@ function issues(){
     const label=[row.subjectName,row.sectionName,row.termName].filter(Boolean).join(" · ");
     if(!(row.teacherUids||[]).length)items.push({source:"class",severity:"integrity",label,detail:"Active class has no assigned subject teacher.",offeringId:row.offeringId,targetTab:"classes"});
     if(!scheduleIds.has(row.offeringId))items.push({source:"class",severity:"attention",label,detail:"Active class has no official meeting schedule.",offeringId:row.offeringId,targetTab:"schedule"});
+    if(row.rosterMode==="legacy")items.push({source:"class",severity:"review",label,detail:"Class roster source is still legacy/unclassified. Adopt official section placement or mark it selective.",offeringId:row.offeringId,targetTab:"classes"});
   }
   for(const record of model.records||[]){
     if(!record.teacherNames?.length)items.push({source:"record",severity:"integrity",label:record.subjectName+" · "+record.sectionName,detail:"No active teacher is assigned to this Class Record.",targetTab:"classes"});
