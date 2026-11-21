@@ -220,6 +220,7 @@ if(home){
       const i=Math.max(0,Math.min(scenes.length-1,Math.round(value/Math.max(1,size))));
       current=i;
       [...indexNav.children].forEach((b,j)=>j===i?b.setAttribute('aria-current','step'):b.removeAttribute('aria-current'));
+      scenes.forEach((scene,j)=>scene.dataset.active=String(j===i));
       progress.firstElementChild?.style.setProperty('--avfx-progress',((i/(scenes.length-1))*100)+'%');
     }
     journey.addEventListener('scroll',()=>requestAnimationFrame(sync),{passive:true});
