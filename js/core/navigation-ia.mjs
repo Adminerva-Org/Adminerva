@@ -113,43 +113,52 @@ export function buildNavigationIA(ctx){
     ])
   ]);
 
+  const registrarWorkspace=()=>ws("registrar","Registrar & SIS","school-enrollment.html","Student information, enrollment, records and credentials",[
+    group("Student Information",[
+      live("enrollment","Enrollment & Registration","school-enrollment.html","Admissions review, official registration, section placement, withdrawal/transfer handling and verified account preparation."),
+      live("student-records","Student Records / 201 Files","school-student-records.html","Canonical student-file aggregation across identity, placement, guardian relationships, released academic results and registrar requests."),
+      needs("guardians","Parents / Guardians","school-student-records.html","Canonical guardian contacts and student relationships are active; guardian account/portal authority and consent workflows remain future development."),
+      needs("admissions","Admissions","school-enrollment.html","Reviewed application queue and enrollment handoff are active; broader admissions workflow and applicant services remain incomplete."),
+      future("student-tags","Student Tags / Statuses","Enrollment status, learner classifications and registrar-managed student tags · Future development")
+    ]),
+    group("Academic Records",[
+      needs("promotion","Promotion / Retention / Graduation","school-enrollment.html","Individual and bounded cohort progression uses released Final Grades, final-period gating and audited registration transitions."),
+      needs("released-results","Released Academic Results","school-student-records.html","Student Records shows formally released Class Record revisions without creating a duplicate grade store."),
+      future("curriculum","Curriculum Assignment"),future("transcripts","Report Cards / Transcripts"),
+      future("credentials","Certificates & Credentials"),future("registrar-clearance","Student Clearance"),
+      future("alumni","Alumni Records")
+    ]),
+    group("Requests",[
+      needs("registrar-requests","Document Requests","school-student-records.html","Audited request, review, ready, release and cancellation lifecycle is active; generated document production/delivery remains future work."),
+      needs("records-release","Records Release","school-student-records.html","Registrar release status and release/reference number are recorded; controlled file generation and delivery remain future work."),
+      future("verification","Student Verification / Enrollment Certification")
+    ])
+  ]);
+
   const schoolAdminWorkspaces=()=>[
     ws("school-admin","School Administration","school-admin.html","School operations, access, academic configuration and policy",[
       group("Operations",[
         live("school-operations","Operations Dashboard","school-admin.html"),
-        live("people-access","People & Access","people-access.html"),
-        live("academic-config","Academic Configuration","school-academic-configuration.html","Initial setup and new-year academic configuration"),
-        live("academic-structure","Manage Academic Structure","school-academic-structure.html","Edit existing years, programs, periods, subjects and sections without changing their stable IDs")
+        live("people-access","People & Access","people-access.html","Identity, account access, invitations and school roles. Teaching load is managed in Classes & Scheduling."),
+        live("classes-scheduling","Classes & Scheduling","school-classes.html","Canonical workspace for class offerings, teacher assignments, derived teacher load, section coverage and class rosters."),
+        live("academic-config","Academic Configuration","school-academic-configuration.html","Create and review school years, programs, periods, subjects, sections and class offerings; existing records are edited from this workspace's structure handoff.")
+      ]),
+      group("Academic Operations",[
+        live("attendance-oversight","Attendance Oversight","school-attendance.html","Daily advisory attendance completion and exact saved roster status."),
+        live("class-record-oversight","Class Record Oversight","school-class-records.html","Finalization, release and audit oversight without taking over teacher scoring.")
       ]),
       group("Academic Policy",[
         live("grading-policies","Grading Policies","school-grading-schemes.html","School-controlled weights, transmutation and program/subject/section applicability"),
-        live("class-record-oversight","Class Record Oversight","school-class-records.html"),
         needs("school-calendar-admin","School Calendar","school-academic-structure.html#academic-calendar","Review school years, academic periods and date conflicts."),
         future("grade-approval","Grade Approval"),future("promotion-policy","Promotion / Retention Policy")
       ]),
       group("School Profile",[
-        future("school-profile","School Profile & Campuses"),future("departments","Departments / Faculties"),
+        live("school-profile","School Profile & Campuses","school-profile.html","Canonical institution contact, address, timezone and campus records"),
+        future("departments","Departments / Faculties"),
         future("school-policies","Policies & Handbooks"),future("school-integrations","Integrations")
       ])
     ]),
-    ws("registrar","Registrar & SIS","school-enrollment.html","Student information, enrollment, records and credentials",[
-      group("Student Information",[
-        live("enrollment","Enrollment & Registration","school-enrollment.html","Standard student registration, section placement and verified account activation."),
-        live("student-directory","Student Directory","people-access.html#people"),
-        future("student-records","Student Records / 201 Files"),
-        future("student-tags","Student Tags / Statuses","Enrollment status, learner classifications and registrar-managed student tags · Future development"),
-        future("guardians","Parents / Guardians"),future("admissions","Admissions")
-      ]),
-      group("Academic Records",[
-        future("curriculum","Curriculum Assignment"),future("promotion","Promotion / Retention"),
-        future("transcripts","Report Cards / Transcripts"),future("credentials","Certificates & Credentials"),
-        future("registrar-clearance","Student Clearance"),future("alumni","Alumni Records")
-      ]),
-      group("Requests",[
-        future("registrar-requests","Document Requests"),future("records-release","Records Release"),
-        future("verification","Student Verification / Enrollment Certification")
-      ])
-    ]),
+    registrarWorkspace(),
     ws("finance","Finance","future-workspace.html?workspace=finance","Billing, cashiering, budgets, accounting and school financial operations",[
       group("Student Finance",[
         future("fee-setup","Fee Setup"),future("billing-ledger","Billing & Student Ledgers"),
@@ -173,7 +182,7 @@ export function buildNavigationIA(ctx){
       ]),
       group("Time & Performance",[
         future("staff-dtr","Attendance / DTR"),future("leave-admin","Leave Management"),
-        future("faculty-load","Faculty Workload"),future("performance-admin","Performance Appraisal"),
+        live("faculty-load","Teaching Load","school-classes.html?view=teachers","Derived from active class assignments; do not maintain a separate workload record."),future("performance-admin","Performance Appraisal"),
         future("training-admin","Training & Development")
       ]),
       group("Recruitment",[
@@ -234,60 +243,47 @@ export function buildNavigationIA(ctx){
 
   const teacher=scope=>{
     const out=[
-      ws("analytics","Analytics","teacher-analytics.html","Teaching, class and learning analytics",[
-        group("Analytics Dashboard",[
-          needs("analytics","Analytics Dashboard","teacher-analytics.html","Active analytics dashboard; broader school analytics and drill-downs still need development."),
-          future("class-standing","Class Standing"),
-          future("games-analytics","Adminerva Games Analytics"),future("lab-analytics","Adminerva Laboratory Analytics")
+      ws("classroom","Classroom","teacher-classroom.html","Shared class spaces for communication, classwork, learners, grading and records",[
+        group("My Classes",[
+          needs("classroom-stream","Classroom","teacher-classroom.html","Open an assigned class and manage its shared stream, classwork and roster."),
+          needs("assessment-submissions","Submissions","school-gradebook.html?view=submissions","Submission inbox for the classes you teach."),
+          needs("assessment-review","Review & Grade","school-gradebook.html?view=review","Review student work, provide feedback and publish results."),
+          needs("class-record","Class Record","class-record.html","Official teacher class record for assessment results and manual scores.")
         ]),
-        group("General Analytics",[
-          future("general-analytics","General Analytics"),
-          ...(scope.isSchoolAdmin?[future("staff-analytics","Staff Analytics","Admin role · Future development")]:[])
+        group("Class Insights",[
+          needs("assessment-results","Results","school-gradebook.html?view=results","Per-assessment outcomes and published results."),
+          needs("class-analytics","Class Analytics","teacher-analytics.html","Teaching and learning analytics across assigned classes.")
+        ]),
+        group("Advisory / Homeroom",[
+          live("advisory-overview","Advisory Overview","teacher-advisory.html","Official advisory section roster and subject-teacher coverage, separate from instructional class authority."),
+          live("advisory-attendance","Attendance","teacher-advisory.html#attendance","School-authoritative daily advisory attendance, revisioned and independent from Classroom activity."),
+          future("advisory-conduct","Conduct / Student Notes","Reserved for school-governed advisory records.")
         ])
       ]),
-      ws("assessment","Assessment","assessment-studio.html","General assessment authoring, submissions, grading and results",[
-        group("Assessment",[
-          needs("classroom-stream","Classroom Stream","teacher-classroom.html","Post announcements and class updates to verified subject/section streams."),
-          needs("assessment-library","Assessment Studio","assessment-studio.html","Canonical school assessment authoring, sharing, personalization and deployment workspace."),
-          needs("assessment-submissions","Submissions","school-gradebook.html?view=submissions","Unified submission inbox for written responses, links, Adminerva Studio projects and GitHub evidence."),
-          needs("assessment-review","Review & Grade","school-gradebook.html?view=review","Unified rubric review workflow with private drafts, revision requests and deliberate publication."),
-          needs("assessment-results","Assessment Results","school-gradebook.html?view=results","Per-assessment results and published outcomes that can feed the Class Record.")
+      ws("preparation","Preparation","lesson-planner.html","Reusable teaching plans, learning materials and assessment design before deployment to a class",[
+        group("Plan & Prepare",[
+          needs("learning-plan","Curriculum / Lesson Planner","lesson-planner.html","Plan curriculum and lessons before attaching or using them in a class."),
+          needs("slides","Slides Editor","presentation.html","Prepare reusable presentation materials."),
+          needs("library","Reference Library","library.html","Store reusable teaching references and materials."),
+          future("scope-sequence","Scope and Sequence")
         ]),
-        ...(scope.platformTestMode?[]:[group("Technology / Repository Tools",[
-          old("repo-submissions","GitHub Submission Inbox","submissions.html","Specialized repository evidence inbox retained for existing GitHub-based assessments."),
-          old("repo-review","GitHub Evidence Review","repofetch.html","Specialized commit and repository evidence inspection for GitHub-based assessments."),
-          old("repo-reclaims","Commit Attribution","reclaim-inbox.html","Resolve individual contribution attribution for GitHub evidence."),
-          old("repo-investigation","Repository Investigation","repobank.html","Investigate repository history and evidence when needed."),
-          old("repo-gradebook","Legacy Repository Gradebook","gradebook.html","Historical repository grading surface retained for existing records."),
-          old("activity-grader","Activity Grader","activity-grader.html","Specialized repository activity grading utility."),
-          old("auto-grader","AutoGrader","grading.html","Legacy automated repository grading utility."),
-          old("learning-follow-up","Learning Follow-up","learning-follow-up.html","Legacy repository learning follow-up records.")
-        ])])
+        group("Assessment Design",[
+          needs("assessment-library","Assessment Studio","assessment-studio.html","Create and reuse assessment blueprints, then deploy them into an assigned class."),
+          ...(scope.platformTestMode?[]:[
+            old("repo-investigation","Repository Investigation","repobank.html","Specialized repository evidence utility retained for programming assessments."),
+            old("repo-reclaims","Commit Attribution","reclaim-inbox.html","Resolve programming contribution attribution when required.")
+          ])
+        ]),
+        group("Schedule",[
+          needs("schedule","Teaching Timetable","schedule.html","Weekly schedule derived from verified teaching assignments."),
+          future("department-files","Department Files"),future("letters","Letters")
+        ])
       ]),
-      ws("grading","Grading","class-record.html","Class records, advisory records and grade administration",[
-        group("Grades",[
-          needs("class-record","Class Record","class-record.html","Active Class Record; school policy ownership, approval and grade-release workflows are still being expanded."),
-          ...(scope.isSchoolAdmin?[
-            live("grading-policy","Grading Policies","school-grading-schemes.html","School-controlled weights, transmutation and applicability"),
-            live("record-oversight","Class Record Oversight","school-class-records.html")
-          ]:[])
-        ]),
-        group("Advisory",[
-          future("attendance","Attendance"),future("conduct","Conduct"),future("advisory-summary","Summary of Grades")
-        ]),
-        ...(scope.isSchoolAdmin?[group("School Approval",[
-          future("grade-approval","Grade Approval","Admin role · Future development"),
-          future("school-summary","Summary of Grades","All levels and sections · Admin role · Future development")
-        ])]:[])
-      ]),
-      ws("preparation","Preparation","lesson-planner.html","Teaching plans, materials, schedules and faculty preparation",[
-        group("Teaching Preparation",[
-          needs("learning-plan","C-map / Learning Plan","lesson-planner.html","Active planning workflow; generation and curriculum alignment continue to be refined."),
-          needs("slides","Slides Editor","presentation.html","Active slide workflow; editing and presentation UX still need enhancement."),
-          needs("library","Reference Library","library.html","Active reference library; ingestion and organization continue to be improved."),
-          needs("schedule","Teaching Timetable","schedule.html","Manage weekly schedules using verified school teaching assignments; legacy schedules remain available where permitted."),future("scope-sequence","Scope and Sequence"),
-          future("department-files","Department Files"),future("letters","Letters"),
-          ...(scope.isSchoolAdmin?[future("faculty-scheduling","Faculty Scheduling","Admin role · Future development")]:[])
+      ws("analytics","Analytics","teacher-analytics.html","Teaching, class and learning analytics",[
+        group("Analytics Dashboard",[
+          needs("analytics","Analytics Dashboard","teacher-analytics.html","Active analytics dashboard; broader drill-downs still need development."),
+          future("class-standing","Class Standing"),
+          future("games-analytics","Adminerva Games Analytics"),future("lab-analytics","Adminerva Laboratory Analytics")
         ])
       ]),
       personnelWorkspace(scope),
@@ -299,38 +295,20 @@ export function buildNavigationIA(ctx){
       ])
     ];
     if(scope.isSchoolAdmin)out.push(...schoolAdminWorkspaces());
+    else if(scope.isRegistrar)out.push(registrarWorkspace());
     return out;
   };
 
   const system=()=>[
-    ws("system-analytics","Analytics","owner-schools.html","Platform-wide analytics and operational intelligence",[
-      group("Platform Analytics",[
-        needs("users-analytics","Users","admin-analytics.html","Existing administration analytics; needs expansion into the full platform analytics model."),
-        live("schools-analytics","Schools","owner-schools.html"),
-        future("games-analytics","Games"),future("laboratory-analytics","Laboratory"),
-        future("assessment-analytics","Assessments"),future("finance-analytics","Finance"),
-        future("usage-analytics","Usage & Performance")
-      ])
-    ]),
-    ws("directory","Directory","owner-schools.html","Users, schools and platform directory administration",[
-      group("Users",[
-        future("system-users","Users","Unified platform user directory · Future development")
+    ws("platform-admin","Platform Administration","owner-schools.html","Institution registry, platform users, operational monitoring and releases",[
+      group("Institutions & Access",[
+        live("system-schools","School Registry","owner-schools.html","Provision, activate, suspend, recover and assist verified school tenants."),
+        live("system-users","Platform Users","system-users.html","Read-only account directory with on-demand school membership metadata.")
       ]),
-      group("Schools",[
-        live("system-schools","Schools","owner-schools.html"),live("school-details","School Details","owner-schools.html"),
-        future("school-announcement","School Announcement"),future("school-integration","School Integration"),
-        future("school-configuration","Configuration")
-      ])
-    ]),
-    ws("system","System","patch-notes.html","Platform operations, configuration and releases",[
-      group("Operations",[
-        future("alerts","Alerts & Warnings"),live("updates","Updates & Releases","patch-notes.html"),
-        future("service-health","Service Health"),future("background-jobs","Background Jobs"),
-        future("migrations","Data Migrations"),future("backups","Backups / Recovery")
-      ]),
-      group("Configuration",[
-        future("system-config","Configurations"),future("feature-flags","Feature Flags"),
-        future("system-announcement","Announcement"),future("email-templates","Notification Templates")
+      group("Platform Operations",[
+        needs("platform-monitoring","Monitoring & Maintenance","admin-analytics.html","Legacy-compatible operational telemetry and maintenance controls; not a school academic administration surface."),
+        live("updates","Updates & Releases","patch-notes.html"),
+        future("operations-center","Operations Center","Incidents, service health, observability, background jobs and controlled platform operations · In development separately.")
       ])
     ]),
     ws("platform-governance","Governance & Security","future-workspace.html?workspace=platform-governance","Platform roles, permissions, privacy, audit and compliance",[
@@ -364,13 +342,18 @@ export function buildNavigationIA(ctx){
   const systemDefault=platformAdmin&&!viewRole;
   const studentView=ctx.isStudent||viewRole==="student";
   const schoolAdminView=ctx.isSchoolAdmin||viewRole==="schooladmin";
+  const registrarView=ctx.isRegistrar||viewRole==="registrar";
   const teacherView=ctx.hasSchoolTeacher||viewRole==="teacher"||schoolAdminView;
-  const modelCtx={...ctx,isSchoolAdmin:schoolAdminView,hasSchoolTeacher:teacherView,
-    hasSchoolStudent:ctx.hasSchoolStudent||studentView};
+  const registrarOnly=registrarView&&!teacherView&&!schoolAdminView;
+  const modelCtx={...ctx,isSchoolAdmin:schoolAdminView,isRegistrar:registrarView,
+    hasSchoolTeacher:teacherView,hasSchoolStudent:ctx.hasSchoolStudent||studentView};
 
-  const workspaces=systemDefault?system():studentView?student(modelCtx):teacher(modelCtx);
+  const workspaces=systemDefault?system():studentView?student(modelCtx):
+    registrarOnly?[registrarWorkspace()]:teacher(modelCtx);
   const route=(location.pathname.split("/").pop()||"").toLowerCase();
-  const requestedWorkspace=new URLSearchParams(location.search).get("workspace")||"";
+  const rawRequestedWorkspace=new URLSearchParams(location.search).get("workspace")||"";
+  const requestedWorkspace=systemDefault&&["system-analytics","directory","system"].includes(rawRequestedWorkspace)?
+    "platform-admin":rawRequestedWorkspace;
   const routePath=value=>String(value||"").split("#")[0].split("?")[0].toLowerCase();
   const routeQueryMatches=value=>{
     const raw=String(value||""),query=raw.includes("?")?raw.split("?")[1].split("#")[0]:"";
@@ -386,12 +369,12 @@ export function buildNavigationIA(ctx){
   const workspaceMatches=w=>
     (routePath(w.route)===route&&routeQueryMatches(w.route))||w.groups.some(g=>g.items.some(itemMatches));
   const homeRoute=systemDefault?"owner-schools.html":studentView?"student-home.html":
-    schoolAdminView?"school-admin.html":"teacher-home.html";
+    schoolAdminView?"school-admin.html":registrarView?"school-enrollment.html":"teacher-home.html";
   // School Administration is both the administrator landing page and a real
   // workspace with its own Operations / Academic Policy / School Profile nav.
   // Keep student/teacher home pages as Home, but do not collapse the admin
   // workspace into a generic Home state.
-  const isHome=!systemDefault&&routePath(homeRoute)===route&&!requestedWorkspace&&!schoolAdminView;
+  const isHome=!systemDefault&&routePath(homeRoute)===route&&!requestedWorkspace&&!schoolAdminView&&!registrarView;
   const activeWorkspace=isHome?null:(workspaces.find(w=>w.id===requestedWorkspace)||
     workspaces.find(workspaceMatches)||workspaces[0]||null);
   const groups=activeWorkspace?.groups||[];
@@ -408,14 +391,15 @@ export function buildNavigationIA(ctx){
     return sections;
   };
   const workspaceSections=systemDefault?sectionize([
-      {id:"intelligence",label:"Platform Intelligence",ids:["system-analytics"]},
-      {id:"administration",label:"Administration",ids:["directory","system"]},
+      {id:"administration",label:"Platform Administration",ids:["platform-admin"]},
       {id:"governance",label:"Governance & Ecosystem",ids:["platform-governance","platform-integrations"]},
       {id:"support",label:"Support",ids:["platform-support"]}
     ]):studentView?sectionize([
       {id:"learning",label:"Learning",ids:["classroom","games","laboratory"]},
       {id:"services",label:"Student Services",ids:["student-services"]},
       {id:"support",label:"Support & Information",ids:["student-other"]}
+    ]):registrarOnly?sectionize([
+      {id:"registrar",label:"Registrar & SIS",ids:["registrar"]}
     ]):sectionize([
       {id:"teaching",label:"Teaching",ids:["analytics","assessment","grading","preparation"]},
       {id:"technology",label:"Technology",ids:["repository"]},
@@ -436,7 +420,8 @@ export function buildNavigationIA(ctx){
     homeRoute,
     homeLabel:systemDefault?"System Admin":"Home",
     roleLabel:systemDefault?"System administrator":studentView?"Student":
-      schoolAdminView?(teacherView?"School administrator · Teacher":"School administrator"):"Teacher",
-    systemDefault,studentView,schoolAdminView,platformAdmin
+      schoolAdminView?(teacherView?"School administrator · Teacher":"School administrator"):
+      registrarView?(teacherView?"Registrar · Teacher":"Registrar"):"Teacher",
+    systemDefault,studentView,schoolAdminView,registrarView,platformAdmin
   };
 }
