@@ -207,6 +207,21 @@
               <p class="pa-muted">Automatic recovery stops if the duplicate record already has an official registration, active class enrollment, grades, submissions, evidence, repository configuration, Class Record grades or private assessment history. Those cases require reviewed manual reconciliation.</p>
             </form>
           </section>
+          <section id="pa-legacy-identity-card" class="pa-card" style="margin-top:1rem" hidden>
+            <h3 style="font-weight:750">Legacy identity reconciliation</h3>
+            <p class="pa-muted">Use only when this canonical student is correct but older compatibility assignments cannot locate the historical student record. Search the legacy directory, review the exact record, then link its stable legacy ID. This does not change enrollment, grades, submissions, Studio work or the student's current login.</p>
+            <form id="pa-legacy-identity-form" style="display:grid;gap:.65rem;margin-top:.7rem">
+              <input name="personId" type="hidden">
+              <input name="expectedRevision" type="hidden">
+              <label>Find historical student record<input id="pa-legacy-identity-search" type="search" class="pa-field" autocomplete="off" placeholder="Legacy name, email, student number, section or record ID"></label>
+              <button id="pa-legacy-identity-find" type="button" class="pa-action" style="background:#0f766e">Find legacy records</button>
+              <div id="pa-legacy-identity-current" class="pa-muted">No legacy identity is linked yet.</div>
+              <div id="pa-legacy-identity-candidates" role="list" aria-live="polite"></div>
+              <label>Reconciliation reason<textarea name="reason" class="pa-field" minlength="20" maxlength="500" rows="3" required placeholder="Reviewed historical student record belongs to this canonical learner and is needed for compatibility assignments"></textarea></label>
+              <button id="pa-legacy-identity-link" type="submit" class="pa-action" style="background:#9a3412" disabled>Link selected legacy identity</button>
+              <p class="pa-muted">Adminerva will never auto-link a candidate by name alone. A legacy record already linked to another canonical person is blocked.</p>
+            </form>
+          </section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Invitations</h3><div id="pa-person-detail-invites"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Enrollments / teaching assignments</h3><div id="pa-person-detail-links"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Recent audit history</h3><div id="pa-person-detail-audit"></div></section>

@@ -11,7 +11,7 @@ const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-per
 let after=null,loadingPeople=false,pendingWrite=false,peopleReloadQueued=false,peopleRun=0;
 let accessChange=null,personChange=null,lifecycleChange=null,invitationChange=null,currentDetailPerson=null,
   currentRosterOfferingId=null,peopleSearchTimer=null,recoverySearchTimer=null,recoveryPreview=null,recoveryCanonicalPersonId=null,
-  legacyPlacementReview=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false,linkedStaffById=new Map();
+  legacyIdentityCandidate=null,legacyPlacementReview=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false,linkedStaffById=new Map();
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
@@ -1285,6 +1285,21 @@ async function openPersonDetail(person){
         "Search for the student's newly verified duplicate account, then preview the recovery.";
       get("pa-account-recovery-confirm").disabled=true;
     }
+    const legacyCard=get("pa-legacy-identity-card");
+    legacyCard.hidden=p.kind!=="student"||p.status!=="active";
+    legacyIdentityCandidate=null;
+    if(!legacyCard.hidden){
+      const legacyForm=get("pa-legacy-identity-form");
+      legacyForm.reset();
+      legacyForm.elements.personId.value=p.personId;
+      legacyForm.elements.expectedRevision.value=String(p.revision||1);
+      get("pa-legacy-identity-search").value="";
+      get("pa-legacy-identity-candidates").replaceChildren();
+      get("pa-legacy-identity-current").textContent=(p.legacyStudentIds||[]).length
+        ?"Linked legacy IDs: "+p.legacyStudentIds.join(", ")
+        :"No legacy identity is linked yet.";
+      get("pa-legacy-identity-link").disabled=true;
+    }
     const placementCard=get("pa-detail-placement-card");
     placementCard.hidden=p.kind!=="student"||standardEnrollmentMode;
     legacyPlacementReview=null;
@@ -1413,6 +1428,94 @@ get("pa-account-recovery-form")?.addEventListener("submit",event=>{
     await Promise.allSettled([loadPeople(false),loadOverview(),loadMemberships()]);
   }).catch(error=>resetRecoveryPreview(error?.message||"Student account recovery failed."))
     .finally(()=>{pendingWrite=false;button.disabled=false;});
+});
+
+
+function renderLegacyIdentityCandidates(result){
+  const host=get("pa-legacy-identity-candidates");
+  host.replaceChildren();legacyIdentityCandidate=null;
+  get("pa-legacy-identity-link").disabled=true;
+  const candidates=result.candidates||[];
+  if(!candidates.length){
+    const empty=document.createElement("p");empty.className="pa-muted";
+    empty.textContent="No legacy student records matched this search.";host.append(empty);return;
+  }
+  for(const candidate of candidates){
+    const row=document.createElement("label");row.className="pa-row";
+    row.style.cssText="display:flex;gap:.7rem;align-items:flex-start;cursor:pointer";
+    const radio=document.createElement("input");radio.type="radio";radio.name="legacyStudentCandidate";
+    radio.value=candidate.legacyStudentId;
+    const conflicts=(candidate.linkedPersonIds||[]).filter(id=>id!==result.person.personId);
+    radio.disabled=Boolean(conflicts.length)||candidate.alreadyLinkedHere;
+    const body=document.createElement("div"),title=document.createElement("strong"),meta=document.createElement("p"),
+      evidence=document.createElement("p");
+    title.textContent=candidate.displayName+" · "+candidate.legacyStudentId;
+    meta.className="pa-muted";meta.textContent=[
+      candidate.email||"no email",candidate.section||"no section",
+      candidate.studentNumber?"student # "+candidate.studentNumber:null,
+      candidate.status||"active"
+    ].filter(Boolean).join(" · ");
+    evidence.className="pa-muted";
+    if(candidate.alreadyLinkedHere)evidence.textContent="Already linked to this canonical student.";
+    else if(conflicts.length)evidence.textContent="Blocked: already linked to another canonical person.";
+    else{
+      const matches=[];
+      if(candidate.nameMatchesCanonical)matches.push("name matches");
+      if(candidate.studentNumberMatchesCanonical)matches.push("student number matches");
+      if(candidate.exactMatch)matches.push("exact search match");
+      evidence.textContent=matches.length?"Evidence: "+matches.join(", ")+".":"Review carefully: no strong automatic identity match.";
+    }
+    radio.addEventListener("change",()=>{
+      if(!radio.checked)return;
+      legacyIdentityCandidate=candidate;
+      get("pa-legacy-identity-link").disabled=false;
+    });
+    body.append(title,meta,evidence);row.append(radio,body);host.append(row);
+  }
+}
+get("pa-legacy-identity-find")?.addEventListener("click",()=>{
+  if(pendingWrite||!currentDetailPerson)return;
+  const form=get("pa-legacy-identity-form"),query=get("pa-legacy-identity-search").value.trim(),
+    button=get("pa-legacy-identity-find");
+  if(query.length<2){get("pa-legacy-identity-current").textContent="Enter at least 2 characters to search the historical directory.";return;}
+  button.disabled=true;legacyIdentityCandidate=null;get("pa-legacy-identity-link").disabled=true;
+  get("pa-legacy-identity-current").textContent="Searching the historical student directory…";
+  void perform("search_legacy_student_candidates",{personId:String(form.elements.personId.value||""),query})
+    .then(result=>{
+      if(!get("pa-person-detail-dialog").open)return;
+      form.elements.expectedRevision.value=String(result.person.revision||1);
+      get("pa-legacy-identity-current").textContent=(result.person.legacyStudentIds||[]).length
+        ?"Linked legacy IDs: "+result.person.legacyStudentIds.join(", ")
+        :"No legacy identity is linked yet.";
+      renderLegacyIdentityCandidates(result);
+    })
+    .catch(error=>{
+      get("pa-legacy-identity-candidates").replaceChildren();
+      get("pa-legacy-identity-current").textContent=error?.message||"Historical identity search failed.";
+    }).finally(()=>{button.disabled=false;});
+});
+get("pa-legacy-identity-form")?.addEventListener("submit",event=>{
+  event.preventDefault();
+  if(pendingWrite||!legacyIdentityCandidate||!event.currentTarget.reportValidity())return;
+  const form=event.currentTarget,d=new FormData(form),
+    personId=String(d.get("personId")||""),
+    expectedRevision=Number(d.get("expectedRevision")),
+    reason=String(d.get("reason")||"").trim(),
+    candidate=legacyIdentityCandidate,button=get("pa-legacy-identity-link");
+  if(!confirm("Link legacy student record "+candidate.legacyStudentId+" to "+(currentDetailPerson?.displayName||"this student")+"? This only establishes identity continuity; it does not rewrite enrollment, grades, submissions or Studio work."))return;
+  pendingWrite=true;button.disabled=true;
+  get("pa-legacy-identity-current").textContent="Linking the reviewed historical identity and rebuilding compatibility access…";
+  void perform("link_legacy_student_identity",{
+    personId,legacyStudentId:candidate.legacyStudentId,expectedRevision,reason
+  }).then(async result=>{
+    say("Legacy identity "+result.legacyStudentId+" linked to the canonical student. Compatibility access was rebuilt.");
+    legacyIdentityCandidate=null;
+    await Promise.allSettled([loadPeople(false),loadOverview()]);
+    if(get("pa-person-detail-dialog").open&&currentDetailPerson)
+      await openPersonDetail({...currentDetailPerson,personId});
+  }).catch(error=>{
+    get("pa-legacy-identity-current").textContent=error?.message||"Legacy identity reconciliation failed.";
+  }).finally(()=>{pendingWrite=false;button.disabled=false;});
 });
 
 let directoryPlacementCatalog=null;
@@ -1570,7 +1673,7 @@ get("pa-invitation-lifecycle-form").addEventListener("submit",event=>{
     .finally(()=>{pendingWrite=false;button.disabled=false;});
 });
 get("pa-person-detail-close").addEventListener("click",()=>{
-  recoveryPreview=null;recoveryCanonicalPersonId=null;clearTimeout(recoverySearchTimer);
+  recoveryPreview=null;recoveryCanonicalPersonId=null;legacyIdentityCandidate=null;clearTimeout(recoverySearchTimer);
   get("pa-person-detail-dialog").close();
 });
 
