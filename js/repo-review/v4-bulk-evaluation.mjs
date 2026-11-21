@@ -247,9 +247,10 @@ export function createV4BulkEvaluationController({
   let task=null,rows=[],selection=new Set(),saveSelection=new Set(),staged=new Map(),
     exceptions=new Map(),batchId="",referenceMap=new Map(),stopped=false,
     running=false,schoolSignature="",scopeGeneration=0,autoSelectNext=true,
-    verifiedHistorical=new Set(),historicalNotes=new Map();
+    verifiedEvidence=new Set(),evidenceNotes=new Map();
   const supported=t=>BULK_SOURCE_TYPES.includes(t?.submissionSource);
   const historicalGithub=()=>Boolean(task?.legacyCompatibility&&task.submissionSource==="github");
+  const requiresArtifactReview=()=>historicalGithub()||task?.submissionSource==="link";
   const key=row=>String(row.submissionId||row.evidenceId||row.recordId||"");
   const selectedEligible=()=>rows.filter(row=>selection.has(key(row))&&
     !row.gradeStatus&&row.bulkReady!==false&&
@@ -257,8 +258,8 @@ export function createV4BulkEvaluationController({
   const candidates=()=>selectedEligible().filter(row=>
     !staged.has(key(row))&&!exceptions.has(key(row)));
   const saveable=()=>bulkSaveableStages({staged,saveSelection,rows}).filter(item=>
-    !historicalGithub()||(verifiedHistorical.has(item.key)&&
-      String(historicalNotes.get(item.key)||"").trim().length>=15));
+    !requiresArtifactReview()||(verifiedEvidence.has(item.key)&&
+      String(evidenceNotes.get(item.key)||"").trim().length>=15));
   const appendStatus=(message)=>{status.textContent=message;};
   const taskKey=t=>t?(t.legacyCompatibility?"legacy:":"native:")+
     String(t.legacyAssessmentId||t.taskId):"";
@@ -327,29 +328,33 @@ export function createV4BulkEvaluationController({
       const stillGradeable=Boolean(submitted&&!submitted.gradeStatus&&
         !["reopened","revision_requested"].includes(submitted.status)&&
         Number(submitted.version)===Number(data.version));
-      if(historicalGithub()&&data.review.saveEligible){
+      if(requiresArtifactReview()&&data.review.saveEligible){
         const label=document.createElement("label");
         label.className="mt-2 flex items-start gap-2 text-xs font-semibold text-amber-950";
         const check=document.createElement("input");check.type="checkbox";
-        check.className="mt-0.5";check.checked=verifiedHistorical.has(data.key);
+        check.className="mt-0.5";check.checked=verifiedEvidence.has(data.key);
         check.disabled=running||isBusy();
         check.addEventListener("change",()=>{
-          if(check.checked)verifiedHistorical.add(data.key);
-          else verifiedHistorical.delete(data.key);
+          if(check.checked)verifiedEvidence.add(data.key);
+          else verifiedEvidence.delete(data.key);
           render();
         });
         label.append(check,document.createTextNode(
-          "I inspected this learner's approved checkpoint, verified contribution evidence, and attribution limitations."));
+          historicalGithub()?
+            "I inspected the approved checkpoint, individual contribution evidence and attribution limits.":
+            "I opened this student's external submission and verified its actual contents against the rubric."));
         const noteLabel=document.createElement("label");
         noteLabel.className="mt-2 block text-xs font-bold text-amber-950";
         noteLabel.textContent="Individual teacher review note (at least 15 characters)";
         const note=document.createElement("textarea");
         note.rows=2;note.maxLength=3000;note.className="mt-1 w-full border border-amber-300 rounded-lg p-2";
-        note.value=historicalNotes.get(data.key)||"";
-        note.placeholder="Describe the inspected commits and limitations for this learner.";
+        note.value=evidenceNotes.get(data.key)||"";
+        note.placeholder=historicalGithub()?
+          "Describe inspected commits and attribution limitations.":
+          "Describe the inspected linked artifact and evidence used for grading.";
         note.disabled=running||isBusy();
         note.addEventListener("input",()=>{
-          historicalNotes.set(data.key,note.value);
+          evidenceNotes.set(data.key,note.value);
           const ready=saveable();
           btn("gbV4BulkSave").disabled=running||isBusy()||!ready.length;
           btn("gbV4BulkSave").textContent="Save "+ready.length+" eligible private draft"+
@@ -401,7 +406,7 @@ export function createV4BulkEvaluationController({
   function reset(){
     scopeGeneration++;stopped=true;
     task=null;rows=[];selection.clear();saveSelection.clear();staged.clear();exceptions.clear();
-    verifiedHistorical.clear();historicalNotes.clear();
+    verifiedEvidence.clear();evidenceNotes.clear();
     referenceMap.clear();batchId="";payload.value="";
     el("gbV4BulkResponse").value="";
     stopped=false;running=false;autoSelectNext=true;
@@ -412,7 +417,7 @@ export function createV4BulkEvaluationController({
     if(signature!==schoolSignature){
       scopeGeneration++;stopped=true;
       selection.clear();saveSelection.clear();staged.clear();exceptions.clear();referenceMap.clear();
-      verifiedHistorical.clear();historicalNotes.clear();
+      verifiedEvidence.clear();evidenceNotes.clear();
       batchId="";payload.value="";el("gbV4BulkResponse").value="";
       autoSelectNext=true;schoolSignature=signature;
     }
@@ -651,7 +656,11 @@ export function createV4BulkEvaluationController({
         try{
           const details={
             criteria:item.review.criteria,feedback:item.review.feedback,
-            draftSource:item.source,onlyIfUngraded:true
+            draftSource:item.source,onlyIfUngraded:true,
+            ...(task.submissionSource==="link"?{
+              externalArtifactVerified:verifiedEvidence.has(item.key),
+              artifactReviewNote:String(evidenceNotes.get(item.key)||"").trim()
+            }:{})
           };
           if(task.legacyCompatibility&&task.submissionSource==="github"){
             await scoped(migrationApi,"legacy_github_save_draft",{
@@ -660,7 +669,7 @@ export function createV4BulkEvaluationController({
               expectedEvidenceRevision:item.evidenceRevision,
               expectedCheckpointSha:item.checkpointSha,
               expectedGradeRevision:0,
-              reviewNote:String(historicalNotes.get(item.key)||"").trim(),
+              reviewNote:String(evidenceNotes.get(item.key)||"").trim(),
               ...details
             });
           }else if(task.legacyCompatibility){
@@ -679,7 +688,7 @@ export function createV4BulkEvaluationController({
           }
           if(session!==scopeGeneration)break;
           staged.delete(item.key);saveSelection.delete(item.key);
-          verifiedHistorical.delete(item.key);historicalNotes.delete(item.key);
+          verifiedEvidence.delete(item.key);evidenceNotes.delete(item.key);
           exceptions.delete(item.key);selection.delete(item.key);
           savedIds.add(item.key);
           saved++;
