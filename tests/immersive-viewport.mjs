@@ -9,7 +9,7 @@ import {chromium} from 'playwright';
 const root=resolve('.');
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.woff2':'font/woff2'};
 const roles=new Set(['student','teacher','admin','platform']);
-const fixture=role=>\`<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/css/adminerva-ui.css"><link rel="stylesheet" href="/css/experience-mode.css"></head><body><main data-home-experience="\${role}" style="max-width:1100px;margin:auto;padding:1rem"><section id="real-dashboard"><h2>Operational dashboard fixture</h2><p>This remains available below the entry runway.</p></section></main><script type="module" src="/js/core/experience-mode.mjs"></script></body></html>\`;
+const fixture=role=>`<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/css/adminerva-ui.css"><link rel="stylesheet" href="/css/experience-mode.css"></head><body><main data-home-experience="${role}" style="max-width:1100px;margin:auto;padding:1rem"><section id="real-dashboard"><h2>Operational dashboard fixture</h2><p>This remains available below the entry runway.</p></section></main><script type="module" src="/js/core/experience-mode.mjs"></script></body></html>`;
 const server=createServer(async(req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://127.0.0.1').pathname);
   if(pathname.startsWith('/__role/')){
@@ -24,7 +24,7 @@ const server=createServer(async(req,res)=>{
   catch{res.writeHead(404);res.end('Not found');}
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-const origin=\`http://127.0.0.1:\${server.address().port}\`;
+const origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({headless:true,args:['--disable-dev-shm-usage']});
 const dimensions=[
   {name:'desktop-wide',width:1600,height:900,isMobile:false,hasTouch:false},
@@ -49,9 +49,9 @@ async function assess(page,label,viewport){
     return {innerWidth,innerHeight,docWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth,headings:headingRects,nav:nav?rect(nav):null,stage:stage?rect(stage):null,tiny,mode:document.documentElement.dataset.adminervaExperience};
   });
   const errs=[];
-  if(metrics.docWidth>viewport.width+3)errs.push(\`horizontal document overflow \${metrics.docWidth} > \${viewport.width}\`);
-  if(metrics.bodyWidth>viewport.width+3)errs.push(\`horizontal body overflow \${metrics.bodyWidth} > \${viewport.width}\`);
-  if(metrics.stage&&(metrics.stage.left<-3||metrics.stage.right>viewport.width+3))errs.push(\`world outside viewport [\${Math.round(metrics.stage.left)},\${Math.round(metrics.stage.right)}]\`);
+  if(metrics.docWidth>viewport.width+3)errs.push(`horizontal document overflow ${metrics.docWidth} > ${viewport.width}`);
+  if(metrics.bodyWidth>viewport.width+3)errs.push(`horizontal body overflow ${metrics.bodyWidth} > ${viewport.width}`);
+  if(metrics.stage&&(metrics.stage.left<-3||metrics.stage.right>viewport.width+3))errs.push(`world outside viewport [${Math.round(metrics.stage.left)},${Math.round(metrics.stage.right)}]`);
   for(const h of metrics.headings){
     if(h.box.left<-3||h.box.right>viewport.width+3)errs.push('headline outside viewport: '+h.text.slice(0,60));
     if(h.scrollWidth>h.clientWidth+3)errs.push('headline horizontal clipping: '+h.text.slice(0,60));
@@ -79,7 +79,7 @@ try{
       if(errors.some(e=>/experience|undefined|null|syntaxerror/i.test(e)))failures.push({label:name,viewport:viewport.name,errors});
       if(viewport.name==='mobile-320'||viewport.name==='tablet-landscape'){
         const stage=page.locator(name==='public'||name==='guest'?'.avx-world-shell':'.avx-editorial-world');
-        await stage.screenshot({path:\`/tmp/adminerva-\${name}-\${viewport.name}.png\`,animations:'disabled'});
+        await stage.screenshot({path:`/tmp/adminerva-${name}-${viewport.name}.png`,animations:'disabled'});
       }
       if(name==='public'){
         await page.locator('.avx-view-trigger').click();
@@ -118,4 +118,4 @@ try{
   await new Promise(resolve=>server.close(resolve));
 }
 console.log(JSON.stringify({event:'immersive_qa_summary',cases:results.length,failures}));
-assert.equal(failures.length,0,\`\${failures.length} immersive viewport/interaction failures\`);
+assert.equal(failures.length,0,`${failures.length} immersive viewport/interaction failures`);
