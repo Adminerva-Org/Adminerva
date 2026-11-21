@@ -1038,7 +1038,19 @@ function ensureDeploymentCalendar(){
   }
   deployDatePicker=window.flatpickr(el("tl-deploy-date-range"),{
     mode:"range",dateFormat:"M j, Y",allowInput:false,disableMobile:true,
-    appendTo:el("tl-deploy-dialog"),
+    // Keep the calendar in the input's local coordinate system. Appending an
+    // absolutely positioned calendar to the scrollable <dialog> mixes
+    // viewport and dialog scroll offsets and can place it far above the field.
+    static:true,
+    onOpen(_selectedDates,_dateString,instance){
+      requestAnimationFrame(()=>{
+        const dialog=el("tl-deploy-dialog"),calendar=instance.calendarContainer;
+        if(!dialog?.open||!calendar)return;
+        const dialogRect=dialog.getBoundingClientRect(),calendarRect=calendar.getBoundingClientRect();
+        if(calendarRect.bottom>dialogRect.bottom-12)
+          dialog.scrollBy({top:calendarRect.bottom-dialogRect.bottom+20,behavior:"auto"});
+      });
+    },
     onChange(selectedDates){
       if(selectedDates.length===1){
         deployRangePending=true;el("tl-deploy-feedback").textContent="Choose the second date to complete this range.";
