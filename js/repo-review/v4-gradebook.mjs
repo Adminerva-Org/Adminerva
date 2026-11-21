@@ -263,10 +263,6 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const evidenceApi=sourceApi(task.submissionSource,{
         studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
       });
-      const historicalStudio=task.legacyCompatibility&&task.submissionSource==="studio";
-      const evidenceApi=sourceApi(task.submissionSource,{
-        studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
-      });
       let result,resultData=null,classRecordStatus={status:"unavailable"};
       if(historicalStudio){
         result=await scoped(migrationApi,"legacy_review_inbox",{legacyAssessmentId:task.legacyAssessmentId});
