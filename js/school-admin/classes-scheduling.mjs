@@ -561,7 +561,8 @@ el("csAdviserForm").addEventListener("submit",async event=>{
     defaultValue:existing?"Section adviser reassignment":"Official homeroom/advisory assignment"
   });
   if(reason===null)return;
-  void mutate("set_section_adviser",{teacherUid,sectionId:item.sectionId,yearId:item.yearId,reason},
+  void mutate("set_section_adviser",{teacherUid,sectionId:item.sectionId,yearId:item.yearId,
+    expectedRevision:Number(existing?.revision)||0,reason},
     name+" is now the adviser for "+item.sectionName+" in "+item.yearName+".");
 });
 el("csAdviserRemove").addEventListener("click",async()=>{
@@ -572,7 +573,8 @@ el("csAdviserRemove").addEventListener("click",async()=>{
     defaultValue:"Advisory responsibility ended"
   });
   if(reason===null)return;
-  void mutate("end_section_adviser",{sectionId:item.sectionId,yearId:item.yearId,reason},
+  void mutate("end_section_adviser",{sectionId:item.sectionId,yearId:item.yearId,
+    expectedRevision:Number(adviser.revision)||1,reason},
     "Section adviser assignment ended. Subject teaching assignments were not changed.");
 });
 el("csAssignForm").addEventListener("submit",event=>{
