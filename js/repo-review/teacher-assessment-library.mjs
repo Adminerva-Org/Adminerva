@@ -665,13 +665,13 @@ async function showExamCloseReport(task){
       return '"'+cell.replaceAll('"','""')+'"';
     };
     const rows=[
-      ["Session","Student","Student UID","Final checkpoint","Project revision","Saved at","Project SHA-256","Source SHA-256"],
+      ["Session","Student","Student UID","Final checkpoint","Project revision","Saved at","Project SHA-256","Source SHA-256","Payload bytes"],
       ...(lastReport.students||[]).map(student=>[
         lastReport.sessionEpoch,student.displayName,student.studentUid||"",
         student.checkpointConfirmed?"Confirmed":lastReport.sessionClosed?"Unconfirmed":"In progress",
         student.projectRevision||"",
         student.savedAt?new Date(student.savedAt).toISOString():"",
-        student.contentDigest||"",student.sourceDigest||""
+        student.contentDigest||"",student.sourceDigest||"",student.payloadBytes||0
       ])
     ];
     const csv=rows.map(row=>row.map(escapeCsv).join(",")).join("\r\n");
@@ -700,6 +700,10 @@ async function showExamCloseReport(task){
         ?report.confirmed+" of "+report.enrolledStudents+
           " students have a confirmed final cloud save for class session "+report.sessionEpoch+"."
         :"Class session "+report.sessionEpoch+" is still open. Final checkpoints are not expected until the teacher closes it.";
+      const payloadBytes=Number(report.confirmedPayloadBytes||0);
+      if(payloadBytes>0)
+        summary.textContent+=" Approximate retained source/project payload: "+
+          (payloadBytes/1048576).toFixed(2)+" MiB (excludes Firestore overhead).";
       if(report.rosterSource!=="close_snapshot")
         summary.textContent+=" Historical roster unavailable; showing the current enrollment roster.";
       const table=document.createElement("table");table.className="min-w-full text-left text-sm";
