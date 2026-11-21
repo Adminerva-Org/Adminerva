@@ -402,6 +402,7 @@ Future departments should join this same action-oriented model rather than addin
 - Use meaningful empty, loading, stale, conflict and permission states.
 - Do not expose future placeholder modules as though they are already functional.
 - Public, guest, student, teacher, School Admin and System Admin entrypoints can reuse immersive illustrative activities and approved editorial cards without replacing canonical classroom/administration workflows. Scenes must not imply private user activity is publicly visible; respect reduced-motion and mobile accessibility.
+- The guest and public discovery experience should prioritize **visual interaction** over stacked editorial text: spatial, selectable home portals, a source-checked interactive opportunity atlas, and a Pulse signal room with a real published-release channel. Every visible beacon, selector, transport control and call-to-action must perform a meaningful action. Keep the four canonical public editorial channels and the existing release authority; protect 320px mobile and reduced-motion behavior. Current cinematic redesign is implemented on `codex/immersive-editorial-experience-20261122` pending PR review/release.
 - The Opportunity Hunter may show source-checked public training, scholarship, competition, internship and career opportunities with checked eligibility and application deadlines where available. Use public-only sources, never student or school-private data. Keep provider links, verification and expiry visible.
 
 ## 9. Security, privacy and audit boundaries
