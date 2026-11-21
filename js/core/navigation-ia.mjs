@@ -41,9 +41,11 @@ export function buildNavigationIA(ctx){
           scope.hasSchoolStudent
             ?needs("project-hub","Project Hub",projectHub,"School-scoped projects, repository activity and Adminerva Studio projects.")
             :old("project-hub","Project Hub",projectHub,"Existing repository project workflow retained for current programming classes."),
-          ...(!scope.platformTestMode?[
-            old("repo-settings","Repository Settings","student-settings.html","Repository/GitHub settings retained for programming assignments that still use GitHub evidence.")
-          ]:[])
+          ...(scope.hasSchoolStudent?[
+            live("project-settings","Project & GitHub Settings",settings+"#connected-services","Connect GitHub and configure repositories per active course offering.")
+          ]:(!scope.platformTestMode?[
+            old("repo-settings","Repository Settings","student-settings.html","Repository/GitHub settings retained only for legacy programming profiles.")
+          ]:[]))
         ])
       ]),
       ws("games","Games","student-practice.html","Practice challenges and subject learning games",[
@@ -62,7 +64,7 @@ export function buildNavigationIA(ctx){
       ]),
       ws("student-services","Student Services",settings,"Student information, requests, documents, finance and welfare services",[
         group("My Record",[
-          live("student-profile","Profile & School Account",settings),
+          live("student-profile","Settings & Profile",settings,"School identity, sign-in account, connected services, notifications, display and privacy controls."),
           future("attendance","Attendance Record"),future("conduct","Conduct Record"),
           future("student-documents","Documents & Certificates","Student records, certificates and credentials · Future development"),
           future("student-clearance","Clearance","School clearance workflow · Future development")
