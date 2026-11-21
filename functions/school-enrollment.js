@@ -14,6 +14,7 @@ const {rosterEmailHash,normalizedRosterEmail}=require("./school-roster-identity.
 const EMAIL_TYPES=new Set(["personal","institutional"]);
 const APPLICATION_REVIEW_STATUSES=new Set(["needs_information","rejected"]);
 const REGISTRATION_END_TYPES=new Set(["withdrawal","transfer_out","registration_cancelled","other"]);
+const PROGRESSION_TYPES=new Set(["promotion","retention","graduation"]);
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function checkId(value,label="Identifier",max=330){
@@ -59,6 +60,17 @@ function registrationOwnsEnrollment(registrationId,enrollment,offering){
   if(!enrollment||typeof enrollment!=="object")return false;
   if(enrollment.registrationId)return enrollment.registrationId===registrationId;
   return Boolean(offering&&offering.rosterMode!=="selective");
+}
+function progressionGradeValid(type,sourceLevel,targetLevel){
+  const source=String(sourceLevel||"").trim().toLowerCase(),
+    target=String(targetLevel||"").trim().toLowerCase();
+  if(type==="graduation")return true;
+  if(!source||!target)return false;
+  if(type==="retention")return source===target;
+  if(type!=="promotion"||source===target)return false;
+  if(/^\d+$/.test(source)&&/^\d+$/.test(target))
+    return Number(target)===Number(source)+1;
+  return true;
 }
 function legacyImportPersonId(email){
   const identity=createHash("sha256").update("student\0email:"+email).digest("hex");
@@ -107,6 +119,128 @@ function createSchoolEnrollmentService({db}){
          member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
          !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
         deny("permission-denied","School enrollment authority changed. Refresh before saving.");
+    }
+
+    async function reviewProgression(raw,tx=null){
+      const read=ref=>tx?tx.get(ref):ref.get(),
+        registrationId=checkId(raw.registrationId,"Registration ID",128),
+        expectedRevision=Number(raw.expectedRevision),
+        progressionType=String(raw.progressionType||"").trim().toLowerCase();
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        deny("invalid-argument","Refresh this registration before reviewing progression.");
+      if(!PROGRESSION_TYPES.has(progressionType))
+        deny("invalid-argument","Choose promotion, retention or graduation.");
+      const registrationRef=db.doc(root+"student_registrations/"+registrationId),
+        registration=await read(registrationRef);
+      if(!registration.exists||registration.data().schoolId!==ctx.schoolId)
+        deny("not-found","The student registration was not found.");
+      const source=registration.data(),sourceRevision=Number(source.revision)||1;
+      if(sourceRevision!==expectedRevision)
+        deny("failed-precondition","This registration changed after you opened it. Refresh before reviewing progression.");
+      if(source.status!=="active")
+        deny("failed-precondition","Only an active registration can be progressed.");
+      const personId=checkId(source.personId,"Person ID",128),
+        enrollmentQuery=db.collection(root+"enrollments").where("personId","==",personId).limit(251),
+        offeringQuery=db.collection(root+"course_offerings").limit(251),
+        [enrollmentSnap,offeringSnap]=await Promise.all([read(enrollmentQuery),read(offeringQuery)]);
+      if(enrollmentSnap.size===251||offeringSnap.size===251)
+        deny("resource-exhausted","Progression review requires pagination before this student can be processed safely.");
+      const offeringMap=new Map(offeringSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId)
+        .map(doc=>[doc.id,doc])),
+        sourceEnrollments=enrollmentSnap.docs.filter(doc=>{
+          const row=doc.data(),offering=offeringMap.get(row.offeringId);
+          return row.schoolId===ctx.schoolId&&row.personId===personId&&row.status==="active"&&
+            row.yearId===source.yearId&&row.termId===source.termId&&row.sectionId===source.sectionId&&
+            registrationOwnsEnrollment(registrationId,row,offering?.data());
+        });
+      const blockers=[];
+      if(!sourceEnrollments.length)
+        blockers.push({type:"no_active_classes",message:"This registration has no active registration-owned classes to complete."});
+      const finalizationRefs=sourceEnrollments.map(doc=>
+        db.doc(root+"class_record_finalizations/"+checkId(doc.data().offeringId,"Course offering ID",330))),
+        gradeRefs=sourceEnrollments.map(doc=>
+        db.doc(root+"class_record_period_grades/"+key(doc.data().offeringId,personId))),
+        finalizations=await Promise.all(finalizationRefs.map(read)),
+        grades=await Promise.all(gradeRefs.map(read));
+      const completion=sourceEnrollments.map((enrollment,index)=>{
+        const offering=offeringMap.get(enrollment.data().offeringId),finalization=finalizations[index],
+          grade=grades[index],releasedRevision=finalization.exists&&finalization.data().schoolId===ctx.schoolId?
+            Number(finalization.data().releasedRevision)||0:0,
+          gradeData=grade.exists&&grade.data().schoolId===ctx.schoolId?grade.data():null,
+          ready=releasedRevision>0&&gradeData&&gradeData.personId===personId&&
+            gradeData.offeringId===enrollment.data().offeringId&&
+            Number(gradeData.finalizationRevision)===releasedRevision;
+        if(!ready)blockers.push({
+          type:"final_grade_not_released",offeringId:enrollment.data().offeringId,
+          subjectId:offering?.data().subjectId||null,
+          message:"A registration-owned class does not yet have the student's released Final Grade."
+        });
+        return {offeringId:enrollment.data().offeringId,subjectId:offering?.data().subjectId||null,
+          releasedRevision,ready};
+      });
+
+      let target=null,targetRegistrationRef=null,targetSlotRef=null,targetOfferings=[],targetEnrollmentRefs=[],
+        targetEnrollmentDocs=[],targetRegistration=null,targetSlot=null;
+      if(progressionType!=="graduation"){
+        const yearId=checkId(raw.targetYearId,"Target academic year"),
+          programId=checkId(raw.targetProgramId,"Target program"),
+          termId=checkId(raw.targetTermId,"Target academic period"),
+          sectionId=checkId(raw.targetSectionId,"Target section");
+        if(yearId===source.yearId)
+          blockers.push({type:"target_year_not_new","message":"Promotion and retention must move into a different academic year."});
+        const refs=[
+          db.doc(root+"academic_years/"+yearId),db.doc(root+"academic_programs/"+programId),
+          db.doc(root+"terms/"+termId),db.doc(root+"sections/"+sectionId)
+        ],catalogDocs=await Promise.all(refs.map(read));
+        for(const [doc,label] of catalogDocs.map((doc,index)=>[doc,["academic year","program","academic period","section"][index]]))
+          if(!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active")
+            blockers.push({type:"inactive_target",message:"The target "+label+" is unavailable or inactive."});
+        const [year,program,term,section]=catalogDocs;
+        if(term.exists&&(term.data().yearId!==yearId||term.data().programId!==programId))
+          blockers.push({type:"target_period_mismatch",message:"The target academic period does not belong to the selected year and program."});
+        if(section.exists&&section.data().programId!==programId)
+          blockers.push({type:"target_section_mismatch",message:"The target section does not belong to the selected program."});
+        if(year.exists){
+          const sourceYear=await read(db.doc(root+"academic_years/"+checkId(source.yearId,"Source academic year")));
+          const sourceStart=String(sourceYear.exists?sourceYear.data().startDate||"":""),
+            targetStart=String(year.data().startDate||"");
+          if(sourceStart&&targetStart&&targetStart<=sourceStart)
+            blockers.push({type:"target_year_not_future",message:"Choose an academic year after the current registration year."});
+        }
+        const targetGrade=section.exists?section.data().gradeLevel:null;
+        if(!progressionGradeValid(progressionType,source.gradeLevel,targetGrade))
+          blockers.push({type:"grade_progression_mismatch",message:progressionType==="retention"
+            ?"Retention must keep the learner in the same grade level."
+            :"Promotion must move the learner to the next numeric grade level, or to a different configured non-numeric level."});
+        targetOfferings=offeringSnap.docs.filter(doc=>{
+          const row=doc.data();
+          return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId&&
+            row.programId===programId&&row.termId===termId&&row.sectionId===sectionId&&
+            row.rosterMode!=="selective";
+        });
+        if(!targetOfferings.length)
+          blockers.push({type:"no_target_classes",message:"The target placement has no active automatic-roster classes."});
+        if(targetOfferings.length>60)
+          deny("resource-exhausted","The target placement has too many automatic classes for one progression transaction.");
+        const targetRegistrationId=key(personId,yearId,termId,sectionId);
+        targetRegistrationRef=db.doc(root+"student_registrations/"+targetRegistrationId);
+        targetSlotRef=db.doc(root+"student_registration_slots/"+key(personId,yearId,termId));
+        [targetRegistration,targetSlot]=await Promise.all([read(targetRegistrationRef),read(targetSlotRef)]);
+        if(targetRegistration.exists)
+          blockers.push({type:"target_registration_exists",message:"This learner already has registration history for the selected target placement."});
+        if(targetSlot.exists&&targetSlot.data().status==="active")
+          blockers.push({type:"target_slot_occupied",message:"This learner already has an active official placement in the target academic period."});
+        targetEnrollmentRefs=targetOfferings.map(doc=>db.doc(root+"enrollments/"+key(personId,doc.id)));
+        targetEnrollmentDocs=await Promise.all(targetEnrollmentRefs.map(read));
+        if(targetEnrollmentDocs.some(doc=>doc.exists))
+          blockers.push({type:"target_enrollment_history_exists",message:"One or more target classes already contain enrollment history for this learner. Review those records before progression."});
+        target={yearId,programId,termId,sectionId,gradeLevel:targetGrade,
+          registrationId:targetRegistrationId};
+      }
+      return {registrationId,registrationRef,registration,source,personId,progressionType,
+        completion,sourceEnrollments,offeringMap,blockers,target,targetRegistrationRef,targetSlotRef,
+        targetOfferings,targetEnrollmentRefs,targetEnrollmentDocs,targetRegistration,targetSlot,
+        canApply:blockers.length===0};
     }
 
     if(input.action==="catalog"){
@@ -237,6 +371,9 @@ function createSchoolEnrollmentService({db}){
         guardianEmail:doc.data().guardianEmail||"",
         source:doc.data().source||"onsite",
         endReasonType:doc.data().endReasonType||null,
+        progressionType:doc.data().progressionType||null,
+        progressedToRegistrationId:doc.data().progressedToRegistrationId||null,
+        previousRegistrationId:doc.data().previousRegistrationId||null,
         revision:Number(doc.data().revision)||1
       }))};
     }
@@ -297,6 +434,8 @@ function createSchoolEnrollmentService({db}){
           deny("failed-precondition","This registration changed after you opened it. Refresh and review the latest status.");
         if(restoring&&data.status!=="ended")
           deny("failed-precondition","Only an ended registration can be restored.");
+        if(restoring&&data.progressionType)
+          deny("failed-precondition","A progressed or graduated registration cannot be restored directly. Review the progression history and create a corrected official placement instead.");
         if(!restoring&&data.status!=="active")
           deny("failed-precondition","Only an active registration can be ended.");
 
@@ -588,6 +727,108 @@ function createSchoolEnrollmentService({db}){
       return result;
     }
 
+    if(input.action==="preview_progression"){
+      const review=await reviewProgression(input);
+      return {
+        registrationId:review.registrationId,progressionType:review.progressionType,
+        canApply:review.canApply,blockers:review.blockers,completion:review.completion,
+        target:review.target,source:{
+          yearId:review.source.yearId,programId:review.source.programId,termId:review.source.termId,
+          sectionId:review.source.sectionId,gradeLevel:review.source.gradeLevel||null,
+          courseCount:review.sourceEnrollments.length
+        }
+      };
+    }
+
+    if(input.action==="progress_registration"){
+      const reason=text(input.reason,"Progression reason",500);
+      if(reason.length<12)deny("invalid-argument","Explain the promotion, retention or graduation decision in at least 12 characters.");
+      let result;
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const review=await reviewProgression(input,tx);
+        if(!review.canApply)
+          deny("failed-precondition",review.blockers[0]?.message||"This student is not ready for progression.");
+        const {source,registrationRef,registrationId,personId,progressionType}=review,
+          personRef=db.doc(root+"people/"+personId),person=await tx.get(personRef);
+        if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
+           person.data().status!=="active")
+          deny("failed-precondition","The student directory record must remain active before progression.");
+        const sourceSlotRef=db.doc(root+"student_registration_slots/"+key(personId,source.yearId,source.termId)),
+          sourceSlot=await tx.get(sourceSlotRef),now=FieldValue.serverTimestamp(),
+          targetRegistrationId=review.target?.registrationId||null;
+        for(const enrollment of review.sourceEnrollments)
+          tx.update(enrollment.ref,{status:"ended",endedByUid:ctx.uid,endedAt:now,
+            endReason:reason,endReasonType:"progression",progressionType,
+            endedByRegistrationId:registrationId,
+            ...(targetRegistrationId?{replacedByRegistrationId:targetRegistrationId}:{}),
+            revision:(Number(enrollment.data().revision)||1)+1});
+        tx.update(registrationRef,{status:"ended",endedByUid:ctx.uid,endedAt:now,
+          endReason:reason,endReasonType:"progression",progressionType,
+          progressedAt:now,progressedByUid:ctx.uid,progressionReason:reason,
+          ...(targetRegistrationId?{progressedToRegistrationId:targetRegistrationId}:{graduated:true}),
+          updatedByUid:ctx.uid,updatedAt:now,
+          revision:(Number(source.revision)||1)+1});
+        const endedSlot={schoolId:ctx.schoolId,personId,yearId:source.yearId,
+          programId:source.programId,termId:source.termId,sectionId:source.sectionId,
+          registrationId,status:"ended",updatedByUid:ctx.uid,updatedAt:now};
+        if(sourceSlot.exists&&sourceSlot.data().registrationId===registrationId)
+          tx.set(sourceSlotRef,{...endedSlot,revision:(Number(sourceSlot.data().revision)||1)+1},{merge:true});
+
+        let createdCourses=0;
+        if(review.target){
+          const target=review.target,targetData={
+            schoolId:ctx.schoolId,personId,displayName:source.displayName||person.data().displayName||"Student",
+            studentNumber:source.studentNumber||person.data().studentNumber||null,
+            birthDate:source.birthDate||person.data().birthDate||null,
+            guardianName:source.guardianName||person.data().primaryGuardianName||null,
+            guardianRelationship:source.guardianRelationship||person.data().primaryGuardianRelationship||null,
+            guardianEmail:source.guardianEmail||person.data().primaryGuardianEmail||null,
+            guardianMobile:source.guardianMobile||person.data().primaryGuardianMobile||null,
+            studentEmailType:source.studentEmailType||person.data().studentEmailType||null,
+            studentEmailRequired:source.studentEmailRequired===true,
+            accountResponsibility:source.accountResponsibility||person.data().accountResponsibility||"student",
+            yearId:target.yearId,programId:target.programId,termId:target.termId,
+            sectionId:target.sectionId,gradeLevel:target.gradeLevel||null,status:"active",
+            courseCount:review.targetOfferings.length,accountLinked:Boolean(source.accountLinked||person.data().authUid),
+            source:"progression",applicationId:null,
+            previousRegistrationId:registrationId,progressionType,progressionReason:reason,
+            revision:1,createdByUid:ctx.uid,createdAt:now,updatedByUid:ctx.uid,updatedAt:now
+          };
+          tx.create(review.targetRegistrationRef,targetData);
+          const placement={schoolId:ctx.schoolId,personId,yearId:target.yearId,
+            programId:target.programId,termId:target.termId,sectionId:target.sectionId,
+            registrationId:target.registrationId,status:"active",updatedByUid:ctx.uid,updatedAt:now};
+          if(review.targetSlot.exists)
+            tx.set(review.targetSlotRef,{...placement,revision:(Number(review.targetSlot.data().revision)||1)+1},{merge:true});
+          else tx.create(review.targetSlotRef,{...placement,revision:1,createdByUid:ctx.uid,createdAt:now});
+          review.targetOfferings.forEach((offering,index)=>{
+            const row=offering.data();
+            tx.create(review.targetEnrollmentRefs[index],{schoolId:ctx.schoolId,personId,
+              offeringId:offering.id,registrationId:target.registrationId,
+              programId:row.programId,yearId:row.yearId,termId:row.termId,
+              sectionId:row.sectionId,subjectId:row.subjectId,status:"active",revision:1,
+              enrollmentSource:"official_progression",createdByUid:ctx.uid,createdAt:now});
+            createdCourses++;
+          });
+        }
+        const auditRef=db.collection(root+"directory_audit").doc();
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
+          registrationId,targetRegistrationId,action:"student_registration_progressed",
+          progressionType,fromYearId:source.yearId,fromProgramId:source.programId,
+          fromTermId:source.termId,fromSectionId:source.sectionId,
+          ...(review.target?{toYearId:review.target.yearId,toProgramId:review.target.programId,
+            toTermId:review.target.termId,toSectionId:review.target.sectionId,
+            toGradeLevel:review.target.gradeLevel||null}:{}),
+          completedCourseCount:review.sourceEnrollments.length,createdCourseCount:createdCourses,
+          reason,createdAt:now});
+        result={registrationId,targetRegistrationId,progressionType,
+          completedCourseCount:review.sourceEnrollments.length,createdCourseCount:createdCourses,
+          target:review.target,revision:(Number(source.revision)||1)+1};
+      });
+      return result;
+    }
+
     if(input.action==="register_student"){
       const displayName=text(input.displayName,"Student name",140);
       const birthDate=academicDate(input.birthDate,"Birth date");
@@ -849,5 +1090,6 @@ module.exports={
   createSchoolEnrollmentService,
   standardSchool,
   gradeRequiresStudentEmail,
-  registrationOwnsEnrollment
+  registrationOwnsEnrollment,
+  progressionGradeValid
 };
