@@ -56,7 +56,8 @@ function renderRecommendation({final=false}={}){
     unstaffed=classRows.filter(row=>!(row.teacherUids||[]).length).length,
     scheduledIds=new Set((model.schedules?.schedules||[]).filter(row=>(row.meetings||[]).length).map(row=>row.offeringId)),
     unscheduled=classRows.filter(row=>!scheduledIds.has(row.offeringId)).length,
-    legacyRosterClasses=classRows.filter(row=>row.rosterMode==="legacy").length;
+    legacyRosterClasses=classRows.filter(row=>row.rosterMode==="legacy").length,
+    primaryReviewClasses=classRows.filter(row=>row.primaryNeedsReview).length;
   const enrollments=Number(model.overview?.counts?.enrollments);
   const people=Number(model.overview?.counts?.people);
   if(critical>0)action={
@@ -83,6 +84,11 @@ function renderRecommendation({final=false}={}){
     title:unscheduled+" active class"+(unscheduled===1?" has":"es have")+" no official schedule",
     detail:"Add the institutional meeting time and room so teachers and students share the same class timetable and conflict checks remain authoritative.",
     href:"school-classes.html?view=schedule",label:"Complete class schedules",tone:"amber"
+  };
+  else if(primaryReviewClasses>0)action={
+    title:primaryReviewClasses+" staffed class"+(primaryReviewClasses===1?" needs":"es need")+" a Primary Teacher review",
+    detail:"These classes have multiple active teachers or stale lead metadata without a valid explicit Primary Teacher. Set the class lead without changing existing assessment-review ownership.",
+    href:"school-classes.html",label:"Review teaching teams",tone:"amber"
   };
   else if(legacyRosterClasses>0)action={
     title:legacyRosterClasses+" active class"+(legacyRosterClasses===1?" needs":"es need")+" roster-source review",
@@ -178,6 +184,7 @@ function issues(){
     const label=[row.subjectName,row.sectionName,row.termName].filter(Boolean).join(" · ");
     if(!(row.teacherUids||[]).length)items.push({source:"class",severity:"integrity",label,detail:"Active class has no assigned subject teacher.",offeringId:row.offeringId,targetTab:"classes"});
     if(!scheduleIds.has(row.offeringId))items.push({source:"class",severity:"attention",label,detail:"Active class has no official meeting schedule.",offeringId:row.offeringId,targetTab:"schedule"});
+    if(row.primaryNeedsReview)items.push({source:"class",severity:"review",label,detail:"Teaching team needs an explicit valid Primary Teacher. Co-teacher access and existing assessment review ownership remain separate.",offeringId:row.offeringId,targetTab:"classes"});
     if(row.rosterMode==="legacy")items.push({source:"class",severity:"review",label,detail:"Class roster source is still legacy/unclassified. Adopt official section placement or mark it selective.",offeringId:row.offeringId,targetTab:"classes"});
   }
   for(const record of model.records||[]){
