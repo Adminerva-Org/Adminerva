@@ -73,7 +73,7 @@ export function createV4BulkEvaluationController({
   const btn=id=>el(id);
   let task=null,rows=[],selection=new Set(),staged=new Map(),
     exceptions=new Map(),batchId="",referenceMap=new Map(),stopped=false,
-    running=false,schoolSignature="";
+    running=false,schoolSignature="",scopeGeneration=0;
   const isStudio=t=>t?.submissionSource==="studio";
   const key=row=>String(row.submissionId||row.recordId||"");
   const selectedEligible=()=>rows.filter(row=>selection.has(key(row))&&
@@ -139,6 +139,7 @@ export function createV4BulkEvaluationController({
     }
   }
   function reset(){
+    scopeGeneration++;stopped=true;
     task=null;rows=[];selection.clear();staged.clear();exceptions.clear();
     referenceMap.clear();batchId="";payload.value="";stopped=false;running=false;
     schoolSignature="";status.textContent="";render();
@@ -146,6 +147,7 @@ export function createV4BulkEvaluationController({
   function onInbox({task:next,rows:nextRows,gradeMap,schoolId}){
     const signature=String(schoolId||"")+":"+taskKey(next);
     if(signature!==schoolSignature){
+      scopeGeneration++;stopped=true;
       selection.clear();staged.clear();exceptions.clear();referenceMap.clear();
       batchId="";payload.value="";schoolSignature=signature;
     }
@@ -199,7 +201,8 @@ export function createV4BulkEvaluationController({
     catch(error){appendStatus(title+" stopped: "+(error?.message||error));}
     finally{running=false;setBusy(false);render();}
   }
-  async function processBatch(evaluate){
+  async function processBatch(){
+    const session=scopeGeneration;
     const work=candidates().slice(0,BULK_MAX_BATCH);
     if(!work.length){appendStatus("No selected ungraded submissions remain.");return;}
     await execute("Bulk evaluation",async()=>{
@@ -211,20 +214,24 @@ export function createV4BulkEvaluationController({
           " in this batch · "+(row.studentName||"Learner")+".");
         try{
           const frozen=await inspect(row);
+          if(session!==scopeGeneration)break;
           const result=await generateContent({
             contents:[{parts:[{text:frozen.packageText}]}],
             generationConfig:{
               responseMimeType:"application/json",temperature:0.2,maxOutputTokens:8192
             }
           },{purpose:"evaluation",signal:AbortSignal.timeout(100000)});
+          if(session!==scopeGeneration)break;
           const parsed=await evaluationJSON({ok:true,json:async()=>result});
           const suggestion=parseResponse(JSON.stringify(parsed),{task});
           const review=bulkSuggestionState(suggestion,task);
           staged.set(id,{...frozen,source:"internal_ai",suggestion,review});
           exceptions.delete(id);
         }catch(error){
+          if(session!==scopeGeneration)break;
           exceptions.set(id,error?.message||"Evaluation failed");
         }
+        if(session!==scopeGeneration)break;
         done++;render();
       }
       appendStatus(done+" evaluation(s) processed · "+
@@ -233,6 +240,7 @@ export function createV4BulkEvaluationController({
     });
   }
   async function exportBatch(){
+    const session=scopeGeneration;
     const work=candidates().slice(0,BULK_MAX_BATCH);
     if(!work.length){appendStatus("No ungraded submissions selected.");return;}
     await execute("External package",async()=>{
@@ -242,13 +250,19 @@ export function createV4BulkEvaluationController({
         const id=key(row);
         try{
           const frozen=await inspect(row);
+          if(session!==scopeGeneration)break;
           const ref=crypto.randomUUID();
           refs.set(ref,frozen);
           items.push({ref,evaluationInstructions:frozen.packageText});
           exceptions.delete(id);
-        }catch(error){exceptions.set(id,error?.message||"Could not export frozen source");}
+        }catch(error){
+          if(session!==scopeGeneration)break;
+          exceptions.set(id,error?.message||"Could not export frozen source");
+        }
+        if(session!==scopeGeneration)break;
         appendStatus(items.length+" verified anonymous package item(s) prepared.");
       }
+      if(session!==scopeGeneration)return;
       if(!items.length)throw Error("No frozen submissions passed the package checks.");
       batchId=crypto.randomUUID();referenceMap=refs;
       payload.value=JSON.stringify({
@@ -274,6 +288,8 @@ export function createV4BulkEvaluationController({
               feedback:"At least 20 characters",limitations:"Evidence limitations"}}]},
         items
       },null,2);
+      const exchange=payload.closest("details");
+      if(exchange)exchange.open=true;
       payload.scrollIntoView({block:"nearest"});
       appendStatus(items.length+" anonymous external evaluation package(s) ready. "+
         "Copy the JSON and paste the evaluator's response in Import. No grades saved.");
@@ -299,6 +315,7 @@ export function createV4BulkEvaluationController({
     render();
   }
   async function saveDrafts(){
+    const session=scopeGeneration;
     const eligible=[...staged.values()].filter(value=>
       value.review.saveEligible&&selectedEligible().some(row=>key(row)===value.key)
     );
@@ -309,7 +326,7 @@ export function createV4BulkEvaluationController({
     await execute("Bulk save",async()=>{
       let saved=0,skipped=0;
       for(const item of eligible){
-        if(stopped)break;
+        if(stopped||session!==scopeGeneration)break;
         appendStatus("Saving verified draft "+(saved+skipped+1)+"/"+eligible.length+"…");
         try{
           const details={
@@ -330,16 +347,19 @@ export function createV4BulkEvaluationController({
               submissionVersion:item.version,...details
             });
           }
+          if(session!==scopeGeneration)break;
           staged.delete(item.key);exceptions.delete(item.key);selection.delete(item.key);
           saved++;
         }catch(error){
+          if(session!==scopeGeneration)break;
           exceptions.set(item.key,error?.message||"Could not save grade draft");skipped++;
         }
+        if(session!==scopeGeneration)break;
         render();
       }
       appendStatus(saved+" private draft(s) saved; "+skipped+" failed or changed. "+
         "Nothing was published. Review results before Publish all drafts.");
-      if(saved)await onSaved();
+      if(saved&&session===scopeGeneration)await onSaved();
     });
   }
   btn("gbV4BulkRun").addEventListener("click",()=>void processBatch());
