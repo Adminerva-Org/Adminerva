@@ -168,4 +168,7 @@ test("partial saves preserve original JSON batch mapping and unsaved graded sugg
  assert.equal(canClearCompletedBulkExchange({
    referenceMap,staged:new Map(),rows,savedIds:new Set(["one"])
  }),true);
+ assert.equal(canClearCompletedBulkExchange({
+   referenceMap,staged:new Map(),rows:[rows[0]],savedIds:new Set(["one"])
+ }),false); // A missing historical receipt must not silently discard its reference.
 });
