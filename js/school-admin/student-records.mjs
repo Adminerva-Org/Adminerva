@@ -198,8 +198,8 @@ function renderFile(data){
   renderGuardians(data);renderRegistrations(data);renderGrades(data);renderRequests(data);renderAudit(data);
   renderStudents();
 }
-async function openStudent(personId){
-  if(saving)return;
+async function openStudent(personId,{force=false}={}){
+  if(saving&&!force)return;
   const run=++fileRun;status.textContent="Loading canonical Student Records file…";
   try{
     const data=await perform("student_file",{personId});
@@ -255,7 +255,7 @@ get("sr-guardian-form").addEventListener("submit",event=>{
         isPrimary:data.get("isPrimary")==="on"
       });
       guardianChange=null;get("sr-guardian-dialog").close();
-      await openStudent(current.person.personId);
+      await openStudent(current.person.personId,{force:true});
       status.textContent=result.contactReused
         ?"Guardian relationship saved. An existing canonical guardian contact was reused."
         :"Guardian relationship saved.";
@@ -271,7 +271,7 @@ get("sr-adopt-guardian").addEventListener("click",()=>{
     setSaving(true,"Adopting primary guardian into the canonical relationship model…");
     try{
       await perform("adopt_primary_guardian",{personId,expectedPersonRevision:revision});
-      await openStudent(personId);status.textContent="Primary guardian adopted. The legacy compatibility snapshot was preserved.";
+      await openStudent(personId,{force:true});status.textContent="Primary guardian adopted. The legacy compatibility snapshot was preserved.";
     }catch(error){status.textContent=error?.message||"Guardian adoption failed.";}
     finally{setSaving(false);}
   })();
@@ -301,7 +301,7 @@ get("sr-guardian-lifecycle-form").addEventListener("submit",event=>{
       await perform(action,{personId,relationshipId:change.guardian.relationshipId,
         expectedRevision:Number(change.guardian.revision)||1,reason});
       guardianLifecycle=null;get("sr-guardian-lifecycle-dialog").close();
-      await openStudent(personId);status.textContent=change.restoring?"Guardian relationship restored.":"Guardian relationship ended; history was preserved.";
+      await openStudent(personId,{force:true});status.textContent=change.restoring?"Guardian relationship restored.":"Guardian relationship ended; history was preserved.";
     }catch(error){status.textContent=error?.message||"Guardian relationship lifecycle change failed.";}
     finally{setSaving(false);}
   })();
@@ -321,7 +321,7 @@ get("sr-request-form").addEventListener("submit",event=>{
     try{
       await perform("create_document_request",{personId,type:String(data.get("type")||""),
         purpose:String(data.get("purpose")||"").trim(),notes:String(data.get("notes")||"").trim()});
-      get("sr-request-dialog").close();await openStudent(personId);status.textContent="Document request created.";
+      get("sr-request-dialog").close();await openStudent(personId,{force:true});status.textContent="Document request created.";
     }catch(error){status.textContent=error?.message||"Document request was not created.";}
     finally{setSaving(false);}
   })();
@@ -353,7 +353,7 @@ get("sr-request-lifecycle-form").addEventListener("submit",event=>{
         reason:String(data.get("reason")||"").trim(),
         releaseReference:String(data.get("releaseReference")||"").trim()});
       requestLifecycle=null;get("sr-request-lifecycle-dialog").close();
-      await openStudent(personId);status.textContent="Document request updated.";
+      await openStudent(personId,{force:true});status.textContent="Document request updated.";
     }catch(error){status.textContent=error?.message||"Document request was not updated.";}
     finally{setSaving(false);}
   })();
