@@ -166,6 +166,96 @@ function renderList(host,items,meta,kind){
     row.append(left,actions);host.append(row);
   }
 }
+function defaultSubmitLabel(kind){
+  return {academic_years:"Add academic year",academic_programs:"Add program / division",
+    terms:"Add academic period",subjects:"Add subject",sections:"Add section"}[kind]||"Save";
+}
+function catalogKindForForm(form){
+  return new Map([
+    [el("ac-year-form"),"academic_years"],[el("ac-program-form"),"academic_programs"],
+    [el("ac-term-form"),"terms"],[el("ac-subject-form"),"subjects"],[el("ac-section-form"),"sections"]
+  ]).get(form)||"";
+}
+function findCatalog(kind,id){
+  return (allCatalog[kind]||[]).find(item=>item.id===id)||null;
+}
+function cancelCatalogEdit(){
+  if(!editingCatalog)return;
+  const {kind}=editingCatalog,form=catalogForm(kind);
+  editingCatalog=null;
+  if(form){
+    form.reset();clearManual(form);
+    if(form.elements.recordId){form.elements.recordId.readOnly=false;form.elements.recordId.dataset.manual="false";}
+    const submit=form.querySelector('button[type="submit"]');if(submit)submit.textContent=defaultSubmitLabel(kind);
+    const cancel=form.querySelector("[data-cancel-catalog-edit]");if(cancel)cancel.hidden=true;
+  }
+  renderCatalog();
+  notify("Edit cancelled.","info");
+}
+function beginCatalogEdit(kind,item){
+  if(busy||item.status!=="active")return;
+  if(editingCatalog)cancelCatalogEdit();
+  const form=catalogForm(kind);if(!form)return;
+  editingCatalog={kind,item:{...item}};
+  form.reset();clearManual(form);
+  if(form.elements.recordId){
+    form.elements.recordId.value=item.id;form.elements.recordId.readOnly=true;
+    form.elements.recordId.dataset.manual="true";
+  }
+  if(form.elements.name)form.elements.name.value=item.name||"";
+  if(kind==="academic_years"){
+    form.elements.startDate.value=item.startDate||"";
+    form.elements.endDate.value=item.endDate||"";
+  }else if(kind==="terms"){
+    form.elements.yearId.value=item.yearId||"";
+    form.elements.programId.value=item.programId||"";
+    form.elements.periodType.value=item.periodType||"term";
+    form.elements.sequence.value=String(item.sequence||1);
+    form.elements.startDate.value=item.startDate||"";
+    form.elements.endDate.value=item.endDate||"";
+  }else if(kind==="sections"){
+    form.elements.programId.value=item.programId||"";
+    updateSectionGradeOptions();
+    form.elements.gradeLevel.value=item.gradeLevel||"";
+    form.elements.pathway.value=item.pathway||"";
+    updateSectionPathwayVisibility();
+  }
+  const submit=form.querySelector('button[type="submit"]');if(submit)submit.textContent="Save changes";
+  ensureCancelEditButton(form).hidden=false;
+  form.scrollIntoView({behavior:"smooth",block:"start"});
+  setTimeout(()=>form.elements.name?.focus?.(),180);
+  notify("Editing "+catalogLabel(kind)+". The system code stays fixed so historical references remain intact.","info");
+}
+function openLifecycle(change){
+  if(busy)return;
+  lifecycleChange=change;
+  const {type,mode,item}=change,restoring=mode==="restore",
+    title=el("ac-lifecycle-title"),target=el("ac-lifecycle-target"),
+    help=el("ac-lifecycle-help"),confirm=el("ac-lifecycle-confirm"),form=el("ac-lifecycle-form");
+  form.reset();
+  title.textContent=(restoring?"Restore ":"Archive ")+(type==="offering"?"class offering":catalogLabel(change.kind).toLowerCase());
+  target.textContent=type==="offering"?
+    ((findCatalog("subjects",item.subjectId)?.name||item.subjectId)+" · "+
+      (findCatalog("sections",item.sectionId)?.name||item.sectionId)):
+    (item.name||item.id)+" · "+item.id;
+  if(type==="offering"){
+    help.textContent=restoring
+      ?"Restoring reactivates the class record. Official-section rosters are rebuilt from current registrations, but teacher assignments and the old schedule stay ended/archived so staffing and conflicts can be reviewed again."
+      :"Retiring the class ends its active class enrollments and teacher assignments, archives its official schedule, and preserves assessments, submissions, grades and history. An open or future published assessment blocks retirement.";
+  }else{
+    help.textContent=restoring
+      ?"Restoring makes this academic record selectable again. Required parent records must already be active."
+      :"Archiving removes this record from normal setup choices without deleting history. Active dependent records must be ended or archived first.";
+  }
+  confirm.textContent=restoring?"Restore":"Archive";
+  confirm.className="ac-btn "+(restoring?"success":"danger");
+  el("ac-lifecycle-dialog").showModal();
+}
+function closeLifecycle(){
+  if(busy)return;
+  lifecycleChange=null;el("ac-lifecycle-dialog").close();
+}
+
 function configuredCount(step){
   return [years,programs,terms,subjects,sections,offerings.filter(item=>item.status==="active")][step-1]?.length||0;
 }
@@ -418,24 +508,24 @@ function updateOfferingPreview(){
   host.append(title,meta);
 }
 function renderCatalog(){
-  renderList(el("ac-years"),years,item=>{
+  renderList(el("ac-years"),allCatalog.academic_years,item=>{
     const dates=item.startDate&&item.endDate?dateText(item.startDate)+" → "+dateText(item.endDate):
       MONTHS[(Number(item.startMonth)||7)-1]+" → "+MONTHS[(Number(item.endMonth)||5)-1];
     return "ID: "+item.id+" · "+dates;
-  });
-  renderList(el("ac-programs"),programs,item=>"ID: "+item.id);
-  renderList(el("ac-terms"),terms,item=>{
-    const year=years.find(x=>x.id===item.yearId)?.name||item.yearId||"";
-    const program=programs.find(x=>x.id===item.programId)?.name||item.programId||"";
+  },"academic_years");
+  renderList(el("ac-programs"),allCatalog.academic_programs,item=>"ID: "+item.id,"academic_programs");
+  renderList(el("ac-terms"),allCatalog.terms,item=>{
+    const year=findCatalog("academic_years",item.yearId)?.name||item.yearId||"";
+    const program=findCatalog("academic_programs",item.programId)?.name||item.programId||"";
     const dates=item.startDate&&item.endDate?dateText(item.startDate)+" → "+dateText(item.endDate):null;
     return [program,year,item.periodType,item.sequence?"#"+item.sequence:null,dates].filter(Boolean).join(" · ");
-  });
-  renderList(el("ac-subjects"),subjects,item=>"ID: "+item.id);
-  renderList(el("ac-sections"),sections,item=>{
-    const program=programs.find(x=>x.id===item.programId)?.name||item.programId||"Unassigned program";
+  },"terms");
+  renderList(el("ac-subjects"),allCatalog.subjects,item=>"ID: "+item.id,"subjects");
+  renderList(el("ac-sections"),allCatalog.sections,item=>{
+    const program=findCatalog("academic_programs",item.programId)?.name||item.programId||"Unassigned program";
     const level=item.gradeLevel?levelLabel(item.programId,item.gradeLevel):null;
     return [program,level,item.pathway||null,"ID: "+item.id].filter(Boolean).join(" · ");
-  });
+  },"sections");
 
   const termForm=el("ac-term-form"),sectionForm=el("ac-section-form"),offeringForm=el("ac-offering-form");
   const preferredYear=currentYearId();
@@ -469,26 +559,35 @@ function renderCatalog(){
 }
 function renderOfferings(){
   const host=el("ac-offering-list");host.replaceChildren();
-  const active=offerings.filter(item=>item.status==="active");
-  el("ac-offering-count").textContent=active.length+" active";
-  if(!active.length){
+  const active=offerings.filter(item=>item.status==="active"),archived=offerings.filter(item=>item.status==="archived");
+  el("ac-offering-count").textContent=active.length+" active"+(archived.length?" · "+archived.length+" archived":"");
+  if(!offerings.length){
     const p=document.createElement("p");p.className="ac-muted py-3";p.textContent="No course offerings yet. Complete the setup steps, then create the first offering here.";host.append(p);return;
   }
-  for(const item of active){
+  for(const item of [...active,...archived]){
     const row=document.createElement("div");row.className="ac-row";
     const left=document.createElement("div");
     const title=document.createElement("strong");
-    title.textContent=(subjects.find(x=>x.id===item.subjectId)?.name||item.subjectId)+" · "+
-      (sections.find(x=>x.id===item.sectionId)?.name||item.sectionId);
+    title.textContent=(findCatalog("subjects",item.subjectId)?.name||item.subjectId)+" · "+
+      (findCatalog("sections",item.sectionId)?.name||item.sectionId);
     const meta=document.createElement("p");meta.className="ac-muted";
     meta.textContent=[
-      programs.find(x=>x.id===item.programId)?.name||item.programId,
-      years.find(x=>x.id===item.yearId)?.name||item.yearId,
-      terms.find(x=>x.id===item.termId)?.name||item.termId
+      findCatalog("academic_programs",item.programId)?.name||item.programId,
+      findCatalog("academic_years",item.yearId)?.name||item.yearId,
+      findCatalog("terms",item.termId)?.name||item.termId,
+      item.rosterMode==="selective"?"Selective roster":"Official section roster"
     ].filter(Boolean).join(" · ");
     left.append(title,meta);
-    const tag=document.createElement("span");tag.className="ac-muted";tag.textContent="Active";
-    row.append(left,tag);host.append(row);
+    const actions=document.createElement("div");actions.className="ac-row-actions";
+    const tag=document.createElement("span");tag.className="ac-state";tag.dataset.state=item.status||"active";
+    tag.textContent=item.status||"active";actions.append(tag);
+    const lifecycle=document.createElement("button");lifecycle.type="button";
+    lifecycle.className="ac-btn "+(item.status==="archived"?"success":"danger");
+    lifecycle.textContent=item.status==="archived"?"Restore":"Retire";
+    lifecycle.addEventListener("click",()=>openLifecycle({
+      type:"offering",mode:item.status==="archived"?"restore":"archive",item
+    }));
+    actions.append(lifecycle);row.append(left,actions);host.append(row);
   }
 }
 async function load({afterWrite=false}={}){
