@@ -783,6 +783,32 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       };
     }
 
+    if(input.action==="assessment_link_overview"){
+      await verifyOffering();
+      const sheet=await sheetRef.get(),columns=sheet.exists&&sheet.data().schoolId===ctx.schoolId&&
+        Array.isArray(sheet.data().columns)?sheet.data().columns:[];
+      const links=[];
+      for(const column of columns){
+        if(column.kind!=="assessment")continue;
+        const source=column.assessmentSource||SCHOOL_SOURCE;
+        if(![SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE].includes(source)||!column.taskId)continue;
+        links.push({
+          taskId:String(column.taskId),sourceType:source,
+          status:column.archived===true?"archived":"linked",
+          linked:column.archived!==true,archived:column.archived===true,
+          columnId:String(column.columnId||""),
+          label:String(column.label||"Assessment"),
+          category:String(column.category||""),
+          maxPoints:Number(column.maxPoints)||0,
+          studentVisibility:cleanStudentVisibility(column.studentVisibility)
+        });
+      }
+      return {
+        offeringId,links,
+        sheetRevision:sheet.exists&&sheet.data().schoolId===ctx.schoolId?Number(sheet.data().revision)||0:0
+      };
+    }
+
     if(input.action==="assessment_link_status"){
       await verifyOffering();
       const taskId=checkId(String(input.taskId||""),"Assessment task",128);
