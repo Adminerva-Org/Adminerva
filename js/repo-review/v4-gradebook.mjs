@@ -2,13 +2,13 @@ import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
-import {buildV4RepositoryEvaluationSnapshot} from "./services/v4-repository-evidence.mjs?v=20261121-unified-repo1";
+import {buildV4RepositoryEvaluationSnapshot} from "./services/v4-repository-evidence.mjs?v=20261122-submission-first1";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
 import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=20261121-universal-bulk20-1";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
-import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261121-universal-bulk20-1";
+import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261122-submission-first1";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -625,7 +625,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       " pinned source files loaded."+
       (result.analysis.complete?"":" Coverage is partial; see the evaluator limitations.")+
       " These signals do not independently establish individual authorship."+
-      (currentTask.legacyCompatibility?" Only the verified historical commit subset was evaluated.":"");
+      (currentTask.legacyCompatibility&&currentSnapshot?.verifiedContributionCommits?.length?
+         " Previously annotated individual contribution scope was preserved.":"");
     return result;
   }
   function applyEvaluationSuggestion(suggestion,label){
