@@ -1160,7 +1160,10 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
     if(person.kind==="student")for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
       details[name]=String(values.get(name)||"").trim();
   }
-  else details.reason=String(values.get("reason")||"").trim();
+  else {
+    details.expectedRevision=Number(person.revision)||1;
+    details.reason=String(values.get("reason")||"").trim();
+  }
   void submitForm(form,action,details).then(result=>{
     if(!result)return;
     personChange=null;get("pa-person-dialog").close();
