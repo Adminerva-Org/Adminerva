@@ -11,6 +11,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
+const {studentAccountUids,studentRecordUidAllowed}=require("./student-account-history.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 const sha=value=>{
@@ -93,21 +94,38 @@ function createSchoolGithubEvidenceService({db}){
       enrollment.data().personId!==personId||enrollment.data().offeringId!==offeringId||
       enrollment.data().status!=="active")
     deny("permission-denied","You are not actively enrolled in this course offering.");
-   return {member:member.data(),personId};
+   return {member:member.data(),personId,person:person.data()};
   }
-  const evidenceId=key(ctx.schoolId,taskId,ctx.uid);
-  const evidenceRef=evidenceCollection.doc(evidenceId);
+  const currentEvidenceId=key(ctx.schoolId,taskId,ctx.uid),
+    currentEvidenceRef=evidenceCollection.doc(currentEvidenceId);
+  async function resolveStudentEvidence(personId,personData,read=ref=>ref.get()){
+   const candidates=studentAccountUids(personData,ctx.uid).map(uid=>{
+     const evidenceId=key(ctx.schoolId,taskId,uid);
+     return {uid,evidenceId,ref:evidenceCollection.doc(evidenceId)};
+   }),docs=await Promise.all(candidates.map(row=>read(row.ref))),
+     existing=candidates.map((row,index)=>({...row,doc:docs[index]})).filter(row=>row.doc.exists);
+   for(const row of existing){
+     const data=row.doc.data();
+     if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||data.offeringId!==offeringId||
+        data.personId!==personId||!studentRecordUidAllowed(personData,ctx.uid,data.studentUid))
+       deny("data-loss","GitHub evidence in this recovered account history does not match the canonical student.");
+   }
+   if(existing.length>1)
+    deny("failed-precondition","Multiple GitHub evidence records exist for this assessment across recovered accounts. Ask an administrator to reconcile them.");
+   return existing[0]||{uid:ctx.uid,evidenceId:currentEvidenceId,ref:currentEvidenceRef,doc:docs[0]};
+  }
 
   if(input.action==="my_status"){
    if(taskData.published!==true)deny("not-found","This assessment is not published to students.");
-   const {personId}=await verifyStudentRead();
-   const current=await evidenceRef.get();
+   const {personId,person}=await verifyStudentRead(),
+     located=await resolveStudentEvidence(personId,person),current=located.doc;
    if(!current.exists)return {taskId,submitted:false,status:"not_submitted",version:0};
    const data=current.data();
-   if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||data.studentUid!==ctx.uid||
+   if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||
+      !studentRecordUidAllowed(person,ctx.uid,data.studentUid)||
       data.personId!==personId||data.offeringId!==offeringId)
     deny("permission-denied","Stored evidence belongs to a different school context.");
-   return {taskId,evidenceId,currentVersion:data.currentVersion,submitted:true,status:data.status,version:data.currentVersion,
+   return {taskId,evidenceId:located.evidenceId,currentVersion:data.currentVersion,submitted:true,status:data.status,version:data.currentVersion,
     repository:data.repository?.fullName||"",selectedCommitShas:Array.isArray(data.selectedCommitShas)?data.selectedCommitShas:[],selectedCount:Array.isArray(data.selectedCommitShas)?data.selectedCommitShas.length:0,
     checkpointSha:data.checkpointSha||"",reopenReason:data.status==="reopened"?data.reopenReason||"":"",
     revisionDueAt:data.status==="reopened"?data.revisionDueAt?.toMillis?.()||null:null,
@@ -133,9 +151,13 @@ function createSchoolGithubEvidenceService({db}){
     checkId(personId,"Person ID",128);
     const personRef=db.doc(prefix+"people/"+personId);
     const enrollmentRef=db.doc(prefix+"enrollments/"+rowKey(personId,offeringId));
-    const [currentTask,person,enrollment,current]=await Promise.all([
-      tx.get(taskRef),tx.get(personRef),tx.get(enrollmentRef),tx.get(evidenceRef)
+    const [currentTask,person,enrollment]=await Promise.all([
+      tx.get(taskRef),tx.get(personRef),tx.get(enrollmentRef)
     ]);
+    const located=person.exists?
+      await resolveStudentEvidence(personId,person.data(),ref=>tx.get(ref)):
+      {evidenceId:currentEvidenceId,ref:currentEvidenceRef,doc:await tx.get(currentEvidenceRef)},
+      evidenceId=located.evidenceId,evidenceRef=located.ref,current=located.doc;
     if(!currentTask.exists||currentTask.data().schoolId!==ctx.schoolId||
        currentTask.data().submissionSource!=="github"||currentTask.data().status!=="deployed"||
        currentTask.data().published!==true||currentTask.data().offeringId!==offeringId)
@@ -162,8 +184,9 @@ function createSchoolGithubEvidenceService({db}){
     if(current.exists){
       const prior=current.data();
       if(prior.schoolId!==ctx.schoolId||prior.taskId!==taskId||
-         prior.studentUid!==ctx.uid||prior.offeringId!==offeringId)
-        deny("permission-denied","Stored GitHub evidence belongs to another context.");
+         prior.personId!==personId||prior.offeringId!==offeringId||
+         !studentRecordUidAllowed(person.data(),ctx.uid,prior.studentUid))
+        deny("permission-denied","Stored GitHub evidence belongs to another student identity.");
       if(prior.status==="submitted"&&prior.evidenceDigest===digest){
         receipt={evidenceId,version:prior.currentVersion,status:"submitted",alreadyExisted:true};return;
       }
@@ -178,8 +201,12 @@ function createSchoolGithubEvidenceService({db}){
       evidenceDigest:digest,version,submittedAt:when};
     tx.create(versionRef,immutable);
     if(current.exists){
+      const prior=current.data(),previousStudentUids=[...new Set([
+        ...(Array.isArray(prior.previousStudentUids)?prior.previousStudentUids:[]),
+        ...(prior.studentUid&&prior.studentUid!==ctx.uid?[prior.studentUid]:[])
+      ])].slice(-20);
       tx.update(evidenceRef,{...immutable,status:"submitted",currentVersion:version,
-        reopenReason:null,revisionDueAt:null,approvedAt:null,approvedByUid:null,
+        previousStudentUids,reopenReason:null,revisionDueAt:null,approvedAt:null,approvedByUid:null,
         verification:null,updatedAt:when});
     }else{
       tx.create(evidenceRef,{...immutable,status:"submitted",currentVersion:version,
@@ -271,7 +298,7 @@ function createSchoolGithubEvidenceService({db}){
     deny("invalid-argument","Provide the verified commit SHA set.");
    const verified=[...new Set(input.verifiedCommitShas.map(sha))].sort();
    const auditRef=db.collection(prefix+"submission_audit").doc();
-   let approvedStudentUid=null;
+   let approvedStudentUid=null,approvedNotificationUid=null;
    await db.runTransaction(async tx=>{
     const currentTask=await teacherWriteAuthority(tx),lifecycle=currentTask.lifecycle||"active";
     if(["archived","cancelled"].includes(lifecycle))
@@ -283,6 +310,11 @@ function createSchoolGithubEvidenceService({db}){
       deny("failed-precondition","Only currently submitted evidence may be approved.");
     const data=record.data(),selected=[...(data.selectedCommitShas||[])].sort();
     approvedStudentUid=data.studentUid;
+    const studentPerson=await tx.get(db.doc(prefix+"people/"+checkId(data.personId,"Student person",128)));
+    if(studentPerson.exists&&studentPerson.data().schoolId===ctx.schoolId&&
+       studentPerson.data().kind==="student"&&studentPerson.data().status==="active"&&
+       typeof studentPerson.data().authUid==="string")
+      approvedNotificationUid=studentPerson.data().authUid;
     const claimQuery=db.collection(prefix+"commit_reclaims").where("evidenceId","==",targetId).limit(101);
     const claims=await tx.get(claimQuery);
     if(claims.size===101)deny("resource-exhausted","Attribution history requires pagination before evidence approval.");
@@ -306,8 +338,8 @@ function createSchoolGithubEvidenceService({db}){
       actorUid:ctx.uid,studentUid:data.studentUid,action:"github_evidence_approved",
       version:data.currentVersion,evidenceDigest:data.evidenceDigest,createdAt:when});
    });
-   if(approvedStudentUid)await writeSchoolNotification({
-     db,schoolId:ctx.schoolId,uid:approvedStudentUid,
+   if(approvedNotificationUid)await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:approvedNotificationUid,
      id:"github_approved_"+taskId+"_"+targetId,
      title:"GitHub evidence approved",
      body:(taskData.title||"Assessment")+" · your submitted evidence passed teacher verification.",
@@ -324,7 +356,7 @@ function createSchoolGithubEvidenceService({db}){
    if(Date.now()>taskData.dueAt.toMillis()&&!extension)
     deny("failed-precondition","The original deadline passed. Set an explicit revision extension.");
    const auditRef=db.collection(prefix+"submission_audit").doc();
-   let revisionStudentUid=null;
+   let revisionStudentUid=null,revisionNotificationUid=null;
    await db.runTransaction(async tx=>{
     await teacherWriteAuthority(tx);
     const record=await tx.get(targetRef);
@@ -334,8 +366,13 @@ function createSchoolGithubEvidenceService({db}){
       deny("failed-precondition","Only submitted or approved evidence can be reopened.");
     const data=record.data();
     revisionStudentUid=data.studentUid;
-    const gradeRef=db.doc(prefix+"student_grades/"+key(taskId,data.studentUid));
-    const grade=await tx.get(gradeRef);
+    const gradeRef=db.doc(prefix+"student_grades/"+key(taskId,data.studentUid)),
+      studentPersonRef=db.doc(prefix+"people/"+checkId(data.personId,"Student person",128)),
+      [grade,studentPerson]=await Promise.all([tx.get(gradeRef),tx.get(studentPersonRef)]);
+    if(studentPerson.exists&&studentPerson.data().schoolId===ctx.schoolId&&
+       studentPerson.data().kind==="student"&&studentPerson.data().status==="active"&&
+       typeof studentPerson.data().authUid==="string")
+      revisionNotificationUid=studentPerson.data().authUid;
     if(grade.exists&&grade.data().status==="published")
       deny("failed-precondition","Published grades require a grade correction workflow, not evidence reopening.");
     const when=FieldValue.serverTimestamp();
@@ -345,8 +382,8 @@ function createSchoolGithubEvidenceService({db}){
       actorUid:ctx.uid,studentUid:data.studentUid,action:"github_evidence_revision_requested",
       version:data.currentVersion,reason,createdAt:when});
    });
-   if(revisionStudentUid)await writeSchoolNotification({
-     db,schoolId:ctx.schoolId,uid:revisionStudentUid,
+   if(revisionNotificationUid)await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:revisionNotificationUid,
      id:"github_revision_"+taskId+"_"+targetId,
      title:"GitHub evidence revision requested",
      body:(taskData.title||"Assessment")+" · your teacher requested changes to the submitted evidence.",
