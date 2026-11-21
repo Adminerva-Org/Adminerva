@@ -335,7 +335,8 @@ function createSchoolAssessmentService({db}){
    // Fetch the full immutable code only when the teacher selects View code.
    const receiptQuery=db.collection(prefix+"studio_exam_close_receipts/"+taskId+
      "/sessions/"+epoch+"/studio_exam_final_checkpoints")
-     .select("schoolId","closingEpoch","studentUid","projectId","projectRevision","savedAt")
+     .select("schoolId","closingEpoch","studentUid","projectId","projectRevision",
+       "contentDigest","sourceDigest","savedAt")
      .orderBy(FieldPath.documentId());
    const receipts=[];
    let receiptCursor=null;
@@ -348,6 +349,7 @@ function createSchoolAssessmentService({db}){
      if(data.schoolId!==ctx.schoolId||data.closingEpoch!==epoch)continue;
      receipts.push({studentUid:data.studentUid,projectId:data.projectId,
        projectRevision:data.projectRevision,
+       contentDigest:data.contentDigest||"",sourceDigest:data.sourceDigest||"",
        savedAt:data.savedAt?.toMillis?.()||null});
     }
     if(receipts.length>1500)
@@ -377,7 +379,9 @@ function createSchoolAssessmentService({db}){
      const uid=person.studentUid||null,receipt=uid?byUid.get(uid):null;
      return {displayName:String(person.displayName||"Student").slice(0,140),
        studentUid:uid,checkpointConfirmed:Boolean(receipt),
-       projectRevision:receipt?.projectRevision||null,savedAt:receipt?.savedAt||null};
+       projectRevision:receipt?.projectRevision||null,
+       contentDigest:receipt?.contentDigest||"",sourceDigest:receipt?.sourceDigest||"",
+       savedAt:receipt?.savedAt||null};
    }).sort((a,b)=>a.displayName.localeCompare(b.displayName));
    const confirmed=students.filter(row=>row.checkpointConfirmed).length;
    const sessionClosed=epoch<currentEpoch||
