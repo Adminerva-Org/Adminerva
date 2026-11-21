@@ -326,7 +326,7 @@ function createSchoolGradebookService({db}){
    if(reason.length<12||reason.length>2000)
     deny("invalid-argument","Explain the historical rubric reconstruction in 12–2,000 characters.");
    const auditRef=db.collection(prefix+"grade_audit").doc();
-   let result,notificationUid=null;
+   let result;
    await db.runTransaction(async tx=>{
     const {task,submission}=await authorize(tx);
     const grade=await tx.get(gradeRef);
@@ -379,7 +379,7 @@ function createSchoolGradebookService({db}){
    const feedback=String(input.feedback||"").trim();
    if(feedback.length>5000)deny("invalid-argument","Teacher feedback is too long.");
    const auditRef=db.collection(prefix+"grade_audit").doc();
-   let result;
+   let result,notificationUid=null;
    await db.runTransaction(async tx=>{
     const {task,submission}=await authorize(tx);
     const grade=await tx.get(gradeRef);
