@@ -54,6 +54,11 @@ function gradeRequiresStudentEmail(level){
 function key(...parts){
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
 }
+function registrationOwnsEnrollment(registrationId,enrollment,offering){
+  if(!enrollment||typeof enrollment!=="object")return false;
+  if(enrollment.registrationId)return enrollment.registrationId===registrationId;
+  return Boolean(offering&&offering.rosterMode!=="selective");
+}
 function legacyImportPersonId(email){
   const identity=createHash("sha256").update("student\0email:"+email).digest("hex");
   return "imp_"+identity.slice(0,40);
@@ -317,10 +322,9 @@ function createSchoolEnrollmentService({db}){
           const active=enrollments.filter((doc,index)=>{
             if(!doc.exists||doc.data().status!=="active")return false;
             const row=doc.data();
-            if(row.registrationId)return row.registrationId===registrationId;
             const offering=offeringDocs[index];
-            return Boolean(offering?.exists&&offering.data().schoolId===ctx.schoolId&&
-              offering.data().rosterMode!=="selective");
+            return registrationOwnsEnrollment(registrationId,row,
+              offering?.exists&&offering.data().schoolId===ctx.schoolId?offering.data():null);
           });
           const now=FieldValue.serverTimestamp();
           for(const doc of active){
@@ -424,8 +428,8 @@ function createSchoolEnrollmentService({db}){
       const candidateOfferingMap=new Map(candidateOfferings.filter(doc=>doc.exists).map(doc=>[doc.id,doc.data()]));
       const currentOfficial=currentCandidates.filter(doc=>{
         const row=doc.data(),offering=candidateOfferingMap.get(row.offeringId);
-        if(row.registrationId)return row.registrationId===registrationId;
-        return offering&&offering.schoolId===ctx.schoolId&&offering.rosterMode!=="selective";
+        return registrationOwnsEnrollment(registrationId,row,
+          offering&&offering.schoolId===ctx.schoolId?offering:null);
       });
 
       const currentEnrollmentRefs=currentOfficial.map(doc=>doc.ref),
@@ -824,5 +828,6 @@ function createSchoolEnrollmentService({db}){
 module.exports={
   createSchoolEnrollmentService,
   standardSchool,
-  gradeRequiresStudentEmail
+  gradeRequiresStudentEmail,
+  registrationOwnsEnrollment
 };
