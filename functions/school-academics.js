@@ -68,6 +68,37 @@ function scheduleMeetingOverlap(first,second){
   bStart=scheduleMinute(second.startTime),bEnd=scheduleMinute(second.endTime);
  return [aStart,aEnd,bStart,bEnd].every(Number.isFinite)&&aStart<bEnd&&bStart<aEnd;
 }
+function catalogArchiveDependencySpecs(kind){
+ return {
+  academic_years:[
+   ["terms","yearId","academic period"],
+   ["course_offerings","yearId","course offering"],
+   ["student_registrations","yearId","student registration"]
+  ],
+  academic_programs:[
+   ["terms","programId","academic period"],
+   ["sections","programId","section"],
+   ["course_offerings","programId","course offering"],
+   ["student_registrations","programId","student registration"]
+  ],
+  terms:[
+   ["course_offerings","termId","course offering"],
+   ["student_registrations","termId","student registration"]
+  ],
+  subjects:[["course_offerings","subjectId","course offering"]],
+  sections:[
+   ["course_offerings","sectionId","course offering"],
+   ["student_registrations","sectionId","student registration"],
+   ["section_advisers","sectionId","section adviser"]
+  ]
+ }[kind]||[];
+}
+function assessmentBlocksOfferingArchive(row,nowMillis=Date.now()){
+ if(!row||typeof row!=="object")return false;
+ const due=row.dueAt?.toMillis?.()||0;
+ return row.manualAccessState==="open"||
+  (row.published===true&&due>nowMillis&&row.lifecycle!=="archived");
+}
 function teachingLead(configured,teacherUids){
  const ids=[...new Set((teacherUids||[]).filter(Boolean))],
   configuredUid=typeof configured==="string"?configured:"";
@@ -688,31 +719,7 @@ function createSchoolAcademicsService({db}) {
           deny("failed-precondition","Restore the academic program/division before restoring this section.");
       }
     }else{
-      const specs={
-        academic_years:[
-          ["terms","yearId","academic period"],
-          ["course_offerings","yearId","course offering"],
-          ["student_registrations","yearId","student registration"]
-        ],
-        academic_programs:[
-          ["terms","programId","academic period"],
-          ["sections","programId","section"],
-          ["course_offerings","programId","course offering"],
-          ["student_registrations","programId","student registration"]
-        ],
-        terms:[
-          ["course_offerings","termId","course offering"],
-          ["student_registrations","termId","student registration"]
-        ],
-        subjects:[
-          ["course_offerings","subjectId","course offering"]
-        ],
-        sections:[
-          ["course_offerings","sectionId","course offering"],
-          ["student_registrations","sectionId","student registration"],
-          ["section_advisers","sectionId","section adviser"]
-        ]
-      }[kind]||[];
+      const specs=catalogArchiveDependencySpecs(kind);
       const snapshots=await Promise.all(specs.map(([collection,field])=>
         tx.get(db.collection("schools/"+ctx.schoolId+"/"+collection).where(field,"==",itemId).limit(51))));
       const blockers=[];
@@ -963,12 +970,8 @@ function createSchoolAcademicsService({db}) {
       if(enrollmentSnap.size===201||assignmentSnap.size===101||assessmentSnap.size===101)
         deny("resource-exhausted","Class lifecycle review requires pagination before this offering can be archived safely.");
       const nowMillis=Date.now();
-      const activeAssessment=assessmentSnap.docs.find(doc=>{
-        const row=doc.data();
-        if(row.schoolId!==ctx.schoolId)return false;
-        const due=row.dueAt?.toMillis?.()||0;
-        return row.manualAccessState==="open"||(row.published===true&&due>nowMillis&&row.lifecycle!=="archived");
-      });
+      const activeAssessment=assessmentSnap.docs.find(doc=>
+        doc.data().schoolId===ctx.schoolId&&assessmentBlocksOfferingArchive(doc.data(),nowMillis));
       if(activeAssessment)
         deny("failed-precondition","This class has an open or future published assessment. Close or complete that assessment before retiring the class.");
 
@@ -1666,4 +1669,4 @@ function createSchoolAcademicsService({db}) {
   deny("invalid-argument","Unknown academic operation.");
  };
 }
-module.exports={createSchoolAcademicsService,checkId,rowKey};
+module.exports={createSchoolAcademicsService,checkId,rowKey,catalogArchiveDependencySpecs,assessmentBlocksOfferingArchive};
