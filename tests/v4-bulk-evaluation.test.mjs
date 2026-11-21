@@ -220,6 +220,7 @@ test("compact batch stores the published rubric and checking rules once while pr
    assert.match(pack.items[i].frozenEvidence.files[0].content,new RegExp("println\\("+i+"\\)"));
    assert.equal(pack.items[i].frozenEvidence.contentDigest,"c".repeat(64));
    assert.equal(pack.items[i].frozenEvidence.automaticVerification.matchesSubmittedSource,true);
+   assert.equal("interpretation" in pack.items[i].frozenEvidence.executionEvidence,false);
    assert.equal("evaluationInstructions" in pack.items[i],false);
    assert.equal("assessment" in pack.items[i],false);
  }
