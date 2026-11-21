@@ -163,12 +163,13 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
         snap.docs[snap.docs.length-1].id:null};
     }
     async function allSubmissionHeads(){
-      let cursor="",rows=[];
+      let cursor="",rows=[],scanned=0;
       for(;;){
         const page=await submissionPage(cursor);
+        scanned+=page.docs.length;
         rows.push(...page.docs.filter(doc=>allowedHead(doc.data())));
-        if(rows.length>1000)
-          deny("resource-exhausted","Historical Studio review exceeds 1,000 submissions and needs a narrower indexed view.");
+        if(scanned>1000)
+          deny("resource-exhausted","Historical Studio review exceeds 1,000 source records and needs a narrower indexed view.");
         if(!page.nextCursor)return rows;
         cursor=page.nextCursor;
       }
