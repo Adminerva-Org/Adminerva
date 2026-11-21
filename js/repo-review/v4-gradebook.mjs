@@ -34,7 +34,17 @@ function localIso(value){
   return Number.isFinite(date.getTime())?date.toISOString():null;
 }
 if(panel&&taskSelect&&inbox&&status&&dialog){
-  const view=new URL(location.href).searchParams.get("view")||"review";
+  const pageParams=new URL(location.href).searchParams;
+  const view=pageParams.get("view")||"review";
+  const requestedOfferingId=String(pageParams.get("offeringId")||"");
+  function syncGradebookUrl(task){
+    const url=new URL(location.href);url.searchParams.set("view",view);
+    if(task?.taskId)url.searchParams.set("task",task.taskId);else url.searchParams.delete("task");
+    if(task?.offeringId)url.searchParams.set("offeringId",task.offeringId);
+    else if(!requestedOfferingId)url.searchParams.delete("offeringId");
+    history.replaceState(null,"",url.pathname+"?"+url.searchParams.toString()+url.hash);
+  }
+  const requestedStudentUid=String(pageParams.get("studentUid")||"");
   const viewCopy={
     submissions:["Submissions","Inspect frozen learner responses and open the exact submitted version when review is needed."],
     review:["Review & Grade","Review immutable assessment evidence, save grade drafts, and publish deliberately."],
@@ -44,7 +54,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   if(pageTitle)pageTitle.textContent=viewCopy[0];
   if(pageDescription)pageDescription.textContent=viewCopy[1];
   document.querySelectorAll('nav[aria-label="Assessment workflow views"] a').forEach(link=>{
-    const active=new URL(link.href,location.href).searchParams.get("view")===view;
+    const target=new URL(link.href,location.href);
+    const active=target.searchParams.get("view")===view;
+    if(requestedOfferingId)target.searchParams.set("offeringId",requestedOfferingId);
+    link.href=target.pathname+target.search+target.hash;
     link.classList.toggle("bg-cyan-900",active);
     if(active)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");
   });
@@ -56,11 +69,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const generalSubmissionApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const gradeApi=httpsCallable(functions,"schoolGradebook");
+  const classRecordApi=httpsCallable(functions,"schoolClassRecord");
   const verificationApi=httpsCallable(functions,"studioSubmissionVerification");
-  let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null;
-  let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher",reviewNeedsRefresh=false;
+  const conversationApi=httpsCallable(functions,"schoolAssessmentConversation");
+  let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null,currentConversation=null,currentClassRecordStatus=null;
+  let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher",reviewNeedsRefresh=false,pendingStudentDeepLink=requestedStudentUid;
   let bulkEvaluator=null;
-  function clearTaskContext(){bulkEvaluator?.reset();currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
+  function clearTaskContext(){bulkEvaluator?.reset();currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentClassRecordStatus=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();renderClassRecordHandoff();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
 
   async function scoped(api,action,details={}){
     if(!picker?.scope.current)throw Error("Choose a verified school first.");
@@ -68,6 +83,65 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
     picker.scope.assertLease(lease);
     return result;
+  }
+  function renderClassRecordHandoff(){
+    const panel=document.getElementById("gbV4ClassRecordHandoff"),
+      copy=document.getElementById("gbV4ClassRecordStatus"),
+      link=document.getElementById("gbV4ClassRecordLink");
+    if(!panel||!copy||!link)return;
+    if(!currentTask||currentTask.legacyCompatibility){panel.hidden=true;return;}
+    panel.hidden=false;
+    link.href="class-record.html?"+new URLSearchParams({
+      offering:currentTask.offeringId,assessment:currentTask.taskId,source:"school"
+    }).toString();
+    const state=currentClassRecordStatus?.status;
+    if(state==="linked"){
+      const column=currentClassRecordStatus.column;
+      copy.textContent=(column?.label||currentTask.title)+" is already linked"+
+        (column?.category?" under "+column.category:"")+". Published Gradebook results project into that Class Record column.";
+      link.textContent="Open linked Class Record";
+    }else if(state==="archived"){
+      copy.textContent="This assessment has an archived Class Record column. Review the record before creating another grading column.";
+      link.textContent="Review Class Record";
+    }else if(state==="unlinked"){
+      copy.textContent="This assessment is not yet part of the official Class Record. Add it once, choose its grading category, and published results will project automatically.";
+      link.textContent="Add to Class Record";
+    }else{
+      copy.textContent="Checking whether this assessment is linked to the official Class Record…";
+      link.textContent="Open Class Record";
+    }
+  }
+  function renderConversation(){
+    const host=document.getElementById("gbV4Conversation"),form=document.getElementById("gbV4ConversationForm"),
+      statusNode=document.getElementById("gbV4ConversationStatus");
+    host.replaceChildren();
+    const messages=currentConversation?.messages||[];
+    if(!currentConversation){
+      host.append(make("p","text-sm text-slate-500","Private messages are unavailable until the learner review loads."));
+      statusNode.textContent="";form.hidden=true;return;
+    }
+    form.hidden=false;
+    if(!messages.length)host.append(make("p","text-sm text-slate-500","No private messages yet. Start a learner-specific conversation here."));
+    for(const message of messages){
+      const mine=message.authorUid===auth.currentUser?.uid,row=make("div","rounded-lg border p-3 "+(mine?"border-cyan-200 bg-cyan-50":"border-slate-200 bg-slate-50"));
+      row.append(make("p","text-xs font-bold "+(mine?"text-cyan-800":"text-slate-600"),(mine?"You":message.authorName||"Learner")+" · "+(message.createdAt?new Date(message.createdAt).toLocaleString():"")),
+        make("p","mt-1 text-sm text-slate-800 whitespace-pre-wrap break-words",message.body||""));
+      host.append(row);
+    }
+    host.scrollTop=host.scrollHeight;
+    statusNode.textContent=currentConversation.canSend===false?"This assessment conversation is closed.":"Messages are private to this learner and the currently responsible teacher.";
+    const body=document.getElementById("gbV4ConversationBody"),send=document.getElementById("gbV4ConversationSend");
+    body.disabled=busy||currentConversation.canSend===false;send.disabled=busy||currentConversation.canSend===false;
+  }
+  async function reloadConversation(){
+    if(!currentTask||!currentRow)return;
+    try{
+      currentConversation=await scoped(conversationApi,"list",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
+    }catch(error){
+      currentConversation={messages:[],canSend:false,error:error?.message||"Private messages unavailable"};
+      document.getElementById("gbV4ConversationStatus").textContent=currentConversation.error;
+    }
+    renderConversation();
   }
   function refreshReviewControls(){
     const published=currentGrade?.status==="published";
@@ -90,6 +164,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||readThrough);
     document.getElementById("gbV4Refresh").disabled=busy;
     if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
+    if(document.getElementById("gbV4ConversationForm"))renderConversation();
   }
   function setBusy(value,message=""){
     busy=value;taskSelect.disabled=value;document.getElementById("gbV4Close").disabled=value;refreshReviewControls();
@@ -113,8 +188,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       scoped(migrationApi,"list_legacy_deployments").catch(()=>({items:[]}))
     ]);
     if(token!==generation)return;
-    const v4Items=(result.assessments||[]).filter(item=>["studio","github","text","link"].includes(item.submissionSource)&&item.status==="deployed");
-    const legacyItems=(legacyResult.items||[]).map(item=>({
+    const v4Items=(result.assessments||[]).filter(item=>
+      ["studio","github","text","link"].includes(item.submissionSource)&&item.status==="deployed"&&
+      (!requestedOfferingId||item.offeringId===requestedOfferingId));
+    const legacyItems=requestedOfferingId?[]:(legacyResult.items||[]).map(item=>({
       taskId:"legacy:"+item.legacyAssessmentId,
       legacyAssessmentId:item.legacyAssessmentId,
       legacyCompatibility:true,
@@ -145,16 +222,20 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       (v4Count+" V4 deployment"+(v4Count===1?"":"s")+" · "+legacyCount+" historical deployment"+(legacyCount===1?"":"s")+" available."):
       "No deployed school assessments owned by this teacher in the active school." ;
     taskSelect.disabled=busy;
-    const requested=previous||new URL(location.href).searchParams.get("task");
+    const requested=previous||pageParams.get("task");
     if(requested&&tasks.has(requested)){
       taskSelect.value=requested;
+      await loadInbox();
+    }else if(requestedOfferingId&&v4Items.length===1){
+      taskSelect.value=v4Items[0].taskId;
       await loadInbox();
     }
   }
   async function loadInbox(){
     const token=++generation;
     const task=tasks.get(taskSelect.value);
-    currentTask=task||null;inbox.replaceChildren();
+    syncGradebookUrl(task||null);
+    currentTask=task||null;currentClassRecordStatus=null;inbox.replaceChildren();renderClassRecordHandoff();
     if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
     if(!task){bulkEvaluator?.reset();status.textContent="Choose an assessment to load submissions.";return;}
     if(task.legacyCompatibility&&task.submissionSource!=="studio"){
@@ -182,14 +263,21 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const evidenceApi=sourceApi(task.submissionSource,{
         studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
       });
-      const [result,resultData]=historicalStudio?
-        [await scoped(migrationApi,"legacy_review_inbox",{legacyAssessmentId:task.legacyAssessmentId}),null]:
-        await Promise.all([
+      let result,resultData=null,classRecordStatus={status:"unavailable"};
+      if(historicalStudio){
+        result=await scoped(migrationApi,"legacy_review_inbox",{legacyAssessmentId:task.legacyAssessmentId});
+        currentTask={...task,...result.task};
+      }else{
+        [result,resultData,classRecordStatus]=await Promise.all([
           scoped(evidenceApi,"inbox",{taskId:task.taskId}),
-          scoped(gradeApi,"list_task_results",{taskId:task.taskId})
+          scoped(gradeApi,"list_task_results",{taskId:task.taskId}),
+          scoped(classRecordApi,"assessment_link_status",{offeringId:task.offeringId,taskId:task.taskId})
+            .catch(error=>({status:"unavailable",error:error?.message||"Class Record status unavailable"}))
         ]);
-      if(historicalStudio)currentTask={...task,...result.task};
+        currentClassRecordStatus=classRecordStatus;renderClassRecordHandoff();
+      }
       if(token!==generation)return;
+      currentClassRecordStatus=classRecordStatus;renderClassRecordHandoff();
       let rows=task.submissionSource==="github"?(result.evidence||[]):(result.submissions||[]);
       const gradeMap=new Map(historicalStudio?
         (result.submissions||[]).filter(item=>item.gradeStatus).map(item=>[item.studentUid,{
@@ -263,6 +351,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           "Students will appear here after a verified assessment evidence version is submitted."));
         return;
       }
+      let deepLinkRow=null;
       for(const row of rows){
         const grade=gradeMap.get(row.studentUid)||null;
         const card=make("article","rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
@@ -283,8 +372,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         button.type="button";
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
+        if(pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
         button.addEventListener("click",()=>void openReview(normalized));
         card.append(details,button);inbox.append(card);
+      }
+      if(deepLinkRow&&!dialog.open){
+        pendingStudentDeepLink="";
+        await openReview(deepLinkRow);
       }
     }catch(error){
       if(token!==generation)return;
@@ -521,11 +615,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   async function openReview(row){
     if(busy||!currentTask||dialog.open)return;
     reviewNeedsRefresh=false;
-    currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentDraftSource="teacher";
+    currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentDraftSource="teacher";
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
       currentTask.title+" · version "+row.version+" · "+row.status;
-    document.getElementById("gbV4ReviewStatus").textContent="Loading frozen evidence and private grade draft…";
+    document.getElementById("gbV4ReviewStatus").textContent="Loading frozen evidence, private grade draft and learner conversation…";
+    document.getElementById("gbV4ConversationBody").value="";
+    document.getElementById("gbV4Conversation").replaceChildren(make("p","text-sm text-slate-500","Loading private messages…"));
+    document.getElementById("gbV4ConversationStatus").textContent="";
     document.getElementById("gbV4Code").textContent="Loading…";
     document.getElementById("gbV4File").replaceChildren();
     document.getElementById("gbV4Rubric").replaceChildren();
@@ -565,13 +662,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         currentGrade=result.grade;
         currentPrivateConfig={checkingInstructions:result.checkingInstructions||""};
         currentTask={...currentTask,...result.task};
+        currentConversation=null;renderConversation();
       }else{
         const native=await Promise.all([
           scoped(evidenceApi,"inspect",evidenceDetails),
           scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:row.studentUid}),
-          scoped(assessmentApi,"get_private",{taskId:currentTask.taskId})
+          scoped(assessmentApi,"get_private",{taskId:currentTask.taskId}),
+          scoped(conversationApi,"list",{taskId:currentTask.taskId,studentUid:row.studentUid}).catch(error=>({messages:[],canSend:false,error:error?.message||"Private messages unavailable"}))
         ]);
-        currentSnapshot=native[0];currentGrade=native[1].grade;currentPrivateConfig=native[2]||{};
+        currentSnapshot=native[0];currentGrade=native[1].grade;currentPrivateConfig=native[2]||{};currentConversation=native[3]||null;renderConversation();
       }
       currentDraftSource=currentGrade?.draftSource||"teacher";
       if(currentTask.submissionSource==="studio"&&!currentSnapshot?.automaticVerification){
@@ -638,10 +737,23 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
-      currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;
+      currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;renderConversation();
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Review data unavailable.";
     }finally{setBusy(false);}
   }
+  document.getElementById("gbV4ConversationForm").addEventListener("submit",event=>void (async()=>{
+    event.preventDefault();
+    if(busy||!currentTask||!currentRow||currentConversation?.canSend===false)return;
+    const body=document.getElementById("gbV4ConversationBody").value.trim();
+    if(!body){document.getElementById("gbV4ConversationStatus").textContent="Write a private message before sending.";return;}
+    const send=document.getElementById("gbV4ConversationSend"),field=document.getElementById("gbV4ConversationBody");
+    send.disabled=true;field.disabled=true;document.getElementById("gbV4ConversationStatus").textContent="Sending private message…";
+    try{
+      await scoped(conversationApi,"create_message",{taskId:currentTask.taskId,studentUid:currentRow.studentUid,body});
+      field.value="";await reloadConversation();
+    }catch(error){document.getElementById("gbV4ConversationStatus").textContent=error?.message||"Private message could not be sent.";}
+    finally{field.disabled=false;send.disabled=currentConversation?.canSend===false||busy;}
+  })());
   document.getElementById("gbV4GithubVerify").addEventListener("click",()=>
     void verifyGithubEvidence());
   document.getElementById("gbV4GithubApprove").addEventListener("click",()=>void (async()=>{

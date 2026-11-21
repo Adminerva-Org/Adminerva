@@ -115,14 +115,27 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
   }
 });
 
-test('teacher assessment navigation retains review and historical repository tools',()=>{
-  const {desktop,root}=mount('assessment','assessment-studio');
-  assert.ok(groupNames(desktop).includes('Assessment ▾'));
-  const routes=links(desktop).map(link=>link.href);
-  for(const route of ['teacher-classroom.html','assessment-studio.html','school-gradebook.html?view=review','submissions.html','repofetch.html'])
-    assert.ok(routes.includes(route),'Missing teaching route '+route);
-  assert.ok(!routes.includes('users.html'));
-  assert.match(root.innerHTML,/href="teacher-home.html"/);
+test('assessment authoring stays in Preparation while live assessment work is class-centered',()=>{
+  const authored=mount('assessment','assessment-studio');
+  const preparationGroups=groupNames(authored.desktop);
+  assert.ok(preparationGroups.includes('Assessment Design ▾'));
+  assert.ok(preparationGroups.includes('Plan & Prepare ▾'));
+  const preparationRoutes=links(authored.desktop).map(link=>link.href);
+  for(const route of ['assessment-studio.html','lesson-planner.html','presentation.html','library.html'])
+    assert.ok(preparationRoutes.includes(route),'Missing preparation route '+route);
+  assert.ok(!preparationRoutes.includes('users.html'));
+  assert.match(authored.root.innerHTML,/href="teacher-home.html"/);
+  assert.match(authored.root.innerHTML,/Classroom/);
+
+  const live=mount('grading','school-gradebook','teacher',false,{dataset:{schoolTeacher:'true'}});
+  const liveRoutes=links(live.desktop).map(link=>link.href);
+  for(const route of [
+    'teacher-classroom.html',
+    'school-gradebook.html?view=submissions',
+    'school-gradebook.html?view=review',
+    'school-gradebook.html?view=results',
+    'class-record.html'
+  ])assert.ok(liveRoutes.includes(route),'Missing class-centered live assessment route '+route);
 });
 
 test('school Class Record is separate from repository grading',()=>{
@@ -158,11 +171,14 @@ test('active mobile group expands without opening the entire navigation',()=>{
   assert.equal(groups.filter(group=>group.open).length,1);
 });
 
-test('preparation navigation keeps lesson, slides, references and timetable together',()=>{
+test('Preparation keeps planning, reusable materials, assessment design and timetable together',()=>{
   const {desktop}=mount('preparation','lesson-planner','teacher');
-  assert.ok(groupNames(desktop).includes('Teaching Preparation ▾'));
+  const groups=groupNames(desktop);
+  assert.ok(groups.includes('Plan & Prepare ▾'));
+  assert.ok(groups.includes('Assessment Design ▾'));
+  assert.ok(groups.includes('Schedule ▾'));
   const routes=links(desktop).map(link=>link.href);
-  for(const route of ['lesson-planner.html','presentation.html','library.html','schedule.html'])
+  for(const route of ['lesson-planner.html','presentation.html','library.html','assessment-studio.html','schedule.html'])
     assert.ok(routes.includes(route),'Missing preparation route '+route);
   assert.ok(!routes.includes('teacher-analytics.html'));
 });

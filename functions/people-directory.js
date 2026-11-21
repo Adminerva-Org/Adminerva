@@ -8,6 +8,11 @@ function field(value,max,label) {
   if(typeof value!=="string"||!value.trim()||value.trim().length>max)invalid(label+" is required and must be shorter.");
   return value.trim();
 }
+function invitationIsActivePending(data,now=Date.now()){
+  if(!data||data.status!=="pending")return false;
+  const expires=data.expiresAt?.toMillis?.();
+  return !Number.isFinite(expires)||expires>now;
+}
 function id(value){
   if(typeof value!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(value))invalid("Invalid record identifier.");
   return value;
@@ -78,7 +83,7 @@ function createPeopleDirectoryService({db}) {
       return {schoolId:ctx.schoolId,counts:Object.fromEntries(scopes.map((name,i)=>[name,counts[i].data().count]))};
     }
     if(input.action==="reconcile_directory") {
-      const names=["people","memberships","enrollments","staff_assignments","course_offerings","invitations"];
+      const names=["people","memberships","enrollments","student_registrations","staff_assignments","section_advisers","course_offerings","invitations"];
       const snapshots=await Promise.all(names.map(name=>
         db.collection("schools/"+ctx.schoolId+"/"+name).limit(501).get()));
       if(snapshots.some(snapshot=>snapshot.size===501))
@@ -93,10 +98,16 @@ function createPeopleDirectoryService({db}) {
         doc.data().schoolId===ctx.schoolId&&doc.data().status==="active").map(doc=>[doc.id,doc.data()]));
       const activeEnrollments=byName.enrollments.filter(doc=>
         doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+      const activeRegistrations=byName.student_registrations.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
       const activeAssignments=byName.staff_assignments.filter(doc=>
         doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
-      const enrollmentsByPerson=new Set(activeEnrollments.map(doc=>doc.data().personId));
-      const assignmentsByTeacher=new Set(activeAssignments.map(doc=>doc.data().teacherUid));
+      const activeAdvisers=byName.section_advisers.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+      const enrollmentsByPerson=new Set(activeEnrollments.map(doc=>doc.data().personId)),
+        registrationsByPerson=new Set(activeRegistrations.map(doc=>doc.data().personId));
+      const assignmentsByTeacher=new Set(activeAssignments.map(doc=>doc.data().teacherUid)),
+        advisersByTeacher=new Set(activeAdvisers.map(doc=>doc.data().teacherUid));
       const peopleByAuthUid=new Map();
       for(const [personId,person] of people){
         if(typeof person.authUid!=="string"||!person.authUid)continue;
@@ -129,10 +140,18 @@ function createPeopleDirectoryService({db}) {
               add("inactive_person_active_assignment","integrity",label,
                 "Inactive staff person still has an active teaching assignment.",
                 {personId,targetUid:person.authUid,targetTab:"classes"});
+            if(advisersByTeacher.has(person.authUid))
+              add("inactive_person_active_adviser_assignment","integrity",label,
+                "Inactive staff person still has an active Section Adviser / Homeroom assignment.",
+                {personId,targetUid:person.authUid,targetTab:"classes"});
           }
           if(enrollmentsByPerson.has(personId))
             add("inactive_person_active_enrollment","integrity",label,
               "Inactive student person still has an active course enrollment.",
+              {personId,targetTab:"classes"});
+          if(registrationsByPerson.has(personId))
+            add("inactive_person_active_registration","integrity",label,
+              "Inactive student person still has an active official registration.",
               {personId,targetTab:"classes"});
           continue;
         }
@@ -146,9 +165,18 @@ function createPeopleDirectoryService({db}) {
               add("student_access_missing","integrity",label,
                 "Linked account does not have a matching active student membership.",{personId,targetUid:person.authUid,targetTab:"access"});
           }
-          if(!enrollmentsByPerson.has(personId))
+          const officiallyPlaced=ctx.enrollmentMode==="canonical"
+            ?registrationsByPerson.has(personId):enrollmentsByPerson.has(personId);
+          if(!officiallyPlaced)
             add("student_no_enrollment","attention",label,
-              "Active student is not enrolled in any active course offering.",{personId,targetTab:"classes"});
+              ctx.enrollmentMode==="canonical"
+                ?"Active student has no active official registration or section placement."
+                :"Active student is not enrolled in any active course offering.",
+              {personId,targetTab:"classes"});
+          else if(ctx.enrollmentMode==="canonical"&&!enrollmentsByPerson.has(personId))
+            add("student_registration_without_classes","attention",label,
+              "Active official registration has no active class enrollments. Review the section's automatic roster configuration.",
+              {personId,targetTab:"classes"});
         }else if(person.kind==="staff"&&!person.authUid){
           add("staff_account_unlinked","review",label,
             "Active staff person has no verified account link. This may be intentional for non-teaching staff.",{personId,targetTab:"invites"});
@@ -239,7 +267,7 @@ function createPeopleDirectoryService({db}) {
       return {
         schoolId:ctx.schoolId,counts,
         issues:issues.slice(0,150),truncated:issues.length>150,
-        note:"Reconciliation uses directory, membership and active academic relationships only. Grades, evidence and private teacher resources are not inspected."
+        note:"Reconciliation uses canonical student registrations for official placement in standard schools, plus directory, membership and active class relationships. Grades, evidence and private teacher resources are not inspected."
       };
     }
     if(input.action==="list_people") {
@@ -256,7 +284,8 @@ function createPeopleDirectoryService({db}) {
           personId:person.id,displayName:person.data().displayName,
           kind:person.data().kind,status:person.data().status,
           accountLinked:Boolean(person.data().authUid),
-          activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId
+          activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId,
+          revision:Number(person.data().revision)||1
         })),
         nextCursor:snap.docs.length>pageSize?(docs.at(-1)?.data().searchKey||null):null
       };
@@ -411,7 +440,8 @@ function createPeopleDirectoryService({db}) {
         invitations:invites.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>({
           invitationId:doc.id,status:doc.data().status,requestedRole:doc.data().requestedRole,
           expiresAt:doc.data().expiresAt?.toMillis?.()||null,
-          acceptedAt:doc.data().acceptedAt?.toMillis?.()||null
+          acceptedAt:doc.data().acceptedAt?.toMillis?.()||null,
+          revision:Number(doc.data().revision)||1
         })),
         relationships:relationships.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>
           data.kind==="student"?{
@@ -456,14 +486,19 @@ function createPeopleDirectoryService({db}) {
         studentNumber:person.data().studentNumber||"",
         kind:person.data().kind,status:person.data().status,
         accountLinked:Boolean(person.data().authUid),
-        activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId
+        activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId,
+        revision:Number(person.data().revision)||1
       })),truncated:snap.size===101||matches.length>50};
     }
     if(input.action==="activate_linked_staff"){
       // Expedited, reviewed access grant for an existing identity-linked staff record.
       // No UID alone can confer access: a matching active canonical person is required.
-      const personId=id(input.personId),role=String(input.role||"teacher").trim().toLowerCase();
-      if(!["teacher","registrar"].includes(role))invalid("Choose Teacher or Registrar staff access.");
+      const personId=id(input.personId),expectedPersonRevision=Number(input.expectedPersonRevision),
+        role=String(input.role||"teacher").trim().toLowerCase();
+      if(!["teacher","registrar"].includes(role))
+        invalid("Choose Teacher or Registrar staff access.");
+      if(!Number.isSafeInteger(expectedPersonRevision)||expectedPersonRevision<1)
+        invalid("Refresh the linked staff search before activating school access.");
       const reason=field(input.reason,500,"Activation reason");
       if(reason.length<12)invalid("Explain the reason for activating school access.");
       const personRef=base.doc(personId);
@@ -472,6 +507,8 @@ function createPeopleDirectoryService({db}) {
          initial.data().status!=="active"||initial.data().kind!=="staff"||
          !initial.data().authUid)
         throw new TenantAccessError("failed-precondition","Select an active staff record linked to a verified account.");
+      if((Number(initial.data().revision)||1)!==expectedPersonRevision)
+        throw new TenantAccessError("failed-precondition","This staff identity changed after you selected it. Refresh the search before activating access.");
       const targetUid=id(initial.data().authUid);
       const {getAuth}=require("firebase-admin/auth");
       const account=await getAuth().getUser(targetUid);
@@ -488,7 +525,8 @@ function createPeopleDirectoryService({db}) {
         const [person,member]=await Promise.all([tx.get(personRef),tx.get(memberRef)]);
         if(!person.exists||person.data().schoolId!==ctx.schoolId||
            person.data().status!=="active"||person.data().kind!=="staff"||
-           person.data().authUid!==targetUid)
+           person.data().authUid!==targetUid||
+           (Number(person.data().revision)||1)!==expectedPersonRevision)
           throw new TenantAccessError("failed-precondition","The staff identity link changed. Refresh before granting access.");
         const prior=member.exists?member.data():null;
         if(prior&&prior.schoolId!==ctx.schoolId)
@@ -518,11 +556,14 @@ function createPeopleDirectoryService({db}) {
         .map(member=>({
           uid:member.id,status:member.data().status,
           roles:Array.isArray(member.data().roles)?member.data().roles:[],
-          displayName:typeof member.data().displayName==="string"?member.data().displayName:""
+          displayName:typeof member.data().displayName==="string"?member.data().displayName:"",
+          revision:Number(member.data().revision)||1
         }))};
     }
     if(input.action==="suspend_access"){
-      const targetUid=id(input.targetUid);
+      const targetUid=id(input.targetUid),expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this school access record before suspending it.");
       const reason=field(input.reason,500,"Suspension reason");
       if(reason.length<12)invalid("Suspension reason must explain the institutional decision.");
       if(targetUid===ctx.uid)
@@ -536,9 +577,12 @@ function createPeopleDirectoryService({db}) {
         if(!current.exists||current.data().schoolId!==ctx.schoolId||
           current.data().status!=="active")
           throw new TenantAccessError("failed-precondition","The school membership is not active.");
+        const currentRevision=Number(current.data().revision)||1;
+        if(currentRevision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This school access record changed after you reviewed it. Refresh before suspending access.");
         if(Array.isArray(current.data().roles)&&current.data().roles.includes("school_admin"))
           throw new TenantAccessError("permission-denied","School administrator suspension requires platform-owner review.");
-        const now=FieldValue.serverTimestamp(),revision=(current.data().revision||0)+1;
+        const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         tx.update(targetRef,{status:"suspended",revision,updatedAt:now,updatedByUid:ctx.uid});
         tx.set(indexRef,{schoolId:ctx.schoolId,status:"suspended",
           roles:Array.isArray(current.data().roles)?current.data().roles:[],
@@ -546,10 +590,12 @@ function createPeopleDirectoryService({db}) {
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,
           action:"school_membership_suspended",reason,createdAt:now});
       });
-      return {targetUid,status:"suspended"};
+      return {targetUid,status:"suspended",revision:expectedRevision+1};
     }
     if(input.action==="restore_access"){
-      const targetUid=id(input.targetUid);
+      const targetUid=id(input.targetUid),expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this school access record before restoring it.");
       const reason=field(input.reason,500,"Restore reason");
       if(reason.length<12)invalid("Restore reason must explain the institutional decision.");
       const targetRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+targetUid);
@@ -561,6 +607,9 @@ function createPeopleDirectoryService({db}) {
         if(!current.exists||current.data().schoolId!==ctx.schoolId||
           current.data().status!=="suspended")
           throw new TenantAccessError("failed-precondition","The school membership is not suspended.");
+        const currentRevision=Number(current.data().revision)||1;
+        if(currentRevision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This school access record changed after you reviewed it. Refresh before restoring access.");
         if(Array.isArray(current.data().roles)&&current.data().roles.includes("school_admin"))
           throw new TenantAccessError("permission-denied","School administrator recovery requires platform-owner review.");
         if(current.data().personId){
@@ -572,14 +621,14 @@ function createPeopleDirectoryService({db}) {
         const roles=Array.isArray(current.data().roles)?current.data().roles:[];
         if(!roles.some(role=>["student","teacher","registrar"].includes(role)))
           throw new TenantAccessError("failed-precondition","This membership has no recoverable school role.");
-        const now=FieldValue.serverTimestamp(),revision=(current.data().revision||0)+1;
+        const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         tx.update(targetRef,{status:"active",revision,restoredAt:now,
           restoredByUid:ctx.uid,restoreReason:reason,updatedAt:now,updatedByUid:ctx.uid});
         tx.set(indexRef,{schoolId:ctx.schoolId,status:"active",roles,revision,updatedAt:now});
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,
           action:"school_membership_restored",reason,createdAt:now});
       });
-      return {targetUid,status:"active"};
+      return {targetUid,status:"active",revision:expectedRevision+1};
     }
     if(input.action==="list_invitable_people") {
       const role=input.role;
@@ -593,7 +642,10 @@ function createPeopleDirectoryService({db}) {
         .map(person=>({personId:person.id,displayName:person.data().displayName,kind}))};
     }
     if(input.action==="update_person"){
-      const personId=id(input.personId),displayName=field(input.displayName,140,"Person name");
+      const personId=id(input.personId),displayName=field(input.displayName,140,"Person name"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this person record before saving profile changes.");
       const clean=(value,max,label)=>{
         const result=String(value??"").trim();
         if(result.length>max)invalid(label+" is too long.");
@@ -611,7 +663,12 @@ function createPeopleDirectoryService({db}) {
         const person=await tx.get(ref);
         if(!person.exists||person.data().schoolId!==ctx.schoolId)
           throw new TenantAccessError("not-found","The person is not in this school directory.");
-        const now=FieldValue.serverTimestamp(),revision=(person.data().revision||0)+1;
+        if(person.data().status!=="active")
+          throw new TenantAccessError("failed-precondition","Restore this person record before editing its profile.");
+        const currentRevision=Number(person.data().revision)||1;
+        if(currentRevision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This person record changed after you opened it. Refresh the directory and review the latest profile before saving.");
+        const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         const change={displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+personId,
           revision,updatedAt:now,updatedByUid:ctx.uid};
         if(person.data().kind==="student"){
@@ -635,7 +692,10 @@ function createPeopleDirectoryService({db}) {
       return {personId,displayName};
     }
     if(input.action==="archive_person"||input.action==="restore_person"){
-      const personId=id(input.personId),reason=field(input.reason,500,"Lifecycle reason");
+      const personId=id(input.personId),reason=field(input.reason,500,"Lifecycle reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this person record before changing its lifecycle.");
       if(reason.length<12)invalid("Explain the person record lifecycle change in at least 12 characters.");
       const ref=base.doc(personId),audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
       const restoring=input.action==="restore_person";
@@ -644,7 +704,9 @@ function createPeopleDirectoryService({db}) {
         const person=await tx.get(ref);
         if(!person.exists||person.data().schoolId!==ctx.schoolId)
           throw new TenantAccessError("not-found","The person is not in this school directory.");
-        const data=person.data();
+        const data=person.data(),currentRevision=Number(data.revision)||1;
+        if(currentRevision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This person record changed after you opened it. Refresh before changing its lifecycle.");
         if(restoring&&data.status!=="archived")
           throw new TenantAccessError("failed-precondition","Only an archived person record can be restored.");
         if(!restoring&&data.status!=="active")
@@ -659,25 +721,37 @@ function createPeopleDirectoryService({db}) {
             .where("personId","==",personId).limit(101));
           if(invitations.size===101)
             throw new TenantAccessError("resource-exhausted","Invitation history requires reviewed pagination before archiving.");
-          if(invitations.docs.some(doc=>doc.data().status==="pending"))
-            throw new TenantAccessError("failed-precondition","Resolve or expire this person's pending invitation before archiving.");
+          if(invitations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&invitationIsActivePending(doc.data())))
+            throw new TenantAccessError("failed-precondition","Revoke this person's active pending invitation before archiving.");
           if(data.kind==="student"){
-            const enrollments=await tx.get(db.collection("schools/"+ctx.schoolId+"/enrollments")
-              .where("personId","==",personId).limit(101));
-            if(enrollments.size===101)
-              throw new TenantAccessError("resource-exhausted","Enrollment history requires reviewed pagination before archiving.");
-            if(enrollments.docs.some(doc=>doc.data().status==="active"))
-              throw new TenantAccessError("failed-precondition","End this student's active course enrollments before archiving the person record.");
+            const [enrollments,registrations]=await Promise.all([
+              tx.get(db.collection("schools/"+ctx.schoolId+"/enrollments")
+                .where("personId","==",personId).limit(101)),
+              tx.get(db.collection("schools/"+ctx.schoolId+"/student_registrations")
+                .where("personId","==",personId).limit(101))
+            ]);
+            if(enrollments.size===101||registrations.size===101)
+              throw new TenantAccessError("resource-exhausted","Student academic history requires reviewed pagination before archiving.");
+            if(registrations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
+              throw new TenantAccessError("failed-precondition","End this student's active official registration before archiving the person record.");
+            if(enrollments.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
+              throw new TenantAccessError("failed-precondition","End this student's remaining active course enrollments before archiving the person record.");
           }else if(data.kind==="staff"&&data.authUid){
-            const assignments=await tx.get(db.collection("schools/"+ctx.schoolId+"/staff_assignments")
-              .where("teacherUid","==",id(data.authUid)).limit(101));
-            if(assignments.size===101)
-              throw new TenantAccessError("resource-exhausted","Teaching assignment history requires reviewed pagination before archiving.");
-            if(assignments.docs.some(doc=>doc.data().status==="active"))
+            const teacherUid=id(data.authUid),[assignments,advisers]=await Promise.all([
+              tx.get(db.collection("schools/"+ctx.schoolId+"/staff_assignments")
+                .where("teacherUid","==",teacherUid).limit(101)),
+              tx.get(db.collection("schools/"+ctx.schoolId+"/section_advisers")
+                .where("teacherUid","==",teacherUid).limit(101))
+            ]);
+            if(assignments.size===101||advisers.size===101)
+              throw new TenantAccessError("resource-exhausted","Teacher assignment history requires reviewed pagination before archiving.");
+            if(assignments.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
               throw new TenantAccessError("failed-precondition","End this teacher's active course assignments before archiving the person record.");
+            if(advisers.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
+              throw new TenantAccessError("failed-precondition","End this teacher's active Section Adviser / Homeroom assignment before archiving the person record.");
           }
         }
-        const now=FieldValue.serverTimestamp(),revision=(data.revision||0)+1;
+        const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         tx.update(ref,restoring?
           {status:"active",revision,restoredAt:now,restoredByUid:ctx.uid,restoreReason:reason,updatedAt:now}:
           {status:"archived",revision,archivedAt:now,archivedByUid:ctx.uid,archiveReason:reason,updatedAt:now});
@@ -712,6 +786,34 @@ function createPeopleDirectoryService({db}) {
           action:"create_person",activationEmailPrepared:Boolean(activationEmailHash),createdAt:now});
       });
       return {personId:ref.id,accountLinked:false,activationReady:Boolean(activationEmailHash)};
+    }
+    if(input.action==="revoke_invitation"){
+      const invitationId=id(input.invitationId),expectedRevision=Number(input.expectedRevision),
+        reason=field(input.reason,500,"Invitation revoke reason"),
+        ref=db.doc("schools/"+ctx.schoolId+"/invitations/"+invitationId),
+        audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this invitation before revoking it.");
+      if(reason.length<12)invalid("Explain why this invitation is being revoked in at least 12 characters.");
+      let personId=null;
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const invitation=await tx.get(ref);
+        if(!invitation.exists||invitation.data().schoolId!==ctx.schoolId)
+          throw new TenantAccessError("not-found","The invitation is not in this school.");
+        const data=invitation.data(),revision=Number(data.revision)||1;
+        if(revision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This invitation changed after you opened it. Refresh the person details before revoking it.");
+        if(data.status!=="pending")
+          throw new TenantAccessError("failed-precondition","Only a pending invitation can be revoked.");
+        personId=data.personId||null;
+        const now=FieldValue.serverTimestamp();
+        tx.update(ref,{status:"revoked",revokedByUid:ctx.uid,revokedAt:now,revokeReason:reason,
+          revision:revision+1,updatedByUid:ctx.uid,updatedAt:now});
+        tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
+          invitationId,action:"invitation_revoked",reason,revision:revision+1,createdAt:now});
+      });
+      return {invitationId,personId,status:"revoked",revision:expectedRevision+1};
     }
     if(input.action==="invite") {
       const email=field(input.email,254,"Email").toLowerCase();
@@ -831,4 +933,4 @@ function createInvitationAcceptanceService({db}) {
   };
 }
 
-module.exports={createPeopleDirectoryService,createInvitationAcceptanceService,importIdentity,normalizedImport};
+module.exports={createPeopleDirectoryService,createInvitationAcceptanceService,importIdentity,normalizedImport,invitationIsActivePending};

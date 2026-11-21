@@ -1,4 +1,4 @@
-<!doctype html>
+
 <!-- Adminerva module: lesson planner. -->
 <html lang="en">
   <head>
@@ -144,8 +144,24 @@
         </div>
 
         <div class="av-form-grid mb-4"><label for="lpSubject" class="font-semibold text-sm">Subject for this lesson<input id="lpSubject" list="plannerSubjectChoices" placeholder="Select or enter the school subject" class="w-full p-3 border rounded"><datalist id="plannerSubjectChoices"></datalist></label><label for="lpProgram" class="font-semibold text-sm">Track or pathway <span class="av-form-hint">Optional school context</span><input id="lpProgram" list="plannerProgramChoices" placeholder="Choose an offering if relevant" class="w-full p-3 border rounded"><datalist id="plannerProgramChoices"></datalist></label></div><datalist id="plannerSchoolYears"></datalist>
-        <div class="av-button-row mb-4"><p id="plannerCatalogStatus" class="av-form-hint" role="status">Loading school subjects and sections…</p><button type="button" class="av-secondary-button" onclick="refreshPlannerSchoolChoices()">Refresh school choices</button></div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-5">
+        <section class="mb-4 rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+          <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-cyan-800">Teaching context</p>
+              <h3 class="font-extrabold text-cyan-950 mt-1">Prepare once, use in the right classroom</h3>
+              <p class="text-xs text-cyan-900 mt-1">Choosing a class pre-fills verified school context. The lesson remains your reusable preparation resource; it does not become student-visible until you deliberately use or share it in classroom work.</p>
+            </div>
+            <div id="plannerSchoolSwitcher" hidden class="w-full lg:w-auto lg:min-w-[240px]"></div>
+          </div>
+          <label for="lpClassOffering" class="block mt-3 font-semibold text-sm text-cyan-950">Assigned class context
+            <select id="lpClassOffering" class="mt-1 w-full p-3 border border-cyan-300 rounded bg-white">
+              <option value="">Reusable preparation · no single class selected</option>
+            </select>
+          </label>
+          <p id="plannerClassContextStatus" class="mt-2 text-xs text-cyan-900">Loading your verified teaching assignments…</p>
+        </section>
+        <div class="av-form-grid mb-4"><label for="lpSubject" class="font-semibold text-sm">Subject for this lesson<input id="lpSubject" list="plannerSubjectChoices" placeholder="Select or enter the school subject" class="w-full p-3 border rounded"><datalist id="plannerSubjectChoices"></datalist></label><label for="lpProgram" class="font-semibold text-sm">Program / pathway <span class="av-form-hint">Optional school context</span><input id="lpProgram" list="plannerProgramChoices" placeholder="Select or enter the program/pathway" class="w-full p-3 border rounded"><datalist id="plannerProgramChoices"></datalist></label></div><datalist id="plannerSchoolYears"></datalist>
+        <div class="av-button-row mb-4"><p id="plannerCatalogStatus" class="av-form-hint" role="status">Loading canonical school teaching choices…</p><button type="button" class="av-secondary-button" onclick="refreshPlannerSchoolChoices()">Refresh teaching context</button></div>
           <div>
             <label
               class="block text-[10px] sm:text-xs font-extrabold text-blue-700 uppercase mb-2"

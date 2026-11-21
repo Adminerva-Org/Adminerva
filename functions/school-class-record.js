@@ -124,6 +124,20 @@ function schemeSpecificity(applicability={}){
   return Number(Boolean(scope.programId))+Number(Boolean(scope.subjectId))+
     Number(Boolean(scope.sectionId))+Number(Boolean(scope.periodTypes.length));
 }
+function schemeScopesOverlap(first={},second={},context={}){
+  const a=cleanSchemeApplicability(first),b=cleanSchemeApplicability(second);
+  const compatible=(left,right)=>!left||!right||left===right;
+  if(!compatible(a.programId,b.programId)||!compatible(a.subjectId,b.subjectId)||
+     !compatible(a.sectionId,b.sectionId))return false;
+  if(a.periodTypes.length&&b.periodTypes.length&&
+     !a.periodTypes.some(value=>b.periodTypes.includes(value)))return false;
+  const sectionPrograms=context.sectionPrograms instanceof Map?context.sectionPrograms:new Map();
+  const aSectionProgram=a.sectionId?sectionPrograms.get(a.sectionId)||null:null,
+    bSectionProgram=b.sectionId?sectionPrograms.get(b.sectionId)||null:null;
+  if(a.sectionId&&b.programId&&aSectionProgram&&aSectionProgram!==b.programId)return false;
+  if(b.sectionId&&a.programId&&bSectionProgram&&bSectionProgram!==a.programId)return false;
+  return true;
+}
 async function resolveSchoolGradingPolicy({db,prefix,schoolId,offering,periodType}){
   const snap=await db.collection(prefix+"grading_schemes").limit(51).get();
   if(snap.size===51)deny("resource-exhausted","School grading policies require pagination.");
@@ -428,6 +442,10 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       if(!Number.isInteger(expectedRevision)||expectedRevision<0)
         deny("invalid-argument","Grading scheme revision is invalid.");
       const auditRef=db.collection(prefix+"grading_scheme_audit").doc();
+      const lifecycleReason=input.action==="save_scheme"?null:
+        text(input.reason,"Grading policy lifecycle reason",500);
+      if(lifecycleReason&&lifecycleReason.length<12)
+        deny("invalid-argument","Explain the grading policy lifecycle change in at least 12 characters.");
       const requestedApplicability=input.action==="save_scheme"?
         cleanSchemeApplicability(input.applicability||{}):null;
       let result;
@@ -440,6 +458,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           deny("failed-precondition","This grading scheme changed. Reload it before saving.");
         const now=FieldValue.serverTimestamp();
         if(input.action==="save_scheme"){
+          if(prior&&(prior.status||"active")!=="active")
+            deny("failed-precondition","Restore this grading policy before editing it.");
           const name=text(input.name,"Grading scheme name",120);
           const description=String(input.description||"").trim();
           if(description.length>300)deny("invalid-argument","Grading scheme description cannot exceed 300 characters.");
@@ -467,6 +487,31 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
             deny("failed-precondition","The grading scheme section is unavailable or inactive.");
           if(section&&requestedApplicability.programId&&section.data().programId!==requestedApplicability.programId)
             deny("failed-precondition","The selected section belongs to another program/division.");
+
+          const activeSchemes=await tx.get(
+            db.collection(prefix+"grading_schemes").where("status","==","active").limit(51));
+          if(activeSchemes.size===51)
+            deny("resource-exhausted","Active grading policies require pagination before overlap can be validated safely.");
+          const requestedSpecificity=schemeSpecificity(requestedApplicability);
+          const sameSpecificity=activeSchemes.docs.filter(doc=>{
+            const data=doc.data();
+            return doc.id!==schemeId&&data.schoolId===ctx.schoolId&&data.status==="active"&&
+              schemeSpecificity(data.applicability||{})===requestedSpecificity;
+          });
+          const sectionIds=[...new Set([
+            requestedApplicability.sectionId,
+            ...sameSpecificity.map(doc=>cleanSchemeApplicability(doc.data().applicability||{}).sectionId)
+          ].filter(Boolean))];
+          const sectionDocs=await Promise.all(sectionIds.map(sectionId=>
+            tx.get(db.doc(prefix+"sections/"+sectionId))));
+          const sectionPrograms=new Map(sectionDocs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId)
+            .map(doc=>[doc.id,doc.data().programId||null]));
+          const collision=sameSpecificity.find(doc=>
+            schemeScopesOverlap(requestedApplicability,doc.data().applicability||{},{sectionPrograms}));
+          if(collision)
+            deny("failed-precondition","This grading policy overlaps active policy “"+
+              String(collision.data().name||collision.id).slice(0,120)+
+              "” at the same specificity. Narrow one policy's applicability or archive the conflicting policy before saving.");
           const revision=priorRevision+1;
           const values={schoolId:ctx.schoolId,name,description,status:"active",
             settings:storedSettings,applicability:requestedApplicability,
@@ -480,13 +525,61 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
             applicability:requestedApplicability,revision};
         }else{
           if(!prior)deny("not-found","Grading scheme does not exist.");
-          const status=input.action==="archive_scheme"?"archived":"active";
+          const restoring=input.action==="restore_scheme",status=restoring?"active":"archived";
           if(prior.status===status){result={schemeId,status,revision:priorRevision};return;}
+          if(restoring){
+            if(prior.status!=="archived")
+              deny("failed-precondition","Only an archived grading policy can be restored.");
+            const restoredApplicability=cleanSchemeApplicability(prior.applicability||{});
+            const [program,subject,section,activeSchemes]=await Promise.all([
+              restoredApplicability.programId?
+                tx.get(db.doc(prefix+"academic_programs/"+restoredApplicability.programId)):Promise.resolve(null),
+              restoredApplicability.subjectId?
+                tx.get(db.doc(prefix+"subjects/"+restoredApplicability.subjectId)):Promise.resolve(null),
+              restoredApplicability.sectionId?
+                tx.get(db.doc(prefix+"sections/"+restoredApplicability.sectionId)):Promise.resolve(null),
+              tx.get(db.collection(prefix+"grading_schemes").where("status","==","active").limit(51))
+            ]);
+            if(program&&(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active"))
+              deny("failed-precondition","Restore the grading policy's program/division before restoring this policy.");
+            if(subject&&(!subject.exists||subject.data().schoolId!==ctx.schoolId||subject.data().status!=="active"))
+              deny("failed-precondition","Restore the grading policy's subject before restoring this policy.");
+            if(section&&(!section.exists||section.data().schoolId!==ctx.schoolId||section.data().status!=="active"))
+              deny("failed-precondition","Restore the grading policy's section before restoring this policy.");
+            if(section&&restoredApplicability.programId&&section.data().programId!==restoredApplicability.programId)
+              deny("failed-precondition","The grading policy section no longer belongs to its configured program/division.");
+            if(activeSchemes.size===51)
+              deny("resource-exhausted","Active grading policies require pagination before restore overlap can be validated safely.");
+            const restoredSpecificity=schemeSpecificity(restoredApplicability);
+            const sameSpecificity=activeSchemes.docs.filter(doc=>{
+              const data=doc.data();
+              return doc.id!==schemeId&&data.schoolId===ctx.schoolId&&data.status==="active"&&
+                schemeSpecificity(data.applicability||{})===restoredSpecificity;
+            });
+            const sectionIds=[...new Set([
+              restoredApplicability.sectionId,
+              ...sameSpecificity.map(doc=>cleanSchemeApplicability(doc.data().applicability||{}).sectionId)
+            ].filter(Boolean))];
+            const sectionDocs=await Promise.all(sectionIds.map(sectionId=>
+              tx.get(db.doc(prefix+"sections/"+sectionId))));
+            const sectionPrograms=new Map(sectionDocs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId)
+              .map(doc=>[doc.id,doc.data().programId||null]));
+            const collision=sameSpecificity.find(doc=>
+              schemeScopesOverlap(restoredApplicability,doc.data().applicability||{},{sectionPrograms}));
+            if(collision)
+              deny("failed-precondition","This archived grading policy now overlaps active policy “"+
+                String(collision.data().name||collision.id).slice(0,120)+
+                "” at the same specificity. Narrow or archive the conflicting policy before restoring this one.");
+          }else if(prior.status!=="active"){
+            deny("failed-precondition","Only an active grading policy can be archived.");
+          }
           const revision=priorRevision+1;
-          tx.update(schemeRef,{status,revision,updatedByUid:ctx.uid,updatedAt:now});
+          tx.update(schemeRef,{status,revision,updatedByUid:ctx.uid,updatedAt:now,
+            ...(restoring?{restoredAt:now,restoredByUid:ctx.uid,restoreReason:lifecycleReason}:
+              {archivedAt:now,archivedByUid:ctx.uid,archiveReason:lifecycleReason})});
           tx.create(auditRef,{schoolId:ctx.schoolId,schemeId,actorUid:ctx.uid,
             action:status==="archived"?"grading_scheme_archived":"grading_scheme_restored",
-            revision,createdAt:now});
+            reason:lifecycleReason,revision,createdAt:now});
           result={schemeId,status,revision};
         }
       });
@@ -500,7 +593,28 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     const grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
     const sheetRef=db.doc(prefix+"class_records/"+offeringId);
 
-    async function verifyOffering(){
+    function resolveClassLead(offering,activeTeacherUids){
+      const ids=[...new Set((activeTeacherUids||[]).filter(Boolean))],
+        configured=typeof offering?.primaryTeacherUid==="string"?offering.primaryTeacherUid:"";
+      if(configured&&ids.includes(configured))
+        return {primaryTeacherUid:configured,source:"explicit",needsReview:false};
+      if(ids.length===1)
+        return {primaryTeacherUid:ids[0],source:configured?"inferred_stale":"inferred",needsReview:Boolean(configured)};
+      return {primaryTeacherUid:"",source:configured?"stale":ids.length?"missing":"none",
+        needsReview:ids.length>0||Boolean(configured)};
+    }
+    async function classLeadState(offering,{tx=null}={}){
+      const query=db.collection(prefix+"staff_assignments").where("offeringId","==",offeringId).limit(21),
+        snap=tx?await tx.get(query):await query.get();
+      if(snap.size===21)
+        deny("resource-exhausted","This offering has more than 20 teacher assignments. Paginated collaborator review is required.");
+      const active=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+        doc.data().offeringId===offeringId&&doc.data().status==="active"),
+        activeTeacherUids=active.map(doc=>doc.data().teacherUid),
+        lead=resolveClassLead(offering,activeTeacherUids);
+      return {...lead,active};
+    }
+    async function verifyOffering({requirePrimary=false}={}){
       const [offering,grant]=await Promise.all([offeringRef.get(),grantRef.get()]);
       if(!offering.exists||offering.data().schoolId!==ctx.schoolId)
         deny("not-found","This course offering is unavailable.");
@@ -508,22 +622,38 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
          grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==offeringId||
          grant.data().status!=="active"))
         deny("permission-denied","Only an actively assigned teacher can use this class record.");
+      if(requirePrimary&&!ctx.platformOverride){
+        const lead=await classLeadState(offering.data());
+        if(!lead.primaryTeacherUid)
+          deny("failed-precondition","This class needs an explicit Primary Teacher before the formal Class Record can be changed.");
+        if(lead.primaryTeacherUid!==ctx.uid)
+          deny("permission-denied","Only the Primary Teacher may change or finalize the formal Class Record. Co-teachers retain read access.");
+      }
       return offering.data();
     }
-    async function activeOfferingTeachers(){
-      const snap=await db.collection(prefix+"staff_assignments")
-        .where("offeringId","==",offeringId).limit(21).get();
-      if(snap.size===21)
-        deny("resource-exhausted","This offering has more than 20 teacher assignments. Paginated collaborator review is required.");
-      const active=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
-        doc.data().offeringId===offeringId&&doc.data().status==="active");
-      const memberships=await Promise.all(active.map(doc=>
+    async function requirePrimaryInTransaction(tx,offering){
+      if(ctx.platformOverride)return;
+      const lead=await classLeadState(offering,{tx});
+      if(!lead.primaryTeacherUid)
+        deny("failed-precondition","This class needs an explicit Primary Teacher before the formal Class Record can be changed.");
+      if(lead.primaryTeacherUid!==ctx.uid)
+        deny("permission-denied","Primary Teacher ownership changed. Reload Class Record before saving.");
+    }
+    async function activeOfferingTeachers(offering){
+      const lead=await classLeadState(offering);
+      const memberships=await Promise.all(lead.active.map(doc=>
         db.doc(prefix+"memberships/"+doc.data().teacherUid).get()));
-      return active.map((doc,index)=>({
-        name:memberships[index].exists&&memberships[index].data().schoolId===ctx.schoolId?
-          String(memberships[index].data().displayName||"Teacher"):"Teacher",
-        current:doc.data().teacherUid===ctx.uid
-      })).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+      return {
+        lead:{primaryTeacherUid:lead.primaryTeacherUid,source:lead.source,needsReview:lead.needsReview},
+        teachers:lead.active.map((doc,index)=>({
+          teacherUid:doc.data().teacherUid,
+          name:memberships[index].exists&&memberships[index].data().schoolId===ctx.schoolId?
+            String(memberships[index].data().displayName||"Teacher"):"Teacher",
+          role:doc.data().teacherUid===lead.primaryTeacherUid?"primary":"co_teacher",
+          current:doc.data().teacherUid===ctx.uid
+        })).sort((a,b)=>a.role===b.role?
+          a.name.localeCompare(b.name,undefined,{sensitivity:"base"}):a.role==="primary"?-1:1)
+      };
     }
     async function offeringLabels(offering){
       const [program,year,term,section,subject]=await Promise.all([
@@ -691,7 +821,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         db,prefix,schoolId:ctx.schoolId,offering,periodType:labels.periodType
       });
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
-      const [roster,assessments,sheet,gradeSnap,manualSnap,cellStateSnap,finalizationDoc,collaborators]=await Promise.all([
+      const [roster,assessments,sheet,gradeSnap,manualSnap,cellStateSnap,finalizationDoc,collaboratorState]=await Promise.all([
         classRoster(),
         availableAssessments(offering,labels),
         sheetRef.get(),
@@ -699,7 +829,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         db.collection(prefix+"class_record_scores").where("offeringId","==",offeringId).limit(MAX_SCORE_CELLS+1).get(),
         db.collection(prefix+"class_record_cell_states").where("offeringId","==",offeringId).limit(MAX_SCORE_CELLS+1).get(),
         finalizationRef.get(),
-        activeOfferingTeachers()
+        activeOfferingTeachers(offering)
       ]);
       if(gradeSnap.size>MAX_SCORE_CELLS)
         deny("resource-exhausted","Published school grade cells exceed the bounded Class Record capacity.");
@@ -777,9 +907,81 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       }:null;
       return {
         offering,labels,roster,assessments,columns,settings,gradingPolicy:gradingPolicy.policy,
-        manualScores,publishedGrades,cellStates,collaborators,
+        manualScores,publishedGrades,cellStates,collaborators:collaboratorState.teachers,
+        permissions:{
+          primaryTeacherUid:collaboratorState.lead.primaryTeacherUid,
+          primarySource:collaboratorState.lead.source,
+          primaryNeedsReview:collaboratorState.lead.needsReview,
+          classRole:ctx.platformOverride?"system_admin_assist":
+            collaboratorState.lead.primaryTeacherUid===ctx.uid?"primary":"co_teacher",
+          canEditClassRecord:ctx.platformOverride||collaboratorState.lead.primaryTeacherUid===ctx.uid
+        },
         sheetRevision:sheet.exists&&sheet.data().schoolId===ctx.schoolId?Number(sheet.data().revision)||0:0,
         finalization,snapshot
+      };
+    }
+
+    if(input.action==="assessment_link_overview"){
+      const offering=await verifyOffering(),lead=await classLeadState(offering),
+        canEditClassRecord=ctx.platformOverride||lead.primaryTeacherUid===ctx.uid;
+      const sheet=await sheetRef.get(),columns=sheet.exists&&sheet.data().schoolId===ctx.schoolId&&
+        Array.isArray(sheet.data().columns)?sheet.data().columns:[];
+      const links=[];
+      for(const column of columns){
+        if(column.kind!=="assessment")continue;
+        const source=column.assessmentSource||SCHOOL_SOURCE;
+        if(![SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE].includes(source)||!column.taskId)continue;
+        links.push({
+          taskId:String(column.taskId),sourceType:source,
+          status:column.archived===true?"archived":"linked",
+          linked:column.archived!==true,archived:column.archived===true,
+          columnId:String(column.columnId||""),
+          label:String(column.label||"Assessment"),
+          category:String(column.category||""),
+          maxPoints:Number(column.maxPoints)||0,
+          studentVisibility:cleanStudentVisibility(column.studentVisibility)
+        });
+      }
+      return {permissions:{
+          primaryTeacherUid:lead.primaryTeacherUid,primarySource:lead.source,
+          primaryNeedsReview:lead.needsReview,
+          classRole:ctx.platformOverride?"system_admin_assist":lead.primaryTeacherUid===ctx.uid?"primary":"co_teacher",
+          canEditClassRecord
+        },
+        offeringId,links,
+        sheetRevision:sheet.exists&&sheet.data().schoolId===ctx.schoolId?Number(sheet.data().revision)||0:0
+      };
+    }
+
+    if(input.action==="assessment_link_status"){
+      const offering=await verifyOffering(),lead=await classLeadState(offering),
+        canEditClassRecord=ctx.platformOverride||lead.primaryTeacherUid===ctx.uid;
+      const taskId=checkId(String(input.taskId||""),"Assessment task",128);
+      const task=await db.doc(prefix+"assessments/"+taskId).get();
+      if(!task.exists||task.data().schoolId!==ctx.schoolId||task.data().offeringId!==offeringId)
+        deny("not-found","This assessment does not belong to the selected class.");
+      const sheet=await sheetRef.get(),columns=sheet.exists&&sheet.data().schoolId===ctx.schoolId&&
+        Array.isArray(sheet.data().columns)?sheet.data().columns:[];
+      const matches=columns.filter(column=>column.kind==="assessment"&&
+        (column.assessmentSource||SCHOOL_SOURCE)===SCHOOL_SOURCE&&column.taskId===taskId);
+      const active=matches.find(column=>column.archived!==true)||null,
+        archived=!active?matches.find(column=>column.archived===true)||null:null,
+        column=active||archived;
+      return {permissions:{
+          primaryTeacherUid:lead.primaryTeacherUid,primarySource:lead.source,
+          primaryNeedsReview:lead.needsReview,
+          classRole:ctx.platformOverride?"system_admin_assist":lead.primaryTeacherUid===ctx.uid?"primary":"co_teacher",
+          canEditClassRecord
+        },
+        offeringId,taskId,
+        status:active?"linked":archived?"archived":"unlinked",
+        linked:Boolean(active),archived:Boolean(archived),
+        column:column?{
+          columnId:column.columnId,label:String(column.label||task.data().title||"Assessment"),
+          category:String(column.category||""),maxPoints:Number(column.maxPoints)||rubricTotal(task.data()),
+          studentVisibility:cleanStudentVisibility(column.studentVisibility)
+        }:null,
+        sheetRevision:sheet.exists&&sheet.data().schoolId===ctx.schoolId?Number(sheet.data().revision)||0:0
       };
     }
 
@@ -795,7 +997,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         assessments:data.assessments,columns:data.columns,settings:data.settings,
         gradingPolicy:data.gradingPolicy,
         manualScores:data.manualScores,publishedGrades:data.publishedGrades,cellStates:data.cellStates,
-        collaborators:data.collaborators,
+        collaborators:data.collaborators,permissions:data.permissions,
         sheetRevision:data.sheetRevision,finalization:data.finalization,
         periodReadiness:{
           ready:data.snapshot.ready,blockerCount:data.snapshot.blockerCount,
@@ -972,6 +1174,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
          !Number.isInteger(expectedFinalizationRevision)||expectedFinalizationRevision<0)
         deny("invalid-argument","Finalization revision information is invalid.");
       const data=await buildWorkspaceData();
+      if(!data.permissions.canEditClassRecord)
+        deny("permission-denied","Only the Primary Teacher may finalize the formal Class Record.");
       if(data.sheetRevision!==expectedSheetRevision)
         deny("failed-precondition","The Class Record changed. Reload it before finalizing the period.");
       if(!data.snapshot.ready)
@@ -981,12 +1185,14 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const revision=expectedFinalizationRevision+1;
       const activeColumns=data.columns.filter(column=>column.archived!==true);
       await db.runTransaction(async tx=>{
-        const [grant,currentSheet,currentFinalization]=await Promise.all([
-          tx.get(grantRef),tx.get(sheetRef),tx.get(finalizationRef)
+        const [grant,currentOffering,currentSheet,currentFinalization]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),tx.get(finalizationRef)
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload before finalizing.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         if(!currentSheet.exists||currentSheet.data().schoolId!==ctx.schoolId||
            Number(currentSheet.data().revision||0)!==expectedSheetRevision)
           deny("failed-precondition","The Class Record layout changed while finalizing. Reload and review again.");
@@ -1058,6 +1264,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       if(!Number.isInteger(expectedFinalizationRevision)||expectedFinalizationRevision<1)
         deny("invalid-argument","Choose a finalized period revision to release.");
       const data=await buildWorkspaceData();
+      if(!data.permissions.canEditClassRecord)
+        deny("permission-denied","Only the Primary Teacher may release the formal Final Grade.");
       if(!data.finalization||data.finalization.revision!==expectedFinalizationRevision)
         deny("failed-precondition","The finalized period revision changed. Reload before releasing Final Grade.");
       if(data.finalization.stale||!data.snapshot.ready||
@@ -1066,10 +1274,14 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       await db.runTransaction(async tx=>{
-        const [grant,current]=await Promise.all([tx.get(grantRef),tx.get(finalizationRef)]);
+        const [grant,currentOffering,current]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(finalizationRef)
+        ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload before releasing Final Grade.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         if(!current.exists||current.data().schoolId!==ctx.schoolId||
            Number(current.data().revision)!==expectedFinalizationRevision||
            String(current.data().sourceDigest||"")!==data.snapshot.sourceDigest)
@@ -1087,16 +1299,21 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     }
 
     if(input.action==="withdraw_final_grade"){
+      await verifyOffering({requirePrimary:true});
       const expectedReleasedRevision=Number(input.expectedReleasedRevision);
       if(!Number.isInteger(expectedReleasedRevision)||expectedReleasedRevision<1)
         deny("invalid-argument","Choose the released Final Grade revision to withdraw.");
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       await db.runTransaction(async tx=>{
-        const [grant,current]=await Promise.all([tx.get(grantRef),tx.get(finalizationRef)]);
+        const [grant,currentOffering,current]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(finalizationRef)
+        ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload before withdrawing Final Grade.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         if(!current.exists||current.data().schoolId!==ctx.schoolId||
            Number(current.data().releasedRevision)!==expectedReleasedRevision)
           deny("failed-precondition","The released Final Grade changed. Reload before withdrawing it.");
@@ -1112,7 +1329,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     }
 
     if(input.action==="save_layout"){
-      const offering=await verifyOffering(),labels=await offeringLabels(offering);
+      const offering=await verifyOffering({requirePrimary:true}),labels=await offeringLabels(offering);
       const gradingPolicy=await resolveSchoolGradingPolicy({
         db,prefix,schoolId:ctx.schoolId,offering,periodType:labels.periodType
       });
@@ -1138,6 +1355,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
            grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
            !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         const previous=current.exists&&current.data().schoolId===ctx.schoolId?current.data():null;
         const priorRevision=previous?Number(previous.revision)||0:0;
         if(priorRevision!==expectedRevision)
@@ -1189,7 +1407,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     }
 
     if(input.action==="save_manual_scores"){
-      await verifyOffering();
+      await verifyOffering({requirePrimary:true});
       const columnId=checkId(String(input.columnId||""),"Column ID",64);
       const values=Array.isArray(input.values)?input.values:[];
       if(!values.length||values.length>MAX_CLASS_SIZE)
@@ -1233,12 +1451,14 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       let changed=0;
       await db.runTransaction(async tx=>{
-        const [grant,currentSheet,...priorScores]=await Promise.all([
-          tx.get(grantRef),tx.get(sheetRef),...refs.map(ref=>tx.get(ref))
+        const [grant,currentOffering,currentSheet,...priorScores]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),...refs.map(ref=>tx.get(ref))
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         const liveColumn=(Array.isArray(currentSheet.data()?.columns)?currentSheet.data().columns:[])
           .find(item=>item.columnId===columnId);
         if(!liveColumn||liveColumn.kind!=="manual"||Number(liveColumn.maxPoints)!==maxPoints)
@@ -1265,7 +1485,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     }
 
     if(input.action==="save_cell_status"){
-      await verifyOffering();
+      await verifyOffering({requirePrimary:true});
       const columnId=checkId(String(input.columnId||""),"Column ID",64);
       const personId=checkId(String(input.personId||""),"Person ID",128);
       const nextStatus=cleanCellStatus(input.status);
@@ -1288,12 +1508,14 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       let changed=false,resultState;
       await db.runTransaction(async tx=>{
-        const [grant,currentSheet,prior]=await Promise.all([
-          tx.get(grantRef),tx.get(sheetRef),tx.get(stateRef)
+        const [grant,currentOffering,currentSheet,prior]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),tx.get(stateRef)
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         const liveColumn=(Array.isArray(currentSheet.data()?.columns)?currentSheet.data().columns:[])
           .find(item=>item.columnId===columnId);
         if(!liveColumn||liveColumn.archived===true)
@@ -1332,5 +1554,6 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
 }
 module.exports={
   createSchoolClassRecordService,cleanColumns,cleanSettings,
+  schemeMatchesOffering,schemeSpecificity,schemeScopesOverlap,
   SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE
 };

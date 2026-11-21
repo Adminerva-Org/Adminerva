@@ -7,7 +7,7 @@
   <title>Academic Configuration · Adminerva</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=e9b95b055852">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=20261121-pr215-merge1">
   <script defer src="https://cdn.tailwindcss.com"></script>
   <style>
     .ac-shell{max-width:920px;margin:auto;padding:1rem}
@@ -20,9 +20,17 @@
     .ac-btn{min-height:44px;border:1px solid #cbd5e1;border-radius:.75rem;padding:.65rem .95rem;background:white;font-weight:800}
     .ac-btn.primary{background:#1d4ed8;color:white;border-color:#1d4ed8}
     .ac-btn.success{background:#166534;color:white;border-color:#166534}
+    .ac-btn.danger{background:#9a3412;color:white;border-color:#9a3412}
     .ac-btn:disabled{opacity:.5;cursor:not-allowed}
     .ac-list{display:grid;gap:.5rem;margin-top:.85rem}
     .ac-row{display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;padding:.75rem;border:1px solid #e2e8f0;border-radius:.8rem;background:#f8fafc}
+    .ac-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:.4rem;flex-wrap:wrap}
+    .ac-row-actions .ac-btn{min-height:36px;padding:.4rem .65rem;font-size:.78rem}
+    .ac-state{display:inline-flex;align-items:center;border-radius:999px;padding:.25rem .55rem;font-size:.74rem;font-weight:800;background:#dcfce7;color:#166534}
+    .ac-state[data-state="archived"]{background:#e2e8f0;color:#475569}
+    .ac-dialog{width:min(34rem,calc(100vw - 1.25rem));border:0;border-radius:1rem;padding:0;box-shadow:0 24px 70px rgba(15,23,42,.35)}
+    .ac-dialog::backdrop{background:rgba(15,23,42,.55)}
+    .ac-dialog-card{padding:1rem;background:white;border-radius:1rem}
     .ac-muted{font-size:.86rem;color:#64748b}
     .ac-tabs{display:none}
     .ac-wizard-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-end;margin-top:1rem}
@@ -73,6 +81,7 @@
       .ac-wizard-nav .ac-next{grid-column:2;grid-row:2}
     }
   </style>
+  <link rel="stylesheet" href="css/school-admin-workflow.css?v=20261121-admin-flow1">
 </head>
 <body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
 <div id="adminerva-nav" data-module="admin" data-page="academic-config"></div>
@@ -252,10 +261,10 @@
     <article id="ac-offering-intro-card" class="ac-panel" hidden>
       <div class="ac-card-head">
         <span class="ac-number">6</span>
-        <div><h2 class="font-extrabold text-lg">Finish with Course Offerings</h2><p class="ac-muted mt-1">A course offering connects one subject to one section for a specific year and academic period.</p></div>
+        <div><h2 class="font-extrabold text-lg">Finish by creating Classes</h2><p class="ac-muted mt-1">A class offering connects one subject to one section for a specific year and academic period. Teacher staffing is managed after this structural setup.</p></div>
       </div>
-      <button type="button" class="ac-btn primary mt-3" data-open-offerings>Open Course Offerings</button>
-      <p class="ac-muted mt-3">Teacher assignments remain in <a class="font-bold text-blue-700" href="people-access.html#classes">People &amp; Access</a>; student registration and section enrollment are handled in <a class="font-bold text-blue-700" href="school-enrollment.html">Enrollment &amp; Registration</a>. School-wide grade rules stay in <a class="font-bold text-blue-700" href="school-grading-schemes.html">Grading Policies</a>.</p>
+      <button type="button" class="ac-btn primary mt-3" data-open-offerings>Open Class Offerings</button>
+      <p class="ac-muted mt-3">After creating class offerings, assign teachers and review teaching load in <a class="font-bold text-blue-700" href="school-classes.html">Classes &amp; Scheduling</a>. Student registration and official placement stay in <a class="font-bold text-blue-700" href="school-enrollment.html">Enrollment &amp; Registration</a>; school-wide grade rules stay in <a class="font-bold text-blue-700" href="school-grading-schemes.html">Grading Policies</a>.</p>
     </article>
   </section>
 
@@ -264,7 +273,7 @@
       <form id="ac-offering-form" class="grid gap-3">
         <div class="ac-card-head">
           <span class="ac-number">6</span>
-          <div><h2 class="font-extrabold text-lg">Create Course Offering</h2><p class="ac-muted mt-1">Only compatible periods and sections appear after you choose a program and school year.</p></div>
+          <div><h2 class="font-extrabold text-lg">Create Class Offering</h2><p class="ac-muted mt-1">Only compatible periods and sections appear after you choose a program and school year.</p></div>
         </div>
         <div class="ac-form-grid">
           <label class="text-sm font-bold">Program / division<select name="programId" class="ac-input mt-1" required></select></label>
@@ -273,11 +282,18 @@
         <label class="text-sm font-bold">Academic period<select name="termId" class="ac-input mt-1" required></select></label>
         <label class="text-sm font-bold">Section<select name="sectionId" class="ac-input mt-1" required></select></label>
         <label class="text-sm font-bold">Subject<select name="subjectId" class="ac-input mt-1" required></select></label>
-        <div id="ac-offering-preview" class="ac-summary ac-muted">Choose the required fields to preview this course offering.</div>
-        <button class="ac-btn success" type="submit">Create course offering</button>
+        <label class="text-sm font-bold">Roster source
+          <select name="rosterMode" class="ac-input mt-1" required>
+            <option value="section">Official section placement · automatic roster</option>
+            <option value="selective">Selective / elective · manual roster</option>
+          </select>
+          <span class="ac-helper">Use the official section roster for normal subjects. Selective mode is for electives, irregular learners, or classes that intentionally include only part of the section.</span>
+        </label>
+        <div id="ac-offering-preview" class="ac-summary ac-muted">Choose the required fields to preview this class offering.</div>
+        <button class="ac-btn success" type="submit">Create class offering</button>
       </form>
       <div>
-        <div class="flex items-center justify-between gap-3"><h2 class="font-extrabold text-lg">Active Course Offerings</h2><span id="ac-offering-count" class="ac-muted"></span></div>
+        <div class="flex items-center justify-between gap-3"><h2 class="font-extrabold text-lg">Class Offerings</h2><span id="ac-offering-count" class="ac-muted"></span></div>
         <div id="ac-offering-list" class="ac-list"></div>
       </div>
     </div>
@@ -289,12 +305,38 @@
     <button id="ac-wizard-next" class="ac-btn primary ac-next" type="button" disabled>Next →</button>
   </nav>
 </main>
+
+  <dialog id="ac-lifecycle-dialog" class="ac-dialog" aria-labelledby="ac-lifecycle-title">
+    <form id="ac-lifecycle-form" class="ac-dialog-card" method="dialog">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-extrabold uppercase tracking-wider text-blue-700">Record lifecycle</p>
+          <h2 id="ac-lifecycle-title" class="text-lg font-extrabold mt-1">Archive record</h2>
+          <p id="ac-lifecycle-target" class="ac-muted mt-1"></p>
+        </div>
+        <button id="ac-lifecycle-close" type="button" class="ac-btn">Close</button>
+      </div>
+      <p id="ac-lifecycle-help" class="ac-summary ac-muted mt-4"></p>
+      <div id="ac-lifecycle-actions" class="ac-mobile-actions mt-3" hidden>
+        <a id="ac-lifecycle-open-classes" class="ac-btn" href="school-classes.html" style="display:inline-flex;align-items:center;text-decoration:none">Open Classes &amp; Scheduling</a>
+        <a id="ac-lifecycle-open-enrollment" class="ac-btn" href="school-enrollment.html" style="display:inline-flex;align-items:center;text-decoration:none">Open Enrollment</a>
+      </div>
+      <label class="text-sm font-bold block mt-4">Reason
+        <textarea name="reason" class="ac-input mt-1" rows="3" minlength="12" maxlength="500" required placeholder="Explain why this record should be archived or restored."></textarea>
+      </label>
+      <div class="ac-mobile-actions mt-4">
+        <button id="ac-lifecycle-confirm" class="ac-btn danger" type="submit">Archive</button>
+        <button id="ac-lifecycle-cancel" class="ac-btn" type="button">Cancel</button>
+      </div>
+    </form>
+  </dialog>
 <div id="ac-action-message" class="ac-action-message" role="status" aria-live="assertive" hidden></div>
 
-<script defer src="js/core/release-footer.js?v=e9b95b055852"></script>
-<script src="js/core/adminerva-loader.js?v=e9b95b055852"></script>
-<script defer src="js/core/adminerva-nav.js?v=e9b95b055852"></script>
-<script type="module" src="js/core/auth-guard-v4-pilot.js?v=e9b95b055852"></script>
-<script type="module" src="js/school-admin/academic-configuration.mjs?v=09073098dd88"></script>
+<script defer src="js/core/release-footer.js?v=20261121-pr215-merge1"></script>
+<script src="js/core/adminerva-loader.js?v=20261121-pr215-merge1"></script>
+<script defer src="js/core/adminerva-nav.js?v=20261121-pr215-merge1"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261121-pr215-merge1"></script>
+<script type="module" src="js/school-admin/academic-configuration.mjs?v=20261121-crud-lifecycle1"></script>
+<script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>

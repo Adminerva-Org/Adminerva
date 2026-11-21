@@ -28,30 +28,66 @@ function governanceRoleId(value){
 async function standardSetupStatus({db,schoolId,schoolData}){
   const prefix="schools/"+schoolId+"/";
   const firstAdminUid=schoolData.firstAdminUid||null;
-  const [admin,program,year,term,subject,section,offering]=await Promise.all([
+  const [admin,profile,programs,years,terms,subjects,sections,offerings]=await Promise.all([
     firstAdminUid?db.doc(prefix+"memberships/"+firstAdminUid).get():Promise.resolve(null),
-    db.collection(prefix+"academic_programs").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"academic_years").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"terms").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"subjects").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"sections").where("status","==","active").limit(1).get(),
-    db.collection(prefix+"course_offerings").where("status","==","active").limit(1).get()
+    db.doc(prefix+"configuration/profile").get(),
+    db.collection(prefix+"academic_programs").where("status","==","active").limit(101).get(),
+    db.collection(prefix+"academic_years").where("status","==","active").limit(101).get(),
+    db.collection(prefix+"terms").where("status","==","active").limit(201).get(),
+    db.collection(prefix+"subjects").where("status","==","active").limit(201).get(),
+    db.collection(prefix+"sections").where("status","==","active").limit(201).get(),
+    db.collection(prefix+"course_offerings").where("status","==","active").limit(201).get()
   ]);
   const firstAdminActive=Boolean(admin?.exists&&admin.data().schoolId===schoolId&&
     admin.data().status==="active"&&Array.isArray(admin.data().roles)&&
     admin.data().roles.includes("school_admin"));
+  const owned=docs=>docs.filter(doc=>doc.data().schoolId===schoolId),
+    activePrograms=owned(programs.docs),activeYears=owned(years.docs),activeTerms=owned(terms.docs),
+    activeSubjects=owned(subjects.docs),activeSections=owned(sections.docs),activeOfferings=owned(offerings.docs),
+    programMap=new Map(activePrograms.map(doc=>[doc.id,doc.data()])),
+    yearMap=new Map(activeYears.map(doc=>[doc.id,doc.data()])),
+    termMap=new Map(activeTerms.map(doc=>[doc.id,doc.data()])),
+    subjectMap=new Map(activeSubjects.map(doc=>[doc.id,doc.data()])),
+    sectionMap=new Map(activeSections.map(doc=>[doc.id,doc.data()]));
+  const coherentOffering=activeOfferings.find(doc=>{
+    const row=doc.data(),program=programMap.get(row.programId),year=yearMap.get(row.yearId),
+      term=termMap.get(row.termId),subject=subjectMap.get(row.subjectId),section=sectionMap.get(row.sectionId);
+    return Boolean(program&&year&&term&&subject&&section&&
+      term.yearId===row.yearId&&term.programId===row.programId&&
+      section.programId===row.programId);
+  })||null;
+  const catalogCapped=programs.size===101||years.size===101||terms.size===201||
+    subjects.size===201||sections.size===201||offerings.size===201;
+  const profileReady=Boolean(profile?.exists&&profile.data().schoolId===schoolId&&Number(profile.data().revision)>=1);
   const checks=[
     {id:"school_registered",ok:true,label:"School registered",detail:"The institution tenant exists."},
     {id:"school_admin",ok:firstAdminActive,label:"School Administrator assigned",
       detail:firstAdminActive?"The first School Administrator is active.":"Assign a verified School Administrator."},
-    {id:"academic_year",ok:!year.empty,label:"School year configured",detail:year.empty?"Create the school year.":"School year is configured."},
-    {id:"program",ok:!program.empty,label:"Division / program configured",detail:program.empty?"Create at least one division or program.":"Division / program is configured."},
-    {id:"period",ok:!term.empty,label:"Academic period configured",detail:term.empty?"Create the current quarter, term or semester.":"Academic period is configured."},
-    {id:"subject",ok:!subject.empty,label:"Subject configured",detail:subject.empty?"Create at least one subject.":"Subject catalog is configured."},
-    {id:"section",ok:!section.empty,label:"Section configured",detail:section.empty?"Create at least one section.":"Section catalog is configured."},
-    {id:"offering",ok:!offering.empty,label:"Course offering configured",detail:offering.empty?"Connect a subject, section and academic period in a course offering.":"At least one course offering is configured."}
+    {id:"school_profile",ok:profileReady,label:"School profile saved",
+      detail:profileReady?"Canonical institution profile is saved.":"Save the official school profile, contact details and timezone."},
+    {id:"academic_year",ok:activeYears.length>0,label:"School year configured",
+      detail:activeYears.length?"At least one active school year is configured.":"Create the school year."},
+    {id:"program",ok:activePrograms.length>0,label:"Division / program configured",
+      detail:activePrograms.length?"At least one active division or program is configured.":"Create at least one division or program."},
+    {id:"period",ok:activeTerms.length>0,label:"Academic period configured",
+      detail:activeTerms.length?"At least one active academic period is configured.":"Create the current quarter, term or semester."},
+    {id:"subject",ok:activeSubjects.length>0,label:"Subject configured",
+      detail:activeSubjects.length?"The active subject catalog is available.":"Create at least one subject."},
+    {id:"section",ok:activeSections.length>0,label:"Section configured",
+      detail:activeSections.length?"The active section catalog is available.":"Create at least one section."},
+    {id:"offering",ok:Boolean(coherentOffering),label:"Coherent course offering configured",
+      detail:coherentOffering
+        ?"At least one active class offering points to an active, matching year, period, program, subject and section."
+        :activeOfferings.length
+          ?"Active class offerings exist, but none of the reviewed offerings has a fully active and internally consistent academic context."
+          :"Connect a subject, section and academic period in a course offering."}
   ];
+  if(catalogCapped)checks.push({
+    id:"setup_review_capacity",ok:false,label:"Setup validation capacity",
+    detail:"The draft school already exceeds the bounded setup-validation sample. Reduce duplicate setup records or use a paginated activation review before production authorization."
+  });
   return {schoolId,ready:checks.every(check=>check.ok),checks,firstAdminUid,firstAdminActive,
+    coherentOfferingId:coherentOffering?.id||null,
     state:schoolData.state,compatibilityMode:schoolData.compatibilityMode||"legacy_allowed",
     provisioningMode:schoolData.provisioningMode||
       ((schoolData.compatibilityMode||"legacy_allowed")==="v4_only"?"standard":"legacy_migration")};
@@ -136,7 +172,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const snap=await db.collection("platform_governance_roles").orderBy("displayName").limit(100).get();
       return {roles:snap.docs.map(doc=>({
         roleId:doc.id,displayName:doc.data().displayName,description:doc.data().description||"",
-        status:doc.data().status||"active"
+        status:doc.data().status||"active",revision:Number(doc.data().revision)||1
       }))};
     }
     if(action==="create_governance_role"){
@@ -154,13 +190,99 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       });
       return {roleId,displayName,status:"active"};
     }
+    if(["update_governance_role","archive_governance_role","restore_governance_role"].includes(action)){
+      const roleId=governanceRoleId(input.roleId),ref=db.doc("platform_governance_roles/"+roleId),
+        expectedRevision=Number(input.expectedRevision),
+        auditRef=db.collection("platform_audit").doc(),
+        restoring=action==="restore_governance_role",
+        archiving=action==="archive_governance_role";
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the governance role before changing it.");
+      const displayName=action==="update_governance_role"?
+        phrase(input.displayName,3,120,"Governance role name"):null;
+      const description=action==="update_governance_role"&&typeof input.description==="string"?
+        input.description.trim().slice(0,500):null;
+      const reason=action==="update_governance_role"?null:phrase(input.reason,12,500,"Governance lifecycle reason");
+      let assignmentRefs=[];
+      if(archiving){
+        const schools=await db.collection("platform_schools").limit(101).get();
+        if(schools.size===101)
+          fail("resource-exhausted","Governance-role archive review requires paginated school discovery before this role can be retired safely.");
+        assignmentRefs=schools.docs.map(school=>db.doc("platform_schools/"+school.id+"/governance_roles/"+roleId));
+      }
+      let result;
+      await db.runTransaction(async tx=>{
+        const [current,...assignments]=await Promise.all([tx.get(ref),...assignmentRefs.map(item=>tx.get(item))]);
+        if(!current.exists)fail("not-found","The governance role does not exist.");
+        const data=current.data(),revision=Number(data.revision)||1;
+        if(revision!==expectedRevision)
+          fail("failed-precondition","This governance role changed after you opened it. Refresh before saving.");
+        if(action==="update_governance_role"&&data.status!=="active")
+          fail("failed-precondition","Restore this governance role before editing it.");
+        if(archiving&&data.status!=="active")
+          fail("failed-precondition","Only an active governance role can be archived.");
+        if(restoring&&data.status!=="archived")
+          fail("failed-precondition","Only an archived governance role can be restored.");
+        if(archiving){
+          const activeSchools=assignments.filter(item=>item.exists&&item.data().status==="active")
+            .map(item=>String(item.data().schoolId||"").slice(0,80)).filter(Boolean);
+          if(activeSchools.length)
+            fail("failed-precondition","End this governance role's active school assignments before archiving the role definition. Active in: "+
+              activeSchools.slice(0,8).join(", ")+(activeSchools.length>8?" and "+(activeSchools.length-8)+" more school(s).":"."));
+        }
+        const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+        if(action==="update_governance_role")
+          tx.update(ref,{displayName,description,revision:nextRevision,updatedByUid:uid,updatedAt:now});
+        else if(archiving)
+          tx.update(ref,{status:"archived",archiveReason:reason,archivedByUid:uid,archivedAt:now,
+            revision:nextRevision,updatedByUid:uid,updatedAt:now});
+        else
+          tx.update(ref,{status:"active",restoreReason:reason,restoredByUid:uid,restoredAt:now,
+            revision:nextRevision,updatedByUid:uid,updatedAt:now});
+        tx.create(auditRef,{actorUid:uid,action:action==="update_governance_role"?
+          "platform_governance_role_updated":archiving?
+            "platform_governance_role_archived":"platform_governance_role_restored",
+          roleId,...(reason?{reason}:{}),createdAt:now});
+        result={roleId,status:archiving?"archived":"active",revision:nextRevision,
+          ...(displayName?{displayName}:{})};
+      });
+      return result;
+    }
     const schoolId=checkedSchoolId(input.schoolId),schoolRef=db.doc("platform_schools/"+schoolId);
     const auditRef=db.collection("platform_audit").doc();
     const cutoverDecisionRef=db.doc("platform_schools/"+schoolId+"/private_config/cutover_decisions");
+    if(action==="list_school_audit"){
+      const [platformSnap,assistSnap]=await Promise.all([
+        db.collection("platform_audit").where("schoolId","==",schoolId).limit(101).get(),
+        db.collection("platform_admin_assistance_audit").where("schoolId","==",schoolId).limit(101).get()
+      ]);
+      if(platformSnap.size===101||assistSnap.size===101)
+        fail("resource-exhausted","School platform audit history requires pagination.");
+      const normalize=(doc,source)=>{
+        const row=doc.data(),detail={};
+        for(const key of ["reason","roleId","mode","scopeReference","targetUid"]){
+          if(typeof row[key]==="string"&&row[key])detail[key]=row[key].slice(0,key==="reason"?500:160);
+        }
+        return {
+          auditId:source+":"+doc.id,source,
+          action:String(row.action||"platform_change").slice(0,120),
+          actorUid:String(row.actorUid||"").slice(0,128),
+          createdAt:row.createdAt?.toMillis?.()||0,detail
+        };
+      };
+      const combined=[
+        ...platformSnap.docs.map(doc=>normalize(doc,"platform")),
+        ...assistSnap.docs.map(doc=>normalize(doc,"assist"))
+      ].sort((a,b)=>b.createdAt-a.createdAt);
+      return {schoolId,events:combined.slice(0,50),truncated:combined.length>50};
+    }
     if(action==="list_school_governance_roles"){
       const snap=await db.collection("platform_schools/"+schoolId+"/governance_roles").limit(100).get();
       return {schoolId,roles:snap.docs.map(doc=>({
-        roleId:doc.id,status:doc.data().status||"active",assignedAt:doc.data().assignedAt?.toMillis?.()||null
+        roleId:doc.id,status:doc.data().status||"active",
+        assignedAt:doc.data().assignedAt?.toMillis?.()||null,
+        endedAt:doc.data().endedAt?.toMillis?.()||null,
+        revision:Number(doc.data().revision)||1
       }))};
     }
     if(action==="assign_governance_role"){
@@ -168,17 +290,62 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         roleRef=db.doc("platform_governance_roles/"+roleId),
         assignmentRef=db.doc("platform_schools/"+schoolId+"/governance_roles/"+roleId);
       await db.runTransaction(async tx=>{
-        const [school,role]=await Promise.all([tx.get(schoolRef),tx.get(roleRef)]);
+        const [school,role,assignment]=await Promise.all([tx.get(schoolRef),tx.get(roleRef),tx.get(assignmentRef)]);
         if(!school.exists||!["draft","pilot","active","suspended"].includes(school.data().state))
           fail("failed-precondition","The school must exist and must not be archived.");
         if(!role.exists||role.data().status!=="active")
           fail("failed-precondition","Choose an active platform governance role.");
+        if(assignment.exists)
+          fail("failed-precondition",assignment.data().status==="active"
+            ?"This governance role is already active for the selected school."
+            :"This governance assignment already has history. Use Restore assignment instead of overwriting it.");
         const now=FieldValue.serverTimestamp();
-        tx.set(assignmentRef,{schoolId,roleId,status:"active",assignedByUid:uid,assignedAt:now},{merge:false});
+        tx.create(assignmentRef,{schoolId,roleId,status:"active",revision:1,
+          assignedByUid:uid,assignedAt:now,updatedAt:now});
         tx.create(auditRef,{schoolId,actorUid:uid,action:"school_governance_role_assigned",
           roleId,reason,createdAt:now});
       });
-      return {schoolId,roleId,status:"active"};
+      return {schoolId,roleId,status:"active",revision:1};
+    }
+    if(["end_governance_role_assignment","restore_governance_role_assignment"].includes(action)){
+      const roleId=governanceRoleId(input.roleId),expectedRevision=Number(input.expectedRevision),
+        reason=phrase(input.reason,12,500,"Governance assignment lifecycle reason"),
+        assignmentRef=db.doc("platform_schools/"+schoolId+"/governance_roles/"+roleId),
+        roleRef=db.doc("platform_governance_roles/"+roleId),
+        restoring=action==="restore_governance_role_assignment";
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the governance assignment before changing it.");
+      let result;
+      await db.runTransaction(async tx=>{
+        const [school,assignment,role]=await Promise.all([
+          tx.get(schoolRef),tx.get(assignmentRef),restoring?tx.get(roleRef):Promise.resolve(null)
+        ]);
+        if(!school.exists)fail("not-found","The school does not exist.");
+        if(!assignment.exists||assignment.data().schoolId!==schoolId)
+          fail("not-found","The governance assignment does not exist for this school.");
+        const data=assignment.data(),revision=Number(data.revision)||1;
+        if(revision!==expectedRevision)
+          fail("failed-precondition","This governance assignment changed after you opened it. Refresh before saving.");
+        if(restoring){
+          if(data.status!=="ended")fail("failed-precondition","Only an ended governance assignment can be restored.");
+          if(!role?.exists||role.data().status!=="active")
+            fail("failed-precondition","Restore the platform governance role definition before restoring this school assignment.");
+        }else if(data.status!=="active")
+          fail("failed-precondition","Only an active governance assignment can be ended.");
+        const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+        tx.update(assignmentRef,restoring?{
+          status:"active",restoredByUid:uid,restoredAt:now,restoreReason:reason,
+          revision:nextRevision,updatedByUid:uid,updatedAt:now
+        }:{
+          status:"ended",endedByUid:uid,endedAt:now,endReason:reason,
+          revision:nextRevision,updatedByUid:uid,updatedAt:now
+        });
+        tx.create(auditRef,{schoolId,actorUid:uid,roleId,
+          action:restoring?"school_governance_role_restored":"school_governance_role_ended",
+          reason,createdAt:now});
+        result={schoolId,roleId,status:restoring?"active":"ended",revision:nextRevision};
+      });
+      return result;
     }
     if(action==="get_setup_status"){
       const school=await schoolRef.get();
@@ -186,10 +353,15 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return await standardSetupStatus({db,schoolId,schoolData:school.data()});
     }
     if(action==="activate_standard"){
-      const reason=phrase(input.reason,12,500,"Activation reason");
+      const reason=phrase(input.reason,12,500,"Activation reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before activating it.");
       const school=await schoolRef.get();
       if(!school.exists)fail("not-found","The school does not exist.");
       const data=school.data();
+      if(data.revision!==expectedRevision)
+        fail("failed-precondition","The school changed after you reviewed setup. Refresh before activating.");
       const mode=data.provisioningMode||
         ((data.compatibilityMode||"legacy_allowed")==="v4_only"?"standard":"legacy_migration");
       if(mode!=="standard"||(data.compatibilityMode||"legacy_allowed")!=="v4_only")
@@ -203,6 +375,8 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         const current=await tx.get(schoolRef);
         if(!current.exists||current.data().state!=="draft")
           fail("failed-precondition","The school state changed. Refresh before activating.");
+        if(current.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after setup review. Refresh before activating.");
         const now=FieldValue.serverTimestamp();
         tx.update(schoolRef,{state:"active",productionAuthorized:true,
           revision:(current.data().revision||0)+1,activatedByUid:uid,activatedAt:now,updatedAt:now});
@@ -310,6 +484,47 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       });
       return {schoolId,state:"draft"};
     }
+    if(action==="list_school_admins"){
+      const [school,snap]=await Promise.all([
+        schoolRef.get(),
+        db.collection("schools/"+schoolId+"/memberships")
+          .where("roles","array-contains","school_admin").limit(101).get()
+      ]);
+      if(!school.exists)fail("not-found","The school does not exist.");
+      if(snap.size===101)fail("resource-exhausted","School Administrator list requires pagination.");
+      const rows=snap.docs.filter(doc=>{
+        const row=doc.data();
+        return row.schoolId===schoolId&&Array.isArray(row.roles)&&row.roles.includes("school_admin");
+      });
+      let resolved={users:[],notFound:[]};
+      if(rows.length){
+        try{resolved=await auth.getUsers(rows.map(doc=>({uid:doc.id})));}
+        catch(error){
+          console.warn("School Administrator identity resolution failed",{schoolId,code:error?.code||"unknown"});
+        }
+      }
+      const users=new Map((resolved.users||[]).map(user=>[user.uid,user]));
+      const activeCount=rows.filter(doc=>doc.data().status==="active").length;
+      const firstAdminUid=String(school.data().firstAdminUid||"");
+      return {
+        schoolId,activeCount,
+        admins:rows.map(doc=>{
+          const row=doc.data(),user=users.get(doc.id);
+          return {
+            uid:doc.id,
+            displayName:String(row.displayName||user?.displayName||"School Administrator").slice(0,140),
+            email:user?.email||"",
+            emailVerified:user?.emailVerified===true,
+            accountDisabled:user?.disabled===true,
+            status:String(row.status||"unknown").slice(0,40),
+            roles:Array.isArray(row.roles)?row.roles.slice(0,20):[],
+            revision:Number(row.revision)||1,
+            isFirstAdmin:doc.id===firstAdminUid
+          };
+        }).sort((a,b)=>(a.status==="active"?0:1)-(b.status==="active"?0:1)||
+          a.displayName.localeCompare(b.displayName)||a.uid.localeCompare(b.uid))
+      };
+    }
     if(action==="grant_school_admin") {
       const targetUid=phrase(input.targetUid,8,128,"Verified administrator UID");
       const reason=phrase(input.reason,12,500,"Reason");
@@ -340,13 +555,24 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     }
     if(action==="suspend_school_admin"||action==="restore_school_admin") {
       const targetUid=phrase(input.targetUid,8,128,"School administrator UID");
+      const expectedMembershipRevision=Number(input.expectedMembershipRevision);
+      if(!Number.isSafeInteger(expectedMembershipRevision)||expectedMembershipRevision<1)
+        fail("invalid-argument","Refresh the School Administrator list before changing access.");
       const reason=phrase(input.reason,12,500,action==="restore_school_admin"?"Recovery reason":"Suspension reason");
-      const target=await auth.getUser(targetUid);
-      if(!target.emailVerified||target.disabled)
-        fail("failed-precondition","The target account is not a verified active identity.");
       const memberRef=db.doc("schools/"+schoolId+"/memberships/"+targetUid);
       const indexRef=db.doc("platform_users/"+targetUid+"/memberships/"+schoolId);
       const restoring=action==="restore_school_admin";
+      if(restoring){
+        let target;
+        try{target=await auth.getUser(targetUid);}
+        catch(error){
+          if(error?.code==="auth/user-not-found")
+            fail("failed-precondition","The Firebase account no longer exists. Recreate or relink the identity before restoring school access.");
+          throw error;
+        }
+        if(!target.emailVerified||target.disabled)
+          fail("failed-precondition","Restore the Firebase account to a verified active identity before restoring school access.");
+      }
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef),member=await tx.get(memberRef);
         if(!school.exists||!["draft","pilot","active","suspended"].includes(school.data().state))
@@ -354,6 +580,8 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         if(!member.exists||member.data().schoolId!==schoolId||
            !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
           fail("failed-precondition","The target is not a school administrator for this institution.");
+        if((Number(member.data().revision)||1)!==expectedMembershipRevision)
+          fail("failed-precondition","This School Administrator access record changed after you reviewed it. Refresh the administrator list before retrying.");
         if(restoring){
           if(member.data().status!=="suspended")
             fail("failed-precondition","Only a suspended school administrator can be recovered.");
@@ -381,13 +609,18 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     }
     if(action==="start_pilot") {
       const scopeReference=phrase(input.scopeReference,8,240,"Pilot scope reference"),
-        reason=phrase(input.reason,12,500,"Pilot reason"),ack=input.acknowledgements||{};
+        reason=phrase(input.reason,12,500,"Pilot reason"),ack=input.acknowledgements||{},
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before starting a pilot.");
       for(const key of ["limitedScopeReviewed","legacyCompatibilityRequired","productionNotAuthorized"])
         if(ack[key]!==true)fail("failed-precondition","Confirm the limited scope, legacy compatibility and non-production pilot status.");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
         if(!school.exists||school.data().state!=="draft")
           fail("failed-precondition","Only a draft school can enter controlled pilot mode.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before starting the pilot.");
         const adminUid=school.data().firstAdminUid;
         if(!adminUid)fail("failed-precondition","Designate the first verified school administrator before pilot access.");
         const member=await tx.get(db.doc("schools/"+schoolId+"/memberships/"+adminUid));
@@ -405,11 +638,16 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return {schoolId,state:"pilot",compatibilityMode:"legacy_allowed",productionAuthorized:false};
     }
     if(action==="end_pilot") {
-      const reason=phrase(input.reason,12,500,"Pilot close reason");
+      const reason=phrase(input.reason,12,500,"Pilot close reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before ending the pilot.");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
         if(!school.exists||school.data().state!=="pilot")
           fail("failed-precondition","Only a controlled pilot can be returned to draft.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before ending the pilot.");
         const now=FieldValue.serverTimestamp(),pilot=school.data().pilot||{};
         tx.update(schoolRef,{state:"draft",compatibilityMode:"legacy_allowed",productionAuthorized:false,
           pilot:{...pilot,status:"ended",productionAuthorized:false,endedByUid:uid,endedAt:now},
@@ -424,11 +662,16 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const attestation=input.attestation||{};
       if(requiredAttestations.some(key=>attestation[key]!==true))
         fail("failed-precondition","Institutional authority, provenance, calendar and privacy approval must be confirmed.");
-      const reason=phrase(input.reason,12,500,"Activation reason");
+      const reason=phrase(input.reason,12,500,"Activation reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before activation.");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
         if(!school.exists||!["draft","pilot"].includes(school.data().state))
           fail("failed-precondition","Only a draft or controlled-pilot institution can be activated.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before activation.");
         const adminUid=school.data().firstAdminUid;
         if(!adminUid)fail("failed-precondition","Designate the first verified school administrator.");
         const member=await tx.get(db.doc("schools/"+schoolId+"/memberships/"+adminUid));
@@ -450,7 +693,10 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const mode=input.mode;
       if(!["legacy_allowed","v4_only"].includes(mode))
         fail("invalid-argument","Choose a supported school compatibility mode.");
-      const reason=phrase(input.reason,12,500,"Compatibility-mode reason");
+      const reason=phrase(input.reason,12,500,"Compatibility-mode reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before changing compatibility mode.");
       let requiredMcsPackage=null;
       if(mode==="v4_only"){
         const readiness=await evaluateSchoolCutoverReadiness({db,schoolId});
@@ -476,6 +722,8 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         const school=await tx.get(schoolRef);
         if(!school.exists||!["active","suspended"].includes(school.data().state))
           fail("failed-precondition","Compatibility mode can be changed only for an active or suspended school.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before changing compatibility mode.");
         if(mode==="v4_only"&&requiredMcsPackage){
           const packageDoc=await tx.get(requiredMcsPackage.ref),data=packageDoc.exists?packageDoc.data():null,
             recordedAt=data?.recordedAt?.toMillis?.()||0;
@@ -516,12 +764,70 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return {schoolId,compatibilityMode:mode};
     }
 
+    if(action==="get_recovery_status"){
+      const school=await schoolRef.get();
+      if(!school.exists)fail("not-found","The school does not exist.");
+      const admins=await db.collection("schools/"+schoolId+"/memberships")
+        .where("roles","array-contains","school_admin").limit(101).get();
+      if(admins.size===101)
+        fail("resource-exhausted","School administrator recovery review requires pagination.");
+      const activeAdmins=admins.docs.filter(doc=>{
+        const row=doc.data();
+        return row.schoolId===schoolId&&row.status==="active"&&
+          Array.isArray(row.roles)&&row.roles.includes("school_admin");
+      });
+      const suspendedAdmins=admins.docs.filter(doc=>{
+        const row=doc.data();
+        return row.schoolId===schoolId&&row.status==="suspended"&&
+          Array.isArray(row.roles)&&row.roles.includes("school_admin");
+      });
+      const data=school.data(),blockers=[];
+      if(data.state!=="suspended")blockers.push("The institution is not currently suspended.");
+      if(data.productionAuthorized!==true)blockers.push("The institution has no prior production authorization to restore.");
+      if(!activeAdmins.length)blockers.push("Restore or designate an active School Administrator before restoring the institution.");
+      return {
+        schoolId,state:data.state,revision:Number(data.revision)||1,
+        productionAuthorized:data.productionAuthorized===true,
+        activeAdminCount:activeAdmins.length,suspendedAdminCount:suspendedAdmins.length,
+        canResume:blockers.length===0,blockers
+      };
+    }
+
+    if(action==="resume") {
+      const reason=phrase(input.reason,12,500,"School recovery reason");
+      if(!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<1)
+        fail("invalid-argument","Refresh the school before restoring access.");
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef);
+        if(!school.exists||school.data().state!=="suspended")
+          fail("failed-precondition","Only a suspended school can be restored.");
+        if(school.data().revision!==input.expectedRevision)
+          fail("failed-precondition","The school changed. Refresh before restoring access.");
+        if(school.data().productionAuthorized!==true)
+          fail("failed-precondition","Restore access only for a previously authorized institution.");
+        const admins=await tx.get(db.collection("schools/"+schoolId+"/memberships")
+          .where("roles","array-contains","school_admin"));
+        if(!admins.docs.some(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active"))
+          fail("failed-precondition","Restore or designate an active school administrator before restoring the school.");
+        const now=FieldValue.serverTimestamp();
+        tx.update(schoolRef,{state:"active",revision:school.data().revision+1,
+          resumedByUid:uid,resumedAt:now,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"school_resumed",reason,
+          beforeState:"suspended",afterState:"active",createdAt:now});
+      });
+      return {schoolId,state:"active"};
+    }
     if(action==="suspend") {
-      const reason=phrase(input.reason,12,500,"Suspension reason");
+      const reason=phrase(input.reason,12,500,"Suspension reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before suspension.");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
         if(!school.exists||school.data().state!=="active")
           fail("failed-precondition","Only an active school may be suspended.");
+        if(school.data().revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before suspension.");
         tx.update(schoolRef,{state:"suspended",revision:(school.data().revision||0)+1,
           updatedAt:FieldValue.serverTimestamp()});
         tx.create(auditRef,{schoolId,actorUid:uid,action:"school_suspended",reason,
@@ -532,4 +838,4 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     fail("invalid-argument","Unknown platform school operation.");
   };
 }
-module.exports={addSchoolAdminRole,createPlatformSchoolService,ownerContext};
+module.exports={addSchoolAdminRole,createPlatformSchoolService,ownerContext,standardSetupStatus};

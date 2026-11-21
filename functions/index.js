@@ -104,6 +104,9 @@ const {createPublicSchoolEnrollmentService}=require("./public-school-enrollment.
 exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db})));
 exports.activateSchoolRosterAccess=onCall(callOptions,safeCallable(createSchoolRosterActivationService({db})));
 exports.schoolEnrollment=onCall(callOptions,safeCallable(createSchoolEnrollmentService({db})));
+const {createSchoolProfileService}=require("./school-profile.js");
+exports.schoolProfile=onCall(callOptions,safeCallable(createSchoolProfileService({db})));
+
 exports.publicSchoolEnrollment=onCall(callOptions,safeCallable(createPublicSchoolEnrollmentService({db})));
 const {createSchoolLegacyDirectoryAdoptionService}=require("./school-legacy-directory-adoption.js");
 exports.schoolLegacyDirectoryAdoption=onCall(callOptions,safeCallable(
@@ -113,6 +116,9 @@ const {createSchoolRosterSourceService}=require("./school-roster-source.js");
 exports.schoolRosterSource=onCall(callOptions,safeCallable(createSchoolRosterSourceService({db})));
 const {createSchoolAcademicsService}=require("./school-academics.js");
 exports.schoolAcademics=onCall(callOptions,safeCallable(createSchoolAcademicsService({db})));
+const {createSchoolAttendanceService}=require("./school-attendance.js");
+exports.schoolAttendance=onCall(callOptions,safeCallable(createSchoolAttendanceService({db})));
+
 const {createSchoolAssessmentService}=require("./school-assessments.js");
 exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db})));
 // Teacher Open/Close writes a durable outbox atomically with its exam state.
@@ -180,6 +186,9 @@ const {createSchoolClassRecordAdminService}=require("./school-class-record-admin
 exports.schoolClassRecordAdmin=onCall(callOptions,safeCallable(createSchoolClassRecordAdminService({db})));
 const {createSchoolGradebookService}=require("./school-gradebook.js");
 exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db})));
+const {createSchoolAssessmentConversationService}=require("./school-assessment-conversation.js");
+exports.schoolAssessmentConversation=onCall(callOptions,safeCallable(createSchoolAssessmentConversationService({db})));
+
 const {createSchoolAssessmentSubmissionService}=require("./school-assessment-submissions.js");
 exports.schoolAssessmentSubmissions=onCall(callOptions,safeCallable(createSchoolAssessmentSubmissionService({db})));
 const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");
@@ -189,6 +198,9 @@ exports.schoolReclaims=onCall(callOptions,safeCallable(createSchoolReclaimServic
 exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationAcceptanceService({db})));
 const {createPlatformSchoolService}=require("./platform-schools.js");
 exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db}),{allowPlatformSchoolWrites:true}));
+const {createPlatformUserService}=require("./platform-users.js");
+exports.platformUsers=onCall(callOptions,safeCallable(createPlatformUserService({db,auth:getAuth()})));
+
 const {createMcsPilotControlService}=require("./mcs-pilot-control.js");
 exports.mcsPilotControl=onCall(callOptions,safeCallable(createMcsPilotControlService({db,auth:getAuth()})));
 const {createSchoolSupportService}=require("./school-support.js");

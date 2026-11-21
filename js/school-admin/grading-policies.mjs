@@ -7,13 +7,18 @@ const functions=getFunctions(app,"asia-southeast1");
 const api=httpsCallable(functions,"schoolClassRecord");
 const academicsApi=httpsCallable(functions,"schoolAcademics");
 const list=el("gs-list"),status=el("gs-status"),dialog=el("gs-dialog"),form=el("gs-form"),
+  lifecycleDialog=el("gs-lifecycle-dialog"),lifecycleForm=el("gs-lifecycle-form"),
   weights=el("gs-weights"),total=el("gs-total"),showArchived=el("gs-show-archived");
-let picker=null,schemes=[],programs=[],subjects=[],sections=[],editing=null,busy=false;
+let picker=null,schemes=[],programs=[],subjects=[],sections=[],editing=null,lifecycleChange=null,
+  busy=false,draftDirty=false,loadRun=0;
 
+function platformModePayload(){
+  try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?{platformMode:"assist"}:{};}catch{return {};}
+}
 function scoped(action,details={}){
   if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
   const lease=picker.scope.lease();
-  return api({schoolId:lease.schoolId,action,...details}).then(response=>{
+  return api({schoolId:lease.schoolId,action,...platformModePayload(),...details}).then(response=>{
     picker.scope.assertLease(lease);
     return response.data;
   });
@@ -21,7 +26,7 @@ function scoped(action,details={}){
 function academicScoped(action,details={}){
   if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
   const lease=picker.scope.lease();
-  return academicsApi({schoolId:lease.schoolId,action,...details}).then(response=>{
+  return academicsApi({schoolId:lease.schoolId,action,...platformModePayload(),...details}).then(response=>{
     picker.scope.assertLease(lease);
     return response.data;
   });
@@ -58,10 +63,14 @@ function button(text,classes="gs-btn"){
 }
 function setBusy(value,message=""){
   busy=value;
-  el("gs-new").disabled=value||!picker?.scope.current;
-  el("gs-refresh").disabled=value||!picker?.scope.current;
+  el("gs-new").disabled=value||!picker?.scope.current?.roles.includes("school_admin");
+  el("gs-refresh").disabled=value||!picker?.scope.current?.roles.includes("school_admin");
   form.querySelectorAll("button,input,select,textarea").forEach(control=>{
     if(["gs-close","gs-cancel"].includes(control.id))return;
+    control.disabled=value;
+  });
+  lifecycleForm.querySelectorAll("button,input,select,textarea").forEach(control=>{
+    if(["gs-lifecycle-close","gs-lifecycle-cancel"].includes(control.id))return;
     control.disabled=value;
   });
   if(message)status.textContent=message;
@@ -74,7 +83,7 @@ function render(){
   const visible=schemes.filter(item=>showArchived.checked||item.status==="active");
   if(!visible.length){
     const empty=document.createElement("p");empty.className="text-sm text-slate-600 py-6 text-center md:col-span-2";
-    empty.textContent=showArchived.checked?"No grading policys found.":"No active grading policys yet.";
+    empty.textContent=showArchived.checked?"No grading policies found.":"No active grading policies yet.";
     list.append(empty);return;
   }
   for(const scheme of visible){
@@ -98,9 +107,9 @@ function render(){
     const actions=document.createElement("div");actions.className="flex flex-wrap gap-2 mt-4";
     if(scheme.status==="active"){
       const edit=button("Edit");edit.addEventListener("click",()=>openEditor(scheme));actions.append(edit);
-      const archive=button("Archive");archive.addEventListener("click",()=>void changeStatus(scheme,"archive_scheme"));actions.append(archive);
+      const archive=button("Archive");archive.addEventListener("click",()=>openLifecycle(scheme,"archive_scheme"));actions.append(archive);
     }else{
-      const restore=button("Restore","gs-btn");restore.addEventListener("click",()=>void changeStatus(scheme,"restore_scheme"));actions.append(restore);
+      const restore=button("Restore","gs-btn");restore.addEventListener("click",()=>openLifecycle(scheme,"restore_scheme"));actions.append(restore);
     }
     card.append(actions);list.append(card);
   }
@@ -121,7 +130,8 @@ function updateTotal(){
   total.textContent="Current total: "+Math.round(sum*1000)/1000+"%"+(Math.abs(sum-100)<0.001?" · ready":" · must total 100%");
 }
 function openEditor(scheme=null){
-  editing=scheme;
+  if(busy)return;
+  editing=scheme;draftDirty=false;
   form.reset();weights.replaceChildren();
   el("gs-dialog-heading").textContent=scheme?"Edit grading policy":"New grading policy";
   form.elements.name.value=scheme?.name||"";
@@ -138,9 +148,18 @@ function openEditor(scheme=null){
   el("gs-form-status").textContent="";
   dialog.showModal();form.elements.name.focus();
 }
-function closeEditor(){if(dialog.open)dialog.close();editing=null;}
+function discardDraft(){
+  return !draftDirty||confirm("Discard the unsaved grading policy changes?");
+}
+function closeEditor({force=false}={}){
+  if(busy||(!force&&!discardDraft()))return false;
+  if(dialog.open)dialog.close();
+  editing=null;draftDirty=false;
+  return true;
+}
 async function load(){
-  setBusy(true,"Loading school grading policys…");
+  const run=++loadRun;
+  setBusy(true,"Loading school grading policies…");
   try{
     const [schemeResult,programResult,subjectResult,sectionResult]=await Promise.all([
       scoped("list_schemes",{includeArchived:true}),
@@ -148,6 +167,7 @@ async function load(){
       academicScoped("list_catalog",{kind:"subjects"}),
       academicScoped("list_catalog",{kind:"sections"})
     ]);
+    if(run!==loadRun)return false;
     schemes=schemeResult.schemes||[];
     programs=(programResult.items||[]).filter(item=>item.status==="active")
       .sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
@@ -157,30 +177,62 @@ async function load(){
       .sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
     fillScopeOptions();render();
     status.textContent=schemes.length+" grading policy"+(schemes.length===1?"":"s")+" loaded.";
+    return true;
   }catch(error){
-    schemes=[];programs=[];subjects=[];render();
-    status.textContent=error?.message||"Grading policys could not be loaded.";
-  }finally{setBusy(false);}
+    if(run!==loadRun)return false;
+    schemes=[];programs=[];subjects=[];sections=[];render();
+    status.textContent=error?.message||"Grading policies could not be loaded.";
+    return false;
+  }finally{if(run===loadRun)setBusy(false);}
 }
-async function changeStatus(scheme,action){
+function openLifecycle(scheme,action){
   if(busy)return;
-  const verb=action==="archive_scheme"?"archive":"restore";
-  if(!confirm((verb==="archive"?"Archive ":"Restore ")+scheme.name+"? Existing class records keep the snapshot they already use."))return;
-  setBusy(true,(verb==="archive"?"Archiving ":"Restoring ")+scheme.name+"…");
-  try{
-    await scoped(action,{schemeId:scheme.schemeId,expectedRevision:scheme.revision});
-    await load();
-  }catch(error){status.textContent=error?.message||"Grading policy status was not changed.";}
-  finally{setBusy(false);}
+  const restoring=action==="restore_scheme";
+  lifecycleChange={scheme,action};lifecycleForm.reset();
+  el("gs-lifecycle-heading").textContent=restoring?"Restore grading policy":"Archive grading policy";
+  el("gs-lifecycle-target").textContent=scheme.name+" · revision "+scheme.revision;
+  el("gs-lifecycle-help").textContent=restoring
+    ?"Restore this policy for future matching Class Records. Existing Class Record snapshots are unchanged; current scope dependencies and overlap will be revalidated."
+    :"Archive this policy from future Class Record resolution. Existing Class Records keep the grading-policy snapshot they already use.";
+  el("gs-lifecycle-confirm").textContent=restoring?"Restore policy":"Archive policy";
+  el("gs-lifecycle-status").textContent="";
+  lifecycleDialog.showModal();
 }
+function closeLifecycle(){
+  if(busy)return false;
+  lifecycleChange=null;if(lifecycleDialog.open)lifecycleDialog.close();return true;
+}
+lifecycleForm.addEventListener("submit",event=>{
+  event.preventDefault();
+  if(busy||!lifecycleChange||!lifecycleForm.reportValidity())return;
+  const {scheme,action}=lifecycleChange,reason=String(new FormData(lifecycleForm).get("reason")||"").trim(),
+    restoring=action==="restore_scheme";
+  void (async()=>{
+    setBusy(true,(restoring?"Restoring ":"Archiving ")+scheme.name+"…");
+    try{
+      await scoped(action,{schemeId:scheme.schemeId,expectedRevision:scheme.revision,reason});
+      lifecycleChange=null;lifecycleDialog.close();
+      await load();
+      status.textContent=scheme.name+(restoring?" restored.":" archived.")+" Historical Class Record snapshots were unchanged.";
+    }catch(error){
+      el("gs-lifecycle-status").textContent=error?.message||"Grading policy status was not changed.";
+    }finally{setBusy(false);}
+  })();
+});
+el("gs-lifecycle-close").addEventListener("click",closeLifecycle);
+el("gs-lifecycle-cancel").addEventListener("click",closeLifecycle);
+lifecycleDialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();else lifecycleChange=null;});
 
 el("gs-new").addEventListener("click",()=>openEditor());
 el("gs-refresh").addEventListener("click",()=>void load());
 showArchived.addEventListener("change",render);
 el("gs-program").addEventListener("change",fillScopeOptions);
 el("gs-add-row").addEventListener("click",()=>addWeightRow());
-el("gs-close").addEventListener("click",closeEditor);
-el("gs-cancel").addEventListener("click",closeEditor);
+el("gs-close").addEventListener("click",()=>closeEditor());
+el("gs-cancel").addEventListener("click",()=>closeEditor());
+dialog.addEventListener("cancel",event=>{if(busy||!discardDraft())event.preventDefault();else{editing=null;draftDirty=false;}});
+form.addEventListener("input",()=>{draftDirty=true;});
+form.addEventListener("change",()=>{draftDirty=true;});
 
 form.addEventListener("submit",event=>{
   event.preventDefault();
@@ -211,7 +263,7 @@ form.addEventListener("submit",event=>{
   };
   setBusy(true,"Saving grading policy…");el("gs-form-status").textContent="Saving…";
   void scoped("save_scheme",payload).then(async()=>{
-    closeEditor();await load();
+    draftDirty=false;closeEditor({force:true});await load();
   }).catch(error=>{el("gs-form-status").textContent=error?.message||"Grading policy was not saved.";})
     .finally(()=>setBusy(false));
 });
@@ -219,10 +271,16 @@ form.addEventListener("submit",event=>{
 picker=createTenantSchoolPicker({
   host:el("gs-school-switcher"),
   status,
-  onBeforeChange:async()=>{schemes=[];programs=[];subjects=[];sections=[];editing=null;render();},
+  onBeforeChange:async()=>{
+    if(busy)throw new Error("Finish the current grading policy operation before switching schools.");
+    if(dialog.open&&!discardDraft())throw new Error("Keep the current school open to finish the unsaved grading policy.");
+    if(lifecycleDialog.open)throw new Error("Close the grading policy lifecycle review before switching schools.");
+    ++loadRun;closeEditor({force:true});
+    schemes=[];programs=[];subjects=[];sections=[];editing=null;lifecycleChange=null;render();
+  },
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
-      status.textContent="School administrator access is required to manage grading policys.";return;
+      status.textContent="School administrator access is required to manage grading policies.";return;
     }
     void load();
   }

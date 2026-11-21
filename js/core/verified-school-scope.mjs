@@ -41,6 +41,7 @@ export function createVerifiedSchoolScope({loadSchools,beforeChange=async()=>{},
         name:typeof selected.name==="string"&&selected.name.trim()?selected.name.trim().slice(0,120):selected.schoolId,
         roles:Array.isArray(selected.roles)?selected.roles:[],
         compatibilityMode:selected.compatibilityMode==="v4_only"?"v4_only":"legacy_allowed",
+        enrollmentMode:selected.enrollmentMode==="canonical"?"canonical":"compatibility",
         platformOverride:selected.platformOverride===true
       }:null;
       options=nextOptions;

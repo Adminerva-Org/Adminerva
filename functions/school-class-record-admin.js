@@ -5,10 +5,12 @@
  */
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {checkId}=require("./school-academics.js");
+const {schemeMatchesOffering,schemeSpecificity}=require("./school-class-record.js");
 
 const MAX_RECORDS=200;
 const MAX_AUDIT_EVENTS=500;
 const MAX_ASSIGNMENTS=500;
+const MAX_SCHEMES=50;
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function millis(value){
@@ -51,13 +53,17 @@ function createSchoolClassRecordAdminService({db}){
         deny("resource-exhausted","Class Record oversight requires pagination for more than "+MAX_RECORDS+" records.");
       const rows=records.docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
       const offeringIds=rows.map(doc=>doc.id);
-      const [offeringDocs,finalizationDocs,assignments]=await Promise.all([
+      const [offeringDocs,finalizationDocs,assignments,schemes]=await Promise.all([
         Promise.all(offeringIds.map(id=>db.doc(prefix+"course_offerings/"+id).get())),
         Promise.all(offeringIds.map(id=>db.doc(prefix+"class_record_finalizations/"+id).get())),
-        db.collection(prefix+"staff_assignments").where("status","==","active").limit(MAX_ASSIGNMENTS+1).get()
+        db.collection(prefix+"staff_assignments").where("status","==","active").limit(MAX_ASSIGNMENTS+1).get(),
+        db.collection(prefix+"grading_schemes").where("status","==","active").limit(MAX_SCHEMES+1).get()
       ]);
       if(assignments.size>MAX_ASSIGNMENTS)
         deny("resource-exhausted","Active teacher assignments require pagination before Class Record oversight can load.");
+      if(schemes.size>MAX_SCHEMES)
+        deny("resource-exhausted","Active grading policies require pagination before Class Record oversight can load.");
+      const activeSchemes=schemes.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
 
       const offerings=new Map(offeringDocs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId)
         .map(doc=>[doc.id,doc.data()]));
@@ -80,6 +86,27 @@ function createSchoolClassRecordAdminService({db}){
         docsById(db,prefix,"subjects",offeringRows.map(row=>row.subjectId))
       ]);
 
+      function gradingPolicyStatus(offering){
+        if(!offering?.termId)return {state:"missing",label:"No grading policy",schemeId:null,schemeName:null};
+        const periodType=String(terms.get(offering.termId)?.periodType||"term").trim().toLowerCase();
+        const matches=activeSchemes.filter(doc=>
+          schemeMatchesOffering(doc.data().applicability||{},offering,periodType))
+          .map(doc=>({
+            schemeId:doc.id,name:String(doc.data().name||"School grading policy"),
+            revision:Number(doc.data().revision)||1,
+            score:schemeSpecificity(doc.data().applicability||{})
+          }))
+          .sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+        if(!matches.length)return {state:"missing",label:"No grading policy",schemeId:null,schemeName:null};
+        const topScore=matches[0].score,top=matches.filter(row=>row.score===topScore);
+        if(top.length>1)return {
+          state:"ambiguous",label:"Policy conflict",schemeId:null,schemeName:null,
+          conflicts:top.map(row=>({schemeId:row.schemeId,name:row.name,revision:row.revision}))
+        };
+        return {state:"resolved",label:top[0].name,schemeId:top[0].schemeId,
+          schemeName:top[0].name,revision:top[0].revision,specificity:top[0].score};
+      }
+
       const result=rows.map(doc=>{
         const sheet=doc.data(),offering=offerings.get(doc.id)||{},finalization=finalizations.get(doc.id)||null;
         const columns=Array.isArray(sheet.columns)?sheet.columns:[];
@@ -95,6 +122,7 @@ function createSchoolClassRecordAdminService({db}){
           sectionName:catalogName(sections,offering.sectionId,"Section"),
           subjectName:catalogName(subjects,offering.subjectId,"Subject"),
           teacherNames,
+          gradingPolicy:gradingPolicyStatus(offering),
           sheetRevision:Number(sheet.revision)||0,
           updatedAt:millis(sheet.updatedAt),
           activeColumnCount:active.length,

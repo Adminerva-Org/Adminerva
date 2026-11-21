@@ -9,7 +9,10 @@
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {TenantAccessError}=require("./tenant-access.js");
-const {STANDARD_MCS_SCHOOL_ID,standardSchool}=require("./school-enrollment.js");
+const {standardSchool}=require("./school-enrollment.js");
+// Current public intake remains an MCS pilot adapter. Keep this pilot selector
+// local so the canonical Enrollment & Registration service stays school-neutral.
+const PUBLIC_PILOT_SCHOOL_ID="manila-cathedral-school";
 
 const LEVELS=new Set([
   "nursery_prep","kinder_1","kinder_2",
@@ -54,22 +57,22 @@ function publicReference(applicationId){
 }
 function applicationIdFor({yearId,displayName,birthDate,guardianEmail}){
   return createHash("sha256")
-    .update([STANDARD_MCS_SCHOOL_ID,yearId,displayName.toLowerCase(),birthDate,guardianEmail].join("\0"))
+    .update([PUBLIC_PILOT_SCHOOL_ID,yearId,displayName.toLowerCase(),birthDate,guardianEmail].join("\0"))
     .digest("hex").slice(0,48);
 }
 
 function createPublicSchoolEnrollmentService({db}){
   return async request=>{
     const input=request.data||{},action=String(input.action||"");
-    if(String(input.schoolId||STANDARD_MCS_SCHOOL_ID)!==STANDARD_MCS_SCHOOL_ID)
+    if(String(input.schoolId||PUBLIC_PILOT_SCHOOL_ID)!==PUBLIC_PILOT_SCHOOL_ID)
       deny("failed-precondition","Public enrollment is not enabled for this school.");
 
-    const schoolRef=db.doc("platform_schools/"+STANDARD_MCS_SCHOOL_ID);
+    const schoolRef=db.doc("platform_schools/"+PUBLIC_PILOT_SCHOOL_ID);
     const school=await schoolRef.get();
     if(!school.exists||school.data().state!=="active"||!standardSchool(school.data()))
       deny("failed-precondition","Online enrollment is not currently open for this school.");
 
-    const root="schools/"+STANDARD_MCS_SCHOOL_ID+"/";
+    const root="schools/"+PUBLIC_PILOT_SCHOOL_ID+"/";
 
     if(action==="catalog"){
       const [years,programs]=await Promise.all([
@@ -77,12 +80,12 @@ function createPublicSchoolEnrollmentService({db}){
         db.collection(root+"academic_programs").limit(50).get()
       ]);
       return {
-        schoolId:STANDARD_MCS_SCHOOL_ID,
+        schoolId:PUBLIC_PILOT_SCHOOL_ID,
         schoolName:typeof school.data().name==="string"&&school.data().name.trim()
           ?school.data().name.trim().slice(0,140):"Manila Cathedral School",
-        years:years.docs.filter(doc=>doc.data().schoolId===STANDARD_MCS_SCHOOL_ID&&doc.data().status==="active")
+        years:years.docs.filter(doc=>doc.data().schoolId===PUBLIC_PILOT_SCHOOL_ID&&doc.data().status==="active")
           .map(doc=>({id:doc.id,name:doc.data().name})),
-        programs:programs.docs.filter(doc=>doc.data().schoolId===STANDARD_MCS_SCHOOL_ID&&doc.data().status==="active")
+        programs:programs.docs.filter(doc=>doc.data().schoolId===PUBLIC_PILOT_SCHOOL_ID&&doc.data().status==="active")
           .map(doc=>({id:doc.id,name:doc.data().name}))
       };
     }
@@ -120,13 +123,13 @@ function createPublicSchoolEnrollmentService({db}){
 
       const yearId=required(input.yearId,"School year",80);
       const year=await db.doc(root+"academic_years/"+yearId).get();
-      if(!year.exists||year.data().schoolId!==STANDARD_MCS_SCHOOL_ID||year.data().status!=="active")
+      if(!year.exists||year.data().schoolId!==PUBLIC_PILOT_SCHOOL_ID||year.data().status!=="active")
         deny("failed-precondition","The selected school year is not open for enrollment.");
 
       const preferredProgramId=optional(input.preferredProgramId,80);
       if(preferredProgramId){
         const program=await db.doc(root+"academic_programs/"+preferredProgramId).get();
-        if(!program.exists||program.data().schoolId!==STANDARD_MCS_SCHOOL_ID||program.data().status!=="active")
+        if(!program.exists||program.data().schoolId!==PUBLIC_PILOT_SCHOOL_ID||program.data().status!=="active")
           deny("failed-precondition","The selected program/division is not available.");
       }
 
@@ -141,24 +144,24 @@ function createPublicSchoolEnrollmentService({db}){
         const current=await tx.get(ref);
         if(current.exists){
           const prior=current.data();
-          if(prior.schoolId!==STANDARD_MCS_SCHOOL_ID)
+          if(prior.schoolId!==PUBLIC_PILOT_SCHOOL_ID)
             deny("failed-precondition","Enrollment application identity collision requires school review.");
           if(["enrolled","rejected","withdrawn"].includes(prior.status))
             deny("failed-precondition","This application has already reached a final school decision.");
           revision=(Number(prior.revision)||1)+1;
           status=prior.status==="needs_information"?"submitted":(prior.status||"submitted");
           tx.set(ref,{
-            schoolId:STANDARD_MCS_SCHOOL_ID,applicationType,displayName,birthDate,incomingLevel,
+            schoolId:PUBLIC_PILOT_SCHOOL_ID,applicationType,displayName,birthDate,incomingLevel,
             yearId,preferredProgramId,guardianName,guardianRelationship,guardianEmail,guardianMobile,
             studentEmail,studentEmailType,studentEmailRequired,source:"online",status,
-            consentAcknowledged:true,revision,updatedAt:now,lastSubmittedAt:now
+            reference:publicReference(applicationId),consentAcknowledged:true,revision,updatedAt:now,lastSubmittedAt:now
           },{merge:true});
         }else{
           tx.create(ref,{
-            schoolId:STANDARD_MCS_SCHOOL_ID,applicationType,displayName,birthDate,incomingLevel,
+            schoolId:PUBLIC_PILOT_SCHOOL_ID,applicationType,displayName,birthDate,incomingLevel,
             yearId,preferredProgramId,guardianName,guardianRelationship,guardianEmail,guardianMobile,
             studentEmail,studentEmailType,studentEmailRequired,source:"online",status:"submitted",
-            consentAcknowledged:true,revision:1,createdAt:now,updatedAt:now,lastSubmittedAt:now
+            reference:publicReference(applicationId),consentAcknowledged:true,revision:1,createdAt:now,updatedAt:now,lastSubmittedAt:now
           });
         }
       });

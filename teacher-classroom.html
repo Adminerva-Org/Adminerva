@@ -1,10 +1,10 @@
-<!doctype html>
+
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Classroom Stream · Adminerva</title>
-  <meta name="description" content="Publish class announcements and manage the student subject stream.">
-  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <title>Classroom · Adminerva</title>
+  <meta name="description" content="Shared teacher and student class workspace for communication, classwork, roster, grading and records.">
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=e9b95b055852">
@@ -16,8 +16,8 @@
   <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
     <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Classroom</p>
     <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Classroom Stream</h1>
-    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Publish announcements and class updates to one verified subject/section. Deployed assessments automatically appear in the student stream without reposting them here.</p>
-    <div id="teacherClassroomSchoolSwitcher" hidden class="mt-4 max-w-sm"></div>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Classroom</h1>
+    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Open one assigned class and work in the same space your students use. Teachers control announcements, classwork, feedback and records; students receive the class stream, tasks, feedback and released results.</p>
   </header>
 
   <section class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
@@ -29,9 +29,82 @@
     </div>
     <p id="teacherClassroomStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Loading your assigned classrooms…</p>
   </section>
+    <div id="teacherClassroomTeachingTeam" class="mt-3 flex flex-wrap gap-2" aria-label="Teaching team"></div>
+    <div id="teacherClassroomSchedule" class="mt-2 flex flex-wrap gap-2" aria-label="Official class schedule"></div>
 
   <div class="grid lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)] gap-5 items-start">
-    <section class="rounded-2xl border border-cyan-200 bg-white shadow-sm overflow-hidden lg:sticky lg:top-20">
+  <nav class="rounded-2xl border border-slate-200 bg-white shadow-sm p-2 flex gap-2 overflow-x-auto" aria-label="Selected classroom">
+    <a href="#class-stream" class="shrink-0 rounded-lg bg-slate-900 text-white px-4 py-2.5 text-sm font-extrabold">Stream</a>
+    <a href="#class-classwork" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Classwork</a>
+    <a href="#class-people" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">People</a>
+    <a id="teacherClassroomSubmissionsLink" href="school-gradebook.html?view=submissions" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Submissions</a>
+    <a id="teacherClassroomGradesLink" href="school-gradebook.html?view=results" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Grades</a>
+    <a id="teacherClassroomRecordLink" href="class-record.html" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Class Record</a>
+  </nav>
+
+  <section class="grid lg:grid-cols-2 gap-5">
+    <article id="class-classwork" class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 scroll-mt-24">
+      <div class="flex items-start justify-between gap-3">
+        <div><p class="text-xs uppercase tracking-wider font-bold text-indigo-700">Classwork</p><h2 class="text-xl font-extrabold mt-1">Assigned work</h2><p class="text-sm text-slate-600 mt-1">Deployed assessments for this class appear here and in the student classroom automatically.</p></div>
+        <div class="flex flex-wrap justify-end gap-2">
+          <a id="teacherClassroomPlanLink" href="lesson-planner.html" class="shrink-0 rounded-lg border border-cyan-200 px-3 py-2 text-xs font-bold text-cyan-800">Plan for class</a>
+          <a id="teacherClassroomAssessmentLink" href="assessment-studio.html" class="shrink-0 rounded-lg border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700">Create / deploy</a>
+        </div>
+      </div>
+      <section class="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/60 p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Private preparation</p><p class="text-xs text-cyan-950 mt-1">Saved lesson plans linked to this class stay teacher-private until you deliberately publish student-facing material.</p></div>
+          <span id="teacherClassroomPreparationCount" class="text-xs font-bold text-cyan-800"></span>
+        </div>
+        <div id="teacherClassroomPreparation" class="mt-2 space-y-2"><p class="text-xs text-cyan-900">Choose a classroom to load linked preparation.</p></div>
+      </section>
+      <section class="mt-4 rounded-xl border border-sky-100 bg-sky-50/60 p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-sky-800">Shared materials</p><p class="text-xs text-sky-950 mt-1">Material/resource posts are shared student-facing classwork. Edit or remove the source post in the Stream.</p></div>
+          <span id="teacherClassroomMaterialCount" class="text-xs font-bold text-sky-800"></span>
+        </div>
+        <div id="teacherClassroomMaterials" class="mt-2 space-y-2"><p class="text-xs text-sky-900">Choose a classroom to load materials.</p></div>
+      </section>
+      <div id="teacherClassroomClassworkSummary" hidden class="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4" aria-label="Classwork health"></div>
+      <p id="teacherClassroomClassworkHealthStatus" class="text-xs text-slate-500 mt-3" role="status"></p>
+      <section id="teacherClassroomActionQueuePanel" hidden class="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3" aria-labelledby="teacherClassroomActionQueueTitle">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-amber-800">Needs action</p><h3 id="teacherClassroomActionQueueTitle" class="text-sm font-extrabold text-amber-950 mt-1">Teacher queue</h3></div>
+          <span id="teacherClassroomActionQueueCount" class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-extrabold text-amber-900"></span>
+        </div>
+        <div id="teacherClassroomActionQueue" class="mt-3 space-y-2"></div>
+      </section>
+      <div id="teacherClassroomClasswork" class="mt-3 space-y-2"><p class="text-sm text-slate-500">Choose a classroom to load classwork.</p></div>
+    </article>
+    <article id="class-people" class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 scroll-mt-24">
+      <div><p class="text-xs uppercase tracking-wider font-bold text-emerald-700">People</p><h2 class="text-xl font-extrabold mt-1">Class roster</h2><p class="text-sm text-slate-600 mt-1">Roster membership comes from official school enrollment. Teachers can work with the class but do not change registrar placement here.</p></div>
+      <p id="teacherClassroomRosterCount" class="text-xs font-bold text-slate-500 mt-3"></p>
+      <div id="teacherClassroomRoster" class="mt-2 max-h-72 overflow-auto rounded-xl border border-slate-200"><p class="p-4 text-sm text-slate-500">Choose a classroom to load students.</p></div>
+    </article>
+  </section>
+
+  <section class="rounded-2xl border border-violet-200 bg-white shadow-sm p-4 sm:p-5">
+    <div class="grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,.7fr)] gap-4 lg:items-end">
+      <div>
+        <p class="text-xs uppercase tracking-wider font-bold text-violet-700">Classroom participation</p>
+        <h2 class="text-xl font-extrabold mt-1">Choose how students can join the stream</h2>
+        <p class="text-sm text-slate-600 mt-1">This changes classroom discussion only. Enrollment, submissions, grades and Class Record access are unaffected.</p>
+      </div>
+      <form id="teacherClassroomParticipationForm" class="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <label class="text-xs font-bold">Student participation
+          <select id="teacherClassroomParticipation" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+            <option value="teacher_only">Teacher only · students read</option>
+            <option value="comments_only">Students may comment</option>
+            <option value="posts_comments">Students may post and comment</option>
+          </select>
+        </label>
+        <button id="teacherClassroomParticipationSave" type="submit" class="self-end rounded-lg bg-violet-700 text-white px-4 py-2.5 text-sm font-extrabold">Save</button>
+      </form>
+    </div>
+    <p id="teacherClassroomParticipationStatus" class="text-xs text-slate-500 mt-3" role="status"></p>
+  </section>
+
+  <div id="class-stream" class="grid lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)] gap-5 items-start scroll-mt-24">
       <div class="bg-cyan-50 border-b border-cyan-200 p-4 sm:p-5">
         <p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Post to class</p>
         <h2 id="teacherClassroomComposerTitle" class="text-xl font-extrabold mt-1">Share an update</h2>
@@ -67,10 +140,10 @@
     <section class="space-y-4">
       <div class="flex items-end justify-between gap-3">
         <div><p class="text-xs uppercase tracking-wider font-bold text-slate-500">Teacher posts</p><h2 class="text-2xl font-extrabold mt-1">Recent stream posts</h2></div>
-        <a href="assessment-studio.html" class="text-sm font-bold text-indigo-700 underline">Manage assignments →</a>
-      </div>
+        <div><p class="text-xs uppercase tracking-wider font-bold text-slate-500">Class stream</p><h2 class="text-2xl font-extrabold mt-1">Recent posts &amp; discussion</h2></div>
+        <a id="teacherClassroomClassworkLink" href="#class-classwork" class="text-sm font-bold text-indigo-700 underline">View classwork ↑</a>
       <div class="rounded-xl border border-slate-200 bg-white p-3 flex flex-wrap items-end gap-3"><label class="flex-1 min-w-[160px] text-xs font-bold">Search posts<input id="teacherClassroomSearch" type="search" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Title, message or teacher"></label><label class="text-xs font-bold">Type<select id="teacherClassroomFilter" class="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">All posts</option><option value="announcement">Announcements</option><option value="material">Materials</option><option value="post">Class updates</option></select></label><p id="teacherClassroomPostCount" class="w-full text-xs text-slate-500" role="status"></p><p class="w-full text-xs text-slate-500">Only the author may edit, pin or remove their posts. School permissions are checked when saving.</p></div>
-      <div id="teacherClassroomPosts" class="space-y-3"></div>
+      <div class="rounded-xl border border-slate-200 bg-white p-3 flex flex-wrap items-end gap-3"><label class="flex-1 min-w-[160px] text-xs font-bold">Search posts<input id="teacherClassroomSearch" type="search" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Title, message or teacher"></label><label class="text-xs font-bold">Type<select id="teacherClassroomFilter" class="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">All posts</option><option value="announcement">Announcements</option><option value="material">Materials</option><option value="post">Class updates</option></select></label><p id="teacherClassroomPostCount" class="w-full text-xs text-slate-500" role="status"></p><p class="w-full text-xs text-slate-500">Teachers can moderate student posts and comments. Students may remove their own contributions when participation is enabled.</p></div>
     </section>
   </div>
 </main>
@@ -78,6 +151,6 @@
 <script src="js/core/adminerva-loader.js?v=e9b95b055852"></script>
 <script src="js/core/adminerva-nav.js?v=e9b95b055852"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=e9b95b055852"></script>
-<script type="module" src="js/assessment/classroom-stream.mjs?v=6a1b559b9976"></script>
+<script type="module" src="js/assessment/classroom-stream.mjs?v=20261121-pr215-merge1"></script>
 </body>
 </html>

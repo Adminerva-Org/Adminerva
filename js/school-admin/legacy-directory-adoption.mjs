@@ -6,6 +6,9 @@ const get=id=>document.getElementById(id);
 const panel=get("pa-legacy-panel");
 const status=get("pa-legacy-status");
 let schoolId=null,compatibilityMode=null,preview=null,busy=false,requestsLoading=false;
+function platformModePayload(){
+  try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?{platformMode:"assist"}:{};}catch{return {};}
+}
 
 function say(message){if(status)status.textContent=message;}
 function setBusy(value){
@@ -84,7 +87,7 @@ async function loadLegacyRequests(){
   if(!host||!state||!schoolId||requestsLoading)return;
   requestsLoading=true;state.textContent="Loading previous access requests…";
   try{
-    const result=(await api({schoolId,action:"list_legacy_requests"})).data||{};
+    const result=(await api({schoolId,action:"list_legacy_requests",...platformModePayload()})).data||{};
     host.replaceChildren();
     for(const item of result.items||[]){
       const card=document.createElement("div");card.className="pa-row";card.setAttribute("role","listitem");
@@ -115,7 +118,7 @@ async function loadLegacyRequests(){
         approve.disabled=true;reject.disabled=true;role.disabled=true;reason.disabled=true;
         rowState.textContent="Saving "+item.displayName+" access decision…";
         try{
-          await api({schoolId,action:"decide_legacy_request",targetUid:item.targetUid,
+          await api({schoolId,action:"decide_legacy_request",...platformModePayload(),targetUid:item.targetUid,
             expectedRevision:item.revision,decision,role:role.value,reason:why});
           await loadLegacyRequestsAfterDecision();
         }catch(error){
@@ -147,7 +150,7 @@ async function runPreview(){
   if(!schoolId||busy)return;
   setBusy(true);say("Comparing legacy students and staff with the school-wide directory…");
   try{
-    const result=(await api({schoolId,action:"preview"})).data;
+    const result=(await api({schoolId,action:"preview",...platformModePayload()})).data;
     render(result);
   }catch(error){
     reset();say(error?.message||"Legacy directory preview could not be prepared.");
@@ -174,7 +177,7 @@ async function apply(includeAcademic){
   if(!confirm(message))return;
   setBusy(true);say(includeAcademic?"Applying school-wide people, access and reviewed class relationships…":"Applying school-wide people and access…");
   try{
-    const result=(await api({schoolId,action:"apply",expectedDigest:preview.digest,reason,
+    const result=(await api({schoolId,action:"apply",...platformModePayload(),expectedDigest:preview.digest,reason,
       includeAcademic,confirmAcademicMappings:includeAcademic})).data;
     const identity=result.identity||{},academic=result.academic||{};
     say("Legacy consolidation "+result.status+": "+(identity.created||0)+" people created · "+

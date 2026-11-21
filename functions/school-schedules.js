@@ -1,8 +1,9 @@
 "use strict";
-/** Verified-school teacher-owned timetable persistence for Adminerva 4.0. */
+/** School-owned class scheduling plus legacy teacher-owned timetable persistence for Adminerva 4.0. */
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+const {writeSchoolNotification}=require("./school-notifications.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function schoolYear(value){
@@ -94,6 +95,51 @@ function normalizeRows(rows,allowedPairs){
      deny("invalid-argument","Schedule rows "+(intervals[i].index+1)+" and "+(intervals[i+1].index+1)+" overlap.");
  return result;
 }
+const CLASS_DAYS=new Set(["mon","tue","wed","thu","fri","sat"]);
+function offeringId(value){return periodId(value)}
+function normalizeRoom(value){return short(value,120,"Room").replace(/\s+/g," ")}
+function normalizeClassMeetings(value){
+ if(!Array.isArray(value)||value.length>18)
+  deny("invalid-argument","A class may contain up to 18 weekly meeting slots.");
+ const meetings=value.map((meeting,index)=>{
+  if(!meeting||typeof meeting!=="object"||Array.isArray(meeting))
+   deny("invalid-argument","Class meeting "+(index+1)+" is invalid.");
+  const day=String(meeting.day||"").trim().toLowerCase();
+  if(!CLASS_DAYS.has(day))deny("invalid-argument","Class meeting "+(index+1)+" needs a valid weekday.");
+  const start=clock(meeting.startTime,"Class meeting "+(index+1)+" start"),
+   end=clock(meeting.endTime,"Class meeting "+(index+1)+" end");
+  if(start.minutes>=end.minutes)deny("invalid-argument","Class meeting "+(index+1)+" must end after it starts.");
+  return {day,startTime:start.text,endTime:end.text,room:normalizeRoom(meeting.room)};
+ });
+ const seen=new Set();
+ meetings.forEach((meeting,index)=>{
+  const key=[meeting.day,meeting.startTime,meeting.endTime,meeting.room.toLocaleLowerCase("en")].join("\0");
+  if(seen.has(key))deny("invalid-argument","Class meeting "+(index+1)+" duplicates another meeting.");
+  seen.add(key);
+ });
+ for(let i=0;i<meetings.length;i++)for(let j=i+1;j<meetings.length;j++){
+  if(meetings[i].day!==meetings[j].day)continue;
+  const aStart=clock(meetings[i].startTime,"Meeting start").minutes,aEnd=clock(meetings[i].endTime,"Meeting end").minutes,
+   bStart=clock(meetings[j].startTime,"Meeting start").minutes,bEnd=clock(meetings[j].endTime,"Meeting end").minutes;
+  if(aStart<bEnd&&bStart<aEnd)
+   deny("invalid-argument","This class has overlapping "+meetings[i].day+" meeting times.");
+ }
+ return meetings;
+}
+function meetingsOverlap(first,second){
+ if(first.day!==second.day)return false;
+ const aStart=clock(first.startTime,"Meeting start").minutes,aEnd=clock(first.endTime,"Meeting end").minutes,
+  bStart=clock(second.startTime,"Meeting start").minutes,bEnd=clock(second.endTime,"Meeting end").minutes;
+ return aStart<bEnd&&bStart<aEnd;
+}
+function roomKey(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase("en")}
+function classScheduleView(doc){
+ const data=doc.data();
+ return {offeringId:data.offeringId||doc.id,yearId:data.yearId||"",termId:data.termId||"",
+  programId:data.programId||"",sectionId:data.sectionId||"",subjectId:data.subjectId||"",
+  meetings:Array.isArray(data.meetings)?data.meetings:[],revision:Number(data.revision)||1,
+  updatedAt:data.updatedAt?.toMillis?.()||null};
+}
 function rowsToText(rows){
  const days=["Monday","Tuesday","Wednesday","Thursday","Friday"],
    keys=["mon","tue","wed","thu","fri"],lines=[];
@@ -110,9 +156,151 @@ function rowsToText(rows){
 }
 function createSchoolScheduleService({db}){
  return async request=>{
-  const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["teacher"]}),
+  const input=request.data||{},action=String(input.action||""),
+   ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["teacher","school_admin"],allowDraftAdmin:true}),
    prefix="schools/"+ctx.schoolId+"/",memberRef=db.doc(prefix+"memberships/"+ctx.uid),
-   schoolRef=db.doc("platform_schools/"+ctx.schoolId);
+   schoolRef=db.doc("platform_schools/"+ctx.schoolId),
+   admin=ctx.roles.includes("school_admin"),teacher=ctx.roles.includes("teacher");
+
+  async function requireAdminWrite(tx){
+   if(!admin)deny("permission-denied","School administration is required for the official class schedule.");
+   if(ctx.platformOverride)return;
+   const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
+   if(!school.exists||!["draft","active","pilot"].includes(school.data().state)||!member.exists||
+      member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
+      !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
+    deny("permission-denied","School administration access changed before the class schedule was saved.");
+  }
+
+  if(action==="admin_overview"){
+   if(!admin)deny("permission-denied","School administration is required to review official class schedules.");
+   const snap=await db.collection(prefix+"class_schedules").limit(1001).get();
+   if(snap.size===1001)deny("resource-exhausted","Official class schedules require pagination.");
+   return {schoolId:ctx.schoolId,schedules:snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+    doc.data().status!=="archived").map(classScheduleView)};
+  }
+
+  if(["get_class_schedule","save_class_schedule"].includes(action)){
+   const targetOfferingId=offeringId(input.offeringId),offeringRef=db.doc(prefix+"course_offerings/"+targetOfferingId),
+    scheduleRef=db.doc(prefix+"class_schedules/"+targetOfferingId);
+   const offering=await offeringRef.get();
+   if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
+    deny("not-found","This active class offering is unavailable.");
+   if(!admin){
+    if(!teacher)deny("permission-denied","Teaching access is required to view this class schedule.");
+    const grant=await db.doc(prefix+"staff_assignments/"+
+      createHash("sha256").update(JSON.stringify([ctx.uid,targetOfferingId])).digest("hex")).get();
+    if(!grant.exists||grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid||
+       grant.data().offeringId!==targetOfferingId||grant.data().status!=="active")
+     deny("permission-denied","You are not assigned to this class.");
+   }
+   if(action==="get_class_schedule"){
+    const schedule=await scheduleRef.get();
+    return {schoolId:ctx.schoolId,offeringId:targetOfferingId,
+     yearId:offering.data().yearId,termId:offering.data().termId,programId:offering.data().programId,
+     sectionId:offering.data().sectionId,subjectId:offering.data().subjectId,
+     meetings:schedule.exists&&schedule.data().schoolId===ctx.schoolId&&schedule.data().status!=="archived"?
+      (schedule.data().meetings||[]):[],
+     revision:schedule.exists&&schedule.data().schoolId===ctx.schoolId?Number(schedule.data().revision)||1:0};
+   }
+   if(!admin)deny("permission-denied","Only School Administration may change the official class schedule.");
+   const expected=Number(input.expectedRevision),reason=short(input.reason,500,"Schedule change reason",{required:true});
+   if(!Number.isInteger(expected)||expected<0)deny("invalid-argument","Current class schedule revision is required.");
+   if(reason.length<12)deny("invalid-argument","Explain the official schedule change in at least 12 characters.");
+   const meetings=normalizeClassMeetings(input.meetings);
+   let result,notifyTeacherUids=[];
+   await db.runTransaction(async tx=>{
+    await requireAdminWrite(tx);
+    const [liveOffering,current,termSchedules,grants]=await Promise.all([
+     tx.get(offeringRef),tx.get(scheduleRef),
+     tx.get(db.collection(prefix+"class_schedules").where("termId","==",offering.data().termId).limit(501)),
+     tx.get(db.collection(prefix+"staff_assignments").where("status","==","active").limit(2001))
+    ]);
+    if(!liveOffering.exists||liveOffering.data().schoolId!==ctx.schoolId||liveOffering.data().status!=="active")
+     deny("failed-precondition","The class offering changed before its schedule was saved.");
+    const live=liveOffering.data();
+    if(["yearId","termId","programId","sectionId","subjectId"].some(key=>live[key]!==offering.data()[key]))
+     deny("failed-precondition","The class offering structure changed. Reload before scheduling it.");
+    if(termSchedules.size===501||grants.size===2001)
+     deny("resource-exhausted","Schedule conflict review exceeds the current school limit.");
+    const currentRevision=current.exists?Number(current.data().revision)||1:0;
+    if(currentRevision!==expected)deny("failed-precondition","A newer official class schedule exists. Reload before replacing it.");
+    const byOffering=new Map();
+    for(const grant of grants.docs){
+     const data=grant.data();if(data.schoolId!==ctx.schoolId||data.status!=="active")continue;
+     const list=byOffering.get(data.offeringId)||[];list.push(data.teacherUid);byOffering.set(data.offeringId,list);
+    }
+    const targetTeachers=new Set(byOffering.get(targetOfferingId)||[]);
+    notifyTeacherUids=[...targetTeachers];
+    for(const other of termSchedules.docs){
+     if(other.id===targetOfferingId||other.data().schoolId!==ctx.schoolId||other.data().status==="archived")continue;
+     const data=other.data(),otherMeetings=Array.isArray(data.meetings)?data.meetings:[],
+      sharedTeacher=(byOffering.get(other.id)||[]).some(uid=>targetTeachers.has(uid)),
+      sameSection=data.sectionId===live.sectionId;
+     for(const candidate of meetings)for(const existing of otherMeetings){
+      if(!meetingsOverlap(candidate,existing))continue;
+      if(sameSection)
+       deny("failed-precondition","Schedule conflict: this section already has another class at "+candidate.day+" "+candidate.startTime+"–"+candidate.endTime+".");
+      if(sharedTeacher)
+       deny("failed-precondition","Schedule conflict: an assigned teacher already teaches another class at "+candidate.day+" "+candidate.startTime+"–"+candidate.endTime+".");
+      if(roomKey(candidate.room)&&roomKey(candidate.room)===roomKey(existing.room))
+       deny("failed-precondition","Schedule conflict: room "+candidate.room+" is already used at "+candidate.day+" "+candidate.startTime+"–"+candidate.endTime+".");
+     }
+    }
+    const now=FieldValue.serverTimestamp(),revision=currentRevision+1,
+     next={schoolId:ctx.schoolId,offeringId:targetOfferingId,yearId:live.yearId,termId:live.termId,
+      programId:live.programId,sectionId:live.sectionId,subjectId:live.subjectId,
+      meetings,status:"active",revision,updatedByUid:ctx.uid,updatedAt:now};
+    if(current.exists){
+     const prior=current.data();
+     if(prior.schoolId!==ctx.schoolId||prior.offeringId!==targetOfferingId)
+      deny("permission-denied","Official schedule ownership changed.");
+     tx.create(scheduleRef.collection("revisions").doc(String(currentRevision)),{...prior,archivedRevisionAt:now});
+     tx.update(scheduleRef,next);
+    }else tx.create(scheduleRef,{...next,createdByUid:ctx.uid,createdAt:now});
+    tx.create(db.collection(prefix+"planning_audit").doc(),{
+     schoolId:ctx.schoolId,actorUid:ctx.uid,resourceId:targetOfferingId,action:"class_schedule_saved",
+     offeringId:targetOfferingId,yearId:live.yearId,termId:live.termId,sectionId:live.sectionId,
+     subjectId:live.subjectId,reason,revision,createdAt:now
+    });
+    result={offeringId:targetOfferingId,meetings,revision};
+   });
+   const enrollmentSnap=await db.collection(prefix+"enrollments").where("offeringId","==",targetOfferingId).limit(201).get();
+   if(enrollmentSnap.size===201)console.warn("Class schedule notification roster truncated",{schoolId:ctx.schoolId,offeringId:targetOfferingId});
+   const enrollments=enrollmentSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active").slice(0,200);
+   const people=await Promise.all(enrollments.map(row=>db.doc(prefix+"people/"+row.data().personId).get()));
+   const studentUids=[...new Set(people.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId&&doc.data().authUid)
+     .map(doc=>doc.data().authUid))];
+   const count=result.meetings.length,body=count?
+    count+" official weekly meeting"+(count===1?"":"s")+" saved for this class. Open the classroom or timetable to review the current times and room.":
+    "The official weekly meeting schedule for this class was cleared. Open the classroom or timetable for the current status.";
+   await Promise.allSettled([
+    ...notifyTeacherUids.map(teacherUid=>writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:teacherUid,id:"class_schedule_"+targetOfferingId+"_"+result.revision+"_teacher",
+     title:"Official class schedule updated",body,type:"schedule",sourceId:targetOfferingId,
+     target:"schedule.html"
+    })),
+    ...studentUids.map(studentUid=>writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:studentUid,id:"class_schedule_"+targetOfferingId+"_"+result.revision+"_student",
+     title:"Class schedule updated",body,type:"schedule",sourceId:targetOfferingId,
+     target:"student-subject.html?offeringId="+encodeURIComponent(targetOfferingId)
+    }))
+   ]);
+   return result;
+  }
+
+  if(action==="my_official_schedule"){
+   if(!teacher)deny("permission-denied","Teacher access is required.");
+   const grants=await db.collection(prefix+"staff_assignments").where("teacherUid","==",ctx.uid).limit(201).get();
+   if(grants.size===201)deny("resource-exhausted","Teaching assignments require pagination.");
+   const ids=[...new Set(grants.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
+    .map(doc=>doc.data().offeringId))];
+   const docs=await Promise.all(ids.map(id=>db.doc(prefix+"class_schedules/"+id).get()));
+   return {schoolId:ctx.schoolId,schedules:docs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId&&
+    doc.data().status!=="archived").map(classScheduleView)};
+  }
+
+  if(!teacher)deny("permission-denied","Teacher access is required for the personal timetable.");
   const canonicalPeriod=input.periodId?periodId(input.periodId):null;
   let year=null,term=null,period=null,programId=null,yearId=null,periodName=null,periodType=null,sequence=null,id;
   if(canonicalPeriod){

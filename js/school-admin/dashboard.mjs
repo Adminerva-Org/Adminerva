@@ -5,16 +5,63 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.1
 const get=id=>document.getElementById(id);
 const functions=getFunctions(app,"asia-southeast1");
 const peopleApi=httpsCallable(functions,"peopleDirectory");
+const profileApi=httpsCallable(functions,"schoolProfile");
+const academicsApi=httpsCallable(functions,"schoolAcademics");
+const schedulesApi=httpsCallable(functions,"schoolSchedules");
 const classRecordApi=httpsCallable(functions,"schoolClassRecordAdmin");
+const gradingPolicyApi=httpsCallable(functions,"schoolClassRecord");
 const supportApi=httpsCallable(functions,"schoolSupport");
 const status=get("adminOverviewStatus"),attentionList=get("adminAttentionList"),recordList=get("adminClassRecordList");
 const refresh=get("adminRefresh"),attentionFilter=get("adminAttentionFilter"),recordFilter=get("adminRecordFilter"),recordSearch=get("adminRecordSearch");
-let picker=null,loadGeneration=0,model={},attentionLimit=10,recordLimit=20;
+let picker=null,loadGeneration=0,model={},attentionLimit=10,recordLimit=20,enrollmentHref="people-access.html#classes";
 const priorities={integrity:0,attention:1,review:2};
 const tabs=new Set(["overview","people","invites","classes","access","import"]);
 function escapeHTML(value){return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));}
 function count(value){return Number.isFinite(value)&&value>=0?value.toLocaleString():"—";}
 function set(id,value){get(id).textContent=value;}
+function gradingCoverage(){
+  const offerings=Array.isArray(model.academics?.offerings)?model.academics.offerings:[],
+    schemes=Array.isArray(model.grading?.schemes)?model.grading.schemes:[],
+    periodTypes=new Map((model.academics?.periodRecords||[]).map(row=>[row.termId,row.periodType||"term"])),
+    uncovered=[],ambiguous=[],covered=[];
+  const specificity=scope=>Number(Boolean(scope?.programId))+Number(Boolean(scope?.subjectId))+
+    Number(Boolean(scope?.sectionId))+Number(Boolean(scope?.periodTypes?.length));
+  const matches=(scheme,offering)=>{
+    const scope=scheme.applicability||{},periodType=String(periodTypes.get(offering.termId)||"term").toLowerCase();
+    if(scope.programId&&scope.programId!==offering.programId)return false;
+    if(scope.subjectId&&scope.subjectId!==offering.subjectId)return false;
+    if(scope.sectionId&&scope.sectionId!==offering.sectionId)return false;
+    if(scope.periodTypes?.length&&!scope.periodTypes.map(value=>String(value).toLowerCase()).includes(periodType))return false;
+    return true;
+  };
+  for(const offering of offerings){
+    const candidates=schemes.filter(scheme=>matches(scheme,offering));
+    if(!candidates.length){uncovered.push(offering);continue;}
+    const top=Math.max(...candidates.map(scheme=>specificity(scheme.applicability||{}))),
+      winners=candidates.filter(scheme=>specificity(scheme.applicability||{})===top);
+    if(winners.length>1)ambiguous.push({offering,schemes:winners});
+    else covered.push(offering);
+  }
+  return {total:offerings.length,covered,uncovered,ambiguous};
+}
+function renderGradingWorkflow(){
+  const node=get("adminWorkflowGrading");if(!node)return;
+  if(model.grading===null){node.textContent="Unavailable";node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-amber-100 text-amber-900";return;}
+  const schemes=Array.isArray(model.grading?.schemes)?model.grading.schemes:null;
+  if(!schemes){node.textContent="Checking…";node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-slate-200 text-slate-700";return;}
+  if(!schemes.length){node.textContent="Not configured";node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-slate-200 text-slate-700";return;}
+  const coverage=gradingCoverage();
+  if(coverage.ambiguous.length){
+    node.textContent=coverage.ambiguous.length+" policy conflict"+(coverage.ambiguous.length===1?"":"s");
+    node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-rose-100 text-rose-800";return;
+  }
+  if(coverage.total&&coverage.uncovered.length){
+    node.textContent=coverage.covered.length+"/"+coverage.total+" classes covered";
+    node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-amber-100 text-amber-900";return;
+  }
+  node.textContent=coverage.total?coverage.total+"/"+coverage.total+" classes covered":schemes.length+" active polic"+(schemes.length===1?"y":"ies");
+  node.className="rounded-full px-2 py-1 text-[11px] font-bold bg-emerald-100 text-emerald-800";
+}
 function setWorkflow(id,value,noun){
   const node=get(id);if(!node)return;
   const numeric=Number(value),known=Number.isFinite(numeric)&&numeric>=0;
@@ -22,8 +69,9 @@ function setWorkflow(id,value,noun){
   node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(!known?"bg-amber-100 text-amber-900":numeric>0?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");
 }
 function applyEnrollmentRoute(scope){
-  const standard=scope.current?.schoolId==="manila-cathedral-school"&&scope.current?.compatibilityMode==="v4_only";
+  const standard=scope.current?.enrollmentMode==="canonical";
   const href=standard?"school-enrollment.html":"people-access.html#classes";
+  enrollmentHref=href;
   const workflow=get("adminWorkflowEnrollmentLink"),shortcut=get("adminEnrollmentShortcut");
   if(workflow){workflow.href=href;workflow.textContent=standard?"Open Enrollment & Registration →":"Manage enrollment relationships →";}
   if(shortcut)shortcut.href=href;
@@ -33,12 +81,167 @@ function applyEnrollmentRoute(scope){
     ?"Register students, confirm official placement and create subject enrollments together."
     :"Manage reviewed student-to-offering relationships for this school's current enrollment model.";
 }
+function renderRecommendation({final=false}={}){
+  const title=get("adminNextActionTitle"),detail=get("adminNextActionDetail"),link=get("adminNextActionLink"),panel=get("adminNextAction");
+  if(!title||!detail||!link||!panel)return;
+  const sources=[model.profile,model.academics,model.overview,model.reconciliation,model.classes,model.schedules,model.grading,model.records,model.support],
+    complete=sources.every(value=>value!==undefined);
+  if(!final&&!complete){
+    title.textContent="Checking school operations…";
+    detail.textContent="Adminerva is checking school profile, academic setup, directory, staffing, Class Record and support signals.";
+    link.hidden=true;panel.className="av-panel p-4 sm:p-5 border-l-4 border-l-blue-600";return;
+  }
+  let action=null;
+  const critical=Number(model.support?.counts?.critical)||0;
+  const open=Number(model.support?.counts?.open)||0;
+  const loadedIssues=issues();
+  const integrity=loadedIssues.find(item=>item.severity==="integrity");
+  const attention=loadedIssues.find(item=>item.severity==="attention");
+  const classRows=Array.isArray(model.classes?.offerings)?model.classes.offerings:[],
+    totalClasses=classRows.length,
+    unstaffed=classRows.filter(row=>!(row.teacherUids||[]).length).length,
+    scheduledIds=new Set((model.schedules?.schedules||[]).filter(row=>(row.meetings||[]).length).map(row=>row.offeringId)),
+    unscheduled=classRows.filter(row=>!scheduledIds.has(row.offeringId)).length,
+    legacyRosterClasses=classRows.filter(row=>row.rosterMode==="legacy").length,
+    primaryReviewClasses=classRows.filter(row=>row.primaryNeedsReview).length;
+  const enrollments=Number(model.overview?.counts?.enrollments);
+  const people=Number(model.overview?.counts?.people);
+  const gradeCoverage=gradingCoverage();
+  const profileSaved=Number(model.profile?.profile?.revision)>0;
+  const academicOfferings=Array.isArray(model.academics?.offerings)?model.academics.offerings.length:null;
+  if(critical>0)action={
+    title:critical+" critical support report"+(critical===1?"":"s")+" need review",
+    detail:"Critical support reports take priority over routine administration because they may be blocking normal school use.",
+    href:"issues.html",label:"Open support queue",tone:"rose"
+  };
+  else if(model.profile!==null&&model.profile!==undefined&&!profileSaved)action={
+    title:"Complete the school profile first",
+    detail:"Save the official institution profile before configuring the academic and operational workspaces. This establishes the school identity, timezone and contact context used across Adminerva.",
+    href:"school-profile.html",label:"Complete school profile",tone:"blue"
+  };
+  else if(model.academics!==null&&model.academics!==undefined&&academicOfferings===0)action={
+    title:"Complete Academic Configuration",
+    detail:"No active class offering is configured yet. Create the academic year, division/program, period, subjects, sections and at least one class offering before staffing or enrollment.",
+    href:"school-academic-configuration.html",label:"Configure academics",tone:"blue"
+  };
+  else if(integrity)action={
+    title:"Resolve an integrity issue first",
+    detail:(integrity.label?integrity.label+" · ":"")+(integrity.detail||"A school relationship is inconsistent and may block access."),
+    href:issueHref(integrity),label:"Review integrity issue",tone:"rose"
+  };
+  else if(attention)action={
+    title:"Review the next school relationship issue",
+    detail:(attention.label?attention.label+" · ":"")+(attention.detail||"A school relationship needs administrator attention."),
+    href:issueHref(attention),label:"Review issue",tone:"amber"
+  };
+  else if(totalClasses>0&&unstaffed>0)action={
+    title:unstaffed+" active class"+(unstaffed===1?" is":"es are")+" unstaffed",
+    detail:"Assign an active school teacher to every class before Classroom, assessment review and Class Record workflows depend on it.",
+    href:"school-classes.html",label:"Staff active classes",tone:"amber"
+  };
+  else if(totalClasses>0&&unscheduled>0)action={
+    title:unscheduled+" active class"+(unscheduled===1?" has":"es have")+" no official schedule",
+    detail:"Add the institutional meeting time and room so teachers and students share the same class timetable and conflict checks remain authoritative.",
+    href:"school-classes.html?view=schedule",label:"Complete class schedules",tone:"amber"
+  };
+  else if(primaryReviewClasses>0)action={
+    title:primaryReviewClasses+" staffed class"+(primaryReviewClasses===1?" needs":"es need")+" a Primary Teacher review",
+    detail:"These classes have multiple active teachers or stale lead metadata without a valid explicit Primary Teacher. Set the class lead without changing existing assessment-review ownership.",
+    href:"school-classes.html",label:"Review teaching teams",tone:"amber"
+  };
+  else if(legacyRosterClasses>0)action={
+    title:legacyRosterClasses+" active class"+(legacyRosterClasses===1?" needs":"es need")+" roster-source review",
+    detail:"These classes predate the explicit roster-source model. Adopt official section placement for normal classes, or mark true electives/irregular classes as selective.",
+    href:"school-classes.html",label:"Review roster sources",tone:"amber"
+  };
+  else if(Number.isFinite(enrollments)&&enrollments===0&&Number.isFinite(people)&&people>0)action={
+    title:"Complete student enrollment",
+    detail:"People records exist but no enrollment relationships are loaded. Use the enrollment workflow available to this school.",
+    href:enrollmentHref,label:"Open enrollment",tone:"blue"
+  };
+  else if(model.grading!==null&&model.grading!==undefined&&!(model.grading.schemes||[]).length)action={
+    title:"Configure a grading policy",
+    detail:"No active school grading policy is available yet. Define the category weights, transmutation rule and applicability before teachers finalize Class Records.",
+    href:"school-grading-schemes.html",label:"Configure grading policy",tone:"blue"
+  };
+  else if(gradeCoverage.ambiguous.length)action={
+    title:gradeCoverage.ambiguous.length+" class"+(gradeCoverage.ambiguous.length===1?" has":"es have")+" overlapping grading policies",
+    detail:"Multiple equally specific active policies match these classes. Class Record will block policy resolution until School Administration removes the overlap.",
+    href:"school-grading-schemes.html",label:"Resolve grading-policy overlap",tone:"amber"
+  };
+  else if(gradeCoverage.uncovered.length)action={
+    title:gradeCoverage.uncovered.length+" class"+(gradeCoverage.uncovered.length===1?" has":"es have")+" no matching grading policy",
+    detail:"At least one active class is outside the applicability of every active grading policy. Add or broaden a policy before teachers finalize those Class Records.",
+    href:"school-grading-schemes.html",label:"Complete grading coverage",tone:"amber"
+  };
+  else if(open>0)action={
+    title:open+" open support report"+(open===1?"":"s")+" remain",
+    detail:"No higher-priority integrity blocker is loaded. Review the remaining school support queue.",
+    href:"issues.html",label:"Review reports",tone:"blue"
+  };
+  else action={
+    title:"No blocking administrator issue found",
+    detail:complete?"The completed dashboard checks did not find a blocking directory, class staffing, official schedule, Class Record or support issue. Continue routine academic-policy and operations review.":"Available checks did not confirm a blocker; some sources are unavailable, so refresh before treating this as a full health result.",
+    href:"school-grading-schemes.html",label:"Review grading policies",tone:complete?"emerald":"amber"
+  };
+  title.textContent=action.title;detail.textContent=action.detail;link.href=action.href;link.textContent=action.label+" →";link.hidden=false;
+  const border=action.tone==="rose"?"border-l-rose-600":action.tone==="amber"?"border-l-amber-500":action.tone==="emerald"?"border-l-emerald-600":"border-l-blue-600";
+  panel.className="av-panel p-4 sm:p-5 border-l-4 "+border;
+}
 function message(host,value){host.replaceChildren();const p=document.createElement("p");p.className="p-5 text-sm text-slate-600";p.textContent=value;host.append(p);}
+function platformModePayload(){
+  try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?{platformMode:"assist"}:{};}catch{return {};}
+}
 function perform(api,action,lease){
-  return api({schoolId:lease.schoolId,action}).then(response=>{picker.scope.assertLease(lease);return response.data;});
+  return api({schoolId:lease.schoolId,action,...platformModePayload()}).then(response=>{picker.scope.assertLease(lease);return response.data;});
+}
+function renderClassWorkflow(){
+  const node=get("adminWorkflowTeaching");if(!node)return;
+  if(model.classes===null||model.schedules===null){
+    node.textContent="Unavailable";node.className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-900";return;
+  }
+  if(model.classes===undefined||model.schedules===undefined){
+    node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";return;
+  }
+  const rows=model.classes.offerings||[],total=rows.length;
+  if(!total){
+    node.textContent="Not started";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";return;
+  }
+  const staffed=rows.filter(row=>(row.teacherUids||[]).length).length,
+    scheduledIds=new Set((model.schedules.schedules||[]).filter(row=>(row.meetings||[]).length).map(row=>row.offeringId)),
+    scheduled=rows.filter(row=>scheduledIds.has(row.offeringId)).length,
+    complete=staffed===total&&scheduled===total;
+  node.textContent=staffed+"/"+total+" staffed · "+scheduled+"/"+total+" scheduled";
+  node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(complete?"bg-emerald-100 text-emerald-800":"bg-amber-100 text-amber-900");
+  set("adminAssignmentCount",staffed+"/"+total);
+}
+function activityLabel(action){
+  return String(action||"directory change").replace(/^student_/,"student ").replace(/^teacher_/,"teacher ").replaceAll("_"," ");
+}
+function renderActivity(){
+  const host=get("adminActivityList"),items=model.overview?.recentActivity;
+  if(!host)return;
+  if(!Array.isArray(items)){
+    message(host,"Recent administrative activity is unavailable. Refresh to retry.");return;
+  }
+  if(!items.length){
+    message(host,"No directory administration activity has been recorded yet.");return;
+  }
+  host.innerHTML=items.map(item=>{
+    const when=item.createdAt?new Date(item.createdAt).toLocaleString():"Time unavailable";
+    const context=[item.reason,item.personId?"person "+item.personId:"",item.offeringId?"class "+item.offeringId:""].filter(Boolean).join(" · ");
+    return '<article class="p-4"><div class="flex flex-wrap items-center justify-between gap-2"><strong class="text-sm capitalize">'+escapeHTML(activityLabel(item.action))+'</strong><span class="text-xs text-slate-500">'+escapeHTML(when)+'</span></div><p class="text-xs text-slate-600 mt-1">'+escapeHTML((item.actorUid?"Actor "+item.actorUid+(context?" · ":""):"")+context)+'</p></article>';
+  }).join("");
 }
 function issueHref(item){
-  if(item.source==="record")return item.targetTab==="classes"?"people-access.html#classes":"school-class-records.html";
+  if(item.source==="class")return "school-classes.html?"+new URLSearchParams({
+    ...(item.targetTab==="schedule"?{view:"schedule"}:{}),...(item.offeringId?{offeringId:item.offeringId}:{})
+  }).toString();
+  if(item.source==="record")return item.targetTab==="classes"?"school-classes.html":"school-class-records.html";
+  const identityIssue=Boolean(item.personId)&&["access","invites","people"].includes(item.targetTab);
+  if(identityIssue)return "people-access.html?personId="+encodeURIComponent(item.personId)+"#people";
+  if(item.type==="student_no_enrollment"&&picker?.scope.current?.enrollmentMode==="canonical")return "school-enrollment.html"+(item.personId?"?personId="+encodeURIComponent(item.personId):"");
+  if(item.type==="student_registration_without_classes"&&picker?.scope.current?.enrollmentMode==="canonical")return "school-classes.html";
   return "people-access.html#"+(tabs.has(item.targetTab)?item.targetTab:"overview");
 }
 function recordState(record){
@@ -49,6 +252,15 @@ function recordState(record){
 }
 function issues(){
   const items=(model.reconciliation?.issues||[]).slice();
+  const classRows=model.classes?.offerings||[],scheduleIds=new Set((model.schedules?.schedules||[])
+    .filter(row=>(row.meetings||[]).length).map(row=>row.offeringId));
+  for(const row of classRows){
+    const label=[row.subjectName,row.sectionName,row.termName].filter(Boolean).join(" · ");
+    if(!(row.teacherUids||[]).length)items.push({source:"class",severity:"integrity",label,detail:"Active class has no assigned subject teacher.",offeringId:row.offeringId,targetTab:"classes"});
+    if(!scheduleIds.has(row.offeringId))items.push({source:"class",severity:"attention",label,detail:"Active class has no official meeting schedule.",offeringId:row.offeringId,targetTab:"schedule"});
+    if(row.primaryNeedsReview)items.push({source:"class",severity:"review",label,detail:"Teaching team needs an explicit valid Primary Teacher. Co-teacher access and existing assessment review ownership remain separate.",offeringId:row.offeringId,targetTab:"classes"});
+    if(row.rosterMode==="legacy")items.push({source:"class",severity:"review",label,detail:"Class roster source is still legacy/unclassified. Adopt official section placement or mark it selective.",offeringId:row.offeringId,targetTab:"classes"});
+  }
   for(const record of model.records||[]){
     if(!record.teacherNames?.length)items.push({source:"record",severity:"integrity",label:record.subjectName+" · "+record.sectionName,detail:"No active teacher is assigned to this Class Record.",targetTab:"classes"});
     if(record.finalization?.layoutChangedSinceFinalization)items.push({source:"record",severity:"attention",label:record.subjectName+" · "+record.sectionName,detail:"The Class Record changed after finalization and needs a new review.",targetTab:"records"});
@@ -85,20 +297,43 @@ function reset(){
   model={};attentionLimit=10;recordLimit=20;
   for(const id of ["adminPeopleCount","adminAttentionCount","adminClassRecordCount","adminReportCount","adminSupportOpen","adminSupportCritical","adminSupportWaiting","adminEnrollmentCount","adminAssignmentCount","adminInvitationCount"])set(id,"—");
   set("adminIntegrityMeta","Not checked");set("adminClassRecordMeta","Not checked");set("adminReportMeta","Not checked");
-  for(const id of ["adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
+  for(const id of ["adminWorkflowProfile","adminWorkflowAcademics","adminWorkflowPeople","adminWorkflowTeaching","adminWorkflowEnrollment","adminWorkflowGrading","adminWorkflowRecords"]){const node=get(id);if(node){node.textContent="Checking…";node.className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700";}}
   set("adminAttentionCoverage","");set("adminRecordCoverage","");get("adminAttentionMore").hidden=true;get("adminRecordMore").hidden=true;
-  message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");
+  message(attentionList,"Waiting for verified school checks…");message(recordList,"Waiting for verified school records…");message(get("adminActivityList"),"Waiting for verified school activity…");renderRecommendation();
 }
 function renderSource(name,data){
-  if(name==="directory"){
+  if(name==="profile"){
+    model.profile=data;
+    const node=get("adminWorkflowProfile"),saved=Number(data?.profile?.revision)>0;
+    if(node){node.textContent=data===null?"Unavailable":saved?"Saved":"Not configured";node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(data===null?"bg-amber-100 text-amber-900":saved?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");}
+  }else if(name==="academics"){
+    model.academics=data;
+    const node=get("adminWorkflowAcademics"),total=Array.isArray(data?.offerings)?data.offerings.length:null;
+    if(node){node.textContent=data===null?"Unavailable":total?"Configured · "+total+" class"+(total===1?"":"es"):"Not configured";node.className="rounded-full px-2 py-1 text-[11px] font-bold "+(data===null?"bg-amber-100 text-amber-900":total?"bg-emerald-100 text-emerald-800":"bg-slate-200 text-slate-700");}
+    renderGradingWorkflow();
+  }else if(name==="directory"){
     model.overview=data;
     for(const [id,key] of [["adminPeopleCount","people"],["adminEnrollmentCount","enrollments"],["adminAssignmentCount","staff_assignments"],["adminInvitationCount","invitations"]])set(id,count(data?.counts?.[key]));
-    setWorkflow("adminWorkflowPeople",data?.counts?.people,"record");setWorkflow("adminWorkflowTeaching",data?.counts?.staff_assignments,"assignment");setWorkflow("adminWorkflowEnrollment",data?.counts?.enrollments,"enrollment");
+    renderActivity();
+    setWorkflow("adminWorkflowPeople",data?.counts?.people,"record");setWorkflow("adminWorkflowEnrollment",data?.counts?.enrollments,"enrollment");
+  }else if(name==="classes"){
+    model.classes=data;
+    renderClassWorkflow();
+    if(data){
+      const total=(data.offerings||[]).length,staffed=(data.offerings||[]).filter(row=>(row.teacherUids||[]).length).length;
+      set("adminAssignmentCount",total?staffed+"/"+total:"0");
+    }else set("adminAssignmentCount","—");
+    renderAttention();
+  }else if(name==="schedules"){
+    model.schedules=data;
+    renderClassWorkflow();renderAttention();
   }else if(name==="relationships"){
     model.reconciliation=data;
     set("adminAttentionCount",count(data?.counts?.total));
     set("adminIntegrityMeta",data?count(data.counts?.integrity)+" integrity · "+count(data.counts?.attention)+" attention":"Relationship checks unavailable");
     renderAttention();
+  }else if(name==="grading"){
+    model.grading=data;renderGradingWorkflow();
   }else if(name==="records"){
     model.records=Array.isArray(data?.records)?data.records:null;
     set("adminClassRecordCount",model.records?count(model.records.length):"—");
@@ -112,11 +347,22 @@ function renderSource(name,data){
     for(const [id,key] of [["adminReportCount","open"],["adminSupportOpen","open"],["adminSupportCritical","critical"],["adminSupportWaiting","waiting"]])set(id,count(data?.counts?.[key]));
     set("adminReportMeta",data?count(data.counts?.critical)+" critical":"Support source unavailable");
   }
+  renderRecommendation();
 }
 async function loadDashboard(){
   const generation=++loadGeneration,lease=picker.scope.lease();
   reset();refresh.disabled=true;status.textContent="Loading school operations…";get("adminLastChecked").textContent="";
-  const sources=[["directory","Directory totals",peopleApi,"overview"],["relationships","Relationship checks",peopleApi,"reconcile_directory"],["records","Class Records",classRecordApi,"overview"],["support","Support reports",supportApi,"overview"]];
+  const sources=[
+    ["profile","School profile",profileApi,"get"],
+    ["academics","Academic configuration",academicsApi,"planning_options"],
+    ["directory","Directory totals",peopleApi,"overview"],
+    ["relationships","Relationship checks",peopleApi,"reconcile_directory"],
+    ["classes","Active classes",academicsApi,"faculty_workload"],
+    ["schedules","Official schedules",schedulesApi,"admin_overview"],
+    ["grading","Grading policies",gradingPolicyApi,"list_schemes"],
+    ["records","Class Records",classRecordApi,"overview"],
+    ["support","Support reports",supportApi,"overview"]
+  ];
   const failed=[];
   const current=()=>generation===loadGeneration&&auth.currentUser?.uid===lease.uid;
   await Promise.all(sources.map(async ([name,label,api,action])=>{
@@ -125,7 +371,8 @@ async function loadDashboard(){
   }));
   if(!current())return;
   refresh.disabled=false;set("adminLastChecked","Checked "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
-  status.textContent=failed.length?"Unavailable: "+failed.join(", ")+". Other results remain usable.":"All four school operation sources loaded.";
+  status.textContent=failed.length?"Unavailable: "+failed.join(", ")+". Other results remain usable.":"All nine school operation sources loaded.";
+  renderRecommendation({final:true});
 }
 refresh.addEventListener("click",()=>{if(picker.scope.current?.roles.includes("school_admin"))void loadDashboard();else void picker.load().catch(error=>{status.textContent=error?.message||"School access unavailable.";});});
 attentionFilter.addEventListener("change",()=>{attentionLimit=10;renderAttention();});

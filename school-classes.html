@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Manage school classes, teaching assignments, teacher load and section-class relationships from one workspace.">
+  <title>Classes & Scheduling · Adminerva</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <script defer src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d">
+  <link rel="stylesheet" href="css/workspace-navigation.css?v=1.3.0">
+  <link rel="stylesheet" href="css/school-admin-workflow.css?v=20261121-admin-flow1">
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="admin" data-page="classes-scheduling"></div>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+  <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+      <div>
+        <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">School Administration</p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Classes &amp; Scheduling</h1>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">One operational workspace for class offerings, teaching assignments, teacher load, official meeting schedules, section coverage and rosters. People &amp; Access remains the source for identities and permissions; Enrollment remains the source for official student placement.</p>
+      </div>
+      <div id="csSchoolSwitcher" hidden class="w-full lg:w-auto lg:min-w-[260px]"></div>
+    </div>
+  </header>
+
+  <section class="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label="Scheduling summary">
+    <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Active classes</p><strong id="csClassCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+    <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Unstaffed</p><strong id="csUnstaffedCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+    <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Teachers</p><strong id="csTeacherCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+    <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Scheduled classes</p><strong id="csScheduledCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+  </section>
+
+  <section class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+    <div class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+      <div class="flex flex-wrap gap-2" role="tablist" aria-label="Class scheduling views">
+        <button type="button" data-cs-view="classes" class="cs-view rounded-lg bg-blue-600 text-white px-4 py-2.5 text-sm font-extrabold">Classes</button>
+        <button type="button" data-cs-view="teachers" class="cs-view rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold">Teachers</button>
+        <button type="button" data-cs-view="sections" class="cs-view rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold">Sections</button>
+        <button type="button" data-cs-view="schedule" class="cs-view rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold">Schedule</button>
+      </div>
+      <div class="grid sm:grid-cols-3 gap-2 flex-1 xl:max-w-3xl">
+        <label class="text-xs font-bold">Search<input id="csSearch" type="search" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm" placeholder="Subject, section, teacher…"></label>
+        <label class="text-xs font-bold">School year<select id="csYearFilter" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="">All years</option></select></label>
+        <label class="text-xs font-bold">Period<select id="csTermFilter" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="">All periods</option></select></label>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center justify-between gap-3 mt-4">
+      <p id="csStatus" class="text-sm text-slate-600" role="status" aria-live="polite">Loading classes and teaching assignments…</p>
+      <div class="flex flex-wrap gap-2">
+        <a href="school-academic-configuration.html" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold">Create classes</a>
+        <a href="school-enrollment.html" id="csEnrollmentLink" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold">Student placement</a>
+        <button id="csRefresh" type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold">Refresh</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid xl:grid-cols-[minmax(0,1.45fr)_minmax(330px,.8fr)] gap-5 items-start">
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div class="border-b border-slate-200 p-4 sm:p-5">
+        <p id="csViewEyebrow" class="text-xs uppercase tracking-wider font-bold text-blue-700">Class offerings</p>
+        <h2 id="csViewTitle" class="text-xl font-extrabold mt-1">Classes</h2>
+        <p id="csViewHelp" class="text-sm text-slate-600 mt-1">Each row is one subject taught to one section in one academic period.</p>
+      </div>
+      <div id="csList" class="p-4 sm:p-5"></div>
+    </section>
+
+    <aside id="csDetailPanel" class="rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-20 overflow-hidden scroll-mt-24">
+      <div class="bg-slate-50 border-b border-slate-200 p-4 sm:p-5">
+        <p class="text-xs uppercase tracking-wider font-bold text-slate-500">Selected class</p>
+        <h2 id="csDetailTitle" class="text-xl font-extrabold mt-1">Choose a class</h2>
+        <p id="csDetailMeta" class="text-sm text-slate-600 mt-1">Open a class to manage its teachers and inspect its roster.</p>
+      </div>
+      <div id="csDetailEmpty" class="p-5 text-sm text-slate-600">Teaching load and section handling are derived from active class assignments. There is no separate load record to maintain.</div>
+      <div id="csDetail" hidden class="p-4 sm:p-5 space-y-5">
+        <div class="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Selected class controls">
+          <button type="button" data-cs-detail-tab="team" class="rounded-lg bg-slate-900 text-white px-3 py-2 text-sm font-extrabold whitespace-nowrap" aria-selected="true">Teaching team</button>
+          <button type="button" data-cs-detail-tab="schedule" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold whitespace-nowrap" aria-selected="false">Schedule</button>
+          <button type="button" data-cs-detail-tab="roster" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold whitespace-nowrap" aria-selected="false">Roster</button>
+        </div>
+        <div data-cs-detail-panel="team" class="space-y-5">
+        <section class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-emerald-800">Section responsibility</p><h3 class="font-extrabold text-emerald-950 mt-1">Adviser / Homeroom</h3><p class="text-xs text-emerald-900 mt-1">Separate from subject teaching. This assignment applies to the selected section for the school year, not to every subject taught in it.</p></div>
+          <p id="csAdviserCurrent" class="text-sm font-bold text-emerald-950 mt-3">No adviser assigned.</p>
+          <form id="csAdviserForm" class="grid gap-2 mt-3">
+            <select id="csAdviserTeacher" class="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2.5 text-sm" required></select>
+            <div class="grid sm:grid-cols-2 gap-2">
+              <button type="submit" class="rounded-lg bg-emerald-700 text-white px-3 py-2.5 text-sm font-extrabold">Set adviser</button>
+              <button id="csAdviserRemove" type="button" class="rounded-lg border border-emerald-300 bg-white text-emerald-900 px-3 py-2.5 text-sm font-bold">Remove adviser</button>
+            </div>
+          </form>
+        </section>
+        <section>
+          <div class="flex items-center justify-between gap-3"><h3 class="font-extrabold">Subject teachers</h3><span id="csStaffCount" class="text-xs text-slate-500"></span></div>
+          <div id="csStaffList" class="mt-2 space-y-2"></div>
+        </section>
+        <form id="csAssignForm" class="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+          <div><h3 class="font-extrabold text-blue-950">Add teacher</h3><p class="text-xs text-blue-900 mt-1">The first assigned teacher becomes the Primary Teacher. Additional teachers join as Co-teachers. This role does not silently change existing assessment-review ownership.</p></div>
+          <select id="csAssignTeacher" class="w-full rounded-lg border border-blue-300 bg-white px-3 py-2.5 text-sm" required></select>
+          <button type="submit" class="w-full rounded-lg bg-blue-700 text-white px-4 py-2.5 text-sm font-extrabold">Add to class</button>
+        </form>
+        <form id="csHandoverForm" class="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <div><h3 class="font-extrabold text-amber-950">Teacher handover</h3><p class="text-xs text-amber-900 mt-1">Ends the outgoing assignment, transfers only assessments that teacher currently reviews, and transfers Primary Teacher leadership only when the outgoing teacher is the class lead.</p></div>
+          <select id="csHandoverFrom" class="w-full rounded-lg border border-amber-300 bg-white px-3 py-2.5 text-sm" required></select>
+          <select id="csHandoverTo" class="w-full rounded-lg border border-amber-300 bg-white px-3 py-2.5 text-sm" required></select>
+          <textarea id="csHandoverReason" rows="2" maxlength="500" class="w-full rounded-lg border border-amber-300 bg-white p-3 text-sm" placeholder="Reason for teacher change (at least 12 characters)" required></textarea>
+          <button type="submit" class="w-full rounded-lg bg-amber-700 text-white px-4 py-2.5 text-sm font-extrabold">Handover responsibility</button>
+        </form>
+        </div>
+        <section data-cs-detail-panel="schedule" class="rounded-xl border border-violet-200 bg-violet-50 p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div><p class="text-xs uppercase tracking-wider font-bold text-violet-800">Official timetable</p><h3 class="font-extrabold text-violet-950 mt-1">Class meetings</h3><p class="text-xs text-violet-900 mt-1">School Administration owns the official class time and room. Teacher timetables are derived from these meetings.</p></div>
+            <span id="csScheduleRevision" class="text-xs font-bold text-violet-800"></span>
+          </div>
+          <div id="csScheduleMeetings" class="mt-3 space-y-2"></div>
+          <div class="grid grid-cols-2 gap-2 mt-3">
+            <label class="text-xs font-bold text-violet-950">Day<select id="csScheduleDay" class="mt-1 w-full rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm">
+              <option value="mon">Monday</option><option value="tue">Tuesday</option><option value="wed">Wednesday</option><option value="thu">Thursday</option><option value="fri">Friday</option><option value="sat">Saturday</option>
+            </select></label>
+            <label class="text-xs font-bold text-violet-950">Room<input id="csScheduleRoom" maxlength="120" class="mt-1 w-full rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm" placeholder="Optional room"></label>
+            <label class="text-xs font-bold text-violet-950">Start<input id="csScheduleStart" type="time" class="mt-1 w-full rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm"></label>
+            <label class="text-xs font-bold text-violet-950">End<input id="csScheduleEnd" type="time" class="mt-1 w-full rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm"></label>
+          </div>
+          <button id="csScheduleAdd" type="button" class="mt-2 w-full rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm font-bold text-violet-900">Add meeting</button>
+          <form id="csScheduleForm" class="mt-3 space-y-2">
+            <textarea id="csScheduleReason" rows="2" minlength="12" maxlength="500" class="w-full rounded-lg border border-violet-300 bg-white p-3 text-sm" placeholder="Reason for official schedule change (at least 12 characters)" required></textarea>
+            <button type="submit" class="w-full rounded-lg bg-violet-700 text-white px-4 py-2.5 text-sm font-extrabold">Save official schedule</button>
+          </form>
+          <p id="csScheduleStatus" class="text-xs text-violet-900 mt-2" role="status"></p>
+        </section>
+        <div data-cs-detail-panel="roster" class="space-y-5" hidden>
+        <section class="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Roster authority</p><h3 class="font-extrabold text-cyan-950 mt-1">Roster source</h3><p class="text-xs text-cyan-900 mt-1">Normal classes should follow official section placement. Selective mode is reserved for electives, irregular learners, and intentional exceptions.</p></div>
+          <p id="csRosterModeCurrent" class="text-sm font-bold text-cyan-950 mt-3"></p>
+          <form id="csRosterModeForm" class="grid gap-2 mt-3">
+            <select id="csRosterMode" class="w-full rounded-lg border border-cyan-300 bg-white px-3 py-2.5 text-sm" required>
+              <option value="section">Official section placement · automatic</option>
+              <option value="selective">Selective / manual roster</option>
+            </select>
+            <textarea id="csRosterModeReason" rows="2" minlength="12" maxlength="500" class="w-full rounded-lg border border-cyan-300 bg-white p-3 text-sm" placeholder="Reason for roster-source change or synchronization" required></textarea>
+            <button id="csRosterModeSave" type="submit" class="w-full rounded-lg bg-cyan-800 text-white px-4 py-2.5 text-sm font-extrabold">Apply roster source</button>
+          </form>
+          <p id="csRosterModeHelp" class="text-xs text-cyan-900 mt-2"></p>
+        </section>
+        <section>
+          <div class="flex items-center justify-between gap-3"><h3 class="font-extrabold">Students</h3><span id="csStudentCount" class="text-xs text-slate-500"></span></div>
+          <p id="csRosterAuthorityHelp" class="text-xs text-slate-500 mt-1">Roster is read-only here. Change official placement through Enrollment.</p>
+          <section id="csSelectiveRosterTools" hidden class="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+            <div><p class="text-xs uppercase tracking-wider font-bold text-blue-800">Selective roster</p><p class="text-xs text-blue-900 mt-1">Search the school directory and add an intentional elective/irregular class member. Ending or restoring an enrollment preserves its history.</p></div>
+            <div class="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-2 mt-3">
+              <input id="csStudentSearchQuery" type="search" minlength="2" maxlength="120" class="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm" placeholder="Student name or exact student number">
+              <button id="csStudentSearchButton" type="button" class="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-bold text-blue-900">Search</button>
+            </div>
+            <div id="csStudentSearchResults" class="mt-2 space-y-2"></div>
+            <p id="csStudentSearchStatus" class="text-xs text-blue-900 mt-2" role="status"></p>
+          </section>
+          <div id="csRoster" class="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-200"></div>
+        </section>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-2">
+          <a id="csRecordLink" href="school-class-records.html" class="rounded-lg border border-slate-300 px-3 py-2.5 text-center text-sm font-bold">Class Record oversight</a>
+          <a id="csEnrollmentClassLink" href="school-enrollment.html" class="rounded-lg border border-slate-300 px-3 py-2.5 text-center text-sm font-bold">Student placement</a>
+        </div>
+      </div>
+    </aside>
+  </div>
+</main>
+<dialog id="csReasonDialog" class="rounded-2xl p-0 w-[min(560px,calc(100%-1rem))] max-h-[90dvh] backdrop:bg-slate-900/50">
+  <form id="csReasonForm" class="bg-white rounded-2xl p-4 sm:p-5">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <p class="text-xs font-extrabold uppercase tracking-wider text-blue-700">Administrative change</p>
+        <h2 id="csReasonTitle" class="text-lg font-extrabold mt-1">Confirm change</h2>
+        <p id="csReasonHelp" class="text-sm text-slate-600 mt-1"></p>
+      </div>
+      <button id="csReasonClose" type="button" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold">Close</button>
+    </div>
+    <label class="block text-sm font-bold mt-4">Reason
+      <textarea id="csReasonValue" rows="3" minlength="12" maxlength="500" required class="mt-1 w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Explain why this administrative relationship is changing."></textarea>
+    </label>
+    <p id="csReasonStatus" class="text-xs text-slate-500 mt-1">At least 12 characters. The reason is retained in the school audit trail.</p>
+    <div class="grid grid-cols-2 gap-2 mt-4">
+      <button id="csReasonCancel" type="button" class="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-bold">Cancel</button>
+      <button type="submit" class="rounded-lg bg-blue-700 text-white px-3 py-2.5 text-sm font-extrabold">Confirm change</button>
+    </div>
+  </form>
+</dialog>
+
+<script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
+<script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
+<script defer src="js/core/adminerva-nav.js?v=20261120-admin-classes"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
+<script type="module" src="js/school-admin/classes-scheduling.mjs?v=20261121-teaching-team1"></script>
+<script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
+</body>
+</html>

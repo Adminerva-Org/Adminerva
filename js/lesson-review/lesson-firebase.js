@@ -94,7 +94,22 @@ window.initFirebase = function () {
   }
 };
 workspaceOnReady(async()=>{
-  const parameters=new URLSearchParams(location.search),legacyId=parameters.get("legacyPlan");
+  const parameters=new URLSearchParams(location.search),legacyId=parameters.get("legacyPlan"),
+    savedPlanId=parameters.get("savedPlan"),requestedOfferingId=parameters.get("offeringId")||"";
+  if(savedPlanId){
+    try{
+      if(savedPlanId.includes("/")||savedPlanId.length>180)throw Error("This saved-plan link has an invalid record ID.");
+      const uid=await requireStaffWorkspace(),snapshot=await getDoc(ownedDoc(db,"lesson_plans",savedPlanId));
+      assertWorkspaceAccount(uid);
+      if(!snapshot.exists())throw Error("This saved lesson plan no longer exists in your teaching workspace.");
+      const data=snapshot.data();
+      if(data.is_archived)throw Error("This lesson plan is archived. Restore it from Saved Lesson Plans first.");
+      if(requestedOfferingId&&data.offering_id&&data.offering_id!==requestedOfferingId)
+        throw Error("This lesson plan is linked to a different classroom.");
+      window.loadSpecificPlan({...data,id:snapshot.id,ownerUid:uid});
+      return;
+    }catch(error){alert("Could not open the saved lesson plan: "+error.message);return;}
+  }
   if(!legacyId&&parameters.get("saved")==="1"){await window.openLoadPlanModal();return;}
   if(!legacyId)return;
   try{
@@ -281,6 +296,9 @@ async function saveLessonPlanSnapshot(){
       ...(window.legacySourcePlanId ? {source_legacy_plan:window.legacySourcePlanId} : {}),
       teacher_name: teacher,
       program_name:document.getElementById("lpProgram")?.value.trim()||"",
+      school_id:String(window.currentPlannerSchoolId||""),
+      offering_id:String(window.currentPlannerOfferingId||""),
+      class_context:window.currentPlannerClassContext?JSON.parse(JSON.stringify(window.currentPlannerClassContext)):null,
       subject_title: subject,
       school_year: document.getElementById("lpSchoolYear").value,
       academic_term: academicTerm,

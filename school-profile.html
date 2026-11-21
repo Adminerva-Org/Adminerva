@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Manage canonical school profile and campus records in Adminerva.">
+  <title>School Profile & Campuses · Adminerva</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d">
+  <script defer src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .sp-shell{max-width:1180px;margin:auto;padding:1rem}
+    .sp-hero{border-radius:1.2rem;padding:1.25rem;background:#0f172a;color:white}
+    .sp-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:1rem}
+    .sp-card{border:1px solid #dbe3ef;border-radius:1rem;background:white;padding:1rem}
+    .sp-input{width:100%;min-height:44px;border:1px solid #cbd5e1;border-radius:.75rem;padding:.65rem .75rem;background:white;color:#0f172a}
+    textarea.sp-input{min-height:86px;resize:vertical}
+    .sp-btn{min-height:42px;border:1px solid #cbd5e1;border-radius:.75rem;padding:.6rem .9rem;background:white;font-weight:800}
+    .sp-btn.primary{background:#1d4ed8;color:white;border-color:#1d4ed8}
+    .sp-btn.warn{background:#fff7ed;color:#9a3412;border-color:#fdba74}
+    .sp-btn:disabled{opacity:.5;cursor:not-allowed}
+    .sp-muted{font-size:.84rem;color:#64748b}
+    .sp-row{border:1px solid #e2e8f0;border-radius:.85rem;padding:.8rem;background:#f8fafc}
+    .sp-badge{display:inline-flex;border-radius:999px;padding:.2rem .55rem;font-size:.72rem;font-weight:800;background:#dcfce7;color:#166534}
+    .sp-badge[data-state="archived"]{background:#e2e8f0;color:#475569}
+    .sp-dialog{border:0;border-radius:1rem;padding:0;width:min(94vw,680px);max-height:92dvh;box-shadow:0 24px 80px #0f172a55}
+    .sp-dialog::backdrop{background:#020617aa}
+    [hidden]{display:none!important}
+    @media(max-width:860px){.sp-grid{grid-template-columns:1fr}.sp-shell{padding:.7rem}}
+  </style>
+  <link rel="stylesheet" href="css/school-admin-workflow.css?v=20261121-admin-flow1">
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="admin" data-page="school-profile"></div>
+<main class="sp-shell space-y-4">
+  <header class="sp-hero">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div>
+        <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">School Administration · Profile</p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">School Profile &amp; Campuses</h1>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Maintain canonical institutional contact, address, timezone and campus metadata. This does not change the platform tenant ID or academic records.</p>
+      </div>
+      <div id="sp-school-picker" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
+    </div>
+  </header>
+
+  <p id="sp-status" class="sp-muted" role="status" aria-live="polite">Checking School Administrator access…</p>
+
+  <section id="sp-workspace" hidden class="sp-grid">
+    <form id="sp-profile-form" class="sp-card">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-extrabold">Institution profile</h2>
+          <p class="sp-muted mt-1">School-facing metadata only. The System Admin tenant name remains separately controlled.</p>
+        </div>
+        <span id="sp-profile-revision" class="sp-badge">Not saved</span>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-3 mt-4">
+        <label class="text-sm font-bold sm:col-span-2">Official school name
+          <input name="officialName" class="sp-input mt-1" maxlength="160" required>
+        </label>
+        <label class="text-sm font-bold">Short name
+          <input name="shortName" class="sp-input mt-1" maxlength="60" placeholder="MCS">
+        </label>
+        <label class="text-sm font-bold">Institution type
+          <select name="institutionType" class="sp-input mt-1" required>
+            <option value="basic_education">Basic education</option>
+            <option value="higher_education">Higher education</option>
+            <option value="training">Training / learning center</option>
+            <option value="mixed">Mixed institution</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label class="text-sm font-bold">Primary email
+          <input name="primaryEmail" class="sp-input mt-1" type="email" maxlength="254">
+        </label>
+        <label class="text-sm font-bold">Phone
+          <input name="phone" class="sp-input mt-1" maxlength="50">
+        </label>
+        <label class="text-sm font-bold sm:col-span-2">Website
+          <input name="website" class="sp-input mt-1" type="url" maxlength="300" placeholder="https://">
+        </label>
+        <label class="text-sm font-bold">Timezone
+          <input name="timezone" class="sp-input mt-1" maxlength="64" required placeholder="Asia/Manila">
+          <span class="sp-muted block mt-1">Use an IANA timezone such as Asia/Manila.</span>
+        </label>
+        <label class="text-sm font-bold">Locale
+          <input name="locale" class="sp-input mt-1" maxlength="24" required placeholder="en-PH">
+        </label>
+      </div>
+
+      <h3 class="font-extrabold mt-5">Primary mailing address</h3>
+      <div class="grid sm:grid-cols-2 gap-3 mt-3">
+        <label class="text-sm font-bold sm:col-span-2">Address line 1<input name="addressLine1" class="sp-input mt-1" maxlength="180"></label>
+        <label class="text-sm font-bold sm:col-span-2">Address line 2<input name="addressLine2" class="sp-input mt-1" maxlength="180"></label>
+        <label class="text-sm font-bold">City / municipality<input name="city" class="sp-input mt-1" maxlength="100"></label>
+        <label class="text-sm font-bold">Province / region<input name="region" class="sp-input mt-1" maxlength="120"></label>
+        <label class="text-sm font-bold">Postal code<input name="postalCode" class="sp-input mt-1" maxlength="30"></label>
+        <label class="text-sm font-bold">Country<input name="country" class="sp-input mt-1" maxlength="100"></label>
+      </div>
+      <div class="flex flex-wrap gap-2 mt-5">
+        <button id="sp-profile-save" class="sp-btn primary" type="submit">Save school profile</button>
+        <button id="sp-profile-reset" class="sp-btn" type="button">Reset unsaved changes</button>
+      </div>
+    </form>
+
+    <section class="sp-card">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-extrabold">Campuses</h2>
+          <p class="sp-muted mt-1">Create stable campus records for future schedules, facilities and reporting. Archiving preserves history.</p>
+        </div>
+        <button id="sp-add-campus" class="sp-btn primary" type="button">Add campus</button>
+      </div>
+      <div id="sp-campus-list" class="grid gap-2 mt-4" aria-live="polite"></div>
+    </section>
+  </section>
+</main>
+
+<dialog id="sp-campus-dialog" class="sp-dialog" aria-labelledby="sp-campus-title">
+  <form id="sp-campus-form" class="sp-card">
+    <div class="flex items-start justify-between gap-3">
+      <div><p class="text-xs font-extrabold uppercase tracking-wider text-blue-700">School campus</p><h2 id="sp-campus-title" class="text-lg font-extrabold mt-1">Add campus</h2><p id="sp-campus-meta" class="sp-muted mt-1"></p></div>
+      <button id="sp-campus-close" class="sp-btn" type="button">Close</button>
+    </div>
+    <div class="grid sm:grid-cols-2 gap-3 mt-4">
+      <label class="text-sm font-bold sm:col-span-2">Campus name<input name="name" class="sp-input mt-1" maxlength="140" required></label>
+      <label class="text-sm font-bold">Campus code<input name="code" class="sp-input mt-1" maxlength="40" placeholder="MAIN"></label>
+      <label class="text-sm font-bold">Timezone <span class="sp-muted">(optional override)</span><input name="timezone" class="sp-input mt-1" maxlength="64" placeholder="Asia/Manila"></label>
+      <label class="text-sm font-bold sm:col-span-2">Address line 1<input name="addressLine1" class="sp-input mt-1" maxlength="180"></label>
+      <label class="text-sm font-bold sm:col-span-2">Address line 2<input name="addressLine2" class="sp-input mt-1" maxlength="180"></label>
+      <label class="text-sm font-bold">City / municipality<input name="city" class="sp-input mt-1" maxlength="100"></label>
+      <label class="text-sm font-bold">Province / region<input name="region" class="sp-input mt-1" maxlength="120"></label>
+      <label class="text-sm font-bold">Postal code<input name="postalCode" class="sp-input mt-1" maxlength="30"></label>
+      <label class="text-sm font-bold">Country<input name="country" class="sp-input mt-1" maxlength="100"></label>
+    </div>
+    <div class="flex flex-wrap gap-2 mt-5">
+      <button id="sp-campus-save" class="sp-btn primary" type="submit">Save campus</button>
+      <button id="sp-campus-cancel" class="sp-btn" type="button">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="sp-campus-lifecycle-dialog" class="sp-dialog" aria-labelledby="sp-campus-lifecycle-title">
+  <form id="sp-campus-lifecycle-form" class="sp-card">
+    <h2 id="sp-campus-lifecycle-title" class="text-lg font-extrabold">Update campus status</h2>
+    <p id="sp-campus-lifecycle-target" class="sp-muted mt-1"></p>
+    <p id="sp-campus-lifecycle-help" class="sp-muted mt-3"></p>
+    <label class="text-sm font-bold block mt-4">Reason
+      <textarea name="reason" class="sp-input mt-1" minlength="12" maxlength="500" required></textarea>
+    </label>
+    <div class="flex flex-wrap gap-2 mt-4">
+      <button id="sp-campus-lifecycle-confirm" class="sp-btn primary" type="submit">Confirm</button>
+      <button id="sp-campus-lifecycle-cancel" class="sp-btn" type="button">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
+<script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
+<script defer src="js/core/adminerva-nav.js?v=20261120-admin-foundation"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
+<script type="module" src="js/school-admin/school-profile.mjs?v=20261120-profile1"></script>
+<script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
+</body>
+</html>

@@ -6,7 +6,8 @@ const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolClassRecordAdmin");
 const list=el("cro-list"),status=el("cro-status"),search=el("cro-search"),filter=el("cro-filter");
 const auditDialog=el("cro-audit-dialog"),auditList=el("cro-audit-list");
-let picker=null,records=[],busy=false;
+let picker=null,records=null,busy=false;
+let overviewRequest=0,auditRequest=0;
 const deepLinkParams=new URLSearchParams(location.search);
 const deepLinkOfferingId=String(deepLinkParams.get("offeringId")||"");
 const deepLinkAudit=deepLinkParams.get("audit")==="1";
@@ -50,13 +51,19 @@ function visible(record){
   if(filter.value==="finalized")return Boolean(record.finalization);
   if(filter.value==="released")return Boolean(record.finalization?.releasedRevision);
   if(filter.value==="layout_changed")return Boolean(record.finalization?.layoutChangedSinceFinalization);
+  if(filter.value==="policy_issue")return ["missing","ambiguous"].includes(record.gradingPolicy?.state);
   return true;
 }
 function renderSummary(){
+  if(records===null){
+    for(const id of ["cro-total","cro-finalized","cro-released","cro-changed","cro-policy-issues"])el(id).textContent="—";
+    return;
+  }
   el("cro-total").textContent=records.length;
   el("cro-finalized").textContent=records.filter(row=>row.finalization).length;
   el("cro-released").textContent=records.filter(row=>row.finalization?.releasedRevision).length;
   el("cro-changed").textContent=records.filter(row=>row.finalization?.layoutChangedSinceFinalization).length;
+  el("cro-policy-issues").textContent=records.filter(row=>["missing","ambiguous"].includes(row.gradingPolicy?.state)).length;
 }
 function chip(text,kind=""){
   const c=node("span","cro-chip "+(kind==="released"?"border-emerald-200 bg-emerald-50 text-emerald-800":
@@ -65,6 +72,7 @@ function chip(text,kind=""){
 }
 function renderRecords(){
   renderSummary();list.replaceChildren();
+  if(records===null)return;
   const rows=records.filter(visible);
   if(!rows.length){
     list.append(node("p","text-sm text-slate-600 py-8 text-center md:col-span-2",
@@ -93,6 +101,10 @@ function renderRecords(){
       chip(record.assessmentColumnCount+" linked"),
       chip(record.archivedColumnCount+" archived")
     );
+    const policy=record.gradingPolicy||{state:"missing",label:"No grading policy"};
+    metrics.append(chip(policy.state==="resolved"?"Policy · "+policy.label:
+      policy.state==="ambiguous"?"Grading policy conflict":"No grading policy",
+      policy.state==="resolved"?"released":"warning"));
     card.append(metrics);
     const final=node("p","text-sm font-semibold mt-3 "+(record.finalization?.layoutChangedSinceFinalization?"text-amber-800":"text-slate-700"),
       finalizationLabel(record));
@@ -101,11 +113,17 @@ function renderRecords(){
     const actions=node("div","flex flex-wrap gap-2 mt-4");
     const audit=node("button","cro-btn primary","View audit history");audit.type="button";
     audit.addEventListener("click",()=>void openAudit(record));actions.append(audit);
+    if(["missing","ambiguous"].includes(record.gradingPolicy?.state)){
+      const policyLink=node("a","cro-btn","Fix grading policy");
+      policyLink.href="school-grading-schemes.html";
+      policyLink.textContent=record.gradingPolicy.state==="ambiguous"?"Resolve policy conflict":"Add matching policy";
+      actions.append(policyLink);
+    }
     card.append(actions);list.append(card);
   }
 }
 function setBusy(value,message=""){
-  busy=value;el("cro-refresh").disabled=value||!picker?.scope.current;
+  busy=value;el("cro-refresh").disabled=value||!picker?.scope.current?.roles.includes("school_admin");
   if(message)status.textContent=message;
 }
 function layoutChangeText(change){
@@ -191,24 +209,30 @@ function renderAudit(result){
   }
 }
 async function openAudit(record){
-  if(busy)return;
+  if(busy||!records?.includes(record))return;
+  const request=++auditRequest;
   auditList.replaceChildren(node("p","text-sm text-slate-600 py-8 text-center","Loading Class Record audit history…"));
   el("cro-audit-status").textContent="";
   el("cro-audit-context").textContent=record.subjectName+" · "+record.sectionName;
   auditDialog.showModal();
   try{
     const result=await scoped("audit",{offeringId:record.offeringId});
+    if(request!==auditRequest||!auditDialog.open)return;
     renderAudit(result);
     el("cro-audit-status").textContent=(result.events||[]).length+" audit event"+((result.events||[]).length===1?"":"s")+" loaded.";
   }catch(error){
+    if(request!==auditRequest||!auditDialog.open)return;
     auditList.replaceChildren(node("p","text-sm text-rose-700 py-6",error?.message||"Audit history could not be loaded."));
   }
 }
 async function load(){
+  if(!picker?.scope.current?.roles.includes("school_admin"))return;
+  const request=++overviewRequest;
   setBusy(true,"Loading school Class Record oversight…");
   let deepLinkRecord=null;
   try{
     const result=await scoped("overview");
+    if(request!==overviewRequest)return;
     records=result.records||[];
     renderRecords();
     status.textContent=records.length+" Class Record"+(records.length===1?"":"s")+" loaded. Oversight is read-only.";
@@ -218,9 +242,10 @@ async function load(){
       if(!deepLinkRecord)status.textContent="The requested Class Record is not available in this verified school.";
     }
   }catch(error){
-    records=[];renderRecords();status.textContent=error?.message||"Class Record oversight could not be loaded.";
-  }finally{setBusy(false);}
-  if(deepLinkRecord){
+    if(request!==overviewRequest)return;
+    records=null;renderRecords();status.textContent=error?.message||"Class Record oversight could not be loaded.";
+  }finally{if(request===overviewRequest)setBusy(false);}
+  if(request===overviewRequest&&deepLinkRecord){
     search.value=[deepLinkRecord.subjectName,deepLinkRecord.sectionName].filter(Boolean).join(" ");
     renderRecords();
     if(deepLinkAudit)void openAudit(deepLinkRecord);
@@ -230,18 +255,21 @@ async function load(){
 search.addEventListener("input",renderRecords);
 filter.addEventListener("change",renderRecords);
 el("cro-refresh").addEventListener("click",()=>void load());
-el("cro-audit-close").addEventListener("click",()=>auditDialog.close());
+el("cro-audit-close").addEventListener("click",()=>{++auditRequest;auditDialog.close();});
 
 picker=createTenantSchoolPicker({
   host:el("cro-school-switcher"),
   status,
   onBeforeChange:async()=>{
-    records=[];deepLinkHandled=false;renderRecords();auditList.replaceChildren();
+    ++overviewRequest;++auditRequest;
+    setBusy(true);
+    records=null;deepLinkHandled=false;search.value="";filter.value="all";renderRecords();auditList.replaceChildren();
+    el("cro-audit-context").textContent="";el("cro-audit-status").textContent="";
     if(auditDialog.open)auditDialog.close();
   },
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
-      records=[];renderRecords();
+      records=null;renderRecords();setBusy(false);
       status.textContent="School administrator access is required for Class Record oversight.";
       return;
     }

@@ -32,13 +32,14 @@
     @media(max-width:720px){.pa-layout,.pa-academic-grid{grid-template-columns:minmax(0,1fr)}#pa-person-search,.pa-legacy-request-controls{grid-template-columns:minmax(0,1fr)!important}.pa-shell{padding:.75rem}.pa-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.pa-tabs{margin-left:-.75rem;margin-right:-.75rem;padding:0 .75rem;scroll-snap-type:x proximity}.pa-tabs button{scroll-snap-align:start;flex:0 0 auto}}
     @media(max-width:480px){.pa-cards{grid-template-columns:minmax(0,1fr)}.pa-row{align-items:stretch}.pa-row>.pa-action,.pa-row>button.pa-action{width:100%}}
   </style>
+  <link rel="stylesheet" href="css/school-admin-workflow.css?v=20261121-admin-flow1">
 </head>
 <body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
 <div id="adminerva-nav" data-module="admin" data-page="people-v4"></div>
 <main class="pa-shell">
   <header class="pa-header">
     <div><a href="school-admin.html" class="pa-muted">School administration</a><p class="pa-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#0e7490">People &amp; Access</p><h1 style="font-weight:800;font-size:clamp(1.5rem,4vw,2rem);margin:.15rem 0">School Directory</h1>
-    <p class="pa-muted">Manage the school's people, memberships, class assignments and access relationships.</p>
+    <p class="pa-muted">Manage the school's people, account links, memberships, roles and access relationships. Teaching assignments and official student placement are managed in their operational workspaces.</p>
     </div>
     <div id="school-picker-host" class="av-school-picker" hidden></div>
   </header>
@@ -53,12 +54,12 @@
       <button id="pa-tab-people" type="button" data-tab="people" aria-controls="pa-people" aria-selected="false" role="tab" tabindex="-1">Students &amp; staff</button>
       <button id="pa-tab-import" type="button" data-tab="import" aria-controls="pa-import" aria-selected="false" role="tab" tabindex="-1">Roster import</button>
       <button id="pa-tab-invites" type="button" data-tab="invites" aria-controls="pa-invites" aria-selected="false" role="tab" tabindex="-1">Invitations</button>
-      <button id="pa-tab-classes" type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Teaching &amp; classes</button>
+      <button id="pa-tab-classes" type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Legacy class relationships</button>
       <button id="pa-tab-access" type="button" data-tab="access" aria-controls="pa-access" aria-selected="false" role="tab" tabindex="-1">Roles &amp; access</button>
     </div>
     <section id="pa-overview" class="pa-card" role="tabpanel" aria-labelledby="pa-tab-overview" tabindex="0">
       <h2 style="font-size:1.2rem;font-weight:750;margin-bottom:.35rem">School overview</h2>
-      <p class="pa-muted" style="margin-bottom:1rem">People &amp; Access owns identity, account access and staff-role relationships. Student enrollment is now a separate school workflow.</p>
+      <p class="pa-muted" style="margin-bottom:1rem">People &amp; Access owns identity, account access, invitations and school roles. Teaching assignments belong in Classes &amp; Scheduling; student enrollment is a separate school workflow.</p>
       <section style="margin-bottom:1rem;padding:1rem;border:1px solid #bae6fd;border-radius:12px;background:#f0f9ff">
         <h3 style="font-size:1.05rem;font-weight:800;color:#0c4a6e">Adding a new student?</h3>
         <p class="pa-muted" style="margin:.35rem 0 .8rem;color:#155e75">Use Enrollment &amp; Registration to register the learner, assign the official section/academic period, prepare verified sign-in activation and create subject enrollments together.</p>
@@ -175,10 +176,29 @@
               <p id="pa-detail-placement-status" class="pa-muted" role="status"></p>
             </form>
           </section>
+          <div id="pa-person-detail-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem">
+            <button type="button" class="pa-action" data-pa-open-tab="access">Roles &amp; access</button>
+            <button type="button" class="pa-action" data-pa-open-tab="invites" style="background:#475569">Invitations</button>
+            <button id="pa-person-detail-classes-action" type="button" class="pa-action" data-pa-open-tab="classes" style="background:#0f766e">Teaching &amp; classes</button>
+            <a id="pa-person-detail-enrollment-action" class="pa-action" href="school-enrollment.html" style="display:none;align-items:center;text-decoration:none;background:#0f766e">Enrollment &amp; Registration</a>
+            <a id="pa-person-detail-records-action" class="pa-action" href="school-student-records.html" style="display:none;align-items:center;text-decoration:none;background:#1d4ed8">Student Records / 201 File</a>
+          </div>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Invitations</h3><div id="pa-person-detail-invites"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Enrollments / teaching assignments</h3><div id="pa-person-detail-links"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Recent audit history</h3><div id="pa-person-detail-audit"></div></section>
         </div>
+      </dialog>
+      <dialog id="pa-invitation-lifecycle-dialog" aria-labelledby="pa-invitation-lifecycle-title" style="width:min(500px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
+        <form id="pa-invitation-lifecycle-form">
+          <h2 id="pa-invitation-lifecycle-title" style="font-size:1.2rem;font-weight:750">Revoke invitation</h2>
+          <p id="pa-invitation-lifecycle-target" class="pa-muted"></p>
+          <p class="pa-muted">Revoking prevents this invitation from being accepted. The invitation and its audit history remain retained.</p>
+          <label>Reason<input name="reason" class="pa-field" minlength="12" maxlength="500" required placeholder="Explain why this invitation should be revoked"></label>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button id="pa-invitation-lifecycle-confirm" class="pa-action" type="submit" style="background:#9a3412">Revoke invitation</button>
+            <button id="pa-invitation-lifecycle-cancel" class="pa-action" type="button" style="background:#475569">Cancel</button>
+          </div>
+        </form>
       </dialog>
       <dialog id="pa-person-dialog" aria-labelledby="pa-person-dialog-title" style="width:min(500px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
         <form id="pa-person-dialog-form">
@@ -187,10 +207,16 @@
           <label id="pa-person-name-field">Display name<input name="displayName" class="pa-field" maxlength="140"></label>
           <div id="pa-student-profile-fields" hidden style="display:grid;gap:.6rem;margin:.7rem 0">
             <label>Student number<input name="studentNumber" class="pa-field" maxlength="80" placeholder="Student number"></label>
-            <p class="pa-muted">Guardian contacts and relationships are maintained in <a href="school-student-records.html" style="font-weight:800;text-decoration:underline">Student Records / 201 File</a>. The older primary-guardian snapshot is retained for compatibility but is no longer edited here. Section membership remains managed through the enrollment workflow.</p>
+            <p class="pa-muted">Guardian contacts and relationships are maintained in Student Records / 201 File. The older primary-guardian snapshot is preserved for compatibility but is no longer edited from People &amp; Access.</p>
           </div>
           <label id="pa-person-reason-field" hidden>Reason<input name="reason" class="pa-field" minlength="12" maxlength="500" placeholder="Explain why this record status is changing"></label>
           <p id="pa-person-dialog-help" class="pa-muted"></p>
+          <div id="pa-person-lifecycle-actions" style="display:none;gap:.5rem;flex-wrap:wrap;margin:.65rem 0">
+            <a id="pa-person-open-enrollment" class="pa-action" href="school-enrollment.html" style="display:inline-flex;align-items:center;text-decoration:none;background:#0f766e">Enrollment</a>
+            <a id="pa-person-open-classes" class="pa-action" href="school-classes.html" style="display:inline-flex;align-items:center;text-decoration:none;background:#0f766e">Classes &amp; Scheduling</a>
+            <button id="pa-person-open-access" type="button" class="pa-action" data-pa-open-tab="access">Roles &amp; access</button>
+            <button id="pa-person-open-invites" type="button" class="pa-action" data-pa-open-tab="invites" style="background:#475569">Invitations</button>
+          </div>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
             <button id="pa-person-dialog-confirm" class="pa-action" type="submit">Save</button>
             <button id="pa-person-dialog-cancel" class="pa-action" type="button" style="background:#475569">Cancel</button>
@@ -264,7 +290,7 @@
     <section id="pa-access" role="tabpanel" aria-labelledby="pa-tab-access" tabindex="0" hidden>
       <div class="pa-card" style="margin-bottom:1rem">
         <h2 style="font-size:1.2rem;font-weight:750">Activate linked staff access</h2>
-        <p class="pa-muted">For staff who already have a verified account linked to an active school staff record. Grant Teacher or Registrar access deliberately. Teaching assignments remain separate, and Registrar access is limited to Enrollment and Student Records.</p>
+        <p class="pa-muted">For staff who already have a verified account linked to an active school staff record. Grant Teacher or Registrar school access deliberately. Teaching assignments remain separate; Registrar receives only SIS/records authority. Suspended access must use Restore access below.</p>
         <form id="pa-activate-staff-form" style="display:grid;gap:.6rem;max-width:560px">
           <label>Find linked staff<input id="pa-staff-access-query" class="pa-field" type="search" placeholder="Search staff name" autocomplete="off" required></label>
           <button id="pa-staff-access-search" class="pa-action" type="button">Find verified staff</button>
@@ -295,7 +321,12 @@
       </dialog>
     </section>
     <section id="pa-classes" role="tabpanel" aria-labelledby="pa-tab-classes" tabindex="0" hidden>
-      <p id="pa-classes-help" class="pa-muted">School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.</p>
+      <section class="pa-card" style="margin-bottom:1rem;border-color:#bae6fd;background:#f0f9ff">
+        <h2 style="font-weight:800;font-size:1.1rem;color:#0c4a6e">Teaching assignments moved to Classes &amp; Scheduling</h2>
+        <p class="pa-muted" style="margin-top:.35rem;color:#155e75">Use the class-centered workspace for teacher assignments, teacher load, section coverage and roster inspection. The relationship tools below remain available for legacy enrollment models and migration exceptions.</p>
+        <a class="pa-action" href="school-classes.html" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:.75rem">Open Classes &amp; Scheduling</a>
+      </section>
+      <p id="pa-classes-help" class="pa-muted">Legacy class-relationship tools. Changes preserve earlier grades and term history.</p>
       <section class="pa-card" id="pa-workload" style="margin:1rem 0">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div><h2 style="font-weight:800;font-size:1.15rem">Faculty workload &amp; staffing</h2><p class="pa-muted">Review active teaching assignments and classes without a verified active teacher. Counts are course offerings, not teaching hours.</p></div>
@@ -423,11 +454,12 @@
     </section>
   </section>
 </main>
-<script defer src="js/core/release-footer.js?v=e9b95b055852"></script>
-<script src="js/core/adminerva-loader.js?v=e9b95b055852"></script>
-<script defer src="js/core/adminerva-nav.js?v=e9b95b055852"></script>
-<script type="module" src="js/core/auth-guard-v4-pilot.js?v=e9b95b055852"></script>
-<script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=1.0.4"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=e9b95b055852"></script>
+<script defer src="js/core/release-footer.js?v=20261121-pr215-merge1"></script>
+<script src="js/core/adminerva-loader.js?v=20261121-pr215-merge1"></script>
+<script defer src="js/core/adminerva-nav.js?v=20261121-pr215-merge1"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261121-pr215-merge1"></script>
+<script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=20261120-assist-context"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=20261121-pr215-merge1"></script>
+<script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
