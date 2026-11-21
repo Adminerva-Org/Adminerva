@@ -4,7 +4,7 @@ import {collection,doc,getDocs,query,where,runTransaction,serverTimestamp} from 
 import {snapshotStudioProject,studioDigest,studioEvidenceId,studioSourceDigest,studioSubmissionAllowed} from "./studio-assessment-model.mjs?v=1.0.3";
 import {
   currentV4StudioSchool,getV4StudioSubmissionStatus,listV4StudioAssignments,submitV4StudioProject
-} from "./v4-studio-service.mjs?v=4.2.2";
+} from "./v4-studio-service.mjs?v=20261121-exam-data-audit";
 
 const button=document.getElementById("studioSubmitAssessment");
 if(button){
@@ -29,6 +29,9 @@ if(button){
     if(!choice?.task||!choice.status||choice.status.error)return false;
     if(choice.status.status==="reopened")return Number(choice.status.revisionDueAt||0)>Date.now();
     if(choice.status.submitted)return false;
+    if(choice.task.submissionDeadlinePassed===true||
+       (Number(choice.task.dueAt||0)<Date.now()&&choice.task.allowLateSubmissions!==true))
+      return false;
     return choice.task.windowStatus==="open";
   }
   async function loadV4(){
@@ -38,7 +41,17 @@ if(button){
     const tasks=await listV4StudioAssignments();
     if(!Array.isArray(tasks))return false;
     usingV4=true;
-    const linked=linkedAssessmentId(),studioTasks=tasks.filter(item=>item.submissionSource==="studio"&&(!linked||item.taskId===linked));
+    let activeBinding=null;
+    try{activeBinding=window.adminervaStudioSubmissionState?.()?.project?.assessment||null;}catch{}
+    const linked=linkedAssessmentId(),studioTasks=tasks.filter(item=>
+      item.submissionSource==="studio"&&(!linked||item.taskId===linked)&&
+      (item.manualOpenRequired!==true||(
+        activeBinding?.provisionedBy==="assessment-launch"&&
+        (activeBinding.taskId||activeBinding.assessmentId)===item.taskId&&
+        Number(activeBinding.sessionEpoch||0)===Number(item.manualSessionEpoch||0)
+      )));
+    // Manual practical exams are submitted only from their own active session
+    // project. Do not offer a misleading generic-project submission choice.
     const rows=new Array(studioTasks.length);let next=0;
     const worker=async()=>{while(next<studioTasks.length){
       const index=next++,task=studioTasks[index];let submissionStatus=null;

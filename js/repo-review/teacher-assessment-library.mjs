@@ -114,6 +114,13 @@ function toggleStudioProjectProfile(){
   if(wrap)wrap.hidden=!active;
   if(form.elements.studioProjectProfile)form.elements.studioProjectProfile.disabled=!active;
 }
+function toggleManualOpening(){
+  const deployForm=el("tl-deploy-form"),control=deployForm.elements.manualOpenRequired;
+  const isStudio=deployForm.elements.submissionSource.value==="studio";
+  el("tl-manual-exam-option").hidden=!isStudio;
+  control.disabled=!isStudio;
+  if(!isStudio)control.checked=false;
+}
 function togglePersonalizationFields(){
   const active=form.elements.personalizationMode?.value==="personalized";
   el("tl-personalization-fields").hidden=!active;
@@ -192,6 +199,10 @@ function openDeploymentSettings(task){
   if(task.opensAt)form.elements.opensAt.value=localDateInput(new Date(task.opensAt));
   if(task.dueAt)form.elements.dueAt.value=localDateInput(new Date(task.dueAt));
   form.elements.allowLateSubmissions.checked=task.allowLateSubmissions===true;
+  const manual=el("tl-settings-manual-exam-option");
+  manual.hidden=task.submissionSource!=="studio";
+  form.elements.manualOpenRequired.disabled=task.submissionSource!=="studio";
+  form.elements.manualOpenRequired.checked=task.manualOpenRequired===true;
   dialog.showModal();
 }
 function showPreview(item){
@@ -233,6 +244,8 @@ function render(){
       meta.className="tl-muted";
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
       meta.textContent=(task.published?"Published":"Private deployment")+" · "+sourceLabel(task.submissionSource)+
+        (task.manualOpenRequired?" · Teacher session: "+(task.manualAccessState==="open"?"OPEN":
+          ["closed","closing","held"].includes(task.manualAccessState)?"CLOSED":"WAITING"):"")+
         (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
@@ -257,6 +270,19 @@ function render(){
       }
       if(["active","closed"].includes(lifecycle)){
         controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
+      }
+      if(lifecycle==="active"&&task.published&&task.manualOpenRequired&&task.submissionSource==="studio"){
+        const isOpen=task.manualAccessState==="open",
+          finalSaving=["closed","closing"].includes(task.manualAccessState)&&Number(task.manualCloseGraceUntil||0)>Date.now();
+        const button=actionButton(isOpen?"Close exam":finalSaving?"Finalizing saves…":"Open exam",
+          ()=>void setExamOpening(task,!isOpen),isOpen);
+        button.disabled=finalSaving;
+        if(finalSaving)button.title="Previous session's final cloud checkpoints are still being accepted.";
+        controls.append(button);
+      }
+      if(task.submissionSource==="studio"&&Number(task.manualSessionEpoch||0)>0){
+        controls.append(actionButton("Class save history",
+          ()=>void showExamCloseReport(task),true));
       }
       if(lifecycle==="active"){
         controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
@@ -493,6 +519,259 @@ async function setPublication(task,publish){
   }catch(error){say(error?.message||"Assessment publication could not be changed.");}
   finally{pendingWrite=false;}
 }
+async function showExamCloseSnapshot(task,epoch,student){
+  const holder=document.getElementById("schoolAssessmentStudioHost")||document.body;
+  let dialog=document.getElementById("tl-closed-exam-source");
+  if(!dialog){
+    dialog=document.createElement("dialog");dialog.id="tl-closed-exam-source";
+    dialog.className="tl-dialog";
+    dialog.style.cssText="width:min(880px,calc(100vw - 20px));max-height:92dvh;overflow:auto;border:0;border-radius:16px;padding:0;box-shadow:0 24px 90px #02061788;";
+    const root=document.createElement("section");root.className="bg-white p-4 sm:p-6";
+    const header=document.createElement("div");header.className="flex items-center justify-between gap-3";
+    const heading=document.createElement("h2");heading.id="tl-close-source-title";
+    heading.className="text-lg font-extrabold text-slate-900";
+    const close=document.createElement("button");close.textContent="Close";close.className="tl-action alt";
+    close.type="button";close.addEventListener("click",()=>dialog.close());
+    header.append(heading,close);
+    const meta=document.createElement("p");meta.id="tl-close-source-meta";
+    meta.className="mt-2 text-xs text-slate-600";
+    const label=document.createElement("label");label.className="mt-4 block text-sm font-bold text-slate-700";
+    label.textContent="Saved file / project data";
+    const fileSelect=document.createElement("select");fileSelect.id="tl-close-source-file";
+    fileSelect.className="tl-input";label.append(fileSelect);
+    const pre=document.createElement("pre");pre.id="tl-close-source-code";
+    pre.className="mt-3 max-h-[60dvh] overflow-auto rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-100";
+    pre.style.tabSize="4";
+    root.append(header,meta,label,pre);
+    root.insertBefore(label,pre);dialog.append(root);holder.append(dialog);
+  }
+  const title=dialog.querySelector("#tl-close-source-title"),
+    meta=dialog.querySelector("#tl-close-source-meta"),
+    fileSelect=dialog.querySelector("#tl-close-source-file"),
+    pre=dialog.querySelector("#tl-close-source-code");
+  title.textContent=student.displayName+" · Session "+epoch;
+  meta.textContent="Loading the immutable school-received project checkpoint…";
+  fileSelect.replaceChildren();fileSelect.disabled=true;pre.textContent="";
+  if(!dialog.open)dialog.showModal();
+  try{
+    const frozen=await performScoped(scopedAssessmentApi,"exam_close_project",{
+      taskId:task.taskId,sessionEpoch:epoch,studentUid:student.receiptStudentUid||student.studentUid
+    });
+    if(!dialog.open)return;
+    meta.textContent="School received project revision "+frozen.projectRevision+
+      (frozen.savedAt?" · "+new Date(frozen.savedAt).toLocaleString():"")+
+      " · Project SHA-256 "+String(frozen.contentDigest||"").slice(0,20)+
+      "… · Evidence of the server-received checkpoint, not a graded submission.";
+    const files=Array.isArray(frozen.files)?frozen.files:[];
+    fileSelect.replaceChildren();
+    for(let i=0;i<files.length;i++){
+      const option=document.createElement("option");
+      option.value=String(i);option.textContent=files[i].path||"Source file "+(i+1);fileSelect.append(option);
+    }
+    const artifacts=frozen.artifacts||{};
+    for(const [key,label] of [
+      ["database","Database tables / history"],["design","Design / diagrams"],
+      ["config","Project configuration"],["workspace","Workspace structure"],
+      ["evidence","Execution evidence"],["assessment","Assessment binding"]
+    ]){
+      if(!Object.prototype.hasOwnProperty.call(artifacts,key))continue;
+      const option=document.createElement("option");option.value="artifact:"+key;
+      option.textContent=label;fileSelect.append(option);
+    }
+    const renderFile=()=>{
+      const value=String(fileSelect.value||"");
+      if(value.startsWith("artifact:")){
+        const key=value.slice(9);
+        pre.textContent=JSON.stringify(artifacts[key]??{},null,2);
+      }else pre.textContent=files[Number(value)||0]?.content||"";
+    };
+    fileSelect.onchange=renderFile;fileSelect.disabled=!fileSelect.options.length;
+    pre.textContent=fileSelect.options.length?"": "No files or project artifacts were captured.";
+    if(fileSelect.options.length)renderFile();
+  }catch(error){
+    if(dialog.open){
+      meta.textContent=error?.message||"The saved exam source could not be opened.";
+      pre.textContent="No source content was returned.";
+    }
+  }
+}
+async function showExamCloseReport(task){
+  if(pendingWrite)return;
+  const holder=document.getElementById("schoolAssessmentStudioHost")||document.body;
+  let dialog=document.getElementById("tl-close-checkpoint-report");
+  if(!dialog){
+    dialog=document.createElement("dialog");
+    dialog.id="tl-close-checkpoint-report";
+    dialog.className="tl-dialog";
+    dialog.style.cssText="width:min(760px,calc(100vw - 20px));max-height:90dvh;overflow:auto;border:0;border-radius:16px;padding:0;box-shadow:0 24px 90px #02061766;";
+    const body=document.createElement("div");
+    body.className="p-4 sm:p-6 bg-white text-slate-900";
+    const header=document.createElement("div");header.className="flex items-start justify-between gap-3";
+    const heading=document.createElement("h2");heading.id="tl-close-report-title";heading.className="text-xl font-extrabold";
+    heading.textContent="Practical exam · Final save checkpoints";
+    const close=document.createElement("button");close.type="button";close.className="tl-action alt";
+    close.textContent="Close";close.addEventListener("click",()=>dialog.close());
+    header.append(heading,close);
+    const help=document.createElement("p");help.className="mt-2 text-sm text-slate-600";
+    help.textContent="This is a cloud-confirmed progress checkpoint, not a formal submission or grade. Students with no final checkpoint may still have an earlier autosaved school revision.";
+    const controls=document.createElement("div");controls.className="mt-4 flex flex-wrap items-end gap-3";
+    const label=document.createElement("label");label.className="text-sm font-semibold";
+    label.textContent="Class session";
+    const select=document.createElement("select");select.id="tl-close-report-session";
+    select.className="tl-input";select.style.minWidth="150px";
+    label.append(select);
+    const olderLabel=document.createElement("label");olderLabel.className="text-sm font-semibold";
+    olderLabel.textContent="Earlier session number";
+    const older=document.createElement("input");older.id="tl-close-report-older";older.type="number";
+    older.className="tl-input";older.min="1";older.step="1";
+    older.placeholder="e.g. 1";older.style.width="110px";olderLabel.append(older);
+    const refresh=document.createElement("button");refresh.id="tl-close-report-refresh";refresh.type="button";
+    refresh.className="tl-action";refresh.textContent="Refresh confirmations";
+    const exportButton=document.createElement("button");exportButton.id="tl-close-report-export";
+    exportButton.type="button";exportButton.className="tl-action alt";
+    exportButton.textContent="Export receipt CSV";exportButton.disabled=true;
+    controls.append(label,olderLabel,refresh,exportButton);
+    const summary=document.createElement("p");summary.id="tl-close-report-summary";
+    summary.className="mt-3 text-sm font-bold text-slate-700";summary.setAttribute("role","status");
+    const tableWrap=document.createElement("div");tableWrap.id="tl-close-report-table";
+    tableWrap.className="mt-3 overflow-x-auto rounded-lg border border-slate-200";
+    body.append(header,help,controls,summary,tableWrap);dialog.append(body);holder.append(dialog);
+  }
+  const title=dialog.querySelector("#tl-close-report-title"),
+    select=dialog.querySelector("#tl-close-report-session"),
+    older=dialog.querySelector("#tl-close-report-older"),
+    refresh=dialog.querySelector("#tl-close-report-refresh"),
+    exportButton=dialog.querySelector("#tl-close-report-export"),
+    summary=dialog.querySelector("#tl-close-report-summary"),
+    tableWrap=dialog.querySelector("#tl-close-report-table");
+  title.textContent=task.title+" · Final cloud save checkpoints";
+  select.replaceChildren();
+  const current=Number(task.manualSessionEpoch||0);
+  for(let epoch=current;epoch>=Math.max(1,current-19);epoch--){
+    const option=document.createElement("option");option.value=String(epoch);
+    option.textContent="Class session "+epoch;select.append(option);
+  }
+  older.max=String(current);
+  older.value="";
+  let generation=0,lastReport=null;
+  exportButton.disabled=true;
+  exportButton.onclick=()=>{
+    if(!lastReport)return;
+    const escapeCsv=value=>{
+      let cell=String(value??"");
+      // Imported student names can be spreadsheet formulas. Preserve the
+      // literal value rather than executing it in Excel/Sheets after export.
+      if(/^[\s]*[=+@-]/.test(cell))cell="'"+cell;
+      return '"'+cell.replaceAll('"','""')+'"';
+    };
+    const rows=[
+      ["Session","Student","Saved account UID","Final checkpoint","Project revision","Saved at","Project SHA-256","Source SHA-256","Payload bytes"],
+      ...(lastReport.students||[]).map(student=>[
+        lastReport.sessionEpoch,student.displayName,student.receiptStudentUid||student.studentUid||"",
+        student.checkpointConfirmed?"Confirmed":lastReport.sessionClosed?"Unconfirmed":"In progress",
+        student.projectRevision||"",
+        student.savedAt?new Date(student.savedAt).toISOString():"",
+        student.contentDigest||"",student.sourceDigest||"",student.payloadBytes||0
+      ])
+    ];
+    const csv=rows.map(row=>row.map(escapeCsv).join(",")).join("\r\n");
+    const url=URL.createObjectURL(new Blob(["\ufeff",csv],{type:"text/csv;charset=utf-8"}));
+    const link=document.createElement("a");link.href=url;
+    link.download="adminerva-exam-checkpoints-"+lastReport.taskId.slice(0,20)+
+      "-session-"+lastReport.sessionEpoch+".csv";
+    document.body.append(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  };
+  const load=async()=>{
+    const epoch=Number(older.value||select.value),turn=++generation;
+    if(!Number.isSafeInteger(epoch)||epoch<1||epoch>current){
+      summary.textContent="Choose a valid class session number.";return;
+    }
+    refresh.disabled=true;lastReport=null;exportButton.disabled=true;
+    summary.textContent="Loading school-confirmed checkpoints…";
+    tableWrap.replaceChildren();
+    try{
+      const report=await performScoped(scopedAssessmentApi,"exam_close_report",{
+        taskId:task.taskId,sessionEpoch:epoch
+      });
+      if(turn!==generation||!dialog.open)return;
+      lastReport=report;exportButton.disabled=false;
+      summary.textContent=report.sessionClosed
+        ?report.confirmed+" of "+report.enrolledStudents+
+          " students have a confirmed final cloud save for class session "+report.sessionEpoch+"."
+        :"Class session "+report.sessionEpoch+" is still open. Final checkpoints are not expected until the teacher closes it.";
+      const payloadBytes=Number(report.confirmedPayloadBytes||0);
+      if(payloadBytes>0)
+        summary.textContent+=" Approximate retained source/project payload: "+
+          (payloadBytes/1048576).toFixed(2)+" MiB (excludes Firestore overhead).";
+      if(report.rosterSource==="capture_pending")
+        summary.textContent+=" School roster capture is still processing; the current enrollment shown is provisional. Refresh to check again.";
+      else if(report.rosterSource!=="close_snapshot")
+        summary.textContent+=" Historical roster unavailable; showing the current enrollment roster.";
+      const table=document.createElement("table");table.className="min-w-full text-left text-sm";
+      const thead=document.createElement("thead");thead.className="bg-slate-100";
+      const headings=document.createElement("tr");
+      for(const label of ["Student","Final checkpoint","Project revision","Confirmed at","Saved code"]){
+        const th=document.createElement("th");th.className="px-3 py-2 font-bold";th.textContent=label;
+        headings.append(th);
+      }
+      thead.append(headings);table.append(thead);
+      const tbody=document.createElement("tbody");
+      for(const student of report.students||[]){
+        const tr=document.createElement("tr");tr.className="border-t border-slate-200";
+        const cells=[
+          student.displayName||"Student",
+          student.checkpointConfirmed?"Saved to school cloud":report.sessionClosed?"Unconfirmed":"In progress",
+          student.projectRevision?"Revision "+student.projectRevision:"—",
+          student.savedAt?new Date(student.savedAt).toLocaleString():"—"
+        ];
+        cells.forEach((value,index)=>{
+          const td=document.createElement("td");td.className="px-3 py-2 align-top";
+          if(index===1)td.className+=" font-bold "+
+            (student.checkpointConfirmed?"text-emerald-700":"text-amber-800");
+          td.textContent=value;tr.append(td);
+        });
+        const codeCell=document.createElement("td");codeCell.className="px-3 py-2";
+        if(student.checkpointConfirmed&&(student.receiptStudentUid||student.studentUid)){
+          const inspect=document.createElement("button");inspect.type="button";
+          inspect.className="tl-action alt";inspect.textContent="View code";
+          inspect.addEventListener("click",()=>void showExamCloseSnapshot(task,epoch,student));
+          codeCell.append(inspect);
+        }else codeCell.textContent="—";
+        tr.append(codeCell);
+        tbody.append(tr);
+      }
+      table.append(tbody);tableWrap.replaceChildren(table);
+      if(!tbody.children.length)
+        summary.textContent+=report.rosterSource==="close_snapshot"
+          ?" No students were recorded in this session's closing roster."
+          :" There are no currently enrolled students in the provisional roster.";
+    }catch(error){
+      if(turn===generation)summary.textContent=error?.message||"Could not load final exam save confirmations.";
+    }finally{if(turn===generation)refresh.disabled=false;}
+  };
+  select.onchange=()=>{older.value="";void load();};
+  older.onchange=()=>void load();
+  refresh.onclick=()=>void load();
+  if(!dialog.open)dialog.showModal();
+  void load();
+}
+
+async function setExamOpening(task,opening){
+  if(pendingWrite)return;
+  if(!confirm(opening?
+    "Open this Studio examination for the assigned section now? Students will be able to see their tasks and create or resume their assessment project.":
+    "Close this section's Studio exam now? All connected student editors will lock on their next session check, final school cloud saves will be requested, and students will automatically leave once their save is confirmed."))return;
+  pendingWrite=true;
+  try{
+    say(opening?"Opening this section's Studio exam…":"Closing this section's Studio exam and locking student sessions…");
+    await performScoped(scopedAssessmentApi,opening?"open_exam":"close_exam",{
+      taskId:task.taskId,expectedRevision:task.revision||1
+    });
+    await refreshAfterWrite(task.title+(opening?" is open for this section.":" is closed for this class session. Student sessions are finalizing their cloud checkpoints."));
+  }catch(error){say(error?.message||"Exam access could not be changed.");}
+  finally{pendingWrite=false;}
+}
 async function prepareDeployment(item){
   if(pendingWrite)return;
   const turn=++deployEpoch;deployReady=false;
@@ -513,6 +792,12 @@ async function prepareDeployment(item){
   form.reset();
   form.elements.submissionSource.disabled=personalized(item);
   form.elements.submissionSource.value=personalized(item)?"studio":(item.defaultSubmissionSource||"text");
+  toggleManualOpening();
+  // Practical-exam deployments default to teacher-controlled class sessions;
+  // ordinary Studio assignments keep their original scheduled behavior.
+  form.elements.manualOpenRequired.checked=
+    form.elements.submissionSource.value==="studio"&&
+    /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(item.assessmentType||""));
   const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   form.elements.opensAt.value=localDateInput(now);
   form.elements.dueAt.value=localDateInput(tomorrow);
@@ -554,6 +839,7 @@ el("tl-deployment-settings-form").addEventListener("submit",event=>{
     taskId:task.taskId,expectedRevision:task.revision||1,
     opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
     allowLateSubmissions:form.elements.allowLateSubmissions.checked===true,
+    manualOpenRequired:form.elements.manualOpenRequired.checked===true,
     reason:String(form.elements.reason.value||"")
   };
   void (async()=>{
@@ -605,6 +891,13 @@ el("tl-cancel-deploy").addEventListener("click",()=>{
 });
 el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
 el("tl-deploy-dialog").addEventListener("close",()=>{++deployEpoch;deployReady=false;deploying=null;deployRequestKey=null;});
+el("tl-deploy-form").elements.submissionSource.addEventListener("change",()=>{
+  toggleManualOpening();
+  const form=el("tl-deploy-form");
+  if(form.elements.submissionSource.value==="studio"&&
+     /\b(?:practical\s+)?exam(?:ination)?\b/i.test(String(deploying?.assessmentType||"")))
+    form.elements.manualOpenRequired.checked=true;
+});
 el("tl-deploy-form").addEventListener("input",()=>{if(!pendingWrite)deployRequestKey=crypto.randomUUID();});
 el("tl-deploy-form").addEventListener("submit",event=>{
   event.preventDefault();if(!deploying||pendingWrite||!deployReady)return;
@@ -628,7 +921,8 @@ el("tl-deploy-form").addEventListener("submit",event=>{
         blueprintId:resource.id,offeringId:String(fields.get("offeringId")||""),
         submissionSource:personalized(resource)?"studio":String(fields.get("submissionSource")||""),
         opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
-        allowLateSubmissions:fields.get("allowLateSubmissions")==="on",requestKey:key
+        allowLateSubmissions:fields.get("allowLateSubmissions")==="on",
+        manualOpenRequired:fields.get("manualOpenRequired")==="on",requestKey:key
       });
       const message=task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
         "Assessment prepared privately for this class. Publish it when you are ready for students to see it.";

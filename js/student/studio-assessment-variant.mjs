@@ -3,7 +3,7 @@ import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc,getDoc} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {getV4StudioPersonalizedTask,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.2.2";
+import {getV4StudioPersonalizedTask,listV4StudioAssignments} from "./v4-studio-service.mjs?v=20261121-exam-data-audit";
 
 const assessmentId=new URL(location.href).searchParams.get("assessment");
 const panel=document.getElementById("studioPersonalizedTask");
@@ -95,6 +95,13 @@ async function load(user){
       item.taskId===assessmentId&&item.submissionSource==="studio"):null;
     if(task){
       matchedSchoolAssessment=true;
+      if(task.manualOpenRequired===true&&task.manualAccessState!=="open"){
+        reportContext({status:"waiting_for_teacher",personalized:false,readOnly:true});
+        if(loadingNote)loadingNote.textContent=["closed","closing","held"].includes(task.manualAccessState)
+          ?"This section's exam session is closed. Your school-saved project will be available when the teacher opens the next session."
+          :"Waiting for your teacher to open this section's Studio examination.";
+        return;
+      }
       showOverview(task,{school:true});
       if(task.personalizedTask?.enabled!==true){
         reportContext({status:"not-personalized",personalized:false,readOnly:false});

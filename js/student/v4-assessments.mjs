@@ -66,6 +66,36 @@ if(panel&&list&&status&&schoolHost){
     scope.assertLease(lease);
     return result;
   }
+  async function displayExamCloseReceipt(scope){
+    const taskId=assignmentParams.get("examClosed")||"";
+    if(!taskId)return;
+    let banner=document.getElementById("v4ExamCloseReceipt");
+    if(!banner){
+      banner=node("div","mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950");
+      banner.id="v4ExamCloseReceipt";banner.setAttribute("role","status");
+      panel.prepend(banner);
+    }
+    const sessionEpoch=Number(assignmentParams.get("examSession"));
+    if(!Number.isSafeInteger(sessionEpoch)||sessionEpoch<1){
+      banner.textContent="Your teacher closed the Studio exam. The cloud checkpoint has not been independently verified.";
+      return;
+    }
+    banner.textContent="Verifying your final practical-exam save with school cloud storage…";
+    try{
+      const receipt=await scoped(scope,assessmentsApi,"exam_close_status",{taskId,sessionEpoch});
+      if(receipt?.confirmed===true){
+        banner.className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-950";
+        banner.textContent="Exam session "+sessionEpoch+" closed · Final project revision "+
+          receipt.projectRevision+" confirmed in school cloud"+
+          (receipt.savedAt?" at "+date(receipt.savedAt):"")+
+          ". You may resume during the next teacher-opened session. This is not a formal submission or grade.";
+      }else{
+        banner.textContent="Exam session "+sessionEpoch+" closed · No final cloud checkpoint confirmation is recorded for this account. Earlier cloud saves may still be present. Contact your teacher if the latest changes are missing.";
+      }
+    }catch(error){
+      banner.textContent="Exam session "+sessionEpoch+" closed · Cloud checkpoint verification is unavailable. Your school-saved revision has not been independently confirmed on this page.";
+    }
+  }
   function assignmentState(task,submission,grade){
     if(grade)return {label:"Graded",className:"bg-emerald-100 text-emerald-800"};
     if(submission?.error)return {label:"Status unavailable",className:"bg-slate-100 text-slate-700"};
@@ -79,7 +109,13 @@ if(panel&&list&&status&&schoolHost){
         submission.status==="approved"?"Evidence approved":"Submitted",
       className:"bg-blue-100 text-blue-800"
     };
+    if(task.windowStatus==="waiting_for_teacher")return {
+      label:["closed","closing","held"].includes(task.manualAccessState)?"Closed by teacher":"Waiting for teacher",
+      className:"bg-amber-100 text-amber-900"
+    };
     if(task.windowStatus==="upcoming")return {label:"Upcoming",className:"bg-slate-100 text-slate-700"};
+    if(task.manualOpenRequired===true&&task.manualAccessState==="open"&&task.submissionDeadlinePassed)
+      return {label:"Class open · Submission past due",className:"bg-amber-100 text-amber-900"};
     if(task.windowStatus==="closed")return {label:"Past due",className:"bg-rose-100 text-rose-800"};
     if(task.late===true)return {label:"Late submission allowed",className:"bg-amber-100 text-amber-900"};
     return {label:"Ready to work",className:"bg-indigo-100 text-indigo-800"};
@@ -103,6 +139,9 @@ if(panel&&list&&status&&schoolHost){
         scoped(scope,profileApi,"my_profile")
       ]);
       if(generation!==renderGeneration)return;
+      // Receipt verification is independent of the assessment list.
+      // Do not block the student's assignment page on a separate history lookup.
+      void displayExamCloseReceipt(scope);
       const profile=results[2]||{},classes=profile.classes||[];
       let subjectId=requestedSubjectId,subjectName=requestedSubjectName,offeringId=requestedOfferingId;
       const allowedOfferings=new Set(classes.filter(item=>
@@ -186,8 +225,20 @@ if(panel&&list&&status&&schoolHost){
         }
         const actions=node("div","mt-4 flex flex-wrap gap-2");
         if(submission?.error)article.append(node("p","mt-3 text-sm text-amber-900","Submission status could not be confirmed. Refresh this page before starting a new submission."));
-        const canSubmit=!submission?.error&&(submission?.status==="reopened"?Number(submission.revisionDueAt||0)>Date.now():!submission?.submitted&&!grade&&!["upcoming","closed"].includes(task.windowStatus));
-        if(task.submissionSource==="studio"){
+        const canSubmit=!submission?.error&&(submission?.status==="reopened"?
+          Number(submission.revisionDueAt||0)>Date.now():
+          !submission?.submitted&&!grade&&!task.submissionDeadlinePassed&&
+          !["upcoming","closed","waiting_for_teacher"].includes(task.windowStatus));
+        if(task.submissionSource==="studio"&&task.manualOpenRequired===true&&task.manualAccessState!=="open"){
+          article.append(node("p","mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-950",
+            ["closed","closing","held"].includes(task.manualAccessState)
+              ?"Your teacher has closed this class session. Editing is locked; previously confirmed cloud saves remain available when the teacher opens the next session."
+              :"Your teacher has not opened this section's Studio examination. The task instructions and personalized scenario are locked until opening."));
+          const check=node("button","rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-bold text-white","Check opening status");
+          check.type="button";
+          check.addEventListener("click",()=>void render(scope));
+          actions.append(check);
+        }else if(task.submissionSource==="studio"){
           const studioSubmitted=submission?.submitted&&submission.status!=="reopened";
           const link=node("a","rounded-lg px-4 py-2.5 text-sm font-bold "+(studioSubmitted?"border border-emerald-200 bg-emerald-50 text-emerald-800":"bg-indigo-700 text-white"),
             submission?.status==="reopened"?"Open Studio to revise":

@@ -143,7 +143,7 @@ async function scopedCall(api,action,details={}){
   picker.scope.assertLease(lease);
   return result;
 }
-export async function syncV4StudioProject(project,state,{quiet=false,expectedRevision:baseRevision=undefined}={}){
+export async function syncV4StudioProject(project,state,{quiet=false,expectedRevision:baseRevision=undefined,closingSaveSessionEpoch=0}={}){
   await init();
   if(!activeSchool||!auth.currentUser)return null;
   const payload=projectPayload(project,state);
@@ -152,7 +152,7 @@ export async function syncV4StudioProject(project,state,{quiet=false,expectedRev
   try{
     let result;
     try{
-      result=await scopedCall(projectsApi,"sync",{...payload,expectedRevision});
+      result=await scopedCall(projectsApi,"sync",{...payload,expectedRevision,closingSaveSessionEpoch});
     }catch(error){
       // A fresh browser may not know a project already exists. Adopt its
       // server revision only if the complete checksum matches; never overwrite.
@@ -168,6 +168,8 @@ export async function syncV4StudioProject(project,state,{quiet=false,expectedRev
       result={projectId:payload.projectId,revision:existing.revision,
         contentDigest:existing.contentDigest,created:false,unchanged:true};
     }
+    if(closingSaveSessionEpoch&&!result.examFinalized)
+      throw Error("The final exam checkpoint did not receive a server confirmation.");
     setRevision(uid,schoolId,payload.projectId,result.revision);
     if(!quiet)setStatus("Saved to "+schoolId+" · revision "+result.revision);
     document.dispatchEvent(new CustomEvent("adminerva:v4-project-synced",{detail:{
@@ -235,6 +237,9 @@ export async function archiveV4StudioProject(projectId){
   setRevision(auth.currentUser.uid,activeSchool.schoolId,projectId,result.revision);
   return result;
 }
+export async function getV4StudioExamSession(taskId){
+  return scopedCall(assessmentsApi,"exam_session",{taskId});
+}
 export async function listV4StudioAssignments(){
   const result=await scopedCall(assessmentsApi,"list_student");
   return result?result.assignments||[]:null;
@@ -254,6 +259,8 @@ export async function submitV4StudioProject({taskId,project,state}){
   const tasks=await listV4StudioAssignments();
   const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===taskId):null;
   if(!task)throw Error("This verified-school assessment is unavailable.");
+  if(task.manualOpenRequired===true&&task.manualAccessState!=="open")
+    throw Error("This section's Studio exam session is not open. Ask your teacher when the next class session begins.");
   let variantId="",variantAttempt=null;
   if(task.personalizedTask?.enabled===true){
     const assigned=window.adminervaStudioAssessmentVariant;

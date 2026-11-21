@@ -242,7 +242,11 @@ if(host){
                 <option value="github">GitHub / repository evidence</option>
               </select>
             </label>
-            <p class="text-xs text-slate-600">For a previously assigned assessment, you may use the original date it was assigned in class. The deadline must be later than the opening date. Students cannot submit before you publish the deployment.</p>
+            <label id="tl-manual-exam-option" class="mt-3 flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-950" hidden>
+              <input name="manualOpenRequired" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
+              <span><strong>Teacher-controlled class sessions</strong><span class="mt-1 block text-xs">Publish the Studio exam in advance, but keep its instructions and project locked until you select Open exam for this section. Select Close exam at the end of class to lock active editors and initiate final cloud checkpoints. Open again at the next class session.</span></span>
+            </label>
+            <p class="text-xs text-slate-600">For retroactive deployments, enter the original date it was assigned in class as the opening reference time. Set a later deadline. For scheduled assessments, the opening time controls availability; for teacher-controlled Studio exams, the teacher's Open exam action controls the start. Deadline enforcement continues in both modes. Students cannot submit before publication.</p>
             <div class="grid sm:grid-cols-2 gap-3">
               <label class="text-sm font-bold">Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
               <label class="text-sm font-bold">Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
@@ -276,6 +280,10 @@ if(host){
               <input name="allowLateSubmissions" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
               <span><strong>Allow late submissions</strong><span class="mt-1 block text-xs">When enabled, new submissions remain accepted after the deadline until the assessment is closed, archived or cancelled.</span></span>
             </label>
+            <label id="tl-settings-manual-exam-option" class="mt-3 flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-950" hidden>
+              <input name="manualOpenRequired" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
+              <span><strong>Teacher-controlled class sessions</strong><span class="mt-1 block text-xs">Available for Studio assessments. Open this section's exam during class; close it afterward to lock student editors and save their progress. Reopen for the next class session. Disabling this while a session is active is not permitted.</span></span>
+            </label>
             <label class="mt-3 block text-sm font-bold">Reason for change
               <textarea name="reason" class="tl-input" minlength="12" maxlength="1000" rows="3" required placeholder="Explain the schedule or submission-policy change."></textarea>
             </label>
@@ -298,5 +306,5 @@ if(host){
 
   `;
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=20261120-classroom-deploy");
+  await import("../repo-review/teacher-assessment-library.mjs?v=20261121-exam-data-audit");
 }
