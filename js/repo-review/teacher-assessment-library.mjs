@@ -657,7 +657,13 @@ async function showExamCloseReport(task){
   exportButton.disabled=true;
   exportButton.onclick=()=>{
     if(!lastReport)return;
-    const escapeCsv=value=>'"'+String(value??"").replaceAll('"','""')+'"';
+    const escapeCsv=value=>{
+      let cell=String(value??"");
+      // Imported student names can be spreadsheet formulas. Preserve the
+      // literal value rather than executing it in Excel/Sheets after export.
+      if(/^[\s]*[=+@-]/.test(cell))cell="'"+cell;
+      return '"'+cell.replaceAll('"','""')+'"';
+    };
     const rows=[
       ["Session","Student","Student UID","Final checkpoint","Project revision","Saved at","Project SHA-256","Source SHA-256"],
       ...(lastReport.students||[]).map(student=>[
