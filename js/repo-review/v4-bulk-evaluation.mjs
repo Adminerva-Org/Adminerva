@@ -434,6 +434,7 @@ export function createV4BulkEvaluationController({
       "You may review results individually before publishing."))return;
     await execute("Bulk save",async()=>{
       let saved=0,skipped=0;
+      const savedIds=new Set();
       for(const item of eligible){
         if(stopped||session!==scopeGeneration)break;
         appendStatus("Saving verified draft "+(saved+skipped+1)+"/"+eligible.length+"…");
@@ -459,6 +460,7 @@ export function createV4BulkEvaluationController({
           if(session!==scopeGeneration)break;
           staged.delete(item.key);saveSelection.delete(item.key);
           exceptions.delete(item.key);selection.delete(item.key);
+          savedIds.add(item.key);
           saved++;
         }catch(error){
           if(session!==scopeGeneration)break;
@@ -467,9 +469,38 @@ export function createV4BulkEvaluationController({
         if(session!==scopeGeneration)break;
         render();
       }
-      appendStatus(saved+" private draft(s) saved; "+skipped+" failed or changed. "+
-        "Nothing was published. Review results before Publish all drafts.");
-      if(saved&&session===scopeGeneration)await onSaved();
+      if(saved&&session===scopeGeneration){
+        // Do not throw away a partial external response or an unsaved staged
+        // evaluation. Only retire the package after every export reference has
+        // been saved (or already appears graded in the current inbox).
+        const incompletePackage=[...referenceMap.values()].some(original=>{
+          const current=rows.find(row=>key(row)===original.key);
+          return current&&!current.gradeStatus&&!savedIds.has(original.key);
+        });
+        const clearedExchange=!staged.size&&!incompletePackage;
+        if(clearedExchange){
+          batchId="";referenceMap.clear();payload.value="";
+          el("gbV4BulkResponse").value="";
+          const exchange=payload.closest("details");
+          if(exchange)exchange.open=false;
+        }
+        // The actual saved records are reloaded from the server; only then
+        // select the next ten still-ungraded learners. This avoids retrying
+        // already-saved students and leaves failed evaluations visible.
+        selection.clear();autoSelectNext=true;
+        await onSaved();
+        if(session===scopeGeneration){
+          appendStatus(saved+" private draft(s) saved; "+skipped+
+            " failed or changed. Nothing was published. "+
+            selection.size+" next ungraded learner(s) selected."+
+            (clearedExchange?" The completed JSON exchange was cleared.":
+              " Unfinished evaluation data was retained for recovery."));
+          render();
+        }
+      }else{
+        appendStatus(saved+" private draft(s) saved; "+skipped+
+          " failed or changed. Nothing was published.");
+      }
     });
   }
   btn("gbV4BulkRun").addEventListener("click",()=>void processBatch());
@@ -480,12 +511,17 @@ export function createV4BulkEvaluationController({
     stopped=true;appendStatus("Stop requested. Finishing the current evaluation before stopping.");
   });
   btn("gbV4BulkSelect").addEventListener("click",()=>{
-    for(const row of rows)
-      if(!row.gradeStatus&&!["reopened","revision_requested"].includes(row.status))
-        selection.add(key(row));
+    selection=new Set(nextBulkSelection(rows,{
+      excluded:new Set([...staged.keys(),...exceptions.keys()])
+    }));
+    autoSelectNext=false;
+    appendStatus(selection.size?selection.size+" ungraded learners selected (maximum "+
+      BULK_MAX_BATCH+").":"No additional ungraded learners are available.");
     render();
   });
-  btn("gbV4BulkClear").addEventListener("click",()=>{selection.clear();render();});
+  btn("gbV4BulkClear").addEventListener("click",()=>{
+    selection.clear();autoSelectNext=false;render();
+  });
   btn("gbV4BulkRetry").addEventListener("click",()=>{
     exceptions.clear();
     appendStatus("Exceptions cleared. Failed submissions may now be retried.");
