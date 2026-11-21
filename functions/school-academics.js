@@ -776,6 +776,8 @@ function createSchoolAcademicsService({db}) {
     ]);
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
       deny("failed-precondition","Select an active school course offering.");
+    if(offering.data().rosterMode==="section")
+      deny("failed-precondition","This class follows official section placement. Bulk class enrollment cannot override the official roster; change student registration instead.");
     const people=records.slice(0,personIds.length),existing=records.slice(personIds.length);
     if(people.some(person=>!person.exists||person.data().schoolId!==ctx.schoolId||
        person.data().kind!=="student"||person.data().status!=="active"))
@@ -836,6 +838,16 @@ function createSchoolAcademicsService({db}) {
     if(offerings.some(offering=>!offering.exists||offering.data().schoolId!==ctx.schoolId||
        offering.data().status!=="active"||offering.data().sectionId!==sectionId))
      deny("failed-precondition","Every selected class must be an active course offering in the selected section.");
+    const candidateIds=offeringIds.filter((offeringId,index)=>!existing[index].exists);
+    for(const offeringId of candidateIds)await ensureTeacherScheduleAvailable(tx,teacherUid,offeringId);
+    const candidateSchedules=await Promise.all(candidateIds.map(offeringId=>tx.get(schoolRoot.doc("class_schedules/"+offeringId))));
+    for(let i=0;i<candidateSchedules.length;i++)for(let j=i+1;j<candidateSchedules.length;j++){
+     const first=candidateSchedules[i],second=candidateSchedules[j];
+     if(!first.exists||!second.exists||first.data().schoolId!==ctx.schoolId||second.data().schoolId!==ctx.schoolId)continue;
+     for(const a of first.data().meetings||[])for(const b of second.data().meetings||[])
+      if(scheduleMeetingOverlap(a,b))
+       deny("failed-precondition","The selected classes overlap in the official timetable. Assign them separately or correct the class schedules first.");
+    }
     const now=FieldValue.serverTimestamp();let created=0,alreadyActive=0,historyExists=0;
     offeringIds.forEach((offeringId,index)=>{
      const prior=existing[index],offering=offerings[index];
@@ -889,6 +901,8 @@ function createSchoolAcademicsService({db}) {
        member.data().status!=="active"||!Array.isArray(member.data().roles)||
        !member.data().roles.includes("teacher")))
       deny("permission-denied","Every selected account must be an active teacher in this school.");
+    for(let index=0;index<teacherUids.length;index++)
+      if(!existing[index].exists)await ensureTeacherScheduleAvailable(tx,teacherUids[index],offeringId);
     const now=FieldValue.serverTimestamp();let created=0,alreadyActive=0,historyExists=0;
     teacherUids.forEach((teacherUid,index)=>{
       const prior=existing[index];
