@@ -117,3 +117,10 @@ test("compatibility People & Access class controls honor canonical lifecycle rev
   assert.match(frontend,/expectedOfferingRevision:Number\(reviewed\.offeringRevision\)\|\|1/);
   assert.match(frontend,/expectedFromRevision:Number\(fromAssignment\.revision\)\|\|1/);
 });
+
+
+test("class restore clears current primary-teacher authority while preserving it in audit",()=>{
+  const source=readFileSync(new URL("../functions/school-academics.js",import.meta.url),"utf8");
+  assert.match(source,/status:"active",primaryTeacherUid:null/);
+  assert.match(source,/previousPrimaryTeacherUid:typeof data\.primaryTeacherUid==="string"/);
+});
