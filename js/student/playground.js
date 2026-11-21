@@ -309,6 +309,9 @@ async function checkStudioExamSession(taskId=watchedExamId){
   examSessionChecking=true;
   try{
     const state=await getV4StudioExamSession(taskId);
+    if(!state||state.taskId!==taskId||
+       !Number.isSafeInteger(Number(state.sessionEpoch))||!state.manualAccessState)
+      throw Error("The verified school exam session status is temporarily unavailable.");
     if(watchedExamId!==taskId||examSessionClosing)return;
     examLastContact=Date.now();examSessionErrorCount=0;
     if(examMonitorPaused){
@@ -352,11 +355,17 @@ async function watchStudioExam(taskId){
   if(!taskId||examSessionClosing||watchedExamId===taskId)return;
   if(projectStudio?.getActiveProject?.()?.assessment?.taskId!==taskId)return;
   try{
-    const assignments=await listV4StudioAssignments();
-    const task=assignments?.find(item=>item.taskId===taskId&&
-      item.submissionSource==="studio"&&item.manualOpenRequired===true);
-    if(!task||examSessionClosing||
-       projectStudio?.getActiveProject?.()?.assessment?.taskId!==taskId)return;
+    let assignments=null;
+    try{assignments=await listV4StudioAssignments();}
+    catch(error){console.warn("Studio exam assignment check unavailable; verifying session directly:",error);}
+    const task=Array.isArray(assignments)?assignments.find(item=>item.taskId===taskId):null;
+    const binding=projectStudio?.getActiveProject?.()?.assessment;
+    // A loaded assessment project with an epoch was already opened in a
+    // manual session. Keep monitoring when the school list is temporarily
+    // unreachable, but never start the manual monitor for ordinary projects.
+    if((task&&(task.submissionSource!=="studio"||task.manualOpenRequired!==true))||
+       (!task&&Number(binding?.sessionEpoch||0)<1)||
+       examSessionClosing||binding?.taskId!==taskId)return;
     watchedExamId=taskId;examLastContact=Date.now();
     clearInterval(examSessionTimer);
     examNotificationUnsub?.();examNotificationUnsub=null;
