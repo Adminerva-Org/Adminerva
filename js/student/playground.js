@@ -247,7 +247,17 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
     notice=overlay.querySelector("#studioExamClosingNotice"),
     actions=overlay.querySelector("#studioExamClosingActions"),
     retry=overlay.querySelector("#studioExamRetryFinalSave");
-  const captured=persistWorkspace();
+  let captured=persistWorkspace(),deviceCopySaved=captured;
+  if(!captured){
+    try{
+      const fallback=projectStudio?.captureClosingState?.(currentState());
+      captured=fallback?.queued===true;
+      deviceCopySaved=fallback?.deviceSaved===true;
+      if(captured)showSaveStatus("Device storage unavailable · final cloud save pending",true);
+    }catch(error){
+      console.warn("Could not prepare final in-memory school checkpoint",error);
+    }
+  }
   const project=projectStudio?.getActiveProject?.();
   if(!project||project.assessment?.taskId!==taskId){
     message.textContent="The exam is closed. No active assessment project was found to finalize.";
@@ -259,7 +269,9 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
     message.textContent="Editing is locked. Recording your final project revision in school cloud storage…";
     if(!captured){
       message.textContent="Could not preserve the current editor content on this device.";
-      notice.textContent="Your cloud checkpoint cannot be confirmed. Keep this tab and ask your teacher for assistance.";
+      notice.textContent=deviceCopySaved
+        ?"Your cloud checkpoint cannot be confirmed. Keep this tab and ask your teacher for assistance."
+        :"Your browser could not preserve a device backup or queue the final cloud save. Keep this tab open and ask your teacher for assistance.";
       actions.hidden=false;retry.hidden=true;return;
     }
     try{
@@ -272,7 +284,9 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
     }catch(error){
       console.warn("Final Studio exam checkpoint failed:",error);
       message.textContent="The exam is closed. A final cloud save could not be confirmed.";
-      notice.textContent="Your device draft is retained, but your teacher may not yet see the latest changes. Do not clear this browser. Retry while the closing checkpoint is available.";
+      notice.textContent=deviceCopySaved
+        ?"Your device draft is retained, but your teacher may not yet see the latest changes. Do not clear this browser. Retry while the closing checkpoint is available."
+        :"Your browser could not save a device backup. The code is still held in this open tab, but it is not confirmed in school cloud storage. Keep the tab open and retry immediately.";
       actions.hidden=false;retry.hidden=false;retry.disabled=false;
     }
   };
