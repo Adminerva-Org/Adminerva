@@ -889,4 +889,4 @@ function createInvitationAcceptanceService({db}) {
   };
 }
 
-module.exports={createPeopleDirectoryService,createInvitationAcceptanceService,importIdentity,normalizedImport};
+module.exports={createPeopleDirectoryService,createInvitationAcceptanceService,importIdentity,normalizedImport,invitationIsActivePending};
