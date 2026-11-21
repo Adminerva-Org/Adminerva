@@ -239,9 +239,17 @@ if(button){
     const fileCount=Object.keys(captured.state?.files||{}).length;
     if(!confirm("Submit \""+captured.project.title+"\" as a frozen "+fileCount+
       "-file school project for \""+task.title+"\"? Future edits will not change this submitted version."))return null;
-    notice("Saving the school project revision and freezing it for assessment…");
+    notice("Confirming the latest project files in school cloud storage…");
+    // The submission callable otherwise advances a separate revision marker
+    // while Code Studio still has an older autosave revision queued. Flush the
+    // canonical project save first so both paths agree on the cloud revision.
+    const confirmed=await window.adminervaFlushStudioSubmission?.(captured.project.id);
+    if(!confirmed)throw Error("School cloud saving is not ready. Keep your project open and retry.");
+    if(confirmed.project.id!==captured.project.id)
+      throw Error("The active project changed. Reopen this assignment before submitting.");
+    notice("Freezing the school-confirmed project revision for assessment…");
     const receipt=await submitV4StudioProject({taskId:task.taskId,
-      project:captured.project,state:captured.state});
+      project:confirmed.project,state:confirmed.state});
     document.dispatchEvent(new CustomEvent("adminerva:studio-submitted",{detail:{
       assessmentId:task.taskId,taskId:task.taskId,version:receipt.version,schoolId:chosen.school.schoolId
     }}));
