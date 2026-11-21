@@ -55,3 +55,16 @@ test("section adviser lifecycle mutations use the reviewed active assignment rev
   assert.match(frontend,/set_section_adviser[\s\S]*expectedRevision:Number\(existing\?\.revision\)\|\|0/);
   assert.match(frontend,/end_section_adviser[\s\S]*expectedRevision:Number\(adviser\.revision\)\|\|1/);
 });
+
+
+test("class teacher and selective enrollment lifecycle writes use reviewed revisions",()=>{
+  const backend=readFileSync(new URL("../functions/school-academics.js",import.meta.url),"utf8");
+  const frontend=readFileSync(new URL("../js/school-admin/classes-scheduling.mjs",import.meta.url),"utf8");
+  assert.match(backend,/Refresh the teaching assignment before changing its lifecycle/);
+  assert.match(backend,/teaching assignment changed after you opened this class/);
+  assert.match(backend,/class enrollment changed after you opened this roster/);
+  assert.match(backend,/assignmentId:record\.id[\s\S]*revision:Number\(record\.data\(\)\.revision\)\|\|1/);
+  assert.match(backend,/enrollmentId:record\.id[\s\S]*revision:Number\(record\.data\(\)\.revision\)\|\|1/);
+  assert.match(frontend,/restore_teacher_assignment[\s\S]*expectedRevision:Number\(row\.revision\)\|\|1/);
+  assert.match(frontend,/end_enrollment[\s\S]*expectedRevision:Number\(row\.revision\)\|\|1/);
+});
