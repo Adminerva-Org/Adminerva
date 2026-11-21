@@ -1113,8 +1113,7 @@ function openPersonDialog(person,mode){
   nameInput.value=person.displayName||"";
   const studentFields=get("pa-student-profile-fields");
   studentFields.hidden=mode!=="edit"||person.kind!=="student";
-  for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
-    form.elements[name].value=person[name]||"";
+  form.elements.studentNumber.value=person.studentNumber||"";
   get("pa-person-dialog-title").textContent=mode==="edit"?"Edit school person":
     mode==="archive"?"Archive school person":"Restore school person";
   confirm.textContent=mode==="edit"?"Save profile":mode==="archive"?"Archive person":"Restore person";
@@ -1122,7 +1121,7 @@ function openPersonDialog(person,mode){
   get("pa-person-dialog-help").textContent=mode==="archive"?
     "Archiving is blocked until active school access, enrollments or teaching assignments are ended. Nothing is deleted.":
     mode==="restore"?"Restoring the person record does not automatically restore school access, enrollments or teaching assignments.":
-    "Edit school identity and student guardian details. For section membership use the student details placement panel.";
+    "Edit school identity and student number here. Guardian contacts and relationships belong to Student Records; section placement belongs to Enrollment.";
   get("pa-person-dialog").showModal();
 }
 get("pa-person-dialog-cancel").addEventListener("click",()=>{
@@ -1136,8 +1135,8 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   const details={personId:person.personId};
   if(mode==="edit"){
     details.displayName=String(values.get("displayName")||"").trim();
-    if(person.kind==="student")for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
-      details[name]=String(values.get(name)||"").trim();
+    if(person.kind==="student")
+      details.studentNumber=String(values.get("studentNumber")||"").trim();
   }
   else details.reason=String(values.get("reason")||"").trim();
   const warning=mode==="archive"?
