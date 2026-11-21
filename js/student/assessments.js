@@ -21,7 +21,7 @@ let mySubmitted = {};
 let myEvidence = {};
 let submissionLookupSucceeded = false;
 let myStudioSubmissions={},studioSubmissionsReadable=false;
-let profileGeneration=0,assessmentGeneration=0,assignmentOwnerUid="";
+let profileGeneration=0,assessmentGeneration=0,assignmentOwnerUid="",compatibilityIdentitySource="";
 let assessmentModalOpener=null,personalizedAssignmentGeneration=0,studioVariantCallable=null;
 const callStudioVariant=input=>{
   if(!studioVariantCallable)studioVariantCallable=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
@@ -129,6 +129,7 @@ async function loadStudentAssignments(user=auth.currentUser){
     if(targetEmail.toLowerCase()===ownEmail){
       try{
         const projection=await ensureStudentAccessProjection();
+        compatibilityIdentitySource=String(projection?.identitySource||"");
         projectedProfiles=Array.isArray(projection?.profiles)?projection.profiles.filter(profile=>
           profile&&typeof profile.id==="string"&&typeof profile.section==="string"&&profile.section.trim()
         ):[];
@@ -170,8 +171,9 @@ async function loadStudentAssignments(user=auth.currentUser){
       selector.value=String(index);currentSection=userProfiles[index].section;
       await fetchAssessments();
     }else{
-      assignmentsNotice("Your school account has no compatibility class mapping yet. Ask your teacher to check the canonical student record and legacy assessment mapping, then retry.","info",true);
-      assignmentsFeedState("No student class linked","Your verified school enrollment may be intact, but older programming assignments still need a linked legacy student record.");
+      const mappingCode=compatibilityIdentitySource?" Mapping status: "+compatibilityIdentitySource+".":"";
+      assignmentsNotice("Your school account has no compatibility class mapping yet."+mappingCode+" Ask your teacher to check the canonical student record and legacy assessment mapping, then retry.","info",true);
+      assignmentsFeedState("No student class linked","Your verified school enrollment may be intact, but older programming assignments still need a linked legacy student record."+mappingCode);
     }
   } catch (error) {
     if(version===profileGeneration&&auth.currentUser?.uid===user.uid){assignmentsNotice("Your class could not load. Check your connection and retry.","error",true);assignmentsFeedState("Unable to load your class","Retry loading assignments when your connection is ready.");}
