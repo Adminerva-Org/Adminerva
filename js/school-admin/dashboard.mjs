@@ -240,7 +240,7 @@ function issueHref(item){
   if(item.source==="record")return item.targetTab==="classes"?"school-classes.html":"school-class-records.html";
   const identityIssue=Boolean(item.personId)&&["access","invites","people"].includes(item.targetTab);
   if(identityIssue)return "people-access.html?personId="+encodeURIComponent(item.personId)+"#people";
-  if(item.type==="student_no_enrollment"&&picker?.scope.current?.enrollmentMode==="canonical")return "school-enrollment.html";
+  if(item.type==="student_no_enrollment"&&picker?.scope.current?.enrollmentMode==="canonical")return "school-enrollment.html"+(item.personId?"?personId="+encodeURIComponent(item.personId):"");
   return "people-access.html#"+(tabs.has(item.targetTab)?item.targetTab:"overview");
 }
 function recordState(record){
