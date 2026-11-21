@@ -43,6 +43,9 @@ test('experience modules preserve quick mode and avoid private data dependencies
   }
   assert.match(experience,/loadPublicReleases/);
   assert.match(experience,/loadPublicChannel/);
+  assert.match(experience,/requested===null/);
+  assert.match(experience,/showModal/);
+  assert.match(experience,/persist:requested!==null/);
   assert.match(experience,/catch\{\/\* Private browsing\/storage denial/);
 });
 test('role command-stage destinations exist',async()=>{
