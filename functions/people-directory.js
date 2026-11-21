@@ -666,7 +666,10 @@ function createPeopleDirectoryService({db}) {
       return {personId,displayName};
     }
     if(input.action==="archive_person"||input.action==="restore_person"){
-      const personId=id(input.personId),reason=field(input.reason,500,"Lifecycle reason");
+      const personId=id(input.personId),reason=field(input.reason,500,"Lifecycle reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh this person record before changing its lifecycle.");
       if(reason.length<12)invalid("Explain the person record lifecycle change in at least 12 characters.");
       const ref=base.doc(personId),audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
       const restoring=input.action==="restore_person";
@@ -675,7 +678,9 @@ function createPeopleDirectoryService({db}) {
         const person=await tx.get(ref);
         if(!person.exists||person.data().schoolId!==ctx.schoolId)
           throw new TenantAccessError("not-found","The person is not in this school directory.");
-        const data=person.data();
+        const data=person.data(),currentRevision=Number(data.revision)||1;
+        if(currentRevision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition","This person record changed after you opened it. Refresh before changing its lifecycle.");
         if(restoring&&data.status!=="archived")
           throw new TenantAccessError("failed-precondition","Only an archived person record can be restored.");
         if(!restoring&&data.status!=="active")
@@ -714,7 +719,7 @@ function createPeopleDirectoryService({db}) {
               throw new TenantAccessError("failed-precondition","End this teacher's active course assignments before archiving the person record.");
           }
         }
-        const now=FieldValue.serverTimestamp(),revision=(data.revision||0)+1;
+        const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         tx.update(ref,restoring?
           {status:"active",revision,restoredAt:now,restoredByUid:ctx.uid,restoreReason:reason,updatedAt:now}:
           {status:"archived",revision,archivedAt:now,archivedByUid:ctx.uid,archiveReason:reason,updatedAt:now});
