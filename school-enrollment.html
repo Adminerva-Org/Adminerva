@@ -31,6 +31,7 @@
     [hidden]{display:none!important}
     @media(max-width:820px){.en-grid{grid-template-columns:1fr}.en-shell{padding:.7rem}.en-row{flex-direction:column}}
   </style>
+  <link rel="stylesheet" href="css/school-admin-workflow.css?v=20261121-admin-flow1">
 </head>
 <body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
 <div id="adminerva-nav" data-module="admin" data-page="enrollment"></div>
@@ -41,15 +42,15 @@
       <div>
         <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">Registrar &amp; SIS · Phase 1</p>
         <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Enrollment &amp; Registration</h1>
-        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Review online applications or register onsite enrollees, confirm the official academic placement, and prepare account activation. School Administrators operate this workspace now; a dedicated Registrar role can assume the same records and workflow later.</p>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Review online applications or register onsite enrollees, confirm the official academic placement, and prepare account activation. School Administrators and verified Registrar staff operate this same canonical SIS workflow; Registrar authority does not grant broader school configuration or staffing access.</p>
       </div>
       <div id="en-school-picker" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
     </div>
   </header>
 
   <section id="en-boundary" class="en-notice">
-    <strong>Manila Cathedral School standard enrollment only.</strong>
-    <span> The legacy-compatible pilot school keeps its existing accounts and invitation workflow unchanged.</span>
+    <strong>Canonical Enrollment &amp; Registration.</strong>
+    <span> This workspace is available only for schools using the standard canonical enrollment model. Compatibility schools remain on their reviewed legacy workflow.</span>
   </section>
 
   <p id="en-status" class="en-muted" role="status" aria-live="polite">Checking school enrollment access…</p>
@@ -62,10 +63,11 @@
             <h2 id="en-register-title" class="text-lg font-extrabold">Onsite / manual enrollment</h2>
             <p id="en-register-help" class="en-muted mt-1">Use this for walk-in enrollees. Online applications can be loaded here from the review queue before official placement.</p>
           </div>
-          <button id="en-clear-application" class="en-btn secondary" type="button" hidden>Clear loaded application</button>
+          <button id="en-clear-application" class="en-btn secondary" type="button" hidden>Clear loaded student</button>
         </div>
         <form id="en-register-form" class="grid gap-3 mt-4">
           <input name="applicationId" type="hidden">
+          <input name="personId" type="hidden">
           <label class="text-sm font-bold">Student name
             <input name="displayName" class="en-input mt-1" maxlength="140" autocomplete="off" required>
           </label>
@@ -160,7 +162,7 @@
             </div>
             <span class="en-badge">No individual invite ID</span>
           </div>
-          <label class="text-sm font-bold block mt-3">Reusable Manila Cathedral School activation link
+          <label class="text-sm font-bold block mt-3">Reusable school activation link
             <input id="en-activation-link" class="en-input mt-1" type="text" readonly>
           </label>
           <div class="flex gap-2 flex-wrap mt-2">
@@ -174,7 +176,7 @@
           <div class="flex justify-between gap-3 items-start">
             <div>
               <h2 class="text-lg font-extrabold">Current registrations</h2>
-              <p class="en-muted mt-1">School-scoped registration records for this standard enrollment system. End a registration before correcting its official placement; history and identity remain preserved.</p>
+              <p class="en-muted mt-1">School-scoped official placements. Change a student's section here without rewriting prior registration or subject-enrollment history; use End only when the registration itself should stop.</p>
             </div>
             <button id="en-refresh" class="en-btn secondary" type="button">Refresh</button>
           </div>
@@ -187,6 +189,61 @@
             </label>
           </div>
           <div id="en-registration-list" class="en-list mt-3" role="list" aria-live="polite"></div>
+        </section>
+
+        <section class="en-card">
+          <div class="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h2 class="text-lg font-extrabold">Year-end cohort progression</h2>
+              <p class="en-muted mt-1">Preview a section cohort for Promotion, Retention or Graduation. Every learner is checked independently against released Final Grades, canonical placement, target classes and identity requirements.</p>
+            </div>
+          </div>
+          <form id="en-cohort-form" class="mt-4">
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <label class="text-sm font-bold">Source academic year
+                <select name="sourceYearId" class="en-input mt-1" required></select>
+              </label>
+              <label class="text-sm font-bold">Source academic period
+                <select name="sourceTermId" class="en-input mt-1" required></select>
+              </label>
+              <label class="text-sm font-bold">Source section
+                <select name="sourceSectionId" class="en-input mt-1" required></select>
+              </label>
+              <label class="text-sm font-bold">Decision
+                <select name="progressionType" class="en-input mt-1" required>
+                  <option value="">Choose decision</option>
+                  <option value="promotion">Promotion</option>
+                  <option value="retention">Retention</option>
+                  <option value="graduation">Graduation</option>
+                </select>
+              </label>
+            </div>
+            <section id="en-cohort-target" class="en-summary mt-4" hidden>
+              <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <label class="text-sm font-bold">Target academic year
+                  <select name="targetYearId" class="en-input mt-1"></select>
+                </label>
+                <label class="text-sm font-bold">Target program / division
+                  <select name="targetProgramId" class="en-input mt-1"></select>
+                </label>
+                <label class="text-sm font-bold">Target academic period
+                  <select name="targetTermId" class="en-input mt-1"></select>
+                </label>
+                <label class="text-sm font-bold">Target section
+                  <select name="targetSectionId" class="en-input mt-1"></select>
+                </label>
+              </div>
+            </section>
+            <label class="text-sm font-bold block mt-4">Cohort decision reason
+              <textarea name="reason" class="en-input mt-1" rows="2" minlength="12" maxlength="500" required placeholder="Record the institutional basis for this cohort decision."></textarea>
+            </label>
+            <div class="flex flex-wrap gap-2 mt-4">
+              <button id="en-cohort-preview" class="en-btn" type="button">Preview cohort</button>
+              <button id="en-cohort-apply" class="en-btn" type="button" disabled>Apply ready students</button>
+            </div>
+          </form>
+          <p id="en-cohort-status" class="en-notice mt-4" role="status" aria-live="polite">Choose a source cohort and decision.</p>
+          <div id="en-cohort-results" class="en-list mt-3" role="list"></div>
         </section>
 
         <section class="en-card">
@@ -212,6 +269,24 @@
         <button id="en-registration-change-close" type="button" class="en-btn secondary">Close</button>
       </div>
       <p id="en-registration-change-help" class="en-notice mt-4"></p>
+      <section id="en-registration-change-placement" class="en-summary mt-4" hidden>
+        <label class="text-sm font-bold">New section
+          <select name="sectionId" class="en-input mt-1"></select>
+        </label>
+        <p id="en-registration-change-preview" class="en-muted mt-2">Choose a new section to preview its automatic class roster.</p>
+      </section>
+      <section id="en-registration-end-type" class="en-summary mt-4" hidden>
+        <label class="text-sm font-bold">Registration end type
+          <select name="endReasonType" class="en-input mt-1">
+            <option value="">Choose why the registration is ending</option>
+            <option value="withdrawal">Withdrawal</option>
+            <option value="transfer_out">Transfer out</option>
+            <option value="registration_cancelled">Registration cancelled</option>
+            <option value="other">Other institutional reason</option>
+          </select>
+        </label>
+        <p class="en-muted mt-2">This classification is retained with the ended registration and audit history. It does not delete the learner or their academic records.</p>
+      </section>
       <label class="text-sm font-bold block mt-4">Reason
         <textarea name="reason" class="en-input mt-1" rows="3" minlength="12" maxlength="500" required placeholder="Explain the institutional reason for this registration change."></textarea>
       </label>
@@ -221,12 +296,82 @@
       </div>
     </form>
   </dialog>
+
+  <dialog id="en-progression-dialog" class="en-dialog" aria-labelledby="en-progression-title">
+    <form id="en-progression-form" class="en-card" method="dialog">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-extrabold uppercase tracking-wider text-emerald-700">Registrar progression</p>
+          <h2 id="en-progression-title" class="text-lg font-extrabold mt-1">Progress student</h2>
+          <p id="en-progression-target" class="en-muted mt-1"></p>
+        </div>
+        <button id="en-progression-close" type="button" class="en-btn secondary">Close</button>
+      </div>
+      <p class="en-notice mt-4">Promotion, retention and graduation use released Class Record Final Grades as the completion gate. Adminerva preserves the completed registration and its academic evidence instead of editing the old placement in place.</p>
+      <label class="text-sm font-bold block mt-4">Decision
+        <select name="progressionType" class="en-input mt-1" required>
+          <option value="">Choose progression decision</option>
+          <option value="promotion">Promotion</option>
+          <option value="retention">Retention</option>
+          <option value="graduation">Graduation</option>
+        </select>
+      </label>
+      <section id="en-progression-placement" class="en-summary mt-4" hidden>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="text-sm font-bold">Target academic year
+            <select name="targetYearId" class="en-input mt-1"></select>
+          </label>
+          <label class="text-sm font-bold">Target program / division
+            <select name="targetProgramId" class="en-input mt-1"></select>
+          </label>
+          <label class="text-sm font-bold">Target academic period
+            <select name="targetTermId" class="en-input mt-1"></select>
+          </label>
+          <label class="text-sm font-bold">Target section
+            <select name="targetSectionId" class="en-input mt-1"></select>
+          </label>
+        </div>
+      </section>
+      <section class="en-summary mt-4">
+        <strong class="text-sm">Progression readiness</strong>
+        <p id="en-progression-preview" class="en-muted mt-2" role="status" aria-live="polite">Choose a progression decision to check released Final Grades and target placement.</p>
+        <div id="en-progression-blockers" class="en-list mt-3"></div>
+      </section>
+      <label class="text-sm font-bold block mt-4">Institutional reason
+        <textarea name="reason" class="en-input mt-1" rows="3" minlength="12" maxlength="500" required placeholder="Record the promotion, retention or graduation decision basis."></textarea>
+      </label>
+      <div class="flex flex-wrap gap-2 mt-4">
+        <button id="en-progression-confirm" class="en-btn" type="submit" disabled>Apply progression</button>
+        <button id="en-progression-cancel" class="en-btn secondary" type="button">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="en-history-dialog" class="en-dialog" aria-labelledby="en-history-title">
+    <section class="en-card">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-extrabold uppercase tracking-wider text-slate-600">Student placement history</p>
+          <h2 id="en-history-title" class="text-lg font-extrabold mt-1">Registration history</h2>
+          <p id="en-history-target" class="en-muted mt-1"></p>
+        </div>
+        <button id="en-history-close" type="button" class="en-btn secondary">Close</button>
+      </div>
+      <p id="en-history-status" class="en-notice mt-4" role="status" aria-live="polite">Loading placement history…</p>
+      <div id="en-history-list" class="en-list mt-4" role="list"></div>
+      <section class="en-summary mt-4">
+        <strong class="text-sm">Registrar audit trail</strong>
+        <div id="en-history-events" class="en-list mt-3"></div>
+      </section>
+    </section>
+  </dialog>
 </main>
 
 <script defer src="js/core/release-footer.js"></script>
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261120-admin-lifecycle2"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-sis-progression1"></script>
+<script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>

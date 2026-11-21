@@ -109,7 +109,7 @@ const picker=createTenantSchoolPicker({
     if(get("pa-invite-title"))get("pa-invite-title").textContent=
       standardEnrollmentMode?"Create staff invitation":"Create pending invitation";
     if(get("pa-invite-help"))get("pa-invite-help").textContent=standardEnrollmentMode
-      ?"Manila Cathedral School students activate from Enrollment & Registration. Use invitations here for verified staff access."
+      ?"Manila Cathedral School students activate from Enrollment & Registration. Use invitations here for verified Teacher or Registrar staff access."
       :"The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.";
     for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card","pa-section-enrollment-card"])
       if(get(id))get(id).hidden=standardEnrollmentMode;
@@ -963,14 +963,15 @@ get("pa-staff-access-search").addEventListener("click",()=>void searchLinkedStaf
 get("pa-activate-staff-form").addEventListener("submit",event=>{
   event.preventDefault();
   const form=event.currentTarget,data=new FormData(form);
-  const personId=String(data.get("personId")||""),reason=String(data.get("reason")||"").trim();
+  const personId=String(data.get("personId")||""),role=String(data.get("role")||"teacher"),
+    reason=String(data.get("reason")||"").trim();
   if(!personId)return;
-  if(!confirm("Activate this verified linked teacher for the selected school? Class assignments remain unchanged."))return;
-  void submitForm(form,"activate_linked_staff",{personId,reason}).then(result=>{
+  if(!confirm("Activate this verified linked staff member as "+(role==="registrar"?"Registrar":"Teacher")+" for the selected school?"))return;
+  void submitForm(form,"activate_linked_staff",{personId,role,reason}).then(result=>{
     if(!result)return;
     get("pa-staff-access-status").textContent=result.status==="already_active"?
-      "This teacher already has active school access.":
-      "Teacher school access activated. Assign a class under Classes to enable Class Record.";
+      "This staff member already has active "+(result.role||role)+" access.":
+      (result.role||role)+" school access activated.";
 
   });
 });
@@ -1112,8 +1113,7 @@ function openPersonDialog(person,mode){
   nameInput.value=person.displayName||"";
   const studentFields=get("pa-student-profile-fields");
   studentFields.hidden=mode!=="edit"||person.kind!=="student";
-  for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
-    form.elements[name].value=person[name]||"";
+  form.elements.studentNumber.value=person.studentNumber||"";
   get("pa-person-dialog-title").textContent=mode==="edit"?"Edit school person":
     mode==="archive"?"Archive school person":"Restore school person";
   confirm.textContent=mode==="edit"?"Save profile":mode==="archive"?"Archive person":"Restore person";
@@ -1121,7 +1121,7 @@ function openPersonDialog(person,mode){
   get("pa-person-dialog-help").textContent=mode==="archive"?
     "Archiving is blocked until active school access, enrollments or teaching assignments are ended. Nothing is deleted.":
     mode==="restore"?"Restoring the person record does not automatically restore school access, enrollments or teaching assignments.":
-    "Edit school identity and student guardian details. For section membership use the student details placement panel.";
+    "Edit school identity and student number here. Guardian relationships belong to Student Records; guardian contact data is maintained there too. Section placement belongs to Enrollment.";
   get("pa-person-dialog").showModal();
 }
 get("pa-person-dialog-cancel").addEventListener("click",()=>{
@@ -1135,8 +1135,8 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   const details={personId:person.personId};
   if(mode==="edit"){
     details.displayName=String(values.get("displayName")||"").trim();
-    if(person.kind==="student")for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
-      details[name]=String(values.get(name)||"").trim();
+    if(person.kind==="student")
+      details.studentNumber=String(values.get("studentNumber")||"").trim();
   }
   else details.reason=String(values.get("reason")||"").trim();
   const warning=mode==="archive"?

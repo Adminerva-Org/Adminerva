@@ -158,7 +158,7 @@ function createPeopleDirectoryService({db}) {
       for(const [uid,member] of members){
         if(member.status!=="active")continue;
         const roles=Array.isArray(member.roles)?member.roles:[],
-          requiresPerson=roles.some(role=>["student","teacher"].includes(role));
+          requiresPerson=roles.some(role=>["student","teacher","registrar"].includes(role));
         if(requiresPerson){
           const person=member.personId?people.get(member.personId):null;
           if(!person||person.status!=="active"||person.authUid!==uid)
@@ -177,7 +177,12 @@ function createPeopleDirectoryService({db}) {
                 String(person.displayName||"School member").slice(0,140),
                 "Teacher access is linked to a person record that is not classified as staff.",
                 {targetUid:uid,personId:member.personId,targetTab:"access"});
-            if(roles.includes("student")&&roles.includes("teacher"))
+            if(roles.includes("registrar")&&person.kind!=="staff")
+              add("registrar_role_person_kind_mismatch","integrity",
+                String(person.displayName||"School member").slice(0,140),
+                "Registrar access is linked to a person record that is not classified as staff.",
+                {targetUid:uid,personId:member.personId,targetTab:"access"});
+            if(roles.includes("student")&&roles.some(role=>["teacher","registrar"].includes(role)))
               add("student_teacher_role_conflict","integrity",
                 String(person.displayName||"School member").slice(0,140),
                 "One active membership carries both student and teacher roles, which cannot map cleanly to one canonical person kind.",
@@ -457,7 +462,8 @@ function createPeopleDirectoryService({db}) {
     if(input.action==="activate_linked_staff"){
       // Expedited, reviewed access grant for an existing identity-linked staff record.
       // No UID alone can confer access: a matching active canonical person is required.
-      const personId=id(input.personId);
+      const personId=id(input.personId),role=String(input.role||"teacher").trim().toLowerCase();
+      if(!["teacher","registrar"].includes(role))invalid("Choose Teacher or Registrar staff access.");
       const reason=field(input.reason,500,"Activation reason");
       if(reason.length<12)invalid("Explain the reason for activating school access.");
       const personRef=base.doc(personId);
@@ -489,21 +495,21 @@ function createPeopleDirectoryService({db}) {
           throw new TenantAccessError("failed-precondition","The existing membership belongs to another school.");
         if(prior?.status==="suspended")
           throw new TenantAccessError("failed-precondition","Suspended membership requires the reviewed Restore access action.");
-        if(prior?.status==="active"&&Array.isArray(prior.roles)&&prior.roles.includes("teacher")){
+        if(prior?.status==="active"&&Array.isArray(prior.roles)&&prior.roles.includes(role)){
           outcome="already_active";return;
         }
         if(prior?.personId&&prior.personId!==personId)
           throw new TenantAccessError("failed-precondition","Existing membership is linked to another person record.");
-        const roles=[...new Set([...(Array.isArray(prior?.roles)?prior.roles:[]),"teacher"])];
+        const roles=[...new Set([...(Array.isArray(prior?.roles)?prior.roles:[]),role])];
         const revision=(prior?.revision||0)+1,now=FieldValue.serverTimestamp();
         tx.set(memberRef,{schoolId:ctx.schoolId,personId,status:"active",roles,revision,
           displayName:String(person.data().displayName||"").slice(0,140),
           updatedAt:now,updatedByUid:ctx.uid},{merge:true});
         tx.set(indexRef,{schoolId:ctx.schoolId,status:"active",roles,revision,updatedAt:now});
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,
-          personId,action:"linked_staff_access_activated",reason,createdAt:now});
+          personId,action:"linked_staff_access_activated",role,reason,createdAt:now});
       });
-      return {personId,targetUid,status:outcome};
+      return {personId,targetUid,status:outcome,role};
     }
     if(input.action==="list_memberships"){
       const snapshot=await db.collection("schools/"+ctx.schoolId+"/memberships").limit(101).get();
@@ -564,7 +570,7 @@ function createPeopleDirectoryService({db}) {
             throw new TenantAccessError("failed-precondition","The linked person record must be active and bound to this account before access is restored.");
         }
         const roles=Array.isArray(current.data().roles)?current.data().roles:[];
-        if(!roles.some(role=>["student","teacher"].includes(role)))
+        if(!roles.some(role=>["student","teacher","registrar"].includes(role)))
           throw new TenantAccessError("failed-precondition","This membership has no recoverable school role.");
         const now=FieldValue.serverTimestamp(),revision=(current.data().revision||0)+1;
         tx.update(targetRef,{status:"active",revision,restoredAt:now,
@@ -577,7 +583,7 @@ function createPeopleDirectoryService({db}) {
     }
     if(input.action==="list_invitable_people") {
       const role=input.role;
-      if(!["student","teacher"].includes(role))invalid("Choose a student or teacher invitation.");
+      if(!["student","teacher","registrar"].includes(role))invalid("Choose a student, teacher or registrar invitation.");
       const kind=role==="student"?"student":"staff";
       const snap=await base.where("kind","==",kind).limit(201).get();
       if(snap.size===201)
@@ -710,7 +716,7 @@ function createPeopleDirectoryService({db}) {
     if(input.action==="invite") {
       const email=field(input.email,254,"Email").toLowerCase();
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))invalid("Enter a valid invitation email.");
-      if(!["student","teacher"].includes(input.role))invalid("Choose a student or teacher invitation.");
+      if(!["student","teacher","registrar"].includes(input.role))invalid("Choose a student, teacher or registrar invitation.");
       if(ctx.schoolId==="manila-cathedral-school"&&input.role==="student")
         throw new TenantAccessError("failed-precondition",
           "Manila Cathedral School students use verified roster activation instead of individual invitations.");
@@ -784,7 +790,7 @@ function createInvitationAcceptanceService({db}) {
         throw new TenantAccessError("permission-denied","This school invitation is unavailable.");
       const invited=invitation.data();
       if(invited.schoolId!==schoolId||invited.email!==email||
-         !["teacher","student"].includes(invited.requestedRole))
+         !["teacher","student","registrar"].includes(invited.requestedRole))
         throw new TenantAccessError("permission-denied","This invitation does not match your verified account.");
       const member=await tx.get(memberRef);
       if(member.exists && !["active"].includes(member.data().status))

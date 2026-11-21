@@ -54,6 +54,7 @@ export function resolveAccountAccess(user) {
         staffProfiles.delete(user.uid);
       }
       const schoolAdmin=tenant.roles.includes("school_admin");
+      const schoolRegistrar=tenant.roles.includes("registrar");
       const schoolTeacher=tenant.roles.includes("teacher");
       const schoolStudent=tenant.roles.includes("student");
       const platformAdmin=tenant.platformAdmin===true;
@@ -61,12 +62,12 @@ export function resolveAccountAccess(user) {
       // Do not probe flat staff_access/teachers/students once compatibility is retired.
       const role=legacyRole|| (schoolTeacher?"teacher":null);
       return {
-        role,legacyRole,platformAdmin,schoolAdmin,schoolTeacher,schoolStudent,
+        role,legacyRole,platformAdmin,schoolAdmin,schoolRegistrar,schoolTeacher,schoolStudent,
         v4Schools:tenant.schools,v4MembershipLookupAvailable:tenant.available,
         legacyCompatibilityAllowed:legacyAllowed,
         v4Cutover:tenant.v4Cutover===true,
         teachers:legacyTeachers,students:activeStudents,
-        needsTeacherApproval:legacyAllowed&&!role&&!schoolAdmin&&!schoolStudent&&legacyTeachers.length>0,
+        needsTeacherApproval:legacyAllowed&&!role&&!schoolAdmin&&!schoolRegistrar&&!schoolStudent&&legacyTeachers.length>0,
         staffLookupUnavailable:legacyAllowed&&unavailableStaffLookups.has(user.uid)
       };
     }).finally(()=>accountPending.delete(user.uid));
@@ -104,5 +105,5 @@ export async function resolveStaffSubjects(user){
 export const staffSessionReady = auth.authStateReady().then(async () => {
   const user=auth.currentUser;
   const access=await resolveAccountAccess(user);
-  return {user,role:access.role,schoolAdmin:access.schoolAdmin,access};
+  return {user,role:access.role,schoolAdmin:access.schoolAdmin,schoolRegistrar:access.schoolRegistrar,access};
 });

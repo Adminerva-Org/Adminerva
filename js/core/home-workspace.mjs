@@ -1,6 +1,6 @@
 import {auth} from "./firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {sessionDestination} from "./session-destination-v4-pilot.mjs?v=4.0.2";
+import {sessionDestination} from "./session-destination-v4-pilot.mjs?v=20261121-registrar1";
 const main=document.querySelector("main"),navigation=document.getElementById("adminerva-nav");
 let mounted=false;
 function mount(){
@@ -30,6 +30,7 @@ function mount(){
       role:role==="superadmin"?"admin":role==="teacher"?"teacher":null,
       platformAdmin:navigation?.dataset.platformAdmin==="true",
       schoolAdmin:navigation?.dataset.schoolAdmin==="true",
+      schoolRegistrar:navigation?.dataset.schoolRegistrar==="true",
       schoolTeacher:navigation?.dataset.schoolTeacher==="true",
       schoolStudent:navigation?.dataset.schoolStudent==="true",
       students:role==="student"?[{}]:[],
