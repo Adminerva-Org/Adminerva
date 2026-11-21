@@ -58,7 +58,14 @@ if(host){
       min-width:0;border:1px solid #cbd5e1;border-radius:13px;background:#fff;overflow:hidden
     }
     #schoolAssessmentStudioHost .tl-deploy-group-header{padding:.85rem 1rem;background:#eaf2ff}
+    #schoolAssessmentStudioHost .tl-deploy-group-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.65rem}
     #schoolAssessmentStudioHost .tl-deploy-group-header h3{font-size:1rem;font-weight:800;color:#0f172a}
+    #schoolAssessmentStudioHost .tl-bulk-class-select{display:flex;align-items:flex-start;gap:.65rem;border:1px solid #e2e8f0;border-radius:8px;padding:.75rem;font-size:.85rem;cursor:pointer}
+    #schoolAssessmentStudioHost .tl-bulk-class-select input{width:1rem;height:1rem;flex-shrink:0;margin-top:.2rem}
+    #schoolAssessmentStudioHost .tl-bulk-setting-field{display:flex;align-items:center;gap:.6rem;margin-top:1rem;font-size:.9rem}
+    #schoolAssessmentStudioHost .tl-bulk-setting-value{display:flex;align-items:center;gap:.6rem;margin:.6rem 0 .6rem 1.3rem;font-size:.85rem}
+    #schoolAssessmentStudioHost .tl-bulk-preview-line{border-top:1px solid #e2e8f0;padding:.5rem 0;overflow-wrap:anywhere}
+    #schoolAssessmentStudioHost #tl-bulk-settings-dialog .tl-section+.tl-section{margin-top:.85rem}
     #schoolAssessmentStudioHost .tl-deploy-class{padding:.85rem 1rem;border-top:1px solid #e2e8f0}
     #schoolAssessmentStudioHost .tl-deploy-class-main{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.65rem}
     #schoolAssessmentStudioHost .tl-deploy-class-info{flex:1 1 230px;min-width:0}
@@ -368,5 +375,5 @@ if(host){
 
   `;
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=20261122-deployed-groups1");
+  await import("../repo-review/teacher-assessment-library.mjs?v=20261122-deployed-bulk1");
 }
