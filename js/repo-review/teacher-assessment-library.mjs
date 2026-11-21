@@ -19,6 +19,7 @@ const picker=createTenantSchoolPicker({
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];editing=null;sharing=null;deploying=null;
     deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
+    deployVariantReview=null;deployVariantLoading=false;personalizingOfferings=[];
     lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
@@ -125,7 +126,7 @@ function toggleManualOpening(){
 function togglePersonalizationFields(){
   const active=form.elements.personalizationMode?.value==="personalized";
   el("tl-personalization-fields").hidden=!active;
-  if(form.elements.variantTarget)form.elements.variantTarget.required=active;
+  // Variant capacity is calculated after class selection, not authored into the blueprint form.
 }
 async function sha256Text(value){
   const bytes=new TextEncoder().encode(String(value||""));
@@ -135,10 +136,20 @@ async function sha256Text(value){
 function renderPersonalizationState(){
   if(!personalizing||!personalizationState)return;
   const data=personalizationState,count=Number(data.count||0),target=Number(data.variantTarget||0),
-    remaining=Math.max(0,target-count);
-  el("tl-personalization-status").textContent=
-    (data.ready?"Active pool":"Private draft pool")+" · "+count+" of "+target+
-    " variants"+(remaining?" · "+remaining+" remaining":" · target reached")+".";
+    scoped=personalizingOfferings.length>0&&data.calculated===true,
+    remaining=scoped?Math.max(0,target-count):0,
+    existing=deployments.filter(task=>task.blueprintId===personalizing?.id).length;
+  el("tl-personalization-status").textContent=scoped
+    ?(data.ready?"Ready to deploy":"Private pool not ready")+" · "+count+" saved variants · "+target+
+      " required for selected classes"+(remaining?" · "+remaining+" additional variants needed":data.poolActivated?" · no new variants needed":" · activate the existing pool")
+    :count+" private variants already saved"+(existing?" · "+existing+" previous deployment(s) remain valid":"")+".";
+  el("tl-personalization-roster-note").textContent=scoped
+    ?"Current enrollment: "+Number(data.roster?.totalStudents||0)+" student(s) across "+personalizingOfferings.length+
+      " class(es). Largest class: "+Number(data.roster?.largestClass||0)+
+      ". Variants are unique within each class deployment; a minimum pool of 10 is supported."
+    :(personalizing?.legacyImport?.assessmentId
+        ?"The original Repository Management variants and completed student work remain in the historical assessment. They were not copied into this school pool. Open the historical assessment to review them; choose new classes in Deploy only if you are preparing a new assessment deployment."
+        :"Choose classes and dates in Deploy first. Adminerva will calculate the necessary variant count. Existing student assignments and submitted work are not reset.");
   const host=el("tl-personalization-samples");host.replaceChildren();
   for(const sample of data.samples||[]){
     const article=document.createElement("article");article.className="rounded-lg border border-violet-200 bg-white p-3";
@@ -151,21 +162,24 @@ function renderPersonalizationState(){
     const empty=document.createElement("p");empty.className="text-xs text-violet-800";
     empty.textContent="No personalized variants imported for this blueprint revision yet.";host.append(empty);
   }
-  el("tl-personalization-copy").disabled=remaining===0;
-  el("tl-personalization-import").disabled=remaining===0;
-  el("tl-personalization-activate").disabled=data.ready||remaining>0;
+  el("tl-personalization-copy").disabled=!scoped||remaining===0;
+  el("tl-personalization-import").disabled=!scoped||remaining===0;
+  el("tl-personalization-activate").disabled=!scoped||data.ready||remaining>0;
 }
-async function loadPersonalization(item){
-  personalizing=item;personalizationState=null;
+let personalizingOfferings=[];
+async function loadPersonalization(item,offeringIds=[],initialState=null){
+  personalizing=item;personalizingOfferings=[...offeringIds];personalizationState=null;
   for(const id of ["tl-personalization-copy","tl-personalization-import","tl-personalization-activate"])el(id).disabled=true;
   el("tl-personalization-title").textContent=item.title+" · private to your teacher account";
   el("tl-personalization-status").textContent="Loading private pool status…";
   el("tl-personalization-response").value="";
   personalizationDialog.showModal();
   try{
-    const state=await perform("personalization_status",{resourceId:item.id});
+    const state=initialState||await perform("personalization_status",{
+      resourceId:item.id,...(personalizingOfferings.length?{offeringIds:personalizingOfferings}:{})
+    });
     if(personalizing!==item||!personalizationDialog.open)return;
-    personalizationState=state;renderPersonalizationState();
+    personalizationState=state;renderPersonalizationState();syncDeploymentPersonalizationReview();
   }catch(error){
     if(personalizing===item&&personalizationDialog.open)el("tl-personalization-status").textContent=error?.message||"Personalization pool unavailable.";
   }
@@ -221,8 +235,7 @@ function showPreview(item){
     rubric.append(li);
   }
   el("tl-preview-personalization").textContent=personalized(item)
-    ?"Personalized Studio assessment · target "+item.personalization.variantTarget+
-      " private variants. Private prompts/evaluator notes are not included in shared previews."
+    ?"Personalized Studio assessment · variant count calculated when deployment classes are selected. Private prompts/evaluator notes are not included in shared previews."
     :"Standard assessment · one task for the class.";
   previewDialog.showModal();
 }
@@ -335,13 +348,13 @@ function render(){
     if(item.canShare&&item.legacyImport?.assessmentId){
       const legacy=document.createElement("a");legacy.className="tl-action alt";
       legacy.href="repository-assessment-studio.html?legacyAssessment="+encodeURIComponent(item.legacyImport.assessmentId);
-      legacy.textContent="Edit legacy assessment";controls.append(legacy);
+      legacy.textContent="Open historical assessment";controls.append(legacy);
     }
     if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
       controls.append(actionButton("Share",()=>void share(item)));
-      if(personalized(item))controls.append(actionButton("Personalization",()=>void loadPersonalization(item)));
-      controls.append(actionButton("Deploy",()=>void prepareDeployment(item),true));
+      if(personalized(item))controls.append(actionButton(item.legacyImport?.assessmentId?"New school pool":"Personalization",()=>void loadPersonalization(item)));
+      controls.append(actionButton(item.legacyImport?.assessmentId?"Deploy new":"Deploy",()=>void prepareDeployment(item),true));
       controls.append(actionButton("Archive",()=>{
         if(!confirm("Archive this draft? Existing independent copies will remain available."))return;
         void write("archive",{resourceId:item.id,expectedRevision:item.contentRevision},"Assessment archived without deleting student records.").catch(()=>{});
@@ -365,7 +378,6 @@ function edit(item){
   toggleStudioProjectProfile();
   form.elements.checkingInstructions.value=item.checkingInstructions||"";
   form.elements.personalizationMode.value=personalized(item)?"personalized":"standard";
-  form.elements.variantTarget.value=String(item.personalization?.variantTarget||30);
   form.elements.variationGuidance.value=item.personalization?.variationGuidance||"";
   togglePersonalizationFields();
   form.elements.rubric.value=(item.rubric||[]).map(criterion=>criterion.name+" | "+criterion.points).join("\n");
@@ -443,7 +455,7 @@ form.addEventListener("submit",event=>{
     checkingInstructions:String(data.get("checkingInstructions")||""),rubric:criteria,
     personalization:isPersonalized?{
       enabled:true,mode:"ai_blueprint_pool_v1",
-      variantTarget:Number(data.get("variantTarget")||30),
+      variantTarget:editing?.personalization?.variantTarget||10,
       variationGuidance:String(data.get("variationGuidance")||"")
     }:{enabled:false,mode:"standard"}
   };
@@ -775,7 +787,70 @@ async function setExamOpening(task,opening){
 }
 const MAX_BULK_DEPLOYMENTS=20;
 let deployOfferings=[],deploySelectedOfferings=new Set(),deploySucceededOfferings=new Set(),
-  deployRequestKeys=new Map(),deployDatePicker=null,deployTimesEdited=false,deployAttempted=false,deployRangePending=false;
+  deployRequestKeys=new Map(),deployDatePicker=null,deployTimesEdited=false,deployAttempted=false,deployRangePending=false,
+  deployVariantReview=null,deployVariantLoading=false;
+function deploySelectionKey(){return [...deploySelectedOfferings].sort().join("|");}
+function syncDeploymentPersonalizationReview(){
+  if(!deploying||!personalized(deploying)||!personalizationState?.calculated||
+     !personalizingOfferings.length||personalizing?.id!==deploying.id)return;
+  const key=[...personalizingOfferings].sort().join("|");
+  if(key!==deploySelectionKey())return;
+  deployVariantReview={key,ready:personalizationState.ready===true,status:personalizationState};
+  renderDeploymentOfferings();
+}
+function updateDeploymentVariantMessage(){
+  const review=el("tl-deploy-variant-review");
+  if(!review)return;
+  const existing=previouslyDeployedOfferingIds().size,ids=[...deploySelectedOfferings];
+  const applicable=personalized(deploying);
+  review.hidden=!applicable;
+  if(!applicable)return;
+  if(!ids.length){
+    review.textContent=existing
+      ?existing+" class deployment(s) already exist for this blueprint. Their original student variants are preserved. Select only a new class if you need another deployment."
+      :deploying?.legacyImport?.assessmentId
+        ?"This is a legacy-imported blueprint. Its original personalized tasks and completed student submissions remain in Repository Management. Open the historical assessment to review them; select a new class only if you intend another deployment."
+        :"Choose at least one assigned class. Variant requirements will be calculated automatically.";
+    return;
+  }
+  if(deployVariantLoading){
+    review.textContent="Checking verified class rosters and existing private variants…";
+    return;
+  }
+  const plan=deployVariantReview&&(deployAttempted||deployVariantReview.key===deploySelectionKey())?deployVariantReview:null;
+  if(!plan){
+    review.textContent="Deployment settings are ready. Continue to calculate variants for "+ids.length+
+      " class(es); no variants will be regenerated if the existing pool is sufficient.";
+    return;
+  }
+  const data=plan.status;
+  review.textContent="Current students: "+Number(data.roster?.totalStudents||0)+
+    " across "+ids.length+" class(es) · largest class "+Number(data.roster?.largestClass||0)+
+    " · needed pool "+Number(data.variantTarget||0)+" · existing pool "+Number(data.count||0)+
+    (plan.ready?" · ready, no additional variants required.":" · complete or activate the pool before deploying.");
+}
+async function reviewDeploymentPersonalization(item,ids){
+  if(deployVariantLoading||pendingWrite||!item||!ids.length)return;
+  const key=[...ids].sort().join("|"),turn=deployEpoch;
+  deployVariantLoading=true;renderDeploymentOfferings();
+  try{
+    const state=await perform("personalization_status",{resourceId:item.id,offeringIds:ids});
+    if(state?.calculated!==true)
+      throw Error("Roster-based personalization is not available on the school backend yet. Existing deployments are unchanged; deploy the matching school Functions release before continuing.");
+    if(deploying!==item||turn!==deployEpoch||deploySelectionKey()!==key||
+       !el("tl-deploy-dialog").open)return;
+    deployVariantReview={key,ready:state.ready===true,status:state};
+    renderDeploymentOfferings();
+    if(!state.ready)await loadPersonalization(item,ids,state);
+  }catch(error){
+    el("tl-deploy-feedback").textContent=error?.message||"Could not calculate the class variant requirement.";
+    say("Variant requirements could not be verified. Try again.");
+  }finally{
+    deployVariantLoading=false;
+    if(el("tl-deploy-dialog").open)renderDeploymentOfferings();
+  }
+}
+
 
 function deploymentOfferingLabel(offering){
   return [offering.subjectName||offering.subjectId||"Subject",
@@ -792,6 +867,7 @@ function matchingDeployOfferings(){
   return deployOfferings.filter(offering=>deploymentOfferingLabel(offering).toLocaleLowerCase().includes(term));
 }
 function renderDeploymentOfferings(){
+  if(!deployAttempted&&deployVariantReview?.key!==deploySelectionKey())deployVariantReview=null;
   const selected=el("tl-deploy-selected"),list=el("tl-deploy-offerings"),
     status=el("tl-deploy-selection-status"),existing=previouslyDeployedOfferingIds();
   selected.replaceChildren();list.replaceChildren();
@@ -843,8 +919,13 @@ function renderDeploymentOfferings(){
   status.textContent=deploySelectedOfferings.size+" selected · "+visible.length+" visible · "+MAX_BULK_DEPLOYMENTS+" maximum per operation."+
     (existing.size?" Classes already deployed from this blueprint cannot be selected again.":"");
   const submit=el("tl-deploy-submit");
-  submit.disabled=!deployReady||!deploySelectedOfferings.size||pendingWrite||deployRangePending;
-  submit.textContent="Deploy to "+deploySelectedOfferings.size+" class"+(deploySelectedOfferings.size===1?"":"es");
+  submit.disabled=!deployReady||!deploySelectedOfferings.size||pendingWrite||deployRangePending||deployVariantLoading;
+  const reviewReady=Boolean(deployVariantReview?.ready&&
+    (deployAttempted||deployVariantReview.key===deploySelectionKey()));
+  submit.textContent=personalized(deploying)&&!reviewReady
+    ?"Continue · check variants"
+    :"Deploy to "+deploySelectedOfferings.size+" class"+(deploySelectedOfferings.size===1?"":"es");
+  updateDeploymentVariantMessage();
   el("tl-deploy-select-visible").disabled=!deployReady||pendingWrite;
   el("tl-deploy-clear").disabled=!deploySelectedOfferings.size||pendingWrite;
 }
@@ -893,19 +974,11 @@ function freezeBulkDeploymentSettings(){
 async function prepareDeployment(item){
   if(pendingWrite)return;
   const turn=++deployEpoch;deployReady=false;
-  if(personalized(item)){
-    try{
-      const pool=await perform("personalization_status",{resourceId:item.id});
-      if(turn!==deployEpoch)return;
-      if(!pool.ready){
-        say("Complete and activate the private personalization pool before deployment.");
-        await loadPersonalization(item);return;
-      }
-    }catch(error){say(error?.message||"Personalization readiness could not be verified.");return;}
-  }
-  if(turn!==deployEpoch)return;
+  // Deployment settings come first; do not force the blueprint's old
+  // variant target before knowing which new course offerings are selected.
   deploying=item;deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();
   deployRequestKeys.clear();deployAttempted=false;deployTimesEdited=false;deployRangePending=false;
+  deployVariantReview=null;deployVariantLoading=false;
   el("tl-deploy-title").textContent=item.title;
   const form=el("tl-deploy-form");form.reset();
   form.elements.submissionSource.disabled=personalized(item);
@@ -1007,6 +1080,7 @@ el("tl-deploy-dialog").addEventListener("cancel",event=>{if(pendingWrite)event.p
 el("tl-deploy-dialog").addEventListener("close",()=>{
   ++deployEpoch;deployReady=false;deploying=null;deployOfferings=[];
   deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();deployAttempted=false;deployRangePending=false;
+  deployVariantReview=null;deployVariantLoading=false;
 });
 el("tl-deploy-offering-search").addEventListener("input",renderDeploymentOfferings);
 el("tl-deploy-select-visible").addEventListener("click",()=>{
@@ -1076,6 +1150,17 @@ el("tl-deploy-form").addEventListener("submit",event=>{
   if(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt){
     el("tl-deploy-feedback").textContent="Choose a valid opening time and a later deadline.";return;
   }
+  if(personalized(deploying)&&!deployAttempted){
+    const key=deploySelectionKey();
+    if(!deployVariantReview||deployVariantReview.key!==key){
+      void reviewDeploymentPersonalization(deploying,ids);
+      return;
+    }
+    if(!deployVariantReview.ready){
+      void loadPersonalization(deploying,ids,deployVariantReview.status);
+      return;
+    }
+  }
   const resource=deploying,settings={
     blueprintId:resource.id,
     submissionSource:personalized(resource)?"studio":form.elements.submissionSource.value,
@@ -1128,9 +1213,12 @@ form.elements.personalizationMode.addEventListener("change",togglePersonalizatio
 form.elements.defaultSubmissionSource.addEventListener("change",toggleStudioProjectProfile);
 el("tl-personalization-close").addEventListener("click",()=>{if(!pendingWrite)personalizationDialog.close();});
 personalizationDialog.addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
-personalizationDialog.addEventListener("close",()=>{personalizing=null;personalizationState=null;});
+personalizationDialog.addEventListener("close",()=>{
+  personalizing=null;personalizationState=null;personalizingOfferings=[];
+  if(el("tl-deploy-dialog").open)renderDeploymentOfferings();
+});
 el("tl-personalization-copy").addEventListener("click",()=>void (async()=>{
-  if(!personalizing||!personalizationState)return;
+  if(!personalizing||!personalizationState||!personalizingOfferings.length)return;
   const count=Number(personalizationState.count||0),target=Number(personalizationState.variantTarget||0),
     missing=Math.max(0,target-count);
   if(!missing){say("The private pool already meets its target.");return;}
@@ -1153,7 +1241,7 @@ el("tl-personalization-copy").addEventListener("click",()=>void (async()=>{
   }catch(error){el("tl-personalization-status").textContent="Package not copied: "+(error?.message||"unknown error");}
 })());
 el("tl-personalization-import").addEventListener("click",()=>void (async()=>{
-  if(!personalizing||!personalizationState||pendingWrite)return;
+  if(!personalizing||!personalizationState||pendingWrite||!personalizingOfferings.length)return;
   const missing=Math.max(0,Number(personalizationState.variantTarget||0)-Number(personalizationState.count||0)),
     expectedCount=Math.min(15,missing);
   if(!expectedCount){el("tl-personalization-status").textContent="The pool already meets its target.";return;}
@@ -1166,11 +1254,15 @@ el("tl-personalization-import").addEventListener("click",()=>void (async()=>{
     });
     if(personalizing!==item)throw Error("The assessment selection changed.");
     const result=await perform("personalization_import",{
-      resourceId:item.id,expectedRevision:item.contentRevision,variants
+      resourceId:item.id,expectedRevision:item.contentRevision,variants,
+      offeringIds:personalizingOfferings
     });
     saved=true;
-    personalizationState=await perform("personalization_status",{resourceId:item.id});
+    personalizationState=await perform("personalization_status",{
+      resourceId:item.id,offeringIds:personalizingOfferings
+    });
     el("tl-personalization-response").value="";renderPersonalizationState();
+    syncDeploymentPersonalizationReview();
     say("Imported "+variants.length+" private personalized variants. "+result.count+" saved for this blueprint revision.");
   }catch(error){
     if(saved){personalizationState=null;el("tl-personalization-response").value="";for(const id of ["tl-personalization-copy","tl-personalization-import","tl-personalization-activate"])el(id).disabled=true;}
@@ -1179,16 +1271,20 @@ el("tl-personalization-import").addEventListener("click",()=>void (async()=>{
   }finally{pendingWrite=false;el("tl-personalization-close").disabled=false;}
 })());
 el("tl-personalization-activate").addEventListener("click",()=>void (async()=>{
-  if(!personalizing||!personalizationState||pendingWrite)return;
+  if(!personalizing||!personalizationState||pendingWrite||!personalizingOfferings.length)return;
   let saved=false;
   try{
     pendingWrite=true;el("tl-personalization-activate").disabled=true;el("tl-personalization-close").disabled=true;
     await perform("personalization_activate",{
-      resourceId:personalizing.id,expectedRevision:personalizing.contentRevision
+      resourceId:personalizing.id,expectedRevision:personalizing.contentRevision,
+      offeringIds:personalizingOfferings
     });
     saved=true;
-    personalizationState=await perform("personalization_status",{resourceId:personalizing.id});
-    renderPersonalizationState();say("Private personalization pool activated. This blueprint can now be deployed to Adminerva Studio.");
+    personalizationState=await perform("personalization_status",{
+      resourceId:personalizing.id,offeringIds:personalizingOfferings
+    });
+    renderPersonalizationState();syncDeploymentPersonalizationReview();
+    say("Private personalization pool activated for the selected class roster. Return to deployment settings and confirm.");
   }catch(error){
     if(saved){personalizationState=null;for(const id of ["tl-personalization-copy","tl-personalization-import","tl-personalization-activate"])el(id).disabled=true;}
     else renderPersonalizationState();
