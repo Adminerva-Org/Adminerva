@@ -1,4 +1,4 @@
-
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -10,7 +10,7 @@
   
   <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d">
-<link rel="stylesheet" href="css/adminerva-ui.css?v=47eba756913e">
+  <style>
     .pa-shell{max-width:1060px;margin:0 auto;padding:1rem}
     .pa-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem}
     .pa-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(250px,1fr);gap:1rem}
@@ -32,15 +32,15 @@
     @media(max-width:720px){.pa-layout,.pa-academic-grid{grid-template-columns:minmax(0,1fr)}#pa-person-search,.pa-legacy-request-controls{grid-template-columns:minmax(0,1fr)!important}.pa-shell{padding:.75rem}.pa-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.pa-tabs{margin-left:-.75rem;margin-right:-.75rem;padding:0 .75rem;scroll-snap-type:x proximity}.pa-tabs button{scroll-snap-align:start;flex:0 0 auto}}
     @media(max-width:480px){.pa-cards{grid-template-columns:minmax(0,1fr)}.pa-row{align-items:stretch}.pa-row>.pa-action,.pa-row>button.pa-action{width:100%}}
   </style>
-</head>
   <link rel="stylesheet" href="css/school-admin-workflow.css?v=20261121-admin-flow1">
+</head>
 <body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
 <div id="adminerva-nav" data-module="admin" data-page="people-v4"></div>
 <main class="pa-shell">
   <header class="pa-header">
     <div><a href="school-admin.html" class="pa-muted">School administration</a><p class="pa-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#0e7490">People &amp; Access</p><h1 style="font-weight:800;font-size:clamp(1.5rem,4vw,2rem);margin:.15rem 0">School Directory</h1>
-    <p class="pa-muted">Manage the school's people, memberships, class assignments and access relationships.</p>
     <p class="pa-muted">Manage the school's people, account links, memberships, roles and access relationships. Teaching assignments and official student placement are managed in their operational workspaces.</p>
+    </div>
     <div id="school-picker-host" class="av-school-picker" hidden></div>
   </header>
   <p id="school-status" role="status" aria-live="polite">Checking school access…</p>
@@ -54,13 +54,13 @@
       <button id="pa-tab-people" type="button" data-tab="people" aria-controls="pa-people" aria-selected="false" role="tab" tabindex="-1">Students &amp; staff</button>
       <button id="pa-tab-import" type="button" data-tab="import" aria-controls="pa-import" aria-selected="false" role="tab" tabindex="-1">Roster import</button>
       <button id="pa-tab-invites" type="button" data-tab="invites" aria-controls="pa-invites" aria-selected="false" role="tab" tabindex="-1">Invitations</button>
-      <button id="pa-tab-classes" type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Teaching &amp; classes</button>
       <button id="pa-tab-classes" type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Legacy class relationships</button>
+      <button id="pa-tab-access" type="button" data-tab="access" aria-controls="pa-access" aria-selected="false" role="tab" tabindex="-1">Roles &amp; access</button>
     </div>
     <section id="pa-overview" class="pa-card" role="tabpanel" aria-labelledby="pa-tab-overview" tabindex="0">
       <h2 style="font-size:1.2rem;font-weight:750;margin-bottom:.35rem">School overview</h2>
-      <p class="pa-muted" style="margin-bottom:1rem">People &amp; Access owns identity, account access and staff-role relationships. Student enrollment is now a separate school workflow.</p>
       <p class="pa-muted" style="margin-bottom:1rem">People &amp; Access owns identity, account access, invitations and school roles. Teaching assignments belong in Classes &amp; Scheduling; student enrollment is a separate school workflow.</p>
+      <section style="margin-bottom:1rem;padding:1rem;border:1px solid #bae6fd;border-radius:12px;background:#f0f9ff">
         <h3 style="font-size:1.05rem;font-weight:800;color:#0c4a6e">Adding a new student?</h3>
         <p class="pa-muted" style="margin:.35rem 0 .8rem;color:#155e75">Use Enrollment &amp; Registration to register the learner, assign the official section/academic period, prepare verified sign-in activation and create subject enrollments together.</p>
         <a class="pa-action" href="school-enrollment.html" style="display:inline-flex;align-items:center;text-decoration:none">Open Enrollment &amp; Registration</a>
@@ -132,8 +132,8 @@
       <div class="pa-layout">
         <div class="pa-card"><h2 style="font-weight:750;font-size:1.2rem">People</h2><p class="pa-muted">School-specific identity records, separate from accounts and enrollment.</p>
           <form id="pa-person-search" style="display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(120px,.45fr));gap:.5rem;align-items:end;margin:.75rem 0 1rem">
-            <label>Search name<input id="pa-person-query" name="query" class="pa-field" style="margin-bottom:0" maxlength="80" placeholder="Start typing a name"></label>
             <label>Find students or staff<input id="pa-person-query" name="query" class="pa-field" style="margin-bottom:0" maxlength="80" placeholder="Name, student number, email or record ID"></label>
+            <label>Type<select name="kind" class="pa-field" style="margin-bottom:0"><option value="all">All people</option><option value="student">Students</option><option value="staff">Staff</option></select></label>
             <label>Status<select name="status" class="pa-field" style="margin-bottom:0"><option value="all">All statuses</option><option value="active">Active</option><option value="archived">Archived</option></select></label>
           </form>
           <p id="pa-person-filter-note" class="pa-muted" hidden></p>
@@ -176,13 +176,13 @@
               <p id="pa-detail-placement-status" class="pa-muted" role="status"></p>
             </form>
           </section>
-          <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Invitations</h3><div id="pa-person-detail-invites"></div></section>
           <div id="pa-person-detail-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem">
             <button type="button" class="pa-action" data-pa-open-tab="access">Roles &amp; access</button>
             <button type="button" class="pa-action" data-pa-open-tab="invites" style="background:#475569">Invitations</button>
             <button id="pa-person-detail-classes-action" type="button" class="pa-action" data-pa-open-tab="classes" style="background:#0f766e">Teaching &amp; classes</button>
             <a id="pa-person-detail-enrollment-action" class="pa-action" href="school-enrollment.html" style="display:none;align-items:center;text-decoration:none;background:#0f766e">Enrollment &amp; Registration</a>
           </div>
+          <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Invitations</h3><div id="pa-person-detail-invites"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Enrollments / teaching assignments</h3><div id="pa-person-detail-links"></div></section>
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Recent audit history</h3><div id="pa-person-detail-audit"></div></section>
         </div>
@@ -192,7 +192,6 @@
           <h2 id="pa-person-dialog-title" style="font-size:1.2rem;font-weight:750">Update person</h2>
           <p id="pa-person-dialog-target" class="pa-muted"></p>
           <label id="pa-person-name-field">Display name<input name="displayName" class="pa-field" maxlength="140"></label>
-          <label id="pa-person-reason-field" hidden>Reason<input name="reason" class="pa-field" minlength="12" maxlength="500" placeholder="Explain why this record status is changing"></label>
           <div id="pa-student-profile-fields" hidden style="display:grid;gap:.6rem;margin:.7rem 0">
             <label>Student number<input name="studentNumber" class="pa-field" maxlength="80" placeholder="Student number"></label>
             <label>Guardian name<input name="primaryGuardianName" class="pa-field" maxlength="140"></label>
@@ -200,6 +199,7 @@
             <label>Guardian mobile<input name="primaryGuardianMobile" class="pa-field" maxlength="40"></label>
             <p class="pa-muted">Section membership is changed through Assign section in student details. Account email and credentials are not edited here.</p>
           </div>
+          <label id="pa-person-reason-field" hidden>Reason<input name="reason" class="pa-field" minlength="12" maxlength="500" placeholder="Explain why this record status is changing"></label>
           <p id="pa-person-dialog-help" class="pa-muted"></p>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
             <button id="pa-person-dialog-confirm" class="pa-action" type="submit">Save</button>
@@ -304,13 +304,13 @@
       </dialog>
     </section>
     <section id="pa-classes" role="tabpanel" aria-labelledby="pa-tab-classes" tabindex="0" hidden>
-      <p id="pa-classes-help" class="pa-muted">School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.</p>
       <section class="pa-card" style="margin-bottom:1rem;border-color:#bae6fd;background:#f0f9ff">
         <h2 style="font-weight:800;font-size:1.1rem;color:#0c4a6e">Teaching assignments moved to Classes &amp; Scheduling</h2>
         <p class="pa-muted" style="margin-top:.35rem;color:#155e75">Use the class-centered workspace for teacher assignments, teacher load, section coverage and roster inspection. The relationship tools below remain available for legacy enrollment models and migration exceptions.</p>
         <a class="pa-action" href="school-classes.html" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:.75rem">Open Classes &amp; Scheduling</a>
       </section>
       <p id="pa-classes-help" class="pa-muted">Legacy class-relationship tools. Changes preserve earlier grades and term history.</p>
+      <section class="pa-card" id="pa-workload" style="margin:1rem 0">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div><h2 style="font-weight:800;font-size:1.15rem">Faculty workload &amp; staffing</h2><p class="pa-muted">Review active teaching assignments and classes without a verified active teacher. Counts are course offerings, not teaching hours.</p></div>
           <button type="button" class="pa-action" id="pa-workload-refresh">Refresh workload</button>
@@ -337,7 +337,6 @@
           <p class="pa-muted">Academic years, programs/divisions, periods, subjects, sections and course offerings are managed in the dedicated Academic Configuration workspace.</p>
           <a class="pa-action" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:.75rem" href="school-academic-configuration.html">Open Academic Configuration</a>
         </section>
-        <details id="pa-student-enrollment-card" class="pa-card">
         <details id="pa-section-enrollment-card" class="pa-card" open>
           <summary style="font-weight:750;cursor:pointer">Assign existing student to section</summary>
           <form id="pa-section-enrollment-form" style="display:grid;gap:.65rem;padding-top:1rem">
@@ -351,6 +350,7 @@
             <button class="pa-action" type="submit">Assign section and enroll subjects</button>
           </form>
         </details>
+        <details id="pa-student-enrollment-card" class="pa-card">
           <summary style="font-weight:750;cursor:pointer">Enroll student in offering</summary>
           <form id="pa-enrollment-form" style="padding-top:1rem">
             <label>Student school record<select class="pa-field" name="personId" data-student-person required></select></label>
@@ -437,12 +437,12 @@
     </section>
   </section>
 </main>
-<script defer src="js/core/release-footer.js?v=20261121-admin-reconciled"></script>
-<script src="js/core/adminerva-loader.js?v=20261121-admin-reconciled"></script>
-<script defer src="js/core/adminerva-nav.js?v=20261121-admin-reconciled"></script>
-<script defer src="js/core/adminerva-nav.js?v=20261121-admin-reconciled"></script>
-<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261121-admin-reconciled"></script>
+<script defer src="js/core/release-footer.js?v=20261121-admin-reconciled2"></script>
+<script src="js/core/adminerva-loader.js?v=20261121-admin-reconciled2"></script>
+<script defer src="js/core/adminerva-nav.js?v=20261121-admin-reconciled2"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261121-admin-reconciled2"></script>
 <script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=20261120-assist-context"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=20261121-admin-reconciled"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=20261121-admin-reconciled2"></script>
+<script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
