@@ -65,3 +65,19 @@ test("canonical Enrollment exposes audited cleanup for pre-canonical orphan enro
   assert.match(ui,/renderLegacyRegistrations/);
   assert.match(ui,/end_orphan_enrollments/);
 });
+
+
+test("blocked recovery deep-links the exact replacement person into enrollment reconciliation",async()=>{
+  const [service,peopleUi,enrollmentUi,peopleHtml]=await Promise.all([
+    readFile(new URL("../functions/school-enrollment.js",import.meta.url),"utf8"),
+    readFile(new URL("../js/school-admin/people-access.mjs",import.meta.url),"utf8"),
+    readFile(new URL("../js/school-admin/enrollment.mjs",import.meta.url),"utf8"),
+    readFile(new URL("../people-access.html",import.meta.url),"utf8")
+  ]);
+  assert.match(service,/activeLegacyEnrollments/);
+  assert.match(service,/collection\(root\+"enrollments"\)\.where\("personId","==",personId\)/);
+  assert.match(peopleHtml,/pa-account-recovery-reconcile/);
+  assert.match(peopleUi,/school-enrollment\.html\?personId=/);
+  assert.match(enrollmentUi,/result\.activeLegacyEnrollments/);
+  assert.match(enrollmentUi,/en-legacy-reconciliation-card/);
+});
