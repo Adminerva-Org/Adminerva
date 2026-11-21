@@ -184,7 +184,7 @@ function createSchoolStudioProjectService({db}){
     }
     const receiptRef=access.finalSave?
       db.doc(prefix+"studio_exam_close_receipts/"+access.taskId+
-        "/sessions/"+closingEpoch+"/students/"+ctx.uid):null;
+        "/sessions/"+closingEpoch+"/studio_exam_final_checkpoints/"+ctx.uid):null;
     const priorReceipt=receiptRef?await tx.get(receiptRef):null;
     if(priorReceipt?.exists){
       if(priorReceipt.data().projectId!==projectId||priorReceipt.data().contentDigest!==digest)
