@@ -82,7 +82,8 @@ function catalogArchiveDependencySpecs(kind){
   academic_years:[
    ["terms","yearId","academic period"],
    ["course_offerings","yearId","course offering"],
-   ["student_registrations","yearId","student registration"]
+   ["student_registrations","yearId","student registration"],
+   ["section_advisers","yearId","section adviser"]
   ],
   academic_programs:[
    ["terms","programId","academic period"],
