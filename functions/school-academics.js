@@ -988,6 +988,8 @@ function createSchoolAcademicsService({db}) {
         const currentOfficial=mode==="section"&&registration&&
           row.yearId===data.yearId&&row.programId===data.programId&&
           row.termId===data.termId&&row.sectionId===data.sectionId;
+        if(mode==="section"&&registration&&!currentOfficial)
+          deny("failed-precondition","An active class enrollment no longer matches this class's official placement metadata. Review the student before restoring this class.");
         if(currentOfficial){
           if(row.registrationId&&row.registrationId!==registration.id)
             deny("failed-precondition","An active class enrollment is linked to a different official registration. Review the student before restoring this class.");
