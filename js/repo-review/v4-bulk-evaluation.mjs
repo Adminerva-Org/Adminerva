@@ -5,18 +5,55 @@ import {
 } from "../assessment/general-external-evaluation.mjs?v=20261121-compact-bulk1";
 
 /**
- * Bulk assessment review on top of the authoritative Studio submission/grade
- * services. No separate grade store: results remain staged only in this page
- * until the teacher chooses Save eligible drafts.
+ * Bulk assessment review on top of the authoritative V4/historical
+ * submission and grade services. Source-specific adapters load frozen evidence,
+ * while one shared grading contract stages private suggestions.
  *
- * One run is bounded to 10 records. Invalid/zero/pending responses are surfaced
+ * One run is bounded to 20 records. Invalid/zero/pending responses are surfaced
  * as exceptions and never auto-published.
  */
 // The request package is now V2; evaluated replies intentionally remain V1.
 export const BULK_PACKAGE_FORMAT="adminerva-v4-bulk-evaluation-package-v2";
 export const BULK_RESPONSE_FORMAT="adminerva-v4-bulk-evaluation-response-v1";
-export const BULK_MAX_BATCH=10;
+export const BULK_MAX_BATCH=20;
 export const BULK_COMPACT_PACKAGE_FORMAT=BULK_PACKAGE_FORMAT;
+export const BULK_SOURCE_TYPES=Object.freeze(["studio","github","text","link"]);
+// 20 long code projects can exceed an external model's context budget.
+// Refuse oversized packages explicitly rather than silently discard evidence.
+export const BULK_MAX_PACKAGE_CHARACTERS=650000;
+
+export function assertBulkEvidence(source,evidence,{personalized=false}={}){
+  if(!BULK_SOURCE_TYPES.includes(source))throw Error("No V4 evidence adapter exists for "+source+".");
+  if(!evidence||!Number.isInteger(evidence.version)||evidence.version<1)
+    throw Error("A learner has no complete frozen submission version.");
+  if(source==="studio"){
+    if(evidence.type!=="adminerva_studio_snapshot"||!evidence.contentDigest||
+       !Array.isArray(evidence.files)||!evidence.files.length)
+      throw Error("A student has no complete frozen Studio source to evaluate.");
+    if(personalized&&(!evidence.personalizedTask||
+       !String(evidence.personalizedTask.prompt||"").trim()))
+      throw Error("One personalized learner is missing the exact assigned task.");
+  }else if(source==="github"){
+    if(evidence.type!=="github_frozen_commit_evidence"||
+       !/^[a-f0-9]{40}$/i.test(String(evidence.checkpointSha||""))||
+       !Array.isArray(evidence.commits)||!evidence.commits.length||
+       !Array.isArray(evidence.selectedCommitShas)||!evidence.selectedCommitShas.length||
+       evidence.commits.some(commit=>!/^[a-f0-9]{40}$/i.test(String(commit.sha||""))))
+      throw Error("An approved GitHub checkpoint and inspected individual commits are required.");
+    if(!evidence.commits.some(commit=>commit.files?.some(file=>file.patch&&!file.mergeContext))&&
+       !evidence.pinnedSource?.length)
+      throw Error("The approved repository has no accessible individual source evidence. Review manually.");
+  }else if(source==="text"){
+    if(evidence.type!=="written_response"||!String(evidence.response||"").trim())
+      throw Error("The frozen essay or written response is unavailable.");
+  }else if(source==="link"){
+    if(evidence.type!=="submission_link"||
+       !/^https:\/\//i.test(String(evidence.url||"")))
+      throw Error("The learner's frozen submission link is unavailable.");
+  }
+  return true;
+}
+
 
 /**
  * V2 transport keeps each immutable submission distinct but hoists published
@@ -29,7 +66,7 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
     throw Error("Expected a valid batch ID and 1–"+BULK_MAX_BATCH+" verified submissions.");
   const first=entries[0]?.evaluationData;
   if(!first||first.format!=="adminerva-general-external-evaluation-v1"||
-     first.assessment?.submissionSource!=="studio"||
+     !BULK_SOURCE_TYPES.includes(first.assessment?.submissionSource)||
      !Array.isArray(first.assessment?.rubric)||!first.assessment.rubric.length)
     throw Error("The canonical shared assessment and rubric are unavailable.");
   const originalAssessment=JSON.stringify(first.assessment);
@@ -48,13 +85,9 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
        JSON.stringify(data.gradingRules)!==originalRules)
       throw Error("The batch mixes different assessment instructions or grading rules. Export separately.");
     const evidence=data.evidence;
-    if(!evidence||evidence.type!=="adminerva_studio_snapshot"||
-       !Number.isInteger(evidence.version)||evidence.version<1||
-       !evidence.contentDigest||!Array.isArray(evidence.files)||!evidence.files.length)
-      throw Error("A student has no complete frozen Studio source to evaluate.");
-    if(first.assessment.personalized&&
-       (!evidence.personalizedTask||!String(evidence.personalizedTask.prompt||"").trim()))
-      throw Error("One personalized learner is missing the exact assigned task.");
+    assertBulkEvidence(first.assessment.submissionSource,evidence,{
+      personalized:first.assessment.personalized
+    });
     const {personalizedTask,...frozenEvidence}=evidence;
     // This interpretation is a fixed instruction, not student evidence;
     // it is already present in shared requiredRules/evidenceBoundary.
@@ -71,7 +104,7 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
       }:{})
     };
   });
-  return {
+  const packageData={
     format:BULK_COMPACT_PACKAGE_FORMAT,
     batchId,
     purpose:"Evaluate each frozen submission independently against the shared assessment. Return only the specified batch JSON.",
@@ -84,7 +117,10 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
       evaluationInstructions:[
         "Apply the shared published rubric, instructions and evaluator rules to every item.",
         "For each item, apply only its own personalizedTask and frozenEvidence. Never mix source files, scenarios, runtime proof or feedback across references.",
-        "Treat a matching platform automaticVerification as authoritative for the submitted source. Do not treat unmatched or historical runs as proof of compilation or execution.",
+        "For Studio projects, treat matching platform automaticVerification as authoritative for the submitted source; unmatched runs are not proof of compilation or execution.",
+        "For GitHub, only cite the approved checkpoint and inspected individual changes. Preserve missing-diff, incomplete-coverage and attribution uncertainty; Git author fields never prove who wrote code.",
+        "For essays, cite the submitted response. For external links, do not invent linked content or claim to have opened it; use pending points or teacher confirmation if the actual artifact is unavailable.",
+        "For objectively scorable questions, honor the official answer key and deterministic scoring when a verified objective-response adapter is available; never guess missing answers or invent a rubric.",
         "Keep each assessment independent; return one result per ref in exactly the expected batch JSON format. No Markdown.",
         "All scores are teacher-private suggestions, never automatically published."
       ]
@@ -99,6 +135,13 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
     },
     items
   };
+  const characters=JSON.stringify(packageData).length;
+  if(characters>BULK_MAX_PACKAGE_CHARACTERS)
+    throw Error("This "+items.length+"-learner package contains "+characters.toLocaleString()+
+      " characters, above the safe external AI context budget ("+
+      BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+
+      "). Select fewer learners or inspect smaller source sets; no frozen evidence was dropped.");
+  return packageData;
 }
 
 
