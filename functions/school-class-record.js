@@ -829,7 +829,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     }
 
     if(input.action==="assessment_link_overview"){
-      await verifyOffering();
+      const offering=await verifyOffering(),lead=await classLeadState(offering),
+        canEditClassRecord=ctx.platformOverride||lead.primaryTeacherUid===ctx.uid;
       const sheet=await sheetRef.get(),columns=sheet.exists&&sheet.data().schoolId===ctx.schoolId&&
         Array.isArray(sheet.data().columns)?sheet.data().columns:[];
       const links=[];
@@ -848,14 +849,20 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           studentVisibility:cleanStudentVisibility(column.studentVisibility)
         });
       }
-      return {
+      return {permissions:{
+          primaryTeacherUid:lead.primaryTeacherUid,primarySource:lead.source,
+          primaryNeedsReview:lead.needsReview,
+          classRole:ctx.platformOverride?"system_admin_assist":lead.primaryTeacherUid===ctx.uid?"primary":"co_teacher",
+          canEditClassRecord
+        },
         offeringId,links,
         sheetRevision:sheet.exists&&sheet.data().schoolId===ctx.schoolId?Number(sheet.data().revision)||0:0
       };
     }
 
     if(input.action==="assessment_link_status"){
-      await verifyOffering();
+      const offering=await verifyOffering(),lead=await classLeadState(offering),
+        canEditClassRecord=ctx.platformOverride||lead.primaryTeacherUid===ctx.uid;
       const taskId=checkId(String(input.taskId||""),"Assessment task",128);
       const task=await db.doc(prefix+"assessments/"+taskId).get();
       if(!task.exists||task.data().schoolId!==ctx.schoolId||task.data().offeringId!==offeringId)
@@ -867,7 +874,12 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const active=matches.find(column=>column.archived!==true)||null,
         archived=!active?matches.find(column=>column.archived===true)||null:null,
         column=active||archived;
-      return {
+      return {permissions:{
+          primaryTeacherUid:lead.primaryTeacherUid,primarySource:lead.source,
+          primaryNeedsReview:lead.needsReview,
+          classRole:ctx.platformOverride?"system_admin_assist":lead.primaryTeacherUid===ctx.uid?"primary":"co_teacher",
+          canEditClassRecord
+        },
         offeringId,taskId,
         status:active?"linked":archived?"archived":"unlinked",
         linked:Boolean(active),archived:Boolean(archived),
