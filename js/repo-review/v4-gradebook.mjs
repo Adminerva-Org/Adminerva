@@ -36,6 +36,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const pageParams=new URL(location.href).searchParams;
   const view=pageParams.get("view")||"review";
   const requestedOfferingId=String(pageParams.get("offeringId")||"");
+  function syncGradebookUrl(task){
+    const url=new URL(location.href);url.searchParams.set("view",view);
+    if(task?.taskId)url.searchParams.set("task",task.taskId);else url.searchParams.delete("task");
+    if(task?.offeringId)url.searchParams.set("offeringId",task.offeringId);
+    else if(!requestedOfferingId)url.searchParams.delete("offeringId");
+    history.replaceState(null,"",url.pathname+"?"+url.searchParams.toString()+url.hash);
+  }
   const requestedStudentUid=String(pageParams.get("studentUid")||"");
   const viewCopy={
     submissions:["Submissions","Inspect frozen learner responses and open the exact submitted version when review is needed."],
@@ -215,6 +222,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   async function loadInbox(){
     const token=++generation;
     const task=tasks.get(taskSelect.value);
+    syncGradebookUrl(task||null);
     currentTask=task||null;currentClassRecordStatus=null;inbox.replaceChildren();renderClassRecordHandoff();
     if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
     if(!task){status.textContent="Choose an assessment to load submissions.";return;}
