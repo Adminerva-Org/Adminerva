@@ -133,6 +133,11 @@ function scoped(api,action,details={}){
 function selectedOffering(){
   return offerings.find(item=>item.offeringId===currentOfferingId)||currentOffering||null;
 }
+function syncClassRecordUrl(offeringId){
+  const url=new URL(location.href);
+  if(offeringId)url.searchParams.set("offering",offeringId);else url.searchParams.delete("offering");
+  history.replaceState(null,"",url.pathname+(url.search?url.search:"")+url.hash);
+}
 function selectedPeriodType(){
   const offering=selectedOffering();
   const period=periodRecords.find(item=>item.termId===offering?.termId);
@@ -1717,16 +1722,16 @@ async function loadOfferings(){
       offeringSelect.add(new Option(parts.join(" · "),item.offeringId));
     }
     offeringSelect.disabled=!offerings.length;
-    say(offerings.length?"":"No assigned classes. School Admin → People & Access → Classes.");
+    say(offerings.length?"":"No assigned classes. School Admin → Classes & Scheduling.");
     const requested=deepLinkOfferingId?offerings.find(item=>item.offeringId===deepLinkOfferingId):null;
     if(requested){
-      currentOfferingId=requested.offeringId;offeringSelect.value=currentOfferingId;
+      currentOfferingId=requested.offeringId;offeringSelect.value=currentOfferingId;syncClassRecordUrl(currentOfferingId);
       await loadWorkspace();
     }else if(deepLinkOfferingId){
       pendingAssessmentDeepLink=null;clearAssessmentDeepLink();
       say("That class is not assigned to this teacher account.");
     }else if(offerings.length===1){
-      currentOfferingId=offerings[0].offeringId;offeringSelect.value=currentOfferingId;
+      currentOfferingId=offerings[0].offeringId;offeringSelect.value=currentOfferingId;syncClassRecordUrl(currentOfferingId);
       await loadWorkspace();
     }
   }catch(error){
@@ -1740,7 +1745,7 @@ offeringSelect.addEventListener("change",async()=>{
   if(dirtyColumns.size&&!confirm("Discard unsaved manual score changes and open another class?")){
     offeringSelect.value=currentOfferingId;return;
   }
-  currentOfferingId=next;currentOffering=null;roster=[];assessments=[];collaborators=[];columns=[];
+  currentOfferingId=next;syncClassRecordUrl(next);currentOffering=null;roster=[];assessments=[];collaborators=[];columns=[];
   finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
   settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
   gradingPolicy=null;pendingSchemeSnapshot=null;
