@@ -866,7 +866,8 @@ export function createProjectStudio({
         setCloudStatus("Recovered from submitted version "+recoveredSubmittedVersion+
           " · cloud sync pending","info",activeProject.id);
       }
-      return {project:activeProject,created:false,projectId:activeProject.id};
+      return {project:activeProject,created:false,projectId:activeProject.id,
+        recoveredSubmittedVersion};
     }
 
     if(context.allowCreate===false)return {project:null,created:false,projectId};
