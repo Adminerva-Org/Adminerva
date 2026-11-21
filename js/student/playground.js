@@ -1404,7 +1404,10 @@ function persistWorkspace(){
     }
     if(typeof projectStudio!=="undefined"&&projectStudio?.getActiveProject()){
       projectStudio.saveState(state);
-      localStorage.setItem(playgroundLanguageKey(uid),currentLang);
+      // The language preference is optional. A quota-full browser must not
+      // mask a project snapshot already queued for school cloud storage.
+      try{localStorage.setItem(playgroundLanguageKey(uid),currentLang);}
+      catch(error){console.warn("Studio language preference unavailable",error);}
     }else{
       localStorage.setItem(playgroundWorkspaceKey(uid,currentLang),JSON.stringify(state));
       localStorage.setItem(playgroundLanguageKey(uid),currentLang);
