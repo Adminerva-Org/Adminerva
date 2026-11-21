@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Opportunities | Adminerva</title>
+<meta name="description" content="Discover verified learning and career opportunities from external providers, curated for the Adminerva community.">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/adminerva-favicon-32.png">
+<link rel="stylesheet" href="css/adminerva-ui.css?v=bd973909b74d">
+<link rel="stylesheet" href="css/public-shell.css?v=bd973909b74d">
+<link rel="stylesheet" href="css/public-content.css?v=20261121-1">
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col">
+<div id="adminerva-public-nav" data-page="opportunities"></div>
+<main class="av-home av-opportunities flex-1" id="opportunities-main">
+  <header class="av-opportunities-hero">
+    <div>
+      <p class="av-opportunities-kicker">ADMINERVA · OPPORTUNITY HUNTER</p>
+      <h1>More paths to discover. More possibilities to pursue.</h1>
+      <p>Find learning resources, scholarships, competitions, internships and other opportunities from external providers. Every listing has a source and a freshness check.</p>
+      <a href="guest-home.html" class="av-opportunities-explore">Explore Adminerva's public tools <span aria-hidden="true">↗</span></a>
+    </div>
+    <div class="av-opportunities-orbit" aria-hidden="true">
+      <span>DISCOVER</span><span>LEARN</span><span>GROW</span>
+    </div>
+  </header>
+  <div class="av-opportunities-info" role="note">Listings are informational, not endorsements or guaranteed placements. Check the official provider's eligibility, availability, deadlines and costs before applying. Adminerva never asks you to submit an application through this directory.</div>
+  <section aria-labelledby="opportunities-list-heading" class="av-opportunities-section">
+    <div class="av-opportunities-heading">
+      <div><p class="av-opportunities-kicker">OPEN TO EXPLORE</p><h2 id="opportunities-list-heading">Discover opportunities</h2></div>
+      <p id="opportunities-count" aria-live="polite"></p>
+    </div>
+    <div class="av-opportunities-controls">
+      <label>Search opportunities<input id="opportunities-search" type="search" placeholder="Search topics, provider, or skills" autocomplete="off"></label>
+      <label>Category<select id="opportunities-category"><option value="all">All categories</option><option>Training</option><option>Scholarship</option><option>Competition</option><option>Internship</option><option>Event</option><option>Other</option></select></label>
+      <button id="opportunities-reset" type="button">Reset filters</button>
+    </div>
+    <p id="opportunities-status" role="status" aria-live="polite">Checking published opportunities…</p>
+    <div id="opportunities-list" class="av-opportunities-grid" aria-live="off"></div>
+    <div id="opportunities-empty" class="av-opportunities-empty" hidden><h3>No matching verified opportunities right now.</h3><p>Try a different category or come back after the next editorial review. Expired and unverified listings are not shown.</p></div>
+  </section>
+  <section class="av-opportunities-bottom">
+    <div><p class="av-opportunities-kicker">STAY CURIOUS</p><h2>Not ready to apply? Learn something new today.</h2><p>Try a hands-on programming activity with no school login.</p></div>
+    <a href="guest-practice.html">Try Practice Lab <span aria-hidden="true">↗</span></a>
+  </section>
+</main>
+<script type="module" src="js/core/public-shell.mjs?v=bd973909b74d"></script>
+<script defer src="js/core/release-footer.js?v=bd973909b74d"></script>
+<script src="js/core/adminerva-loader.js?v=bd973909b74d"></script>
+<script type="module" src="js/core/opportunities-page.mjs?v=20261121-1"></script>
+</body>
+</html>
