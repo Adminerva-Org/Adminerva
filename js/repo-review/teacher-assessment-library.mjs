@@ -835,6 +835,8 @@ async function reviewDeploymentPersonalization(item,ids){
   deployVariantLoading=true;renderDeploymentOfferings();
   try{
     const state=await perform("personalization_status",{resourceId:item.id,offeringIds:ids});
+    if(state?.calculated!==true)
+      throw Error("Roster-based personalization is not available on the school backend yet. Existing deployments are unchanged; deploy the matching school Functions release before continuing.");
     if(deploying!==item||turn!==deployEpoch||deploySelectionKey()!==key||
        !el("tl-deploy-dialog").open)return;
     deployVariantReview={key,ready:state.ready===true,status:state};
