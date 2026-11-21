@@ -121,7 +121,7 @@ const picker=createTenantSchoolPicker({
     if(get("pa-invite-title"))get("pa-invite-title").textContent=
       standardEnrollmentMode?"Create staff invitation":"Create pending invitation";
     if(get("pa-invite-help"))get("pa-invite-help").textContent=standardEnrollmentMode
-      ?"Students in this canonical school activate from Enrollment & Registration. Use invitations here for verified staff access."
+      ?"Students in this canonical school activate from Enrollment & Registration. Use invitations here for verified Teacher or Registrar staff access."
       :"The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.";
     for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card","pa-section-enrollment-card"])
       if(get(id))get(id).hidden=standardEnrollmentMode;
@@ -993,7 +993,8 @@ get("pa-activate-staff-form").addEventListener("submit",event=>{
   if(!reviewed){get("pa-staff-access-status").textContent="Refresh the linked staff search before activating access.";return;}
   if(!confirm("Activate this verified linked teacher for the selected school? Class assignments remain unchanged."))return;
   void submitForm(form,"activate_linked_staff",{
-    personId,expectedPersonRevision:Number(reviewed.revision)||1,reason
+    personId,expectedPersonRevision:Number(reviewed.revision)||1,
+    role:String(new FormData(form).get("role")||"teacher"),reason
   }).then(result=>{
     if(!result)return;
     get("pa-staff-access-status").textContent=result.status==="already_active"?
