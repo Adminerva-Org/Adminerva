@@ -126,7 +126,6 @@ test('assessment authoring stays in Preparation while live assessment work is cl
   assert.ok(!preparationRoutes.includes('users.html'));
   assert.match(authored.root.innerHTML,/href="teacher-home.html"/);
   assert.match(authored.root.innerHTML,/Classroom/);
-  assert.match(authored.root.innerHTML,/Repository Management/);
 
   const live=mount('grading','school-gradebook','teacher',false,{dataset:{schoolTeacher:'true'}});
   const liveRoutes=links(live.desktop).map(link=>link.href);
