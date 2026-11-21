@@ -30,7 +30,7 @@ export function createTenantSchoolPicker({host,status,onBeforeChange=async()=>{}
         remember(state.context.uid,state.context.schoolId);
         document.dispatchEvent(new CustomEvent("adminerva:school-ready",{detail:{
           schoolId:state.context.schoolId,roles:state.context.roles,
-          compatibilityMode:state.context.compatibilityMode,generation:state.generation
+          compatibilityMode:state.context.compatibilityMode,enrollmentMode:state.context.enrollmentMode,generation:state.generation
         }}));
       }
       renderSchoolSwitcher(host,{
