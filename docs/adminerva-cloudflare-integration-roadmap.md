@@ -1,3 +1,5 @@
+> **Planning authority:** This document is retained as a technical specification, implementation note, migration reference, or historical plan. The canonical Adminerva product roadmap, development status and future priorities are maintained only in [Adminerva School OS — Master Development Plan](https://github.com/Adminerva-Org/Adminerva/blob/main/docs/adminerva-school-os-master-plan.md). Do not use this file as a competing roadmap or progress tracker.
+
 # Adminerva Cloudflare Platform Integration — Approved Direction / Staged Execution
 
 Updated: 2026-11-12. Goal: adopt the full set of useful Cloudflare capabilities without replacing production Firebase records or disrupting CheerpJ, teacher workflows, or active assessments.
