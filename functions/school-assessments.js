@@ -377,17 +377,16 @@ function createSchoolAssessmentService({db}){
       !member.data().roles?.includes("student")||!member.data().personId)
     deny("permission-denied","Active student membership is required.");
    if(!task.exists||task.data().schoolId!==ctx.schoolId||task.data().submissionSource!=="studio"||
-      task.data().manualOpenRequired!==true)
+      (task.data().manualOpenRequired!==true&&Number(task.data().manualSessionEpoch||0)<1))
     deny("not-found","This teacher-controlled Studio examination is unavailable.");
    const personId=checkId(member.data().personId,"Student person",128),
      personRef=db.doc(prefix+"people/"+personId),
      enrollmentRef=db.doc(prefix+"enrollments/"+rowKey(personId,task.data().offeringId));
-   const [person,enrollment]=await Promise.all([personRef.get(),enrollmentRef.get()]);
+   const person=await personRef.get();
    if(!person.exists||person.data().schoolId!==ctx.schoolId||
-      person.data().authUid!==ctx.uid||person.data().kind!=="student"||
-      !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
-      enrollment.data().status!=="active"||enrollment.data().offeringId!==task.data().offeringId)
-    deny("permission-denied","This examination is not assigned to your active enrollment.");
+      person.data().authUid!==ctx.uid||person.data().status!=="active"||
+      person.data().kind!=="student")
+    deny("permission-denied","This exam history is not assigned to your school student identity.");
    if(input.action==="exam_close_status"){
     const epoch=Number(input.sessionEpoch);
     if(!Number.isSafeInteger(epoch)||epoch<1||epoch>Number(task.data().manualSessionEpoch||0))
@@ -400,6 +399,14 @@ function createSchoolAssessmentService({db}){
       projectRevision:row?.projectRevision||null,
       savedAt:row?.savedAt?.toMillis?.()||null};
    }
+   // Historical receipts above survive section transfers, but access to a
+   // presently open editor still requires enrollment in this offering.
+   const enrollment=await enrollmentRef.get();
+   if(task.data().manualOpenRequired!==true||
+      !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
+      enrollment.data().personId!==personId||enrollment.data().status!=="active"||
+      enrollment.data().offeringId!==task.data().offeringId)
+    deny("permission-denied","This examination is not assigned to your active enrollment.");
    const data=task.data();
    return {taskId,manualAccessState:data.manualAccessState||"waiting",
      sessionEpoch:Number(data.manualSessionEpoch||0),
