@@ -27,6 +27,11 @@ on:
       - "js/settings/settings-core.js"
       - "js/settings/account-preferences.mjs"
       - "js/settings/role-settings.mjs"
+      - "js/help/activity-preferences.mjs"
+      - "js/help/page-help.mjs"
+      - "js/analytics/activity-client.mjs"
+      - "student-settings.html"
+      - "guest-settings.html"
       - "school-student-settings.html"
       - "school-student-projects.html"
       - "settings.html"
@@ -56,6 +61,39 @@ jobs:
           import os, re
 
           version=os.environ["VERSION"]
+
+          loader=Path("js/core/adminerva-loader.js")
+          if loader.exists():
+              text=loader.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'page-help\.mjs\?v=[^"\']+',
+                  f'page-help.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  loader.write_text(updated,encoding="utf-8")
+
+          page_help=Path("js/help/page-help.mjs")
+          if page_help.exists():
+              text=page_help.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'activity-preferences\.mjs\?v=[^"\']+',
+                  f'activity-preferences.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  page_help.write_text(updated,encoding="utf-8")
+
+          activity=Path("js/help/activity-preferences.mjs")
+          if activity.exists():
+              text=activity.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'activity-client\.mjs\?v=[^"\']+',
+                  f'activity-client.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  activity.write_text(updated,encoding="utf-8")
 
           nav=Path("js/core/adminerva-nav.js")
           if nav.exists():
@@ -151,13 +189,13 @@ jobs:
       - name: Commit refreshed references
         shell: bash
         run: |
-          if git diff --quiet -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js' 'js/student/dashboard.js' 'js/student/school-student-settings.mjs' 'js/student/school-student-projects.mjs'; then
+          if git diff --quiet -- '*.html' 'js/core/adminerva-nav.js' 'js/core/adminerva-loader.js' 'js/help/page-help.mjs' 'js/help/activity-preferences.mjs' 'js/student/assessments.js' 'js/student/dashboard.js' 'js/student/school-student-settings.mjs' 'js/student/school-student-projects.mjs'; then
             echo "No shared shell references needed updating."
             exit 0
           fi
           git config user.name "Adminerva UI Sync"
           git config user.email "actions@users.noreply.github.com"
-          git add -- '*.html' 'js/core/adminerva-nav.js' 'js/student/assessments.js' 'js/student/dashboard.js' 'js/student/school-student-settings.mjs' 'js/student/school-student-projects.mjs'
+          git add -- '*.html' 'js/core/adminerva-nav.js' 'js/core/adminerva-loader.js' 'js/help/page-help.mjs' 'js/help/activity-preferences.mjs' 'js/student/assessments.js' 'js/student/dashboard.js' 'js/student/school-student-settings.mjs' 'js/student/school-student-projects.mjs'
           git commit -m "chore(ui): refresh shared shell and access assets [skip ci]"
           git pull --rebase origin main
           git push origin HEAD:main
