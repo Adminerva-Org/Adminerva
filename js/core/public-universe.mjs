@@ -94,6 +94,7 @@ if(home){
     loadPublicChannel('experiences',{role}).then(entries=>{
       if(!entries.length||!panel.isConnected)return;
       const featured=entries[Math.floor(Date.now()/86400000)%entries.length];
+      panel.dataset.sceneTone=featured.sceneTone||'mint';
       nodes[0]=['TODAY',featured.title,featured.summary,featured.url,'✦'];
       buttons[0].querySelector('span').textContent='TODAY';
       buttons[0].querySelector('b').textContent='✦';
