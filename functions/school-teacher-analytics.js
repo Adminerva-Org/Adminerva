@@ -90,7 +90,7 @@ function createSchoolTeacherAnalyticsService({db}){
    if(includeDrafts&&!isTeacher)
     deny("permission-denied","Private teacher drafts are unavailable to school-administrator-only accounts.");
 
-   const [enrollments,assessmentSnap,gradeSnap,studioSnap,generalSnap,githubSnap,planSnap]=await Promise.all([
+   const [enrollments,assessmentSnap,gradeSnap,studioSnap,generalSnap,githubSnap,planSnap,classRecordDoc]=await Promise.all([
     db.collection(prefix+"enrollments").where("offeringId","==",offeringId).limit(501).get(),
     db.collection(prefix+"assessments").where("offeringId","==",offeringId).limit(201).get(),
     db.collection(prefix+"student_grades").where("offeringId","==",offeringId).limit(1001).get(),
@@ -98,7 +98,8 @@ function createSchoolTeacherAnalyticsService({db}){
     db.collection(prefix+"assessment_submissions").where("offeringId","==",offeringId).limit(1001).get(),
     db.collection(prefix+"github_evidence").where("offeringId","==",offeringId).limit(1001).get(),
     isTeacher?db.collection("staff_workspaces/"+ctx.uid+"/lesson_plans")
-      .where("offering_id","==",offeringId).limit(51).get():Promise.resolve(null)
+      .where("offering_id","==",offeringId).limit(51).get():Promise.resolve(null),
+    isTeacher?db.doc(prefix+"class_records/"+offeringId).get():Promise.resolve(null)
    ]);
    if(enrollments.size===501||assessmentSnap.size===201||gradeSnap.size===1001||
       studioSnap.size===1001||generalSnap.size===1001||githubSnap.size===1001||planSnap?.size===51)
@@ -129,6 +130,23 @@ function createSchoolTeacherAnalyticsService({db}){
      rubricMax:Number(doc.data().rubricMax)||0,
      submissionSource:doc.data().submissionSource||"",dueAt:millis(doc.data().dueAt)}));
    const taskMap=new Map(tasks.map(task=>[task.taskId,task]));
+   const classRecordLinks=new Map();
+   if(isTeacher&&classRecordDoc?.exists&&classRecordDoc.data().schoolId===ctx.schoolId){
+    const columns=Array.isArray(classRecordDoc.data().columns)?classRecordDoc.data().columns:[];
+    for(const column of columns){
+     if(column.kind!=="assessment"||(column.assessmentSource&&column.assessmentSource!=="school")||!column.taskId)continue;
+     const prior=classRecordLinks.get(column.taskId);
+     if(prior?.status==="linked")continue;
+     classRecordLinks.set(column.taskId,{
+      status:column.archived===true?"archived":"linked",
+      linked:column.archived!==true,archived:column.archived===true,
+      columnId:String(column.columnId||"").slice(0,64),
+      label:String(column.label||"Assessment").slice(0,80),
+      category:String(column.category||"").slice(0,60),
+      studentVisibility:column.studentVisibility==="released"?"released":"hidden"
+     });
+    }
+   }
    const rosterUids=new Set([...personMap.values()].map(person=>person.uid).filter(Boolean));
    const submissionRows=[];
    const addSubmissions=(snapshot,source)=>{
@@ -203,6 +221,9 @@ function createSchoolTeacherAnalyticsService({db}){
      draftGrades:draftGradeStudents.size,
      publishedGrades:publishedGradeStudents.size,
      visibleGrades:visible.length,
+     classRecord:classRecordLinks.get(task.taskId)||{
+      status:"unlinked",linked:false,archived:false,columnId:null,label:null,category:"",studentVisibility:"hidden"
+     },
      averagePercentage:visible.length?
       Math.round(visible.reduce((sum,row)=>sum+row.percentage,0)/visible.length*10)/10:null
     };
