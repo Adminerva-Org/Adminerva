@@ -193,3 +193,36 @@ test("previously submitted code remains listed when a historical section is no l
  assert.equal(result.submissions.length,1);
  assert.equal(result.submissions[0].historicSectionUnlisted,true);
 });
+
+test("email-like historical student IDs appear in V4 and the exact frozen work opens",async()=>{
+ const {service,map,writes}=dbHarness();
+ const historicalId="grade11.2024+ict@school.edu";
+ const historicalSubmission=historicalId+"_"+legacyId;
+ const priorHead=map.get("studio_submissions/"+submittedId);
+ const priorFrozen=map.get("studio_submissions/"+submittedId+"/versions/1");
+ map.delete("studio_submissions/"+submittedId);
+ map.delete("studio_submissions/"+submittedId+"/versions/1");
+ map.delete("students/"+studentId);
+ map.set("studio_submissions/"+historicalSubmission,{...priorHead,studentId:historicalId});
+ map.set("studio_submissions/"+historicalSubmission+"/versions/1",
+   {...priorFrozen,studentId:historicalId});
+ map.set("students/"+historicalId,{name:"Original Student Record"});
+ const inbox=await service(input("legacy_review_inbox"));
+ assert.equal(inbox.submissions.length,1);
+ assert.equal(inbox.submissions[0].legacyStudentId,historicalId);
+ assert.equal(inbox.submissions[0].studentName,"Original Student Record");
+ const inspected=await service({ctx,input:{
+   ...input("legacy_review_inspect").input,legacySubmissionId:historicalSubmission
+ }});
+ assert.equal(inspected.snapshot.contentDigest,data().hash);
+ assert.equal(inspected.snapshot.files[0].content,"class Main { int value=42; }");
+ assert.equal(writes.length,0);
+});
+test("historical path separators are rejected without querying or changing other student records",async()=>{
+ const {service,map,writes}=dbHarness();
+ await assert.rejects(service({ctx,input:{
+   ...input("legacy_review_inspect").input,legacySubmissionId:"../another-student_"+legacyId
+ }}),error=>error.code==="invalid-argument");
+ assert.equal(map.has("studio_submissions/"+submittedId),true);
+ assert.equal(writes.length,0);
+});
