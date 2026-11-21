@@ -1046,14 +1046,7 @@ function createSchoolEnrollmentService({db}){
       const guardianContactId=guardianContactIdForEmail(guardianEmail),
         guardianRelationshipKey=guardianRelationshipId(personId,guardianContactId),
         guardianContactRef=db.doc(root+"guardian_contacts/"+guardianContactId),
-        guardianRelationshipRef=db.doc(root+"guardian_relationships/"+guardianRelationshipKey),
-        guardianRelationshipSnap=await db.collection(root+"guardian_relationships")
-          .where("studentPersonId","==",personId).limit(51).get();
-      if(guardianRelationshipSnap.size===51)
-        deny("resource-exhausted","This student has too many guardian relationship records for safe enrollment.");
-      const otherGuardianRefs=guardianRelationshipSnap.docs
-        .filter(doc=>doc.id!==guardianRelationshipKey&&doc.data().schoolId===ctx.schoolId)
-        .map(doc=>doc.ref);
+        guardianRelationshipRef=db.doc(root+"guardian_relationships/"+guardianRelationshipKey);
       const auditRef=db.collection(root+"directory_audit").doc(),
         guardianAuditRef=db.collection(root+"student_records_audit").doc();
       const source=applicationId?"online":"onsite";
@@ -1066,16 +1059,20 @@ function createSchoolEnrollmentService({db}){
           reads=[
             tx.get(personRef),tx.get(registrationRef),tx.get(placementSlotRef),
             ...enrollmentRefs.map(ref=>tx.get(ref)),
-            tx.get(guardianContactRef),tx.get(guardianRelationshipRef),
-            ...otherGuardianRefs.map(ref=>tx.get(ref))
+            tx.get(guardianContactRef),tx.get(guardianRelationshipRef)
           ];
         if(applicationRef)reads.push(tx.get(applicationRef));
         const records=await Promise.all(reads);
+        const guardianRelationships=await tx.get(db.collection(root+"guardian_relationships")
+          .where("studentPersonId","==",personId).limit(51));
+        if(guardianRelationships.size===51)
+          deny("resource-exhausted","This student has too many guardian relationship records for safe enrollment.");
         const person=records[0],registration=records[1],placementSlot=records[2],
           enrollments=records.slice(3,3+enrollmentRefs.length),
           guardianContact=records[guardianOffset],
           guardianLink=records[guardianOffset+1],
-          otherGuardians=records.slice(guardianOffset+2,guardianOffset+2+otherGuardianRefs.length),
+          otherGuardians=guardianRelationships.docs.filter(doc=>
+            doc.id!==guardianRelationshipKey&&doc.data().schoolId===ctx.schoolId),
           currentApplication=applicationRef?records.at(-1):null;
         if(placementSlot.exists&&placementSlot.data().status==="active"&&
            placementSlot.data().registrationId!==registrationId)
