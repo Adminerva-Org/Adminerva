@@ -184,14 +184,37 @@
       <label>Role ID<input class="own-field" name="roleId" pattern="[a-z][a-z0-9-]{1,63}" maxlength="64" required placeholder="e.g. data-protection-officer"></label>
       <label>Display name<input class="own-field" name="displayName" minlength="3" maxlength="120" required></label>
       <label>Description<textarea class="own-field" name="description" maxlength="500" rows="2"></textarea></label>
-      <button type="submit" class="own-button">Create governance role</button>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button id="owner-governance-create-submit" type="submit" class="own-button">Create governance role</button>
+        <button id="owner-governance-edit-cancel" type="button" class="own-button" style="background:#475569" hidden>Cancel edit</button>
+      </div>
     </form>
+    <div style="margin-top:1rem">
+      <h4 style="font-weight:800">Governance role catalog</h4>
+      <div id="owner-governance-catalog-list" style="display:grid;gap:.55rem;margin-top:.55rem"></div>
+    </div>
     <form id="owner-governance-assign" style="margin-top:1rem">
       <label>Governance role<select class="own-field" name="roleId" id="owner-governance-role-select" required></select></label>
       <label>Assignment reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
       <button type="submit" class="own-button">Assign role to selected school</button>
     </form>
+    <div style="margin-top:1rem">
+      <h4 style="font-weight:800">Selected school assignments</h4>
+      <div id="owner-governance-assignment-list" style="display:grid;gap:.55rem;margin-top:.55rem"></div>
+    </div>
    </details>
+   <dialog id="owner-governance-lifecycle-dialog" aria-labelledby="owner-governance-lifecycle-title" style="width:min(500px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.25rem">
+    <form id="owner-governance-lifecycle-form">
+      <h3 id="owner-governance-lifecycle-title" style="font-size:1.15rem;font-weight:800">Update governance lifecycle</h3>
+      <p id="owner-governance-lifecycle-target" class="own-muted"></p>
+      <p id="owner-governance-lifecycle-help" class="own-muted"></p>
+      <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button id="owner-governance-lifecycle-confirm" type="submit" class="own-button warn">Confirm</button>
+        <button id="owner-governance-lifecycle-cancel" type="button" class="own-button" style="background:#475569">Cancel</button>
+      </div>
+    </form>
+   </dialog>
    <section id="owner-cutover-decisions-section" data-legacy-provisioning hidden style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
     <h3 style="font-weight:750">Legacy cutover owner decisions</h3>
     <p class="own-muted">These references are required before V4-only readiness can pass. They document the approved MCS operating decisions without storing student records in the owner console.</p>
@@ -306,6 +329,6 @@
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261121-admin-reconciled2"></script>
 <script defer src="js/core/release-footer.js?v=20261121-admin-reconciled2"></script>
 <script src="js/core/adminerva-loader.js?v=20261121-admin-reconciled2"></script>
-<script type="module" src="js/core/owner-school-registry.mjs?v=20261121-admin-reconciled2"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=20261121-crud-lifecycle1"></script>
 <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261121-platform-flow1"></script></body>
 </html>
