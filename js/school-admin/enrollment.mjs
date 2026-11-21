@@ -336,15 +336,21 @@ async function refreshAll(){
   const unavailable=["Online applications","Current registrations"].filter((_,index)=>outcomes[index].status==="rejected");
   status.textContent=unavailable.length?unavailable.join(" and ")+" could not refresh. Available results remain usable; use Refresh to retry.":"";
 }
-function activationUrl(){
+let activation="";
+function renderActivation(schoolId){
+  const input=get("en-activation-link"),open=get("en-open-activation");
+  if(!schoolId){
+    activation="";input.value="";open.removeAttribute("href");return;
+  }
   const url=new URL("join-school.html",location.href);
-  url.searchParams.set("schoolId","manila-cathedral-school");
+  url.searchParams.set("schoolId",schoolId);
   url.searchParams.set("mode","roster");
-  return url.href;
+  activation=url.href;input.value=activation;open.href=activation;
 }
-const activation=activationUrl();
-get("en-activation-link").value=activation;get("en-open-activation").href=activation;
 get("en-copy-activation").addEventListener("click",async()=>{
+  if(!activation){
+    get("en-activation-status").textContent="Choose an eligible school before copying its activation link.";return;
+  }
   try{
     await navigator.clipboard.writeText(activation);
     get("en-activation-status").textContent="Activation link copied. Grade 7+ students still need an exact verified enrollment email match.";
@@ -424,19 +430,19 @@ picker=createTenantSchoolPicker({
     if(get("en-registration-change-dialog").open)get("en-registration-change-dialog").close();
     form.reset();clearLoadedApplication({resetIdentity:true});
     get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
-    workspace.hidden=true;
+    renderActivation("");workspace.hidden=true;
   },
   onReady:scope=>{
     const current=scope.current;
     if(!current?.roles.includes("school_admin")){
       workspace.hidden=true;status.textContent="School Administrator access is required for Enrollment during this phase.";return;
     }
-    if(current.schoolId!=="manila-cathedral-school"||current.compatibilityMode!=="v4_only"){
+    if(current.compatibilityMode!=="v4_only"){
       workspace.hidden=true;
-      status.textContent="This standard Enrollment workspace is isolated to Manila Cathedral School. The legacy-compatible pilot remains on its existing workflow.";
+      status.textContent="This school is still using its reviewed compatibility enrollment workflow. Use People & Access for legacy class relationships until the school adopts the canonical workflow.";
       return;
     }
-    workspace.hidden=false;
+    renderActivation(current.schoolId);workspace.hidden=false;
     void refreshAll().catch(error=>{status.textContent=error?.message||"Enrollment data could not be loaded.";});
   }
 });
