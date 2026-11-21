@@ -1207,7 +1207,7 @@ async function openPersonDetail(person){
   get("pa-person-detail-access").textContent="—";
   get("pa-person-detail-relationships").textContent="—";
   for(const id of ["pa-person-detail-invites","pa-person-detail-links","pa-person-detail-audit"])get(id).replaceChildren();
-  dialog.showModal();
+  if(!dialog.open)dialog.showModal();
   try{
     const result=await perform("get_person",{personId:person.personId});
     if(!dialog.open||run!==detailRun||!schoolReady)return;
