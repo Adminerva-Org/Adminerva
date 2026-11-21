@@ -296,7 +296,8 @@ get("en-registration-change-form").addEventListener("submit",event=>{
     try{
       const result=await perform(action,{
         registrationId:item.registrationId,reason,
-        ...(mode==="move"?{sectionId,expectedRevision:item.revision}: {}),
+        expectedRevision:Number(item.revision)||1,
+        ...(mode==="move"?{sectionId}: {}),
         ...(mode==="end"?{endReasonType}: {})
       });
       const targetName=catalog.sections.find(row=>row.id===sectionId)?.name||sectionId;
