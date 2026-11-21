@@ -10,13 +10,12 @@ let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0,inviteRun=0,staffSe
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false,peopleReloadQueued=false,peopleRun=0;
 let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
-let importRun=0,rosterSourceRun=0,rosterSourceConfigured=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
 const requestedPersonId=String(new URL(location.href).searchParams.get("personId")||"");
 let requestedPersonSchoolId=null;
-let schoolReady=false,standardEnrollmentMode=false,canonicalClassMode=false;
+let schoolReady=false,standardEnrollmentMode=false;
 function rememberedTab(){
   const hash=location.hash.slice(1);
   if(tabNames.has(hash))return hash;
@@ -45,9 +44,6 @@ async function loadSelectedTab(name){
   finally{active?.removeAttribute("aria-busy");}
 }
 function setTab(name,{remember=true}={}) {
-  if(name==="classes"&&canonicalClassMode){
-    location.href="school-classes.html";return;
-  }
   const target=tabNames.has(name)?name:"overview";
   for(const button of document.querySelectorAll("[data-tab]")){
     const active=button.dataset.tab===target;
@@ -76,7 +72,6 @@ directoryTabs.forEach(button=>{
 document.querySelectorAll("[data-pa-open-tab]").forEach(button=>{
   button.addEventListener("click",()=>{
     const tab=button.dataset.paOpenTab;
-    if(get("pa-person-detail-dialog")?.open)get("pa-person-detail-dialog").close();
     setTab(tab);
     const target=button.dataset.paFocus?get(button.dataset.paFocus):null;
     requestAnimationFrame(()=>{
@@ -93,35 +88,18 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    ++importRun;++rosterSourceRun;rosterSourceConfigured=false;
-    // Enter the next school with empty forms, including copied IDs and emails.
-    for(const form of workspace.querySelectorAll("form"))form.reset();
-    for(const control of workspace.querySelectorAll("[data-catalog],[data-offering],[data-assignment-section],[data-student-person],[data-school-teacher],[data-student-person-bulk],[data-school-teacher-bulk]"))
-      control.replaceChildren(new Option("Choose an option",""));
-    get("pa-staff-access-person").replaceChildren(new Option("Search this school's linked staff first",""));
-    get("pa-staff-access-query").value="";
-    get("pa-staff-access-status").textContent="Search linked staff in the selected school.";
     schoolReady=false;++peopleRun;peopleReloadQueued=false;clearTimeout(peopleSearchTimer);++workloadRun;++rosterRun;++inviteRun;++staffSearchRun;++detailRun;++academicRun;++membershipRun;workload=null;resetWorkload();
     workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-person-detail-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
-    get("pa-sheet-source-form").reset();
-    get("pa-sheet-preview").disabled=true;get("pa-sheet-clear").disabled=true;
-    get("pa-sheet-status").textContent="No Google Sheets roster source loaded.";
   },
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
       workspace.hidden=true;say("This school has not granted you directory administration access.");
       return;
     }
-    canonicalClassMode=scope.current.compatibilityMode==="v4_only";
-    standardEnrollmentMode=scope.current.enrollmentMode==="canonical";
-    const classTab=get("pa-tab-classes"),classPanel=get("pa-classes");
-    if(classTab)classTab.hidden=canonicalClassMode;
-    if(classPanel&&canonicalClassMode)classPanel.hidden=true;
-    if(canonicalClassMode&&activeTab()==="classes"){
-      location.replace("school-classes.html");return;
-    }
+    standardEnrollmentMode=scope.current.schoolId==="manila-cathedral-school"&&
+      scope.current.compatibilityMode==="v4_only";
     const studentInvite=get("pa-invite-role-student"),inviteForm=get("pa-create-invite");
     if(studentInvite){
       studentInvite.hidden=standardEnrollmentMode;studentInvite.disabled=standardEnrollmentMode;
@@ -131,22 +109,22 @@ const picker=createTenantSchoolPicker({
     if(get("pa-invite-title"))get("pa-invite-title").textContent=
       standardEnrollmentMode?"Create staff invitation":"Create pending invitation";
     if(get("pa-invite-help"))get("pa-invite-help").textContent=standardEnrollmentMode
-      ?"Students in this canonical school activate from Enrollment & Registration. Use invitations here for verified staff access."
+      ?"Manila Cathedral School students activate from Enrollment & Registration. Use invitations here for verified staff access."
       :"The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.";
-    for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card"])
+    for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card","pa-section-enrollment-card"])
       if(get(id))get(id).hidden=standardEnrollmentMode;
     if(get("pa-classes-help"))get("pa-classes-help").innerHTML=standardEnrollmentMode
-      ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for this canonical school. Teaching assignments, teacher load, schedules and roster review are managed in <a href="school-classes.html" style="font-weight:800;text-decoration:underline">Classes &amp; Scheduling</a>.'
+      ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for Manila Cathedral School. Teaching assignments and roster review remain available here.'
       :"School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.";
     const enrollmentSummary=get("pa-enrollment-summary-link");
     if(enrollmentSummary)enrollmentSummary.href=standardEnrollmentMode?"school-enrollment.html":"people-access.html#classes";
     if(get("pa-enrollment-summary-action"))get("pa-enrollment-summary-action").textContent=standardEnrollmentMode
       ?"Open Enrollment & Registration →":"Manage enrollment relationships →";
     if(get("pa-legacy-requests-help"))get("pa-legacy-requests-help").innerHTML=standardEnrollmentMode
-      ?'Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; student registration continues in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>, while teaching assignments are managed in <a href="school-classes.html" style="font-weight:800;text-decoration:underline">Classes &amp; Scheduling</a>.'
+      ?'Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; student registration continues in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>, while teaching assignments remain in Teaching &amp; classes.'
       :"Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; enrollment and teaching relationships are managed in Teaching & classes.";
     if(get("pa-import-course-help"))get("pa-import-course-help").innerHTML=standardEnrollmentMode
-      ?'For this canonical school, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
+      ?'For Manila Cathedral School, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
       :"Section values from the roster are hints only. After the people import is committed, review each matched section, choose the exact active course offering, and explicitly enroll the listed students.";
     workspace.hidden=false;schoolReady=true;
     if(requestedPersonId&&requestedPersonSchoolId!==scope.current.schoolId){
@@ -162,48 +140,25 @@ const picker=createTenantSchoolPicker({
 });
 async function performRosterSource(action,details={}){
   const lease=picker.scope.lease();
-  const result=(await rosterSourceApi({schoolId:lease.schoolId,action,...platformModePayload(),...details})).data;
+  const result=(await rosterSourceApi({schoolId:lease.schoolId,action,...details})).data;
   picker.scope.assertLease(lease);return result;
 }
 async function loadRosterSourceStatus(){
-  if(pendingWrite)return;
-  const run=++rosterSourceRun;
-  let result;
-  try{result=await performRosterSource("status");}
-  catch(error){if(run!==rosterSourceRun||!schoolReady||pendingWrite)return;throw error;}
-  if(run!==rosterSourceRun||!schoolReady||pendingWrite)return;
+  const result=await performRosterSource("status");
   const form=get("pa-sheet-source-form");
-  rosterSourceConfigured=result.configured===true;
   form.elements.url.value=result.url||"";
-  get("pa-sheet-preview").disabled=pendingWrite||!rosterSourceConfigured;
-  get("pa-sheet-clear").disabled=pendingWrite||!rosterSourceConfigured;
+  get("pa-sheet-preview").disabled=!result.configured;
+  get("pa-sheet-clear").disabled=!result.configured;
   get("pa-sheet-status").textContent=result.configured?
     "Configured Google Sheets roster source"+(result.gid?" · tab "+result.gid:"")+".":
     "No Google Sheets roster source configured for this school.";
   return result;
 }
-function clearImportReview(){
-  ++importRun;
-  importRows=[];importDigest=null;importPreview=null;importCommitted=false;
-  get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";
-  get("pa-import-commit").disabled=true;resetImportCourseMapping();
-}
-function beginImportPreview(){
-  const lease=picker.scope.lease();
-  clearImportReview();
-  return {run:importRun,lease};
-}
-function currentImportPreview(token){
-  if(token.run!==importRun||!schoolReady)return false;
-  try{picker.scope.assertLease(token.lease);return true;}catch{return false;}
-}
-async function previewImportRows(rows,sourceLabel,token){
-  if(!currentImportPreview(token))return null;
+async function previewImportRows(rows,sourceLabel){
   importRows=rows;importDigest=null;importPreview=null;importCommitted=false;
   get("pa-import-commit").disabled=true;resetImportCourseMapping("Validating section hints after the roster preview…");
   get("pa-import-status").textContent="Validating "+sourceLabel+" against the active school directory…";
   const preview=await perform("preview_import_people",{rows:importRows});
-  if(!currentImportPreview(token))return null;
   importPreview=preview;importDigest=preview.digest;renderImportPreview(preview);renderImportCourseMapping();
   const invalid=Number(preview.summary?.invalid||0);
   get("pa-import-commit").disabled=invalid>0||!importDigest;
@@ -212,12 +167,9 @@ async function previewImportRows(rows,sourceLabel,token){
     "Preview ready. Committing creates people only; no access or enrollment will be granted.";
   return preview;
 }
-function platformModePayload(){
-  try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?{platformMode:"assist"}:{};}catch{return {};}
-}
 async function perform(action,details={}) {
   const lease=picker.scope.lease();
-  const result=await api({schoolId:lease.schoolId,action,...platformModePayload(),...details});
+  const result=await api({schoolId:lease.schoolId,action,...details});
   picker.scope.assertLease(lease);
   return result.data;
 }
@@ -285,9 +237,6 @@ function importRowsFromCsv(text){
     ["kind","kind"],["email","email"],["externalid","externalId"],["section","section"]
   ]);
   const headers=matrix[0].map(value=>supported.get(normalizeImportHeader(value))||null);
-  const recognized=headers.filter(Boolean);
-  if(new Set(recognized).size!==recognized.length)
-    throw new Error("CSV has duplicate columns. Keep one column for each supported field before previewing.");
   if(!headers.includes("displayName")&&!(headers.includes("firstName")||headers.includes("lastName")))
     throw new Error("CSV needs displayName or firstName/lastName columns.");
   if(!headers.includes("email")&&!headers.includes("externalId"))
@@ -456,12 +405,11 @@ function renderImportCourseMapping(){
     statusNode.textContent="People import committed. Review each section group and explicitly choose a course offering before enrolling.";
   }
 }
-get("pa-sheet-source-form").addEventListener("input",()=>{++rosterSourceRun;});
 get("pa-sheet-source-form").addEventListener("submit",event=>{
   event.preventDefault();if(pendingWrite)return;
   const form=event.currentTarget,values=new FormData(form);
   void (async()=>{
-    pendingWrite=true;++rosterSourceRun;clearImportReview();
+    pendingWrite=true;
     const controls=[...form.querySelectorAll("button,input")];controls.forEach(control=>control.disabled=true);
     get("pa-sheet-status").textContent="Validating and saving this school roster source…";
     try{
@@ -470,7 +418,6 @@ get("pa-sheet-source-form").addEventListener("submit",event=>{
         reason:String(values.get("reason")||"").trim()
       });
       form.elements.url.value=result.url||"";
-      rosterSourceConfigured=true;
       form.elements.reason.value="";
       get("pa-sheet-preview").disabled=false;get("pa-sheet-clear").disabled=false;
       get("pa-sheet-status").textContent="Google Sheets roster source saved for this school.";
@@ -478,29 +425,26 @@ get("pa-sheet-source-form").addEventListener("submit",event=>{
     finally{
       pendingWrite=false;
       controls.forEach(control=>control.disabled=false);
-      get("pa-sheet-preview").disabled=!rosterSourceConfigured;get("pa-sheet-clear").disabled=!rosterSourceConfigured;
+      const configured=Boolean(form.elements.url.value);
+      get("pa-sheet-preview").disabled=!configured;get("pa-sheet-clear").disabled=!configured;
     }
   })();
 });
 get("pa-sheet-preview").addEventListener("click",()=>{
-  if(pendingWrite||!schoolReady||!rosterSourceConfigured)return;
-  const token=beginImportPreview();
+  if(pendingWrite)return;
   void (async()=>{
     const button=get("pa-sheet-preview");button.disabled=true;get("pa-import-commit").disabled=true;
     get("pa-sheet-status").textContent="Fetching the configured published Google Sheet…";
     try{
       const result=await performRosterSource("fetch_csv");
-      if(!currentImportPreview(token))return;
       const rows=importRowsFromCsv(result.csv);
-      await previewImportRows(rows,"the configured Google Sheet",token);
-      if(!currentImportPreview(token))return;
+      await previewImportRows(rows,"the configured Google Sheet");
       get("pa-sheet-status").textContent="Google Sheet fetched and previewed. Review the rows before committing.";
     }catch(error){
-      if(!currentImportPreview(token))return;
       importRows=[];importDigest=null;importPreview=null;importCommitted=false;resetImportCourseMapping();
       get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="Preview failed.";
       get("pa-sheet-status").textContent=error?.message||"The configured Google Sheet could not be previewed.";
-    }finally{if(currentImportPreview(token))button.disabled=pendingWrite||!rosterSourceConfigured;}
+    }finally{button.disabled=false;}
   })();
 });
 get("pa-sheet-clear").addEventListener("click",()=>{
@@ -508,25 +452,21 @@ get("pa-sheet-clear").addEventListener("click",()=>{
   const reason=prompt("Explain why this school roster source is being removed:");
   if(reason===null)return;
   void (async()=>{
-    pendingWrite=true;++rosterSourceRun;clearImportReview();get("pa-sheet-clear").disabled=true;get("pa-sheet-preview").disabled=true;
+    pendingWrite=true;get("pa-sheet-clear").disabled=true;get("pa-sheet-preview").disabled=true;
     try{
       await performRosterSource("clear",{reason:String(reason).trim()});
-      rosterSourceConfigured=false;
       get("pa-sheet-source-form").reset();
       get("pa-sheet-status").textContent="Google Sheets roster source cleared for this school.";
     }catch(error){
       get("pa-sheet-status").textContent=error?.message||"Roster source was not cleared.";
       await loadRosterSourceStatus().catch(()=>{});
-    }finally{
-      pendingWrite=false;
-      get("pa-sheet-clear").disabled=!rosterSourceConfigured;get("pa-sheet-preview").disabled=!rosterSourceConfigured;
-    }
+    }finally{pendingWrite=false;}
   })();
 });
 get("pa-import-file").addEventListener("change",event=>{
-  if(pendingWrite)return;
-  clearImportReview();
-  get("pa-sheet-preview").disabled=!rosterSourceConfigured;
+  importRows=[];importDigest=null;importPreview=null;importCommitted=false;resetImportCourseMapping();
+  get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";
+  get("pa-import-commit").disabled=true;
   const file=event.target.files?.[0]||null;
   get("pa-import-preview").disabled=!file;
   get("pa-import-status").textContent=file?
@@ -540,70 +480,49 @@ get("pa-import-template").addEventListener("click",event=>{
   document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
 });
 get("pa-import-preview").addEventListener("click",()=>{
-  if(pendingWrite||!schoolReady)return;
+  if(pendingWrite)return;
   const file=get("pa-import-file").files?.[0];
   if(!file)return;
-  const token=beginImportPreview();
   void (async()=>{
+    if(file.size>512000)throw new Error("CSV is larger than 500 KB.");
     get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;
     get("pa-import-status").textContent="Validating this CSV against the active school directory…";
     try{
-      if(file.size>512000)throw new Error("CSV is larger than 500 KB.");
-      const text=await file.text();
-      if(!currentImportPreview(token))return;
-      const rows=importRowsFromCsv(text);
-      await previewImportRows(rows,"this CSV",token);
+      importRows=importRowsFromCsv(await file.text());
+      await previewImportRows(importRows,"this CSV");
     }catch(error){
-      if(!currentImportPreview(token))return;
       importRows=[];importDigest=null;importPreview=null;importCommitted=false;resetImportCourseMapping();
       get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="Preview failed.";
       get("pa-import-status").textContent=error?.message||"The CSV could not be previewed.";
-    }finally{
-      if(currentImportPreview(token)){
-        get("pa-import-preview").disabled=pendingWrite||!get("pa-import-file").files?.length;
-        get("pa-sheet-preview").disabled=pendingWrite||!rosterSourceConfigured;
-      }
-    }
-  })();
+    }finally{get("pa-import-preview").disabled=!get("pa-import-file").files?.length;}
+  })().catch(error=>{get("pa-import-status").textContent=error?.message||"The CSV could not be previewed.";});
 });
 get("pa-import-commit").addEventListener("click",()=>{
   if(pendingWrite||!importDigest||!importRows.length)return;
   if(!confirm("Create the previewed school person records? This does not grant accounts, memberships, enrollments, teaching assignments, or grades."))return;
-  const reviewedRows=importRows,reviewedPreview=importPreview,reviewedDigest=importDigest;
   void (async()=>{
-    pendingWrite=true;++importRun;++rosterSourceRun;
-    const controls=[get("pa-import-file"),get("pa-import-preview"),get("pa-import-commit"),
-      ...get("pa-sheet-source-form").querySelectorAll("button,input")];
-    const disabledBefore=controls.map(control=>control.disabled);
-    controls.forEach(control=>control.disabled=true);
-    get("pa-import-status").textContent="Committing the exact reviewed roster preview…";
+    pendingWrite=true;get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;
+    get("pa-import-status").textContent="Committing the exact reviewed CSV preview…";
     try{
-      const result=await perform("commit_import_people",{rows:reviewedRows,expectedDigest:reviewedDigest});
-      const savedMessage=result.alreadyCommitted?
+      const result=await perform("commit_import_people",{rows:importRows,expectedDigest:importDigest});
+      get("pa-import-status").textContent=result.alreadyCommitted?
         "This exact import was already committed. No duplicate people were created.":
         "Import committed: "+result.created+" people created · "+result.skipped+" already present.";
-      importRows=reviewedRows;importPreview=reviewedPreview;importCommitted=true;importDigest=null;
-      get("pa-import-status").textContent=savedMessage;
-      const refreshes=await Promise.allSettled([loadPeople(false),loadOverview(),loadInvitePeople(),loadAcademics()]);
+      importCommitted=true;importDigest=null;
+      await Promise.all([loadPeople(false),loadOverview(),loadInvitePeople(),loadAcademics()]);
       renderImportCourseMapping();
-      if(refreshes.some(result=>result.status==="rejected"))
-        get("pa-import-status").textContent=savedMessage+" Some school data could not refresh. Reopen the affected tab to retry.";
     }catch(error){
       get("pa-import-status").textContent=error?.message||"Import was not committed. Preview the file again before retrying.";
-      importDigest=null;
+      get("pa-import-commit").disabled=false;
     }finally{
-      pendingWrite=false;
-      controls.forEach((control,index)=>control.disabled=disabledBefore[index]);
-      get("pa-import-commit").disabled=true;
-      get("pa-import-preview").disabled=!get("pa-import-file").files?.length;
-      get("pa-sheet-preview").disabled=!rosterSourceConfigured;get("pa-sheet-clear").disabled=!rosterSourceConfigured;
+      pendingWrite=false;get("pa-import-preview").disabled=!get("pa-import-file").files?.length;
     }
   })();
 });
 
 async function performAcademic(action,details={}){
   const lease=picker.scope.lease();
-  const response=(await academicsApi({schoolId:lease.schoolId,action,...platformModePayload(),...details})).data;
+  const response=(await academicsApi({schoolId:lease.schoolId,action,...details})).data;
   picker.scope.assertLease(lease);
   return response;
 }
@@ -756,7 +675,7 @@ async function loadAcademics(){
   const [catalogs,offerings,people,teachers]=await Promise.all([
     Promise.all(kinds.map(kind=>performAcademic("list_catalog",{kind}))),
     performAcademic("planning_options"),
-    standardEnrollmentMode?Promise.resolve({students:[]}):performAcademic("list_students").catch(error=>({students:[],unavailable:error?.message||"Student picker unavailable."})),
+    Promise.resolve({students:[]}),
     performAcademic("list_teachers")
   ]);
   if(run!==academicRun||!schoolReady)return;
@@ -773,7 +692,10 @@ async function loadAcademics(){
     .sort((a,b)=>a.label.localeCompare(b.label));
   populateOptions("[data-offering]",labeledOfferings,"offeringId","label");
   populateOptions("[data-assignment-section]",schoolSections.filter(item=>item.status==="active"),"id");
-  populateOptions("[data-student-person]",people.students||[],"personId");
+  populateOptions("#pa-section-enrollment-year",catalogs[1].items.filter(row=>row.status==="active"),"id");
+  refreshStudentSectionPicker();
+  // The large directory uses server-side student search, not a 100-record picker.
+  if(!get("pa-class-student-search")?.value.trim())populateOptions("[data-student-person]",[],"personId");
   populateOptions("[data-school-teacher]",teachers.teachers||[],"uid");
   populateMultiOptions("[data-student-person-bulk]",people.students||[],"personId");
   populateMultiOptions("[data-school-teacher-bulk]",teachers.teachers||[],"uid");
@@ -781,6 +703,79 @@ async function loadAcademics(){
   renderImportCourseMapping();
   if(people.unavailable)say(people.unavailable+" Teaching and class controls remain available.");
 }
+
+function refreshStudentSectionPicker(){
+  const form=get("pa-section-enrollment-form");
+  if(!form)return;
+  const yearId=form.elements.yearId.value;
+  const termSelect=form.elements.termId,sectionSelect=form.elements.sectionId;
+  const oldTerm=termSelect.value,oldSection=sectionSelect.value;
+  const terms=schoolTerms.filter(row=>row.status==="active"&&row.yearId===yearId);
+  termSelect.replaceChildren(new Option("Choose academic period",""));
+  for(const row of terms)termSelect.add(new Option(row.name,row.id));
+  if(terms.some(row=>row.id===oldTerm))termSelect.value=oldTerm;
+  const term=terms.find(row=>row.id===termSelect.value);
+  const sections=schoolSections.filter(row=>row.status==="active"&&
+    (!term||row.programId===term.programId));
+  sectionSelect.replaceChildren(new Option("Choose section",""));
+  for(const row of sections)sectionSelect.add(new Option(row.name,row.id));
+  if(sections.some(row=>row.id===oldSection))sectionSelect.value=oldSection;
+  refreshStudentSectionPreview();
+}
+function refreshStudentSectionPreview(){
+  const form=get("pa-section-enrollment-form");
+  if(!form)return;
+  const {yearId,termId,sectionId}=form.elements;
+  const term=schoolTerms.find(row=>row.id===termId.value);
+  const section=schoolSections.find(row=>row.id===sectionId.value);
+  const matches=schoolOfferings.filter(row=>row.status==="active"&&
+    row.yearId===yearId.value&&row.termId===termId.value&&
+    row.sectionId===sectionId.value&&term?.programId===section?.programId);
+  const info=get("pa-section-enrollment-preview");
+  info.textContent=!yearId.value||!termId.value||!sectionId.value
+    ?"Choose an academic year, period and section to preview the subjects."
+    :matches.length
+      ?matches.length+" active subject offering(s) will be added for "+section.name+". Existing active enrollments are preserved."
+      :"No active subjects match this placement. Configure course offerings first.";
+  form.querySelector('button[type="submit"]').disabled=!matches.length;
+}
+let classStudentSearchRun=0,classStudentSearchTimer=null;
+get("pa-class-student-search")?.addEventListener("input",event=>{
+  clearTimeout(classStudentSearchTimer);
+  const query=event.currentTarget.value.trim();
+  const select=get("pa-section-enrollment-form").elements.personId;
+  select.replaceChildren(new Option(query?"Searching…":"Search for a student above",""));
+  const run=++classStudentSearchRun;
+  if(query.length<2)return;
+  classStudentSearchTimer=setTimeout(()=>{
+    void perform("search_people",{query,kind:"student",status:"active"})
+      .then(result=>{
+        if(run!==classStudentSearchRun)return;
+        select.replaceChildren(new Option("Choose a matching student",""));
+        for(const row of result.items||[])
+          select.add(new Option(row.displayName+(row.studentNumber?" · "+row.studentNumber:""),row.personId));
+        if(!result.items?.length)select.options[0].textContent="No matching students";
+      }).catch(error=>{if(run===classStudentSearchRun)say(error.message||"Student search failed.");});
+  },250);
+});
+get("pa-section-enrollment-year")?.addEventListener("change",refreshStudentSectionPicker);
+get("pa-section-enrollment-term")?.addEventListener("change",refreshStudentSectionPicker);
+get("pa-section-enrollment-section")?.addEventListener("change",refreshStudentSectionPreview);
+get("pa-section-enrollment-form")?.addEventListener("submit",event=>{
+  event.preventDefault();
+  const form=event.currentTarget,d=new FormData(form);
+  const personId=String(d.get("personId")||""),sectionId=String(d.get("sectionId")||""),
+    yearId=String(d.get("yearId")||""),termId=String(d.get("termId")||""),
+    reason=String(d.get("reason")||"").trim();
+  if(!personId||!sectionId||!yearId||!termId||reason.length<12){say("Select a student and complete the section placement.");return;}
+  if(!confirm("Assign this existing student to the selected section and enroll all active subjects for the academic period?"))return;
+  void submitAcademic(form,"enroll_student_section",{personId,sectionId,yearId,termId,reason},
+    "Existing student assigned to section and matching active subjects. No new account was created.")
+    .then(result=>{
+      if(result)say("Section placement saved · "+result.created+" subject enrollment(s) added · "+
+        result.alreadyActive+" already active.");
+    });
+});
 get("pa-bulk-enrollment-form").addEventListener("submit",event=>{
   event.preventDefault();const form=event.currentTarget;
   const personIds=[...form.elements.personIds.selectedOptions].map(option=>option.value);
@@ -1100,6 +1095,12 @@ async function loadOverview(){
   get("pa-invite-count").textContent=response.counts.invitations;
   await loadReconciliation().catch(()=>{});
 }
+async function editPersonProfile(person){
+  try{
+    const record=await perform("get_person",{personId:person.personId});
+    openPersonDialog({...person,...record.person},"edit");
+  }catch(error){say(error.message||"Person profile could not be loaded.");}
+}
 function openPersonDialog(person,mode){
   personChange={person,mode};
   const form=get("pa-person-dialog-form"),nameField=get("pa-person-name-field"),
@@ -1109,14 +1110,18 @@ function openPersonDialog(person,mode){
   nameField.hidden=mode!=="edit";reasonField.hidden=mode==="edit";
   nameInput.required=mode==="edit";reasonInput.required=mode!=="edit";
   nameInput.value=person.displayName||"";
+  const studentFields=get("pa-student-profile-fields");
+  studentFields.hidden=mode!=="edit"||person.kind!=="student";
+  for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
+    form.elements[name].value=person[name]||"";
   get("pa-person-dialog-title").textContent=mode==="edit"?"Edit school person":
     mode==="archive"?"Archive school person":"Restore school person";
-  confirm.textContent=mode==="edit"?"Save name":mode==="archive"?"Archive person":"Restore person";
+  confirm.textContent=mode==="edit"?"Save profile":mode==="archive"?"Archive person":"Restore person";
   confirm.style.background=mode==="archive"?"#9a3412":mode==="restore"?"#166534":"#1d4ed8";
   get("pa-person-dialog-help").textContent=mode==="archive"?
     "Archiving is blocked until active school access, enrollments or teaching assignments are ended. Nothing is deleted.":
     mode==="restore"?"Restoring the person record does not automatically restore school access, enrollments or teaching assignments.":
-    "Updating the display name also updates the linked school membership label when one exists.";
+    "Edit school identity and student guardian details. For section membership use the student details placement panel.";
   get("pa-person-dialog").showModal();
 }
 get("pa-person-dialog-cancel").addEventListener("click",()=>{
@@ -1128,7 +1133,11 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   const form=event.currentTarget,{person,mode}=personChange,values=new FormData(form);
   const action=mode==="edit"?"update_person":mode==="archive"?"archive_person":"restore_person";
   const details={personId:person.personId};
-  if(mode==="edit")details.displayName=String(values.get("displayName")||"").trim();
+  if(mode==="edit"){
+    details.displayName=String(values.get("displayName")||"").trim();
+    if(person.kind==="student")for(const name of ["studentNumber","primaryGuardianName","primaryGuardianEmail","primaryGuardianMobile"])
+      details[name]=String(values.get(name)||"").trim();
+  }
   else details.reason=String(values.get("reason")||"").trim();
   const warning=mode==="archive"?
     "Archive this school person record? Active access and academic assignments must already be ended.":
@@ -1174,13 +1183,17 @@ async function openPersonDetail(person){
     get("pa-person-detail-access").textContent=result.membership?
       result.membership.status+" · "+result.membership.roles.join(", "):"No school membership";
     get("pa-person-detail-relationships").textContent=String(result.relationships?.length||0);
-    const classesAction=get("pa-person-detail-classes-action"),enrollmentAction=get("pa-person-detail-enrollment-action");
-    if(p.kind==="student"&&standardEnrollmentMode){
-      classesAction.hidden=true;enrollmentAction.style.display="inline-flex";
-    }else{
-      classesAction.hidden=false;classesAction.textContent=p.kind==="student"?"Enrollment relationships":"Teaching & classes";
-      enrollmentAction.style.display="none";
+    const placementCard=get("pa-detail-placement-card");
+    placementCard.hidden=p.kind!=="student"||standardEnrollmentMode;
+    if(!placementCard.hidden){
+      await loadPlacementCatalog();
+      if(!dialog.open||run!==detailRun)return;
+      const placementForm=get("pa-detail-placement-form");
+      placementForm.elements.personId.value=p.personId;
+      get("pa-detail-placement-status").textContent="";
+      updateDetailPlacementPicker();
     }
+
     renderDetailList(get("pa-person-detail-invites"),result.invitations,item=>
       detailRow(item.requestedRole||"Invitation",(item.status||"unknown")+
         (item.expiresAt?" · expires "+new Date(item.expiresAt).toLocaleString():"")),
@@ -1197,6 +1210,67 @@ async function openPersonDetail(person){
     if(dialog.open&&run===detailRun&&schoolReady)get("pa-person-detail-meta").textContent=error?.message||"Person details are unavailable.";
   }
 }
+
+let directoryPlacementCatalog=null;
+async function loadPlacementCatalog(){
+  if(directoryPlacementCatalog)return directoryPlacementCatalog;
+  const kinds=["academic_years","terms","sections"];
+  const [years,terms,sections,offers]=await Promise.all([
+    ...kinds.map(kind=>performAcademic("list_catalog",{kind})),
+    performAcademic("planning_options")
+  ]);
+  directoryPlacementCatalog={
+    years:(years.items||[]).filter(r=>r.status==="active"),
+    terms:(terms.items||[]).filter(r=>r.status==="active"),
+    sections:(sections.items||[]).filter(r=>r.status==="active"),
+    offerings:(offers.offerings||[]).filter(r=>r.status==="active")
+  };
+  return directoryPlacementCatalog;
+}
+function updateDetailPlacementPicker(stage="year"){
+  const catalog=directoryPlacementCatalog,form=get("pa-detail-placement-form");
+  if(!catalog)return;
+  const select=(control,rows,label)=>{
+    const previous=control.value;
+    control.replaceChildren(new Option(label,""));
+    for(const row of rows)control.add(new Option(row.name,row.id));
+    if(rows.some(row=>row.id===previous))control.value=previous;
+  };
+  if(stage==="year")select(form.elements.yearId,catalog.years,"Choose academic year");
+  if(stage!=="section"){
+    select(form.elements.termId,catalog.terms.filter(row=>row.yearId===form.elements.yearId.value),"Choose academic period");
+    const term=catalog.terms.find(row=>row.id===form.elements.termId.value);
+    select(form.elements.sectionId,catalog.sections.filter(row=>!term||row.programId===term.programId),"Choose section");
+  }
+  const {yearId,termId,sectionId}=form.elements;
+  const offerings=catalog.offerings.filter(row=>row.yearId===yearId.value&&row.termId===termId.value&&row.sectionId===sectionId.value);
+  get("pa-detail-placement-preview").textContent=offerings.length
+    ?offerings.length+" active subject offering(s) will be added to the student's class roster."
+    :"Choose a section with active subjects in the selected academic year and period.";
+  form.querySelector('button[type="submit"]').disabled=!offerings.length;
+}
+get("pa-detail-placement-form")?.elements.yearId.addEventListener("change",()=>updateDetailPlacementPicker("term"));
+get("pa-detail-placement-form")?.elements.termId.addEventListener("change",()=>updateDetailPlacementPicker("term"));
+get("pa-detail-placement-form")?.elements.sectionId.addEventListener("change",()=>updateDetailPlacementPicker("section"));
+get("pa-detail-placement-form")?.addEventListener("submit",event=>{
+  event.preventDefault();
+  const form=event.currentTarget,d=new FormData(form);
+  const data=Object.fromEntries(["personId","yearId","termId","sectionId","reason"].map(name=>[name,String(d.get(name)||"").trim()]));
+  if(!form.reportValidity()||pendingWrite)return;
+  if(!confirm("Assign this existing student to the selected section and enroll the matching active subjects?"))return;
+  const button=form.querySelector('button[type="submit"]');
+  pendingWrite=true;button.disabled=true;
+  get("pa-detail-placement-status").textContent="Saving section and subject enrollments…";
+  void performAcademic("enroll_student_section",data).then(async result=>{
+    get("pa-detail-placement-status").textContent="Saved · "+result.created+" subjects added; "+result.alreadyActive+" already enrolled.";
+    ++detailRun;
+    get("pa-person-detail-dialog").close();
+    await Promise.allSettled([loadPeople(false),loadOverview()]);
+    directoryPlacementCatalog=null;
+  }).catch(error=>{
+    get("pa-detail-placement-status").textContent=error?.message||"Section assignment failed.";
+  }).finally(()=>{pendingWrite=false;button.disabled=false;});
+});
 get("pa-person-detail-close").addEventListener("click",()=>get("pa-person-detail-dialog").close());
 
 function directoryFilters(){
@@ -1233,7 +1307,7 @@ async function loadPeople(append) {
       view.addEventListener("click",()=>void openPersonDetail(person));
       actions.append(view);
       const edit=document.createElement("button");edit.type="button";edit.className="pa-action";edit.textContent="Edit";
-      edit.addEventListener("click",()=>openPersonDialog(person,"edit"));
+      edit.addEventListener("click",()=>void editPersonProfile(person));
       actions.append(edit);
       if(["active","archived"].includes(person.status)){
         const lifecycle=document.createElement("button");lifecycle.type="button";lifecycle.className="pa-action";
