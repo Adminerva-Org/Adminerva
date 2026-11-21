@@ -727,7 +727,9 @@ function createSchoolAssessmentService({db}){
     docs=[...unique.values()];
    }
    return {assessments:docs.map(doc=>({
-      taskId:doc.id,title:doc.data().title,description:doc.data().description||"",
+      taskId:doc.id,blueprintId:doc.data().blueprintId||null,
+      blueprintRevision:doc.data().blueprintRevision||null,
+      title:doc.data().title,description:doc.data().description||"",
       instructions:doc.data().instructions||"",subject:doc.data().subject||doc.data().subjectId||"General",
       assessmentType:doc.data().assessmentType||"Assessment",
       rubric:doc.data().rubric||[],
