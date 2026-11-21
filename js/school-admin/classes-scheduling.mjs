@@ -9,6 +9,7 @@ const scheduleApi=httpsCallable(functions,"schoolSchedules");
 const params=new URLSearchParams(location.search);
 let picker=null,busy=false,epoch=0,view=["classes","teachers","sections","schedule"].includes(params.get("view"))?params.get("view"):"classes";
 let model={teachers:[],offerings:[],advisories:[],schedules:new Map()},selectedId=String(params.get("offeringId")||""),roster=null;
+let detailTab=["team","schedule","roster"].includes(params.get("panel"))?params.get("panel"):"team";
 let scheduleDraft=[],scheduleRevision=0,scheduleDirty=false,studentSearchResults=[];
 
 function platformMode(){
@@ -100,40 +101,72 @@ function setView(next,{replace=false}={}){
   const url=new URL(location.href);if(view==="classes")url.searchParams.delete("view");else url.searchParams.set("view",view);
   history[replace?"replaceState":"pushState"]({},"",url);renderList();
 }
+function setDetailTab(next,{replace=false}={}){
+  if(!["team","schedule","roster"].includes(next))next="team";
+  detailTab=next;
+  for(const node of document.querySelectorAll("[data-cs-detail-tab]")){
+    const active=node.dataset.csDetailTab===detailTab;
+    node.setAttribute("aria-selected",String(active));
+    node.className="rounded-lg px-3 py-2 text-sm whitespace-nowrap "+(active?
+      "bg-slate-900 text-white font-extrabold":"border border-slate-300 bg-white text-slate-800 font-bold");
+  }
+  for(const panel of document.querySelectorAll("[data-cs-detail-panel]"))
+    panel.hidden=panel.dataset.csDetailPanel!==detailTab;
+  const url=new URL(location.href);
+  if(detailTab==="team")url.searchParams.delete("panel");else url.searchParams.set("panel",detailTab);
+  history[replace?"replaceState":"pushState"]({},"",url);
+}
 function button(text,handler,cls="border border-slate-300 bg-white text-slate-800"){
   const node=make("button","rounded-lg px-3 py-2 text-xs font-bold "+cls,text);node.type="button";node.addEventListener("click",handler);return node;
 }
 function empty(message){return make("div","rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600",message);}
 function renderClasses(rows){
   const host=el("csList");host.replaceChildren();if(!rows.length){host.append(empty("No classes match these filters."));return;}
-  const wrap=make("div","overflow-x-auto"),table=make("table","w-full text-sm"),thead=make("thead","bg-slate-50 text-left text-xs uppercase text-slate-500"),tr=make("tr");
-  for(const label of ["Class","Period","Teacher(s)","Roster","Schedule","Status",""])tr.append(make("th","px-3 py-3 font-extrabold",label));thead.append(tr);table.append(thead);
-  const body=make("tbody","divide-y divide-slate-200"),teachers=teacherMap();
+  const teachers=teacherMap(),cards=make("div","grid gap-3 md:hidden"),
+    wrap=make("div","hidden md:block overflow-x-auto"),table=make("table","w-full text-sm"),
+    thead=make("thead","bg-slate-50 text-left text-xs uppercase text-slate-500"),tr=make("tr");
+  for(const label of ["Class","Period","Teacher(s)","Roster","Schedule","Status",""])tr.append(make("th","px-3 py-3 font-extrabold",label));
+  thead.append(tr);table.append(thead);
+  const body=make("tbody","divide-y divide-slate-200");
   for(const row of rows){
-    const r=make("tr","align-top hover:bg-slate-50");
-    const title=make("td","px-3 py-3");title.append(make("strong","block text-slate-900",classLabel(row)),make("span","block text-xs text-slate-500 mt-1",row.programName||""));
-    const period=make("td","px-3 py-3 text-slate-600", [row.termName,row.yearName].filter(Boolean).join(" · "));
     const names=(row.teacherUids||[]).map(uid=>{
       const name=teachers.get(uid)?.name||("Teacher "+uid.slice(0,8));
       return name+(uid===row.primaryTeacherUid?" (Primary)":" (Co-teacher)");
     });
+    const rosterLabels={section:"Official section",selective:"Selective",legacy:"Legacy / review"},
+      rosterLabel=rosterLabels[row.rosterMode]||"Legacy / review",meetings=scheduleFor(row)?.meetings||[],
+      statusText=row.invalidGrantCount?row.invalidGrantCount+" assignment issue"+(row.invalidGrantCount===1?"":"s"):
+        row.primaryNeedsReview?"Primary teacher needs review":"Ready";
+    const r=make("tr","align-top hover:bg-slate-50");
+    const title=make("td","px-3 py-3");title.append(make("strong","block text-slate-900",classLabel(row)),make("span","block text-xs text-slate-500 mt-1",row.programName||""));
+    const period=make("td","px-3 py-3 text-slate-600",[row.termName,row.yearName].filter(Boolean).join(" · "));
     const staff=make("td","px-3 py-3",names.length?names.join(", "):"Unassigned");if(!names.length)staff.className+=" font-bold text-amber-700";
-    const rosterLabels={section:"Official section",selective:"Selective",legacy:"Legacy / review"};
-    const roster=make("td","px-3 py-3 font-bold",rosterLabels[row.rosterMode]||"Legacy / review");
+    const roster=make("td","px-3 py-3 font-bold",rosterLabel);
     roster.className+=" "+(row.rosterMode==="section"?"text-emerald-700":row.rosterMode==="selective"?"text-blue-700":"text-amber-700");
-    const meetings=scheduleFor(row)?.meetings||[];
     const schedule=make("td","px-3 py-3",meetings.length?meetings.length+" meeting"+(meetings.length===1?"":"s"):"Unscheduled");
     schedule.className+=" "+(meetings.length?"text-violet-700 font-bold":"text-slate-500");
-    const statusText=row.invalidGrantCount?row.invalidGrantCount+" assignment issue"+(row.invalidGrantCount===1?"":"s"):
-      row.primaryNeedsReview?"Primary teacher needs review":"Ready";
     const status=make("td","px-3 py-3",statusText);
-    if(row.invalidGrantCount)status.className+=" text-rose-700 font-bold";
-    else if(row.primaryNeedsReview)status.className+=" text-amber-700 font-bold";
-    else status.className+=" text-emerald-700";
+    status.className+=" "+(row.invalidGrantCount?"text-rose-700 font-bold":row.primaryNeedsReview?"text-amber-700 font-bold":"text-emerald-700");
     const action=make("td","px-3 py-3 text-right");action.append(button("Manage",()=>void openClass(row.offeringId),"bg-blue-700 text-white"));
     r.append(title,period,staff,roster,schedule,status,action);body.append(r);
+
+    const card=make("article","rounded-xl border border-slate-200 bg-white p-4");
+    card.append(make("h3","font-extrabold text-slate-900",classLabel(row)),make("p","text-xs text-slate-500 mt-1",classMeta(row)));
+    const facts=make("dl","grid grid-cols-2 gap-x-3 gap-y-2 mt-3 text-xs");
+    for(const [label,value,tone] of [
+      ["Teachers",names.length?names.join(", "):"Unassigned",names.length?"text-slate-700":"text-amber-700 font-bold"],
+      ["Roster",rosterLabel,row.rosterMode==="legacy"?"text-amber-700 font-bold":"text-slate-700"],
+      ["Schedule",meetings.length?meetings.length+" meeting"+(meetings.length===1?"":"s"):"Unscheduled",meetings.length?"text-slate-700":"text-amber-700 font-bold"],
+      ["Status",statusText,statusText==="Ready"?"text-emerald-700 font-bold":"text-amber-700 font-bold"]
+    ]){
+      const box=make("div","min-w-0"),dt=make("dt","font-bold uppercase tracking-wide text-slate-500",label),dd=make("dd","mt-0.5 "+tone,value);
+      box.append(dt,dd);facts.append(box);
+    }
+    card.append(facts);
+    const manage=button("Manage class",()=>void openClass(row.offeringId),"mt-4 w-full bg-blue-700 text-white");
+    manage.className+=" min-h-11";card.append(manage);cards.append(card);
   }
-  table.append(body);wrap.append(table);host.append(wrap);
+  table.append(body);wrap.append(table);host.append(cards,wrap);
 }
 function renderTeachers(rows){
   const host=el("csList");host.replaceChildren();const visibleIds=new Set(rows.flatMap(row=>row.teacherUids||[]));
@@ -380,11 +413,16 @@ function renderDetail(){
   modeButton.textContent=rosterMode==="section"&&modeSelect.value==="section"?"Synchronize official roster":"Apply roster source";
   el("csRecordLink").href="school-class-records.html?offeringId="+encodeURIComponent(item.offeringId);
   el("csEnrollmentClassLink").href=enrollmentRoute();
+  setDetailTab(detailTab,{replace:true});
 }
 async function openClass(offeringId){
   if(scheduleDirty&&offeringId!==selectedId&&!confirm("Discard unsaved official schedule changes before opening another class?"))return;
   selectedId=offeringId;roster=null;studentSearchResults=[];if(el("csStudentSearchQuery"))el("csStudentSearchQuery").value="";if(el("csStudentSearchStatus"))el("csStudentSearchStatus").textContent="";
   resetScheduleDraft();renderDetail();say("Loading class roster…");
+  if(window.matchMedia("(max-width:1279px)").matches)requestAnimationFrame(()=>{
+    const behavior=window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth";
+    el("csDetailPanel")?.scrollIntoView({behavior,block:"start"});
+  });
   const url=new URL(location.href);url.searchParams.set("offeringId",offeringId);history.replaceState({},"",url);
   const turn=++epoch;
   try{const result=await scoped("class_roster",{offeringId});if(turn!==epoch||selectedId!==offeringId)return;roster=result;renderDetail();say("Class ready: "+classLabel(selected())+".");}
@@ -536,8 +574,13 @@ el("csHandoverForm").addEventListener("submit",event=>{
 });
 for(const node of [el("csSearch"),el("csYearFilter"),el("csTermFilter")])node.addEventListener(node.tagName==="INPUT"?"input":"change",renderList);
 for(const node of document.querySelectorAll("[data-cs-view]"))node.addEventListener("click",()=>setView(node.dataset.csView));
+for(const node of document.querySelectorAll("[data-cs-detail-tab]"))node.addEventListener("click",()=>setDetailTab(node.dataset.csDetailTab));
 el("csRefresh").addEventListener("click",()=>void loadOverview({preserveSelection:true}));
-window.addEventListener("popstate",()=>{const next=new URLSearchParams(location.search).get("view");setView(["teachers","sections","schedule"].includes(next)?next:"classes",{replace:true});});
+window.addEventListener("popstate",()=>{
+  const query=new URLSearchParams(location.search),next=query.get("view"),panel=query.get("panel");
+  setView(["teachers","sections","schedule"].includes(next)?next:"classes",{replace:true});
+  setDetailTab(["team","schedule","roster"].includes(panel)?panel:"team",{replace:true});
+});
 
 picker=createTenantSchoolPicker({host:el("csSchoolSwitcher"),status:null,onBeforeChange:async()=>{
   if(busy||scheduleDirty)throw Error("Save or discard the current official schedule changes before switching schools.");
