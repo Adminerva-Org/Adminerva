@@ -535,7 +535,9 @@ async function submit(){
     const wasReopened=saved?.status==="reopened";
     submissionStatus(wasReopened?"Resubmitting reopened evidence…":"Submitting selected evidence…");
     const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
-    const common={selectedCommits,checkpointSha:submissionCheckpointSha,updatedAt:serverTimestamp()};
+    const common={selectedCommits,checkpointSha:submissionCheckpointSha,
+      source:"student_submitted",submittedByUid:auth.currentUser.uid,
+      updatedAt:serverTimestamp()};
     if(saved){
       if(!studentMayChangeEvidence(saved))throw Error("Ask your instructor to reopen approved evidence first.");
       await changeEvidence(ref,saved,{...common,status:"submitted",submittedAt:serverTimestamp()},"Student resubmitted selected evidence");
@@ -556,7 +558,9 @@ async function submit(){
     if(context!==active)return;
     saved=result;selectionDirty=false;
     render();
-    submissionStatus(wasReopened?"Resubmission saved. Status: Submitted — awaiting fresh teacher approval. Your previously reopened evidence is no longer awaiting student changes.":"Evidence submitted for teacher verification. Status: Submitted — awaiting teacher approval. This is not an approved contribution or grade.","success");
+    submissionStatus(wasReopened?
+      "Resubmission saved. Your newly selected commits and checkpoint are ready for teacher grading review.":
+      "Evidence submitted. Adminerva will inspect your selected commits during grading. Submission does not independently prove authorship or guarantee a grade.","success");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
       detail:{assessmentId:active.task.id,studentId:active.profile.id,revisionSha:submissionCheckpointSha,evidenceStatus:"submitted"}
     }));
