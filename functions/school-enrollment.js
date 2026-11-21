@@ -715,6 +715,8 @@ function createSchoolEnrollmentService({db}){
           const row=person.data();
           if(row.schoolId!==ctx.schoolId||row.kind!=="student"||row.status!=="active")
             deny("failed-precondition","The matching person record cannot be used for student enrollment.");
+          if(explicitPersonId&&String(row.displayName||"").trim()!==displayName)
+            deny("failed-precondition","The reviewed directory student's name changed or does not match this enrollment form. Correct the identity in People & Access, then reopen Enrollment.");
           if(row.activationEmailHash&&activationEmailHash&&row.activationEmailHash!==activationEmailHash)
             deny("failed-precondition","The matching student record has a different sign-in identity.");
           const update={
