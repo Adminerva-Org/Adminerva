@@ -324,7 +324,7 @@ async function checkStudioExamSession(taskId=watchedExamId){
     const openedEpoch=Number(projectStudio?.getActiveProject?.()?.assessment?.sessionEpoch||0);
     // A successful response does not automatically mean the exam is OPEN.
     // Keep the editor frozen until the server verifies the same session epoch.
-    if(examMonitorPaused&&state.manualAccessState==="open"&&
+    if(examMonitorPaused&&navigator.onLine!==false&&state.manualAccessState==="open"&&
        state.published===true&&state.lifecycle==="active"&&
        Number(state.sessionEpoch||0)===openedEpoch){
       examMonitorPaused=false;
