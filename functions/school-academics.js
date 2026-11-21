@@ -572,21 +572,66 @@ function createSchoolAcademicsService({db}) {
     schoolRoot.doc("sections/"+sectionId)
    ];
    const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   let result;
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
-    const catalog=await Promise.all(refs.map(ref=>tx.get(ref)));
+    const registrationQuery=db.collection("schools/"+ctx.schoolId+"/student_registrations")
+      .where("sectionId","==",sectionId).limit(201);
+    const [catalog,existingOffering,registrationSnap]=await Promise.all([
+      Promise.all(refs.map(ref=>tx.get(ref))),tx.get(ref),tx.get(registrationQuery)
+    ]);
     if(catalog.some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active"))
       deny("failed-precondition","Offering references must be active catalog records at this school.");
     if(catalog[2].data().yearId!==yearId||catalog[2].data().programId!==programId)
       deny("failed-precondition","The selected academic period belongs to another year or program.");
     if(catalog[4].data().programId!==programId)
       deny("failed-precondition","The selected section belongs to another academic program/division.");
-    if((await tx.get(ref)).exists)deny("already-exists","This school course offering already exists.");
+    if(existingOffering.exists)deny("already-exists","This school course offering already exists.");
+    if(registrationSnap.size===201)
+      deny("resource-exhausted","This section has more than 200 active/historical registrations. Create the class only after roster pagination support is available.");
+
+    const registrations=registrationSnap.docs.filter(doc=>{
+      const row=doc.data();
+      return row.schoolId===ctx.schoolId&&row.status==="active"&&row.sectionId===sectionId&&
+        row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.personId;
+    });
+    const enrollmentRefs=registrations.map(registration=>
+      schoolRoot.doc("enrollments/"+rowKey(registration.data().personId,offeringId)));
+    const existingEnrollments=await Promise.all(enrollmentRefs.map(enrollmentRef=>tx.get(enrollmentRef)));
+    const ended=existingEnrollments.find(record=>record.exists&&record.data().status!=="active");
+    if(ended)
+      deny("failed-precondition","A student in this official section has historical enrollment for the new class key. Review that enrollment history before creating the class.");
+
+    const now=FieldValue.serverTimestamp();let autoEnrolled=0,alreadyActive=0;
     tx.create(ref,{schoolId:ctx.schoolId,programId,yearId,termId,subjectId,sectionId,
-      status:"active",revision:1,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
-    tx.create(auditRef,audit("course_offering_created",{offeringId}));
+      status:"active",revision:1,createdByUid:uid,createdAt:now});
+    registrations.forEach((registration,index)=>{
+      const personId=registration.data().personId,prior=existingEnrollments[index];
+      if(prior.exists){
+        if(prior.data().schoolId!==ctx.schoolId||prior.data().personId!==personId||
+           prior.data().offeringId!==offeringId)
+          deny("failed-precondition","A student enrollment key collision requires review.");
+        alreadyActive++;return;
+      }
+      autoEnrolled++;
+      tx.create(enrollmentRefs[index],{
+        schoolId:ctx.schoolId,personId,offeringId,programId,yearId,termId,sectionId,subjectId,
+        status:"active",revision:1,enrollmentSource:"official_section_placement",
+        registrationId:registration.id,createdByUid:uid,createdAt:now
+      });
+      const registrationData=registration.data();
+      tx.update(registration.ref,{
+        courseCount:(Number(registrationData.courseCount)||0)+1,
+        updatedByUid:uid,updatedAt:now,revision:(Number(registrationData.revision)||1)+1
+      });
+    });
+    tx.create(auditRef,audit("course_offering_created",{
+      offeringId,sectionId,yearId,termId,subjectId,
+      officialRegistrationCount:registrations.length,autoEnrolled,alreadyActive
+    }));
+    result={offeringId,status:"active",officialRegistrationCount:registrations.length,autoEnrolled,alreadyActive};
    });
-   return {offeringId,status:"active"};
+   return result;
   }
   if(input.action==="list_offerings"){
    if(!admin&&!teacher)deny("permission-denied","Teaching access is required.");
