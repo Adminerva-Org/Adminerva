@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
+import {readFileSync} from "node:fs";
 
 const require=createRequire(import.meta.url);
 const {schemeScopesOverlap,schemeSpecificity}=require("../functions/school-class-record.js");
@@ -23,4 +24,15 @@ test("same section or compatible section-program scopes remain overlapping",()=>
   const sectionPrograms=new Map([["section-a","program-a"]]);
   assert.equal(schemeScopesOverlap({sectionId:"section-a"},{sectionId:"section-a"},{sectionPrograms}),true);
   assert.equal(schemeScopesOverlap({programId:"program-a"},{sectionId:"section-a"},{sectionPrograms}),true);
+});
+
+
+test("restoring an archived grading policy revalidates dependencies and overlap",()=>{
+  const source=readFileSync(new URL("../functions/school-class-record.js",import.meta.url),"utf8");
+  assert.match(source,/if\(restoring\)\{/);
+  assert.match(source,/Restore the grading policy's program\/division before restoring this policy/);
+  assert.match(source,/Restore the grading policy's subject before restoring this policy/);
+  assert.match(source,/Restore the grading policy's section before restoring this policy/);
+  assert.match(source,/restore overlap can be validated safely/);
+  assert.match(source,/schemeScopesOverlap\(restoredApplicability/);
 });
