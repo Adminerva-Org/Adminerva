@@ -277,7 +277,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       if(task?.legacyCompatibility&&task.submissionSource==="studio"){
         const help=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
         help.append(make("p","text-sm text-amber-950",
-          "The historical V4 review adapter may not be available on the school backend yet. Original submissions remain unchanged."));
+          "The historical submissions could not be loaded in V4. The original submissions and student work are unchanged. Use the original review below while the problem is resolved."));
         const link=make("a","mt-2 inline-flex rounded-lg border border-amber-500 px-3 py-2 text-sm font-bold text-amber-950",
           "Open original Studio submissions");
         link.href="studio-submissions.html?assessment="+encodeURIComponent(task.legacyAssessmentId);

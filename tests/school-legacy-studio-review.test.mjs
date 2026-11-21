@@ -193,3 +193,68 @@ test("previously submitted code remains listed when a historical section is no l
  assert.equal(result.submissions.length,1);
  assert.equal(result.submissions[0].historicSectionUnlisted,true);
 });
+
+test("email-like historical student IDs appear in V4 and the exact frozen work opens",async()=>{
+ const {service,map,writes}=dbHarness();
+ const historicalId="grade11.2024+ict@school.edu";
+ const historicalSubmission=historicalId+"_"+legacyId;
+ const priorHead=map.get("studio_submissions/"+submittedId);
+ const priorFrozen=map.get("studio_submissions/"+submittedId+"/versions/1");
+ map.delete("studio_submissions/"+submittedId);
+ map.delete("studio_submissions/"+submittedId+"/versions/1");
+ map.delete("students/"+studentId);
+ map.set("studio_submissions/"+historicalSubmission,{...priorHead,studentId:historicalId});
+ map.set("studio_submissions/"+historicalSubmission+"/versions/1",
+   {...priorFrozen,studentId:historicalId});
+ map.set("students/"+historicalId,{name:"Original Student Record"});
+ const inbox=await service(input("legacy_review_inbox"));
+ assert.equal(inbox.submissions.length,1);
+ assert.equal(inbox.submissions[0].legacyStudentId,historicalId);
+ assert.equal(inbox.submissions[0].studentName,"Original Student Record");
+ const inspected=await service({ctx,input:{
+   ...input("legacy_review_inspect").input,legacySubmissionId:historicalSubmission
+ }});
+ assert.equal(inspected.snapshot.contentDigest,data().hash);
+ assert.equal(inspected.snapshot.files[0].content,"class Main { int value=42; }");
+ assert.equal(writes.length,0);
+});
+test("historical path separators are rejected without querying or changing other student records",async()=>{
+ const {service,map,writes}=dbHarness();
+ await assert.rejects(service({ctx,input:{
+   ...input("legacy_review_inspect").input,legacySubmissionId:"../another-student_"+legacyId
+ }}),error=>error.code==="invalid-argument");
+ assert.equal(map.has("studio_submissions/"+submittedId),true);
+ assert.equal(writes.length,0);
+});
+
+test("frozen personalized variant is recovered from the original attempt without changing student work",async()=>{
+ const {service,map,writes}=dbHarness();
+ const variantId="0123456789abcdef0123456789abcdef";
+ const head={...map.get("studio_submissions/"+submittedId),variantId};
+ const version={...map.get("studio_submissions/"+submittedId+"/versions/1"),variantId};
+ map.set("studio_submissions/"+submittedId,head);
+ map.set("studio_submissions/"+submittedId+"/versions/1",version);
+ map.set("studio_assessment_variants/"+studentId+"_"+legacyId+"/attempts/1",{
+   assessmentId:legacyId,studentId,attempt:1,variantId,
+   prompt:"Build a school bell scheduler that demonstrates inheritance.",
+   evaluationNotes:"Observe concrete classes and overridden methods."
+ });
+ const result=await service({ctx,input:{
+   ...input("legacy_review_inspect").input,legacySubmissionId:submittedId
+ }});
+ assert.equal(result.snapshot.personalizedTask.variantId,variantId);
+ assert.match(result.snapshot.personalizedTask.prompt,/school bell scheduler/);
+ assert.equal(result.snapshot.personalizedTask.source,"exact_attempt_assignment");
+ assert.equal(result.snapshot.contentDigest,data().hash);
+ assert.equal(writes.length,0);
+});
+test("mismatched frozen personalized variant fails the integrity check",async()=>{
+ const {service,map,writes}=dbHarness();
+ map.set("studio_submissions/"+submittedId,{
+   ...map.get("studio_submissions/"+submittedId),variantId:"0123456789abcdef0123456789abcdef"
+ });
+ await assert.rejects(service({ctx,input:{
+   ...input("legacy_review_inspect").input,legacySubmissionId:submittedId
+ }}),error=>error.code==="failed-precondition");
+ assert.equal(writes.length,0);
+});

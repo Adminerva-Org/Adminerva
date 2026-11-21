@@ -9,6 +9,10 @@ const {validSnapshot}=require("./school-legacy-studio-review.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message);};
 const canonical=value=>String(value||"").trim().toLocaleLowerCase("en");
 const safeId=value=>typeof value==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
+const legacyStudentId=value=>typeof value==="string"&&value.length>0&&
+  value.length<=160&&Buffer.byteLength(value,"utf8")<=1500&&
+  value!=="."&&value!==".."&&!/[\\/\u0000-\u001f\u007f]/.test(value)&&
+  !/^__.*__$/.test(value);
 async function previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId}){
   if(!safeId(legacyAssessmentId))deny("invalid-argument","Invalid historical assessment ID.");
   const legacyRef=db.doc("assessments/"+legacyAssessmentId),legacy=await legacyRef.get();
@@ -47,7 +51,7 @@ async function previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId}){
   for(const document of snap.docs){
     const head=document.data(),reasons=[];
     if(!originalSections.has(canonical(head.section)))reasons.push("source_section_not_deployed");
-    if(head.assessmentId!==legacyAssessmentId||!safeId(head.studentId)||
+    if(head.assessmentId!==legacyAssessmentId||!legacyStudentId(head.studentId)||
        !safeId(head.ownerUid)||!Number.isInteger(head.revision)||head.revision<1||
        head.revision>30)
       reasons.push("invalid_submission_identity");
