@@ -20,7 +20,7 @@ let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],o
   saving=false,draftDirty=false,loadedApplication=null,loadedPerson=null,registrations=[],registrationChange=null,
   progressionChange=null;
 const requestVersions={catalog:0,applications:0,registrations:0};
-let refreshVersion=0,progressionPreviewRun=0;
+let refreshVersion=0,progressionPreviewRun=0,historyRun=0;
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -87,6 +87,16 @@ function progressionGradeValid(type,sourceLevel,targetLevel){
   if(type!=="promotion"||source===target)return false;
   if(/^\d+$/.test(source)&&/^\d+$/.test(target))return Number(target)===Number(source)+1;
   return true;
+}
+function dateLabel(value){
+  if(!Number.isFinite(Number(value))||Number(value)<=0)return "";
+  try{return new Date(Number(value)).toLocaleString(undefined,{year:"numeric",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
+  catch{return "";}
+}
+function registrationHistoryState(row){
+  if(row.progressionType)return progressionTypeLabel(row.progressionType);
+  if(row.status==="ended"&&row.endReasonType)return endTypeLabel(row.endReasonType);
+  return row.status==="active"?"Active registration":"Ended registration";
 }
 function currentSection(){
   return catalog.sections.find(row=>row.id===selected("sectionId"))||null;
@@ -199,6 +209,8 @@ function renderRegistrations(){
         :(item.status||"active");actions.append(badge);
     const identityLink=document.createElement("a");identityLink.className="en-btn secondary";identityLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
     identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identityLink);
+    const historyButton=document.createElement("button");historyButton.type="button";historyButton.className="en-btn secondary";historyButton.textContent="History";
+    historyButton.addEventListener("click",()=>void openStudentHistory(item));actions.append(historyButton);
     if(item.status==="active"){
       const progress=document.createElement("button");progress.type="button";progress.className="en-btn";progress.textContent="Progress student";
       progress.addEventListener("click",()=>openProgression(item));actions.append(progress);
@@ -220,6 +232,75 @@ async function loadRegistrations(){
     registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));
   renderRegistrations();
 }
+function historyEventLabel(action){
+  return {
+    student_registered_and_enrolled:"Registered and enrolled",
+    student_registration_section_changed:"Section placement changed",
+    student_registration_ended:"Registration ended",
+    student_registration_restored:"Registration restored",
+    student_registration_progressed:"Academic progression recorded"
+  }[action]||String(action||"Registration change").replaceAll("_"," ");
+}
+async function openStudentHistory(item){
+  if(saving)return;
+  const run=++historyRun,dialog=get("en-history-dialog"),host=get("en-history-list"),
+    eventsHost=get("en-history-events"),message=get("en-history-status");
+  host.replaceChildren();eventsHost.replaceChildren();
+  get("en-history-target").textContent=item.displayName+(item.studentNumber?" · "+item.studentNumber:"");
+  message.textContent="Loading canonical registration and placement history…";dialog.showModal();
+  try{
+    const result=await perform("student_history",{personId:item.personId});
+    if(run!==historyRun||!dialog.open)return;
+    message.textContent=result.registrations.length+" registration record"+(result.registrations.length===1?"":"s")+
+      " · "+result.activeRegistrationCount+" active official placement"+(result.activeRegistrationCount===1?"":"s")+".";
+    for(const record of result.registrations){
+      const card=document.createElement("article");card.className="en-row";card.setAttribute("role","listitem");
+      const info=document.createElement("div"),title=document.createElement("strong"),meta=document.createElement("p");
+      title.textContent=registrationLabel(record);meta.className="en-muted";
+      const dates=[
+        record.createdAt?"created "+dateLabel(record.createdAt):"",
+        record.progressedAt?"progressed "+dateLabel(record.progressedAt):"",
+        record.endedAt?"ended "+dateLabel(record.endedAt):"",
+        record.restoredAt?"restored "+dateLabel(record.restoredAt):""
+      ].filter(Boolean);
+      meta.textContent=[levelLabel(record.gradeLevel),registrationHistoryState(record),
+        record.courseCount+" subject"+(record.courseCount===1?"":"s"),...dates].filter(Boolean).join(" · ");
+      info.append(title,meta);
+      if(record.previousRegistrationId||record.progressedToRegistrationId){
+        const chain=document.createElement("p");chain.className="en-muted";
+        chain.textContent=(record.previousRegistrationId?"Continues prior registration":"")+
+          (record.previousRegistrationId&&record.progressedToRegistrationId?" · ":"")+
+          (record.progressedToRegistrationId?"Progressed to a later registration":"");
+        info.append(chain);
+      }
+      card.append(info);host.append(card);
+    }
+    if(!result.registrations.length){
+      const empty=document.createElement("p");empty.className="en-muted";empty.textContent="No registration history found.";host.append(empty);
+    }
+    for(const event of result.events||[]){
+      const card=document.createElement("article");card.className="en-row";
+      const info=document.createElement("div"),title=document.createElement("strong"),meta=document.createElement("p");
+      title.textContent=historyEventLabel(event.action);meta.className="en-muted";
+      meta.textContent=[event.progressionType?progressionTypeLabel(event.progressionType):"",
+        event.endReasonType?endTypeLabel(event.endReasonType):"",dateLabel(event.createdAt)].filter(Boolean).join(" · ");
+      info.append(title,meta);
+      if(event.reason){const reason=document.createElement("p");reason.className="en-muted";reason.textContent=event.reason;info.append(reason);}
+      card.append(info);eventsHost.append(card);
+    }
+    if(!(result.events||[]).length){
+      const empty=document.createElement("p");empty.className="en-muted";empty.textContent="No registrar lifecycle audit events for these registrations.";eventsHost.append(empty);
+    }
+  }catch(error){
+    if(run!==historyRun||!dialog.open)return;
+    message.textContent=error?.message||"Student placement history could not be loaded.";
+  }
+}
+function closeStudentHistory(){
+  ++historyRun;if(get("en-history-dialog").open)get("en-history-dialog").close();
+}
+get("en-history-close").addEventListener("click",closeStudentHistory);
+get("en-history-dialog").addEventListener("cancel",()=>{++historyRun;});
 function automaticOfferings(item,sectionId){
   return catalog.offerings.filter(row=>row.yearId===item.yearId&&row.programId===item.programId&&
     row.termId===item.termId&&row.sectionId===sectionId&&row.rosterMode!=="selective");
@@ -742,11 +823,12 @@ picker=createTenantSchoolPicker({
     ++refreshVersion;
     for(const source of Object.keys(requestVersions))++requestVersions[source];
     loadedApplication=null;loadedPerson=null;registrationChange=null;progressionChange=null;draftDirty=false;registrations=[];
-    ++progressionPreviewRun;
+    ++progressionPreviewRun;++historyRun;
     form.elements.displayName.readOnly=false;
     catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]};
     if(get("en-registration-change-dialog").open)get("en-registration-change-dialog").close();
     if(get("en-progression-dialog").open)get("en-progression-dialog").close();
+    if(get("en-history-dialog").open)get("en-history-dialog").close();
     form.reset();clearLoadedApplication({resetIdentity:true});
     get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
     renderActivation("");workspace.hidden=true;
