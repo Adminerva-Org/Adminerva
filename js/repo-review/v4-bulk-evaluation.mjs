@@ -55,6 +55,12 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
        (!evidence.personalizedTask||!String(evidence.personalizedTask.prompt||"").trim()))
       throw Error("One personalized learner is missing the exact assigned task.");
     const {personalizedTask,...frozenEvidence}=evidence;
+    // This interpretation is a fixed instruction, not student evidence;
+    // it is already present in shared requiredRules/evidenceBoundary.
+    if(frozenEvidence.executionEvidence?.interpretation){
+      const {interpretation,...studentRunEvidence}=frozenEvidence.executionEvidence;
+      frozenEvidence.executionEvidence=studentRunEvidence;
+    }
     return {
       ref,
       personalizedTask:personalizedTask||null,
