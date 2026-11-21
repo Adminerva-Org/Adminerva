@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="School Administrator oversight of official advisory attendance completion and daily status.">
+  <title>Attendance Oversight · Adminerva</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <script defer src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d">
+</head>
+<body id="pageBody" class="hidden min-h-screen bg-slate-50 text-slate-900">
+<div id="adminerva-nav" data-module="admin" data-page="attendance-oversight"></div>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+  <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+      <div>
+        <p class="text-xs uppercase tracking-widest font-extrabold text-amber-300">School Administration · Academic Operations</p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Attendance Oversight</h1>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Monitor school-authoritative advisory attendance by date. Advisers remain responsible for routine marking; this view shows completion, absences, late arrivals and the exact saved daily roster.</p>
+      </div>
+      <div id="attendanceSchoolSwitcher" hidden class="w-full lg:w-auto lg:min-w-[250px]"></div>
+    </div>
+  </header>
+
+  <section class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+    <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+      <label class="text-sm font-bold flex-1 max-w-sm">Attendance date
+        <input id="attendanceDate" type="date" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5">
+      </label>
+      <button id="attendanceRefresh" type="button" class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold">Load date</button>
+    </div>
+    <p id="attendanceStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Loading attendance oversight…</p>
+  </section>
+
+  <section class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Advisory sections</p><strong id="attendanceSectionCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+    <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Submitted</p><strong id="attendanceSubmittedCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+    <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Missing</p><strong id="attendanceMissingCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+    <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Absent + late</p><strong id="attendanceConcernCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+  </section>
+
+  <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div class="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+      <div>
+        <p class="text-xs uppercase tracking-wider font-bold text-amber-700">Daily completion</p>
+        <h2 class="text-xl font-extrabold mt-1">Advisory sections</h2>
+        <p class="text-sm text-slate-600 mt-1">A missing record means no attendance revision has been saved for that advisory section on the selected date.</p>
+      </div>
+      <label class="text-xs font-bold sm:w-72">Find section / adviser
+        <input id="attendanceSearch" type="search" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Section or adviser">
+      </label>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+          <tr><th class="px-4 py-3 text-left">Section</th><th class="px-4 py-3 text-left">Adviser</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-center">P</th><th class="px-4 py-3 text-center">L</th><th class="px-4 py-3 text-center">A</th><th class="px-4 py-3 text-center">E</th><th class="px-4 py-3 text-center">Unmarked</th><th class="px-4 py-3 text-left">Action</th></tr>
+        </thead>
+        <tbody id="attendanceTable"></tbody>
+      </table>
+    </div>
+    <p id="attendanceEmpty" hidden class="p-5 text-sm text-slate-500">No advisory sections match this view.</p>
+  </section>
+</main>
+
+<dialog id="attendanceDetailDialog" class="rounded-2xl p-0 w-[min(760px,calc(100%-1rem))] max-h-[85vh] backdrop:bg-slate-900/40">
+  <div class="bg-white rounded-2xl overflow-hidden">
+    <header class="bg-slate-900 text-white p-4 sm:p-5 flex items-start justify-between gap-3">
+      <div><p class="text-xs uppercase tracking-wider font-bold text-amber-300">Attendance detail</p><h2 id="attendanceDetailTitle" class="text-xl font-extrabold mt-1">Section</h2><p id="attendanceDetailMeta" class="text-xs text-slate-300 mt-1"></p></div>
+      <button id="attendanceDetailClose" type="button" class="rounded-lg border border-slate-600 px-3 py-2 text-sm font-bold">Close</button>
+    </header>
+    <div class="p-4 sm:p-5 overflow-y-auto max-h-[65vh]">
+      <p id="attendanceDetailStatus" class="text-sm text-slate-600 mb-3" role="status"></p>
+      <div id="attendanceDetailRows" class="space-y-2"></div>
+    </div>
+  </div>
+</dialog>
+
+<script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
+<script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
+<script defer src="js/core/adminerva-nav.js?v=20261121-attendance-oversight1"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
+<script type="module" src="js/school-admin/attendance-oversight.mjs?v=20261121-attendance-oversight1"></script>
+</body>
+</html>
