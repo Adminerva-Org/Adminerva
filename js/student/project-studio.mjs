@@ -14,7 +14,7 @@ import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,listV4StudioAssignments,loadV4StudioProject,
   getV4StudioSubmissionStatus,getV4StudioSubmittedRecovery,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
-} from "./v4-studio-service.mjs?v=20261121-exam-data-audit";
+} from "./v4-studio-service.mjs?v=20261121-recovery-guard";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
