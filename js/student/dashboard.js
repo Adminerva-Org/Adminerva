@@ -1,7 +1,7 @@
 import {loadPublishedGrades} from "./published-grades.mjs?v=1.3.0";
 import {ensureStudentAccessProjection} from "./student-access.mjs?v=20261122-github-recovery";
 /** Legacy teacher analytics import compatibility entry. */
-import { db, auth } from "../core/firebase-core.js?v=1.3.0";
+import { app, db, auth } from "../core/firebase-core.js?v=1.3.0";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {
   collection,
@@ -58,7 +58,7 @@ function githubSessionUsername(uid=auth.currentUser?.uid){
   const key=githubSessionKey("Username",uid);return key?String(sessionStorage.getItem(key)||"").trim().replace(/^@/,""):"";
 }
 async function releaseRecoveredGithubProvider(){
-  const call=httpsCallable(getFunctions(undefined,"asia-southeast1"),"prepareRecoveredGithubLink");
+  const call=httpsCallable(getFunctions(app,"asia-southeast1"),"prepareRecoveredGithubLink");
   return call({});
 }
 
