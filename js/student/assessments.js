@@ -127,10 +127,14 @@ async function loadStudentAssignments(user=auth.currentUser){
     const ownEmail=String(user.email||"").toLowerCase().trim();
     let projectedProfiles=[];
     if(targetEmail.toLowerCase()===ownEmail){
-      const projection=await ensureStudentAccessProjection();
-      projectedProfiles=Array.isArray(projection?.profiles)?projection.profiles.filter(profile=>
-        profile&&typeof profile.id==="string"&&typeof profile.section==="string"&&profile.section.trim()
-      ):[];
+      try{
+        const projection=await ensureStudentAccessProjection();
+        projectedProfiles=Array.isArray(projection?.profiles)?projection.profiles.filter(profile=>
+          profile&&typeof profile.id==="string"&&typeof profile.section==="string"&&profile.section.trim()
+        ):[];
+      }catch(error){
+        console.warn("Canonical compatibility projection unavailable; trying legacy email lookup.",error?.code||error?.message||"unknown");
+      }
     }
     if(version!==profileGeneration||auth.currentUser?.uid!==user.uid)return;
     if(projectedProfiles.length){
@@ -167,7 +171,7 @@ async function loadStudentAssignments(user=auth.currentUser){
       await fetchAssessments();
     }else{
       assignmentsNotice("Your school account has no compatibility class mapping yet. Ask your teacher to check the canonical student record and legacy assessment mapping, then retry.","info",true);
-      assignmentsFeedState("No compatibility class linked","Your verified school enrollment is intact, but older programming assignments still need a linked legacy student record.");
+      assignmentsFeedState("No student class linked","Your verified school enrollment may be intact, but older programming assignments still need a linked legacy student record.");
     }
   } catch (error) {
     if(version===profileGeneration&&auth.currentUser?.uid===user.uid){assignmentsNotice("Your class could not load. Check your connection and retry.","error",true);assignmentsFeedState("Unable to load your class","Retry loading assignments when your connection is ready.");}
