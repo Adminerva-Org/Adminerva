@@ -353,7 +353,7 @@ function render(){
     if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
       controls.append(actionButton("Share",()=>void share(item)));
-      if(personalized(item))controls.append(actionButton(item.legacyImport?.assessmentId?"Saved variants":"Personalization",()=>void loadPersonalization(item)));
+      if(personalized(item))controls.append(actionButton(item.legacyImport?.assessmentId?"New school pool":"Personalization",()=>void loadPersonalization(item)));
       controls.append(actionButton(item.legacyImport?.assessmentId?"Deploy new":"Deploy",()=>void prepareDeployment(item),true));
       controls.append(actionButton("Archive",()=>{
         if(!confirm("Archive this draft? Existing independent copies will remain available."))return;
