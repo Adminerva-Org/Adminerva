@@ -727,7 +727,19 @@ export function createProjectStudio({
     let project=findCodeProject(projectStorage,uid,projectId)||
       readCodeProjects(projectStorage,uid).find(item=>item.assessment?.assessmentId===assessmentId);
 
-    if(cloudEnabled){
+    // Personalized task metadata can arrive while the student is editing.
+    // Do not replace the active Monaco workspace with an older local/cloud
+    // snapshot: first capture the in-memory editor and keep that editor open.
+    const sameOpenAssessment=Boolean(activeProject&&project&&
+      activeProject.id===project.id&&activeProject.assessment?.assessmentId===assessmentId);
+    if(sameOpenAssessment){
+      const live=captureState();
+      if(!live?.files||!Object.keys(live.files).length)
+        throw Error("Cannot refresh assessment details until the open editor is ready.");
+      project=store({...activeProject,state:live},true);
+    }
+
+    if(cloudEnabled&&!sameOpenAssessment){
       const lookupId=project?.id||projectId;
       try{
         project=await resolveCloudProject(lookupId,{local:project});
@@ -798,6 +810,13 @@ export function createProjectStudio({
         JSON.stringify(project.assessment||{})!==JSON.stringify(ownership)||
         project.template!==next.template||project.lang!==next.lang||
         JSON.stringify(project.config||{})!==JSON.stringify(next.config||{});
+      if(sameOpenAssessment){
+        // Updating the variant or session binding is not a request to
+        // reopen/reset source code. Keep the existing editor models intact.
+        if(changed)project=store(next,true);
+        syncAssessmentCapabilities();updateProjectHeading();
+        return {project:activeProject,created:false,projectId:activeProject.id};
+      }
       if(changed){project=saveCodeProject(projectStorage,uid,next);if(cloudEnabled)writeMarker(project.id,{...readMarker(project.id),pending:true});}
       activateProject(project);
       return {project:activeProject,created:false,projectId:activeProject.id};
