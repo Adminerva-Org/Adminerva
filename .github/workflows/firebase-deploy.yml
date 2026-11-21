@@ -44,5 +44,18 @@ jobs:
           fi
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+      # Firebase CLI requires --force the first time a retry-enabled event trigger
+      # is created. Scope that approval to this single idempotent outbox worker;
+      # do NOT add --force to the sitewide Functions/Firestore deployment.
+      - name: Initialize retryable exam session event trigger if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          installed="$(npx -y firebase-tools@14 functions:list --project reporeview-e7ca4)"
+          if [[ "$installed" != *"schoolStudioExamSessionFanout"* ]]; then
+            npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only functions:schoolStudioExamSessionFanout --non-interactive --force
+          else
+            echo "Retryable exam fanout already installed; normal deployment can proceed."
+          fi
       - name: Deploy Functions and Firestore indexes
         run: npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only firestore:rules,firestore:indexes,functions --non-interactive
