@@ -28,11 +28,13 @@ export function createTenantSchoolPicker({host,status,onBeforeChange=async()=>{}
         state.state==="choose_school"?"Choose a school to continue.":"School access confirmed.";
       if(state.context){
         remember(state.context.uid,state.context.schoolId);
+        document.documentElement.dataset.adminervaSchoolRoles=(state.context.roles||[]).join(",");
         document.dispatchEvent(new CustomEvent("adminerva:school-ready",{detail:{
           schoolId:state.context.schoolId,roles:state.context.roles,
           compatibilityMode:state.context.compatibilityMode,enrollmentMode:state.context.enrollmentMode,generation:state.generation
         }}));
       }
+      if(!state.context)delete document.documentElement.dataset.adminervaSchoolRoles;
       renderSchoolSwitcher(host,{
         options:state.options||[],schoolId:state.context?.schoolId||null,
         onSelect:async schoolId=>{
