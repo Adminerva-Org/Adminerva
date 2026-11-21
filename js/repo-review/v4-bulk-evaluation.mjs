@@ -26,13 +26,14 @@ export function assertBulkEvidence(source,evidence,{personalized=false}={}){
   if(!BULK_SOURCE_TYPES.includes(source))throw Error("No V4 evidence adapter exists for "+source+".");
   if(!evidence||!Number.isInteger(evidence.version)||evidence.version<1)
     throw Error("A learner has no complete frozen submission version.");
+  if(personalized&&(!evidence.personalizedTask||
+     !String(evidence.personalizedTask.prompt||"").trim()))
+    throw Error("One personalized learner is missing the exact assigned task.");
   if(source==="studio"){
     if(evidence.type!=="adminerva_studio_snapshot"||!evidence.contentDigest||
        !Array.isArray(evidence.files)||!evidence.files.length)
       throw Error("A student has no complete frozen Studio source to evaluate.");
-    if(personalized&&(!evidence.personalizedTask||
-       !String(evidence.personalizedTask.prompt||"").trim()))
-      throw Error("One personalized learner is missing the exact assigned task.");
+
   }else if(source==="github"){
     if(evidence.type!=="github_frozen_commit_evidence"||
        !/^[a-f0-9]{40}$/i.test(String(evidence.checkpointSha||""))||
