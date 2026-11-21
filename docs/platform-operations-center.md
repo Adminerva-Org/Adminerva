@@ -1,3 +1,5 @@
+> **Planning authority:** This document is retained as a technical specification, implementation note, migration reference, or historical plan. The canonical Adminerva product roadmap, development status and future priorities are maintained only in [Adminerva School OS — Master Development Plan](https://github.com/Adminerva-Org/Adminerva/blob/main/docs/adminerva-school-os-master-plan.md). Do not use this file as a competing roadmap or progress tracker.
+
 # System Admin Operations Center — implementation
 
 **Status:** Implemented on `feature/platform-operations-center-20261117` / draft PR #194. **Not deployed to production.** The existing school administrator, People & Access, V4 pilot, academic records, and migration flows are deliberately untouched.
