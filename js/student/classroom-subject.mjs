@@ -18,7 +18,7 @@ const requestedSubjectId=params.get("subjectId")||"";
 const requestedSubjectName=params.get("subject")||"";
 const forceLegacy=params.get("legacy")==="1";
 let picker=null,profile=null,current=null,busy=false,epoch=0,legacyMode=false,streamData=null,streamLimit=20;
-let classroomParticipation={canPost:false,canComment:false,muted:false,mode:"teacher_only"};
+let classroomParticipation={canPost:false,canComment:false,muted:false,mode:"teacher_only"},officialMeetings=[];
 
 function make(tag,cls,text){
   const node=document.createElement(tag);if(cls)node.className=cls;
@@ -73,6 +73,21 @@ function updateLinks(){
   const studio=el("subjectQuickStudio");
   studio.href=current?.offeringId&&!legacyMode?"student-playground.html?offeringId="+encodeURIComponent(current.offeringId):"student-playground.html";
 }
+const scheduleDayNames={mon:"Mon",tue:"Tue",wed:"Wed",thu:"Thu",fri:"Fri",sat:"Sat"};
+function renderOfficialSchedule(){
+  const host=el("subjectClassroomSchedule");host.replaceChildren();
+  if(legacyMode||!current)return;
+  if(!officialMeetings.length){
+    host.append(make("span","rounded-full border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-300","Official schedule not set"));
+    return;
+  }
+  const sorted=[...officialMeetings].sort((a,b)=>Object.keys(scheduleDayNames).indexOf(a.day)-Object.keys(scheduleDayNames).indexOf(b.day)||
+    String(a.startTime).localeCompare(String(b.startTime)));
+  for(const meeting of sorted){
+    host.append(make("span","rounded-full border border-violet-400/40 bg-violet-400/10 px-3 py-1.5 text-xs font-bold text-violet-100",
+      [scheduleDayNames[meeting.day]||meeting.day,meeting.startTime+"–"+meeting.endTime,meeting.room||""].filter(Boolean).join(" · ")));
+  }
+}
 function renderHeader(){
   el("subjectClassroomTitle").textContent=current?.subject||requestedSubjectName||"Subject";
   el("subjectClassroomMeta").textContent=current?(courseLabel(current)||"Active school classroom"):"No accessible class selected";
@@ -85,7 +100,7 @@ function renderHeader(){
   for(const item of same)select.add(new Option(courseLabel(item)||item.subject,item.offeringId));
   wrap.classList.toggle("hidden",same.length<2);
   if(current?.offeringId)select.value=current.offeringId;
-  updateLinks();
+  updateLinks();renderOfficialSchedule();
 }
 function stateFor(task,submission,grade){
   if(grade)return {label:"Graded",tone:"emerald",action:false};
@@ -316,7 +331,7 @@ async function refreshLegacy(){
 async function refresh(){
   if(!picker?.scope.current||busy)return;
   const turn=++epoch;busy=true;legacyMode=false;el("subjectRefresh").disabled=true;setStatus("Loading your classroom stream…");
-  current=null;profile=null;classroomParticipation={canPost:false,canComment:false,muted:false,mode:"teacher_only"};renderParticipation();renderHeader();renderSummary([],new Map(),new Map(),[]);renderUpcoming([],new Map(),new Map());renderStream([],[],new Map(),new Map());
+  current=null;profile=null;officialMeetings=[];classroomParticipation={canPost:false,canComment:false,muted:false,mode:"teacher_only"};renderParticipation();renderHeader();renderSummary([],new Map(),new Map(),[]);renderUpcoming([],new Map(),new Map());renderStream([],[],new Map(),new Map());
   try{
     profile=await scoped(profileApi,"my_profile");if(turn!==epoch)return;
     current=resolveClass(profile.classes||[]);
@@ -332,13 +347,14 @@ async function refresh(){
     const grades=new Map((gradeResult.grades||[]).filter(grade=>tasks.some(task=>task.taskId===grade.taskId)).map(grade=>[grade.taskId,grade]));
     const statuses=await loadStatuses(tasks,grades);if(turn!==epoch)return;
     const posts=streamResult.posts||[];
+    officialMeetings=streamResult.schedule?.meetings||[];
     classroomParticipation={
       canPost:streamResult.canPost===true,
       canComment:streamResult.canComment===true,
       muted:streamResult.viewer?.muted===true,
       mode:streamResult.settings?.participationMode||"teacher_only"
     };
-    renderParticipation();
+    renderParticipation();renderOfficialSchedule();
     const teacherNames=(streamResult.teachers||[]).map(item=>item.name).filter(Boolean);
     el("subjectClassroomMeta").textContent=[courseLabel(current),teacherNames.length?"Teacher: "+teacherNames.join(", "):""].filter(Boolean).join(" · ")||"Active school classroom";
     const availability={assignments:!assignmentResult.error,grades:!gradeResult.error,posts:!streamResult.error};
