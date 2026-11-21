@@ -500,7 +500,28 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     const grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
     const sheetRef=db.doc(prefix+"class_records/"+offeringId);
 
-    async function verifyOffering(){
+    function resolveClassLead(offering,activeTeacherUids){
+      const ids=[...new Set((activeTeacherUids||[]).filter(Boolean))],
+        configured=typeof offering?.primaryTeacherUid==="string"?offering.primaryTeacherUid:"";
+      if(configured&&ids.includes(configured))
+        return {primaryTeacherUid:configured,source:"explicit",needsReview:false};
+      if(ids.length===1)
+        return {primaryTeacherUid:ids[0],source:configured?"inferred_stale":"inferred",needsReview:Boolean(configured)};
+      return {primaryTeacherUid:"",source:configured?"stale":ids.length?"missing":"none",
+        needsReview:ids.length>0||Boolean(configured)};
+    }
+    async function classLeadState(offering,{tx=null}={}){
+      const query=db.collection(prefix+"staff_assignments").where("offeringId","==",offeringId).limit(21),
+        snap=tx?await tx.get(query):await query.get();
+      if(snap.size===21)
+        deny("resource-exhausted","This offering has more than 20 teacher assignments. Paginated collaborator review is required.");
+      const active=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+        doc.data().offeringId===offeringId&&doc.data().status==="active"),
+        activeTeacherUids=active.map(doc=>doc.data().teacherUid),
+        lead=resolveClassLead(offering,activeTeacherUids);
+      return {...lead,active};
+    }
+    async function verifyOffering({requirePrimary=false}={}){
       const [offering,grant]=await Promise.all([offeringRef.get(),grantRef.get()]);
       if(!offering.exists||offering.data().schoolId!==ctx.schoolId)
         deny("not-found","This course offering is unavailable.");
@@ -508,22 +529,38 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
          grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==offeringId||
          grant.data().status!=="active"))
         deny("permission-denied","Only an actively assigned teacher can use this class record.");
+      if(requirePrimary&&!ctx.platformOverride){
+        const lead=await classLeadState(offering.data());
+        if(!lead.primaryTeacherUid)
+          deny("failed-precondition","This class needs an explicit Primary Teacher before the formal Class Record can be changed.");
+        if(lead.primaryTeacherUid!==ctx.uid)
+          deny("permission-denied","Only the Primary Teacher may change or finalize the formal Class Record. Co-teachers retain read access.");
+      }
       return offering.data();
     }
-    async function activeOfferingTeachers(){
-      const snap=await db.collection(prefix+"staff_assignments")
-        .where("offeringId","==",offeringId).limit(21).get();
-      if(snap.size===21)
-        deny("resource-exhausted","This offering has more than 20 teacher assignments. Paginated collaborator review is required.");
-      const active=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
-        doc.data().offeringId===offeringId&&doc.data().status==="active");
-      const memberships=await Promise.all(active.map(doc=>
+    async function requirePrimaryInTransaction(tx,offering){
+      if(ctx.platformOverride)return;
+      const lead=await classLeadState(offering,{tx});
+      if(!lead.primaryTeacherUid)
+        deny("failed-precondition","This class needs an explicit Primary Teacher before the formal Class Record can be changed.");
+      if(lead.primaryTeacherUid!==ctx.uid)
+        deny("permission-denied","Primary Teacher ownership changed. Reload Class Record before saving.");
+    }
+    async function activeOfferingTeachers(offering){
+      const lead=await classLeadState(offering);
+      const memberships=await Promise.all(lead.active.map(doc=>
         db.doc(prefix+"memberships/"+doc.data().teacherUid).get()));
-      return active.map((doc,index)=>({
-        name:memberships[index].exists&&memberships[index].data().schoolId===ctx.schoolId?
-          String(memberships[index].data().displayName||"Teacher"):"Teacher",
-        current:doc.data().teacherUid===ctx.uid
-      })).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+      return {
+        lead:{primaryTeacherUid:lead.primaryTeacherUid,source:lead.source,needsReview:lead.needsReview},
+        teachers:lead.active.map((doc,index)=>({
+          teacherUid:doc.data().teacherUid,
+          name:memberships[index].exists&&memberships[index].data().schoolId===ctx.schoolId?
+            String(memberships[index].data().displayName||"Teacher"):"Teacher",
+          role:doc.data().teacherUid===lead.primaryTeacherUid?"primary":"co_teacher",
+          current:doc.data().teacherUid===ctx.uid
+        })).sort((a,b)=>a.role===b.role?
+          a.name.localeCompare(b.name,undefined,{sensitivity:"base"}):a.role==="primary"?-1:1)
+      };
     }
     async function offeringLabels(offering){
       const [program,year,term,section,subject]=await Promise.all([
@@ -691,7 +728,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         db,prefix,schoolId:ctx.schoolId,offering,periodType:labels.periodType
       });
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
-      const [roster,assessments,sheet,gradeSnap,manualSnap,cellStateSnap,finalizationDoc,collaborators]=await Promise.all([
+      const [roster,assessments,sheet,gradeSnap,manualSnap,cellStateSnap,finalizationDoc,collaboratorState]=await Promise.all([
         classRoster(),
         availableAssessments(offering,labels),
         sheetRef.get(),
@@ -699,7 +736,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         db.collection(prefix+"class_record_scores").where("offeringId","==",offeringId).limit(MAX_SCORE_CELLS+1).get(),
         db.collection(prefix+"class_record_cell_states").where("offeringId","==",offeringId).limit(MAX_SCORE_CELLS+1).get(),
         finalizationRef.get(),
-        activeOfferingTeachers()
+        activeOfferingTeachers(offering)
       ]);
       if(gradeSnap.size>MAX_SCORE_CELLS)
         deny("resource-exhausted","Published school grade cells exceed the bounded Class Record capacity.");
@@ -777,7 +814,15 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       }:null;
       return {
         offering,labels,roster,assessments,columns,settings,gradingPolicy:gradingPolicy.policy,
-        manualScores,publishedGrades,cellStates,collaborators,
+        manualScores,publishedGrades,cellStates,collaborators:collaboratorState.teachers,
+        permissions:{
+          primaryTeacherUid:collaboratorState.lead.primaryTeacherUid,
+          primarySource:collaboratorState.lead.source,
+          primaryNeedsReview:collaboratorState.lead.needsReview,
+          classRole:ctx.platformOverride?"system_admin_assist":
+            collaboratorState.lead.primaryTeacherUid===ctx.uid?"primary":"co_teacher",
+          canEditClassRecord:ctx.platformOverride||collaboratorState.lead.primaryTeacherUid===ctx.uid
+        },
         sheetRevision:sheet.exists&&sheet.data().schoolId===ctx.schoolId?Number(sheet.data().revision)||0:0,
         finalization,snapshot
       };
@@ -847,7 +892,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         assessments:data.assessments,columns:data.columns,settings:data.settings,
         gradingPolicy:data.gradingPolicy,
         manualScores:data.manualScores,publishedGrades:data.publishedGrades,cellStates:data.cellStates,
-        collaborators:data.collaborators,
+        collaborators:data.collaborators,permissions:data.permissions,
         sheetRevision:data.sheetRevision,finalization:data.finalization,
         periodReadiness:{
           ready:data.snapshot.ready,blockerCount:data.snapshot.blockerCount,
