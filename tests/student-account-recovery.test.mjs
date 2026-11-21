@@ -229,3 +229,33 @@ test("recovered identity fails closed instead of binding current replacement ema
   assert.equal(result.source,"canonical_history_unmapped");
   assert.deepEqual(result.records,[]);
 });
+
+
+test("recovered canonical student resolves legacy row through previous server access projection",async()=>{
+  const db=legacyIdentityDb({
+    "schools/mcs-manila/memberships/new-uid":{
+      schoolId:"mcs-manila",status:"active",roles:["student"],personId:"person-davis"
+    },
+    "schools/mcs-manila/people/person-davis":{
+      schoolId:"mcs-manila",kind:"student",status:"active",authUid:"new-uid",
+      previousAuthUids:["old-uid"]
+    },
+    "student_access/old-uid":{
+      ownerUid:"old-uid",studentIds:["legacy-davis"],sections:["St. Carlo Acutis"]
+    },
+    "students/legacy-davis":{
+      email:"old-davis@example.edu",status:"active",section:"St. Carlo Acutis",name:"Davis Izon"
+    }
+  });
+  let authLookupCalled=false;
+  const result=await legacyStudentRecordsForAccount({
+    db,uid:"new-uid",email:"replacement@example.edu",
+    resolveUser:async()=>{
+      authLookupCalled=true;
+      throw Object.assign(new Error("old account unavailable"),{code:"auth/user-not-found"});
+    }
+  });
+  assert.equal(result.source,"canonical_previous_access");
+  assert.deepEqual(result.records.map(row=>row.id),["legacy-davis"]);
+  assert.equal(authLookupCalled,false);
+});
