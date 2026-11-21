@@ -7,7 +7,7 @@
   <title>Academic Configuration · Adminerva</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=47eba756913e">
   <script defer src="https://cdn.tailwindcss.com"></script>
   <style>
     .ac-shell{max-width:920px;margin:auto;padding:1rem}
@@ -73,7 +73,6 @@
       .ac-wizard-nav .ac-next{grid-column:2;grid-row:2}
     }
   </style>
-  <link rel="stylesheet" href="css/school-admin-workflow.css?v=20261121-admin-flow1">
 </head>
 <body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
 <div id="adminerva-nav" data-module="admin" data-page="academic-config"></div>
@@ -253,10 +252,10 @@
     <article id="ac-offering-intro-card" class="ac-panel" hidden>
       <div class="ac-card-head">
         <span class="ac-number">6</span>
-        <div><h2 class="font-extrabold text-lg">Finish by creating Classes</h2><p class="ac-muted mt-1">A class offering connects one subject to one section for a specific year and academic period. Teacher staffing is managed after this structural setup.</p></div>
+        <div><h2 class="font-extrabold text-lg">Finish with Course Offerings</h2><p class="ac-muted mt-1">A course offering connects one subject to one section for a specific year and academic period.</p></div>
       </div>
-      <button type="button" class="ac-btn primary mt-3" data-open-offerings>Open Class Offerings</button>
-      <p class="ac-muted mt-3">After creating class offerings, assign teachers and review teaching load in <a class="font-bold text-blue-700" href="school-classes.html">Classes &amp; Scheduling</a>. Student registration and official placement stay in <a class="font-bold text-blue-700" href="school-enrollment.html">Enrollment &amp; Registration</a>; school-wide grade rules stay in <a class="font-bold text-blue-700" href="school-grading-schemes.html">Grading Policies</a>.</p>
+      <button type="button" class="ac-btn primary mt-3" data-open-offerings>Open Course Offerings</button>
+      <p class="ac-muted mt-3">Teacher assignments remain in <a class="font-bold text-blue-700" href="people-access.html#classes">People &amp; Access</a>; student registration and section enrollment are handled in <a class="font-bold text-blue-700" href="school-enrollment.html">Enrollment &amp; Registration</a>. School-wide grade rules stay in <a class="font-bold text-blue-700" href="school-grading-schemes.html">Grading Policies</a>.</p>
     </article>
   </section>
 
@@ -265,7 +264,7 @@
       <form id="ac-offering-form" class="grid gap-3">
         <div class="ac-card-head">
           <span class="ac-number">6</span>
-          <div><h2 class="font-extrabold text-lg">Create Class Offering</h2><p class="ac-muted mt-1">Only compatible periods and sections appear after you choose a program and school year.</p></div>
+          <div><h2 class="font-extrabold text-lg">Create Course Offering</h2><p class="ac-muted mt-1">Only compatible periods and sections appear after you choose a program and school year.</p></div>
         </div>
         <div class="ac-form-grid">
           <label class="text-sm font-bold">Program / division<select name="programId" class="ac-input mt-1" required></select></label>
@@ -274,18 +273,11 @@
         <label class="text-sm font-bold">Academic period<select name="termId" class="ac-input mt-1" required></select></label>
         <label class="text-sm font-bold">Section<select name="sectionId" class="ac-input mt-1" required></select></label>
         <label class="text-sm font-bold">Subject<select name="subjectId" class="ac-input mt-1" required></select></label>
-        <label class="text-sm font-bold">Roster source
-          <select name="rosterMode" class="ac-input mt-1" required>
-            <option value="section">Official section placement · automatic roster</option>
-            <option value="selective">Selective / elective · manual roster</option>
-          </select>
-          <span class="ac-helper">Use the official section roster for normal subjects. Selective mode is for electives, irregular learners, or classes that intentionally include only part of the section.</span>
-        </label>
-        <div id="ac-offering-preview" class="ac-summary ac-muted">Choose the required fields to preview this class offering.</div>
-        <button class="ac-btn success" type="submit">Create class offering</button>
+        <div id="ac-offering-preview" class="ac-summary ac-muted">Choose the required fields to preview this course offering.</div>
+        <button class="ac-btn success" type="submit">Create course offering</button>
       </form>
       <div>
-        <div class="flex items-center justify-between gap-3"><h2 class="font-extrabold text-lg">Active Class Offerings</h2><span id="ac-offering-count" class="ac-muted"></span></div>
+        <div class="flex items-center justify-between gap-3"><h2 class="font-extrabold text-lg">Active Course Offerings</h2><span id="ac-offering-count" class="ac-muted"></span></div>
         <div id="ac-offering-list" class="ac-list"></div>
       </div>
     </div>
@@ -299,11 +291,10 @@
 </main>
 <div id="ac-action-message" class="ac-action-message" role="status" aria-live="assertive" hidden></div>
 
-<script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
-<script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
-<script defer src="js/core/adminerva-nav.js?v=20261120-admin-foundation"></script>
-<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
-<script type="module" src="js/school-admin/academic-configuration.mjs?v=20261121-roster-source1"></script>
-<script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
+<script defer src="js/core/release-footer.js?v=47eba756913e"></script>
+<script src="js/core/adminerva-loader.js?v=47eba756913e"></script>
+<script defer src="js/core/adminerva-nav.js?v=47eba756913e"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=47eba756913e"></script>
+<script type="module" src="js/school-admin/academic-configuration.mjs?v=09073098dd88"></script>
 </body>
 </html>
