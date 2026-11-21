@@ -30,6 +30,12 @@ function harness(){
   for(const field of changeForm.elements)changeForm.elements[field.name]=field;
   changeForm.reset=()=>{for(const field of changeForm.elements)field.value="";};
   changeForm.reportValidity=()=>true;
+  const progressionForm=get("en-progression-form"),
+    progressionFields=["progressionType","targetYearId","targetProgramId","targetTermId","targetSectionId","reason"];
+  progressionForm.elements=progressionFields.map(name=>{const node=new Element();node.name=name;return node;});
+  for(const field of progressionForm.elements)progressionForm.elements[field.name]=field;
+  progressionForm.reset=()=>{for(const field of progressionForm.elements)field.value="";};
+  progressionForm.reportValidity=()=>true;
   const actionButton=new Element(),requests=[];
   let allowDiscard=true,pickerOptions;
   const scope={lease:()=>({schoolId:"manila-cathedral-school",uid:"admin"}),assertLease(){}};
@@ -251,4 +257,23 @@ test("application review sends the exact application revision",()=>{
   assert.equal(h.requests[0].payload.action,"review_application");
   assert.equal(h.requests[0].payload.applicationId,"app-review-1");
   assert.equal(h.requests[0].payload.expectedRevision,6);
+});
+
+
+test("graduation readiness preview is revision-safe and does not invent a target placement",()=>{
+  const h=harness(),item={
+    registrationId:"reg-grad-1",personId:"person-12",displayName:"Graduating Student",
+    yearId:"old-year",programId:"old-program",termId:"old-period",sectionId:"old-section",
+    gradeLevel:"12",revision:9,status:"active",courseCount:8
+  };
+  h.context.openProgression(item);
+  const pform=h.get("en-progression-form");
+  pform.elements.progressionType.value="graduation";
+  pform.elements.progressionType.dispatch("change");
+  assert.equal(h.requests.length,1);
+  assert.equal(h.requests[0].payload.action,"preview_progression");
+  assert.equal(h.requests[0].payload.registrationId,"reg-grad-1");
+  assert.equal(h.requests[0].payload.expectedRevision,9);
+  assert.equal(h.requests[0].payload.progressionType,"graduation");
+  assert.equal("targetSectionId" in h.requests[0].payload,false);
 });
