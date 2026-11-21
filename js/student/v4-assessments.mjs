@@ -298,6 +298,12 @@ if(panel&&list&&status&&schoolHost){
   const generalStatus=document.getElementById("v4GeneralSubmissionStatus");
   let generalTask=null,generalTaskStatus=null,generalBusy=false;
 
+  const deviceDraftStorage=(()=>{
+    try{return window.localStorage;}
+    catch{
+      return {getItem:()=>null,setItem:()=>{throw Error("Device storage blocked");},removeItem:()=>{}};
+    }
+  })();
   let generalDraft=null;
   const responseInput=document.getElementById("v4TextResponse");
   const linkInput=document.getElementById("v4LinkResponseUrl");
@@ -338,7 +344,7 @@ if(panel&&list&&status&&schoolHost){
   async function syncGeneralCloudDraft(session){
     if(session.submitted||session.conflict||!session.remoteVerified)return false;
     if(session.inFlight)return session.inFlight;
-    const local=readDeviceAssessmentDraft(localStorage,session.context)||session.memoryDraft;
+    const local=readDeviceAssessmentDraft(deviceDraftStorage,session.context)||session.memoryDraft;
     if(!local?.pending)return true;
     if(navigator.onLine===false){
       showDraftStatus(session,"Saved on this device · waiting for a connection to school cloud.");
@@ -351,16 +357,16 @@ if(panel&&list&&status&&schoolHost){
           taskId:session.context.taskId,...submittedSnapshot.payload,
           expectedRevision:session.revision,submissionVersion:session.submissionVersion
         });
-        if(session.submitted){clearDeviceAssessmentDraft(localStorage,session.context);return true;}
+        if(session.submitted){clearDeviceAssessmentDraft(deviceDraftStorage,session.context);return true;}
         session.revision=receipt.revision;
-        const current=readDeviceAssessmentDraft(localStorage,session.context)||session.memoryDraft;
+        const current=readDeviceAssessmentDraft(deviceDraftStorage,session.context)||session.memoryDraft;
         if(current){
           const unchanged=sameDraftPayload(session.context.source,current.payload,submittedSnapshot.payload);
           const updated={
             payload:current.payload,pending:!unchanged,revision:session.revision,
             submissionVersion:session.submissionVersion
           };
-          const stored=writeDeviceAssessmentDraft(localStorage,session.context,updated);
+          const stored=writeDeviceAssessmentDraft(deviceDraftStorage,session.context,updated);
           session.memoryDraft=stored?null:{...updated};
           if(!unchanged)scheduleGeneralCloudDraft(session,100);
           else showDraftStatus(session,"Draft saved to school cloud · revision "+session.revision+
@@ -387,7 +393,7 @@ if(panel&&list&&status&&schoolHost){
       payload:currentGeneralPayload(session.context.source),pending:true,
       revision:session.revision,submissionVersion:session.submissionVersion
     };
-    const saved=writeDeviceAssessmentDraft(localStorage,session.context,draft);
+    const saved=writeDeviceAssessmentDraft(deviceDraftStorage,session.context,draft);
     session.memoryDraft=saved?null:draft;
     showDraftStatus(session,saved?
       "Draft saved on this device · syncing to school cloud (not submitted).":
@@ -409,7 +415,7 @@ if(panel&&list&&status&&schoolHost){
     recoveryChoices.replaceChildren();
   }
   function offerArchivedDraftRecovery(session){
-    const old=readRecoveryAssessmentDraft(localStorage,session.context);
+    const old=readRecoveryAssessmentDraft(deviceDraftStorage,session.context);
     if(!old||!generalDialog.open||generalDraft!==session)return;
     const button=node("button","rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-800",
       "Restore an older device draft");
@@ -420,7 +426,7 @@ if(panel&&list&&status&&schoolHost){
         payload:currentGeneralPayload(session.context.source),
         pending:false,revision:session.revision,
         submissionVersion:session.submissionVersion};
-      if(!preserveRecoveryAssessmentDraft(localStorage,session.context,current)){
+      if(!preserveRecoveryAssessmentDraft(deviceDraftStorage,session.context,current)){
         showDraftStatus(session,"Device recovery storage is full. Keep a separate copy before changing drafts.");
         return;
       }
@@ -439,7 +445,7 @@ if(panel&&list&&status&&schoolHost){
       "Continue school draft");
     for(const button of [localButton,cloudButton])button.type="button";
     localButton.addEventListener("click",()=>{
-      if(!preserveRecoveryAssessmentDraft(localStorage,session.context,{
+      if(!preserveRecoveryAssessmentDraft(deviceDraftStorage,session.context,{
         schemaVersion:1,...session.context,payload:cloudPayload,pending:false,
         revision:session.revision,submissionVersion:session.submissionVersion
       })){
@@ -449,7 +455,7 @@ if(panel&&list&&status&&schoolHost){
       session.conflict=false;
       applyGeneralPayload(session.context.source,deviceDraft.payload);
       setDraftInputsEnabled(true);
-      writeDeviceAssessmentDraft(localStorage,session.context,{
+      writeDeviceAssessmentDraft(deviceDraftStorage,session.context,{
         payload:deviceDraft.payload,pending:true,
         revision:session.revision,submissionVersion:session.submissionVersion
       });
@@ -458,14 +464,14 @@ if(panel&&list&&status&&schoolHost){
       scheduleGeneralCloudDraft(session,100);
     });
     cloudButton.addEventListener("click",()=>{
-      if(!preserveRecoveryAssessmentDraft(localStorage,session.context,deviceDraft)){
+      if(!preserveRecoveryAssessmentDraft(deviceDraftStorage,session.context,deviceDraft)){
         showDraftStatus(session,"The device cannot hold a recovery backup. Free space or copy both drafts before choosing.");
         return;
       }
       session.conflict=false;
       applyGeneralPayload(session.context.source,cloudPayload);
       setDraftInputsEnabled(true);
-      writeDeviceAssessmentDraft(localStorage,session.context,{
+      writeDeviceAssessmentDraft(deviceDraftStorage,session.context,{
         payload:cloudPayload,pending:false,revision:session.revision,
         submissionVersion:session.submissionVersion
       });
@@ -475,7 +481,7 @@ if(panel&&list&&status&&schoolHost){
     recoveryChoices.replaceChildren(localButton,cloudButton);
   }
   async function restoreGeneralCloudDraft(session,submittedResponse){
-    const local=readDeviceAssessmentDraft(localStorage,session.context)||session.memoryDraft;
+    const local=readDeviceAssessmentDraft(deviceDraftStorage,session.context)||session.memoryDraft;
     let cloud;
     try{
       cloud=await scoped(picker.scope,generalSubmissionsApi,"get_draft",{taskId:session.context.taskId});
@@ -513,7 +519,7 @@ if(panel&&list&&status&&schoolHost){
       if(!cloud?.payload&&local.submissionVersion===session.submissionVersion){
         applyGeneralPayload(session.context.source,local.payload);
         setDraftInputsEnabled(true);
-        writeDeviceAssessmentDraft(localStorage,session.context,{
+        writeDeviceAssessmentDraft(deviceDraftStorage,session.context,{
           payload:local.payload,pending:true,revision:session.revision,
           submissionVersion:session.submissionVersion
         });
@@ -524,7 +530,7 @@ if(panel&&list&&status&&schoolHost){
     }
     applyGeneralPayload(session.context.source,cloudPayload);
     setDraftInputsEnabled(true);
-    writeDeviceAssessmentDraft(localStorage,session.context,{
+    writeDeviceAssessmentDraft(deviceDraftStorage,session.context,{
       payload:cloudPayload,pending:false,revision:session.revision,
       submissionVersion:session.submissionVersion
     });
@@ -612,7 +618,7 @@ if(panel&&list&&status&&schoolHost){
         "Response submitted as frozen version "+receipt.version+".";
       if(generalDraft){
         generalDraft.submitted=true;
-        clearDeviceAssessmentDraft(localStorage,generalDraft.context);
+        clearDeviceAssessmentDraft(deviceDraftStorage,generalDraft.context);
       }
       detachGeneralDraft();
       generalDialog.close();generalTask=null;generalTaskStatus=null;
