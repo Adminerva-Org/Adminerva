@@ -1069,6 +1069,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
          !Number.isInteger(expectedFinalizationRevision)||expectedFinalizationRevision<0)
         deny("invalid-argument","Finalization revision information is invalid.");
       const data=await buildWorkspaceData();
+      if(!data.permissions.canEditClassRecord)
+        deny("permission-denied","Only the Primary Teacher may finalize the formal Class Record.");
       if(data.sheetRevision!==expectedSheetRevision)
         deny("failed-precondition","The Class Record changed. Reload it before finalizing the period.");
       if(!data.snapshot.ready)
@@ -1078,12 +1080,14 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const revision=expectedFinalizationRevision+1;
       const activeColumns=data.columns.filter(column=>column.archived!==true);
       await db.runTransaction(async tx=>{
-        const [grant,currentSheet,currentFinalization]=await Promise.all([
-          tx.get(grantRef),tx.get(sheetRef),tx.get(finalizationRef)
+        const [grant,currentOffering,currentSheet,currentFinalization]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),tx.get(finalizationRef)
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload before finalizing.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         if(!currentSheet.exists||currentSheet.data().schoolId!==ctx.schoolId||
            Number(currentSheet.data().revision||0)!==expectedSheetRevision)
           deny("failed-precondition","The Class Record layout changed while finalizing. Reload and review again.");
@@ -1155,6 +1159,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       if(!Number.isInteger(expectedFinalizationRevision)||expectedFinalizationRevision<1)
         deny("invalid-argument","Choose a finalized period revision to release.");
       const data=await buildWorkspaceData();
+      if(!data.permissions.canEditClassRecord)
+        deny("permission-denied","Only the Primary Teacher may release the formal Final Grade.");
       if(!data.finalization||data.finalization.revision!==expectedFinalizationRevision)
         deny("failed-precondition","The finalized period revision changed. Reload before releasing Final Grade.");
       if(data.finalization.stale||!data.snapshot.ready||
@@ -1163,10 +1169,14 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       await db.runTransaction(async tx=>{
-        const [grant,current]=await Promise.all([tx.get(grantRef),tx.get(finalizationRef)]);
+        const [grant,currentOffering,current]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(finalizationRef)
+        ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload before releasing Final Grade.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         if(!current.exists||current.data().schoolId!==ctx.schoolId||
            Number(current.data().revision)!==expectedFinalizationRevision||
            String(current.data().sourceDigest||"")!==data.snapshot.sourceDigest)
@@ -1184,16 +1194,21 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     }
 
     if(input.action==="withdraw_final_grade"){
+      await verifyOffering({requirePrimary:true});
       const expectedReleasedRevision=Number(input.expectedReleasedRevision);
       if(!Number.isInteger(expectedReleasedRevision)||expectedReleasedRevision<1)
         deny("invalid-argument","Choose the released Final Grade revision to withdraw.");
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       await db.runTransaction(async tx=>{
-        const [grant,current]=await Promise.all([tx.get(grantRef),tx.get(finalizationRef)]);
+        const [grant,currentOffering,current]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(finalizationRef)
+        ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload before withdrawing Final Grade.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         if(!current.exists||current.data().schoolId!==ctx.schoolId||
            Number(current.data().releasedRevision)!==expectedReleasedRevision)
           deny("failed-precondition","The released Final Grade changed. Reload before withdrawing it.");
@@ -1209,7 +1224,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     }
 
     if(input.action==="save_layout"){
-      const offering=await verifyOffering(),labels=await offeringLabels(offering);
+      const offering=await verifyOffering({requirePrimary:true}),labels=await offeringLabels(offering);
       const gradingPolicy=await resolveSchoolGradingPolicy({
         db,prefix,schoolId:ctx.schoolId,offering,periodType:labels.periodType
       });
@@ -1235,6 +1250,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
            grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
            !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         const previous=current.exists&&current.data().schoolId===ctx.schoolId?current.data():null;
         const priorRevision=previous?Number(previous.revision)||0:0;
         if(priorRevision!==expectedRevision)
@@ -1286,7 +1302,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     }
 
     if(input.action==="save_manual_scores"){
-      await verifyOffering();
+      await verifyOffering({requirePrimary:true});
       const columnId=checkId(String(input.columnId||""),"Column ID",64);
       const values=Array.isArray(input.values)?input.values:[];
       if(!values.length||values.length>MAX_CLASS_SIZE)
@@ -1330,12 +1346,14 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       let changed=0;
       await db.runTransaction(async tx=>{
-        const [grant,currentSheet,...priorScores]=await Promise.all([
-          tx.get(grantRef),tx.get(sheetRef),...refs.map(ref=>tx.get(ref))
+        const [grant,currentOffering,currentSheet,...priorScores]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),...refs.map(ref=>tx.get(ref))
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         const liveColumn=(Array.isArray(currentSheet.data()?.columns)?currentSheet.data().columns:[])
           .find(item=>item.columnId===columnId);
         if(!liveColumn||liveColumn.kind!=="manual"||Number(liveColumn.maxPoints)!==maxPoints)
@@ -1362,7 +1380,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     }
 
     if(input.action==="save_cell_status"){
-      await verifyOffering();
+      await verifyOffering({requirePrimary:true});
       const columnId=checkId(String(input.columnId||""),"Column ID",64);
       const personId=checkId(String(input.personId||""),"Person ID",128);
       const nextStatus=cleanCellStatus(input.status);
@@ -1385,12 +1403,14 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       let changed=false,resultState;
       await db.runTransaction(async tx=>{
-        const [grant,currentSheet,prior]=await Promise.all([
-          tx.get(grantRef),tx.get(sheetRef),tx.get(stateRef)
+        const [grant,currentOffering,currentSheet,prior]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),tx.get(stateRef)
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"))
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
+           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
+        await requirePrimaryInTransaction(tx,currentOffering.data());
         const liveColumn=(Array.isArray(currentSheet.data()?.columns)?currentSheet.data().columns:[])
           .find(item=>item.columnId===columnId);
         if(!liveColumn||liveColumn.archived===true)
