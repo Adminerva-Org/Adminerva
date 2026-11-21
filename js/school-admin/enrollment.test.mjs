@@ -25,7 +25,7 @@ function harness(){
   form.elements=fields.map(name=>{const node=new Element();node.name=name;return node;});
   for(const field of form.elements)form.elements[field.name]=field;
   form.reset=()=>{for(const field of form.elements)field.value="";};
-  const changeForm=get("en-registration-change-form"),changeFields=["reason","sectionId"];
+  const changeForm=get("en-registration-change-form"),changeFields=["reason","sectionId","endReasonType"];
   changeForm.elements=changeFields.map(name=>{const node=new Element();node.name=name;return node;});
   for(const field of changeForm.elements)changeForm.elements[field.name]=field;
   changeForm.reset=()=>{for(const field of changeForm.elements)field.value="";};
@@ -204,4 +204,22 @@ test("registering a reviewed directory student sends its exact person ID",async(
   assert.equal(h.requests[1].payload.action,"register_student");
   assert.equal(h.requests[1].payload.personId,"person-7");
   assert.equal(h.requests[1].payload.applicationId,"");
+});
+
+
+test("ending a registration sends an explicit institutional end type",()=>{
+  const h=harness(),item={
+    registrationId:"reg-end-1",personId:"person-1",displayName:"Student End",
+    yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"new-section",
+    gradeLevel:"7",revision:2,status:"active",courseCount:1
+  };
+  h.context.openRegistrationChange(item,"end");
+  const change=h.get("en-registration-change-form");
+  change.elements.endReasonType.value="transfer_out";
+  change.elements.reason.value="Student transferred to another institution";
+  change.dispatch("submit");
+  assert.equal(h.requests.length,1);
+  assert.equal(h.requests[0].payload.action,"end_registration");
+  assert.equal(h.requests[0].payload.registrationId,"reg-end-1");
+  assert.equal(h.requests[0].payload.endReasonType,"transfer_out");
 });
