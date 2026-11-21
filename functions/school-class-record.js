@@ -442,6 +442,10 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       if(!Number.isInteger(expectedRevision)||expectedRevision<0)
         deny("invalid-argument","Grading scheme revision is invalid.");
       const auditRef=db.collection(prefix+"grading_scheme_audit").doc();
+      const lifecycleReason=input.action==="save_scheme"?null:
+        text(input.reason,"Grading policy lifecycle reason",500);
+      if(lifecycleReason&&lifecycleReason.length<12)
+        deny("invalid-argument","Explain the grading policy lifecycle change in at least 12 characters.");
       const requestedApplicability=input.action==="save_scheme"?
         cleanSchemeApplicability(input.applicability||{}):null;
       let result;
@@ -571,10 +575,11 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           }
           const revision=priorRevision+1;
           tx.update(schemeRef,{status,revision,updatedByUid:ctx.uid,updatedAt:now,
-            ...(restoring?{restoredAt:now,restoredByUid:ctx.uid}:{archivedAt:now,archivedByUid:ctx.uid})});
+            ...(restoring?{restoredAt:now,restoredByUid:ctx.uid,restoreReason:lifecycleReason}:
+              {archivedAt:now,archivedByUid:ctx.uid,archiveReason:lifecycleReason})});
           tx.create(auditRef,{schoolId:ctx.schoolId,schemeId,actorUid:ctx.uid,
             action:status==="archived"?"grading_scheme_archived":"grading_scheme_restored",
-            revision,createdAt:now});
+            reason:lifecycleReason,revision,createdAt:now});
           result={schemeId,status,revision};
         }
       });
