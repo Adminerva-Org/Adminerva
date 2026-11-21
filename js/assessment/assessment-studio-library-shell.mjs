@@ -246,7 +246,7 @@ if(host){
               <input name="manualOpenRequired" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
               <span><strong>Teacher-controlled class sessions</strong><span class="mt-1 block text-xs">Publish the Studio exam in advance, but keep its instructions and project locked until you select Open exam for this section. Select Close exam at the end of class to lock active editors and initiate final cloud checkpoints. Open again at the next class session.</span></span>
             </label>
-            <p class="text-xs text-slate-600">Set a deadline later than the opening reference time. For scheduled assessments, the opening time controls availability; for teacher-controlled Studio exams, the teacher's Open exam action controls the start. Deadline enforcement continues in both modes. Students cannot submit before publication.</p>
+            <p class="text-xs text-slate-600">For retroactive deployments, enter the original date it was assigned in class as the opening reference time. Set a later deadline. For scheduled assessments, the opening time controls availability; for teacher-controlled Studio exams, the teacher's Open exam action controls the start. Deadline enforcement continues in both modes. Students cannot submit before publication.</p>
             <div class="grid sm:grid-cols-2 gap-3">
               <label class="text-sm font-bold">Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
               <label class="text-sm font-bold">Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
