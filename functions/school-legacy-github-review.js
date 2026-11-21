@@ -228,6 +228,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        tx.get(taskRef),tx.get(importRef),tx.get(record.ref),tx.get(gradeDocument)
      ]);
      if(!freshTask.exists||freshTask.data().ownerUid!==ctx.uid||
+        freshTask.data().evalCriteria!==taskData.evalCriteria||
+        Number(freshTask.data().maxScore||20)!==total||
         !freshImport.exists||freshImport.data().schoolId!==ctx.schoolId||
         freshImport.data().ownerUid!==ctx.uid||
         freshImport.data().legacyImport?.assessmentId!==id)
@@ -235,6 +237,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      const latest=approvedEvidence(freshEvidence.exists?freshEvidence.data():null,id,recordId,
        {requireApproved:true});
      if(latest.revision!==expectedRevision||latest.checkpointSha!==expectedSha||
+        latest.repository.fullName.toLowerCase()!==meta.repository.fullName.toLowerCase()||
+        latest.contributionScope!==meta.contributionScope||
         JSON.stringify(latest.selected)!==JSON.stringify(meta.selected)||
         JSON.stringify(latest.verified)!==JSON.stringify(meta.verified))
        deny("failed-precondition","The approved repository evidence changed during review.");
