@@ -16,6 +16,7 @@ import {
   onAuthStateChanged,
   signOut,
   linkWithPopup,
+  linkWithCredential,
   GithubAuthProvider,
   reauthenticateWithPopup,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
@@ -57,9 +58,9 @@ function githubSessionToken(uid=auth.currentUser?.uid){
 function githubSessionUsername(uid=auth.currentUser?.uid){
   const key=githubSessionKey("Username",uid);return key?String(sessionStorage.getItem(key)||"").trim().replace(/^@/,""):"";
 }
-async function releaseRecoveredGithubProvider(){
+async function releaseRecoveredGithubProvider(githubProviderUid){
   const call=httpsCallable(getFunctions(app,"asia-southeast1"),"prepareRecoveredGithubLink");
-  return call({});
+  return call({githubProviderUid});
 }
 
 function escapeHTML(str) {
@@ -453,9 +454,19 @@ async function linkGithubAccount() {
   } catch (error) {
     if (error.code === "auth/credential-already-in-use") {
       try{
-        const released=await releaseRecoveredGithubProvider();
+        const pendingCredential=GithubAuthProvider.credentialFromError(error),
+          pendingToken=String(pendingCredential?.accessToken||"");
+        if(!pendingCredential||!pendingToken)throw Error("GitHub did not return a transferable authorization credential.");
+        const identityResponse=await fetch("https://api.github.com/user",{
+          headers:{Accept:"application/vnd.github+json",Authorization:"Bearer "+pendingToken}
+        });
+        if(!identityResponse.ok)throw Error("GitHub identity verification returned HTTP "+identityResponse.status+".");
+        const githubIdentity=await identityResponse.json(),
+          providerUid=String(githubIdentity?.id||"");
+        if(!/^[0-9]{1,32}$/.test(providerUid))throw Error("GitHub did not return a valid provider identity.");
+        const released=await releaseRecoveredGithubProvider(providerUid);
         if(Number(released?.data?.released||0)>0){
-          result=await linkWithPopup(currentUser,provider);
+          result=await linkWithCredential(currentUser,pendingCredential);
         }else{
           alert("This GitHub account is linked to another Adminerva sign-in that is not part of this recovered student identity. Use a different GitHub account or ask a school administrator to review the identity link.");
           return;
