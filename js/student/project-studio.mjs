@@ -860,16 +860,30 @@ export function createProjectStudio({
     if(context.allowCreate===false)return {project:null,created:false,projectId};
     validateProject({state:{files:{}},database:{tables:{}},design:{},evidence:{}},{creating:true});
     const projectTitle=String(context.projectTitle||context.title||"Studio Assessment").trim().slice(0,120)||"Studio Assessment";
-    project=createCodeProject(projectStorage,uid,{
-      id:projectId,title:projectTitle,templateId:template.id,
-      config:desiredConfig,assessment:ownership
-    });
+    try{
+      project=createCodeProject(projectStorage,uid,{
+        id:projectId,title:projectTitle,templateId:template.id,
+        config:desiredConfig,assessment:ownership
+      });
+    }catch(error){
+      if(!cloudEnabled)throw error;
+      // Use the canonical project constructor with an in-memory storage shim.
+      // The same project ID can be synchronized to the verified school cloud.
+      console.warn("Assessment project device creation unavailable; using school cloud",error);
+      const memoryStorage={getItem:()=>null,setItem:()=>{},removeItem:()=>{}};
+      project=createCodeProject(memoryStorage,uid,{
+        id:projectId,title:projectTitle,templateId:template.id,
+        config:desiredConfig,assessment:ownership
+      });
+      unbackedProjectIds.add(project.id);
+      writeMarker(project.id,{...readMarker(project.id),pending:true});
+    }
     try{
       validateProject(project);
       activateProject(project);
       return {project:activeProject,created:true,projectId:activeProject.id};
     }catch(error){
-      deleteCodeProject(projectStorage,uid,project.id);
+      try{deleteCodeProject(projectStorage,uid,project.id);}catch{}
       throw error;
     }
   }
@@ -1044,8 +1058,10 @@ export function createProjectStudio({
       const control=el(id);if(control)control.classList.add("hidden");
     }
     const undo=el("undoRestoreBtn");
-    if(undo)undo.classList.toggle("hidden",
-      !localStorage.getItem(undoKey(activeProject.id)));
+    let hasUndo=false;
+    try{hasUndo=Boolean(localStorage.getItem(undoKey(activeProject.id)));}
+    catch(error){console.warn("Studio undo cache unavailable",error);}
+    if(undo)undo.classList.toggle("hidden",!hasUndo);
     updateQuotaUI();
     if(cloudEnabled){
       const marker=readMarker(activeProject.id);
