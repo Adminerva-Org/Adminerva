@@ -3,6 +3,7 @@
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+const {writeSchoolNotification}=require("./school-notifications.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function schoolYear(value){
@@ -207,7 +208,7 @@ function createSchoolScheduleService({db}){
    if(!Number.isInteger(expected)||expected<0)deny("invalid-argument","Current class schedule revision is required.");
    if(reason.length<12)deny("invalid-argument","Explain the official schedule change in at least 12 characters.");
    const meetings=normalizeClassMeetings(input.meetings);
-   let result;
+   let result,notifyTeacherUids=[];
    await db.runTransaction(async tx=>{
     await requireAdminWrite(tx);
     const [liveOffering,current,termSchedules,grants]=await Promise.all([
@@ -230,6 +231,7 @@ function createSchoolScheduleService({db}){
      const list=byOffering.get(data.offeringId)||[];list.push(data.teacherUid);byOffering.set(data.offeringId,list);
     }
     const targetTeachers=new Set(byOffering.get(targetOfferingId)||[]);
+    notifyTeacherUids=[...targetTeachers];
     for(const other of termSchedules.docs){
      if(other.id===targetOfferingId||other.data().schoolId!==ctx.schoolId||other.data().status==="archived")continue;
      const data=other.data(),otherMeetings=Array.isArray(data.meetings)?data.meetings:[],
@@ -263,6 +265,27 @@ function createSchoolScheduleService({db}){
     });
     result={offeringId:targetOfferingId,meetings,revision};
    });
+   const enrollmentSnap=await db.collection(prefix+"enrollments").where("offeringId","==",targetOfferingId).limit(201).get();
+   if(enrollmentSnap.size===201)console.warn("Class schedule notification roster truncated",{schoolId:ctx.schoolId,offeringId:targetOfferingId});
+   const enrollments=enrollmentSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active").slice(0,200);
+   const people=await Promise.all(enrollments.map(row=>db.doc(prefix+"people/"+row.data().personId).get()));
+   const studentUids=[...new Set(people.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId&&doc.data().authUid)
+     .map(doc=>doc.data().authUid))];
+   const count=result.meetings.length,body=count?
+    count+" official weekly meeting"+(count===1?"":"s")+" saved for this class. Open the classroom or timetable to review the current times and room.":
+    "The official weekly meeting schedule for this class was cleared. Open the classroom or timetable for the current status.";
+   await Promise.allSettled([
+    ...notifyTeacherUids.map(teacherUid=>writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:teacherUid,id:"class_schedule_"+targetOfferingId+"_"+result.revision+"_teacher",
+     title:"Official class schedule updated",body,type:"schedule",sourceId:targetOfferingId,
+     target:"schedule.html"
+    })),
+    ...studentUids.map(studentUid=>writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:studentUid,id:"class_schedule_"+targetOfferingId+"_"+result.revision+"_student",
+     title:"Class schedule updated",body,type:"schedule",sourceId:targetOfferingId,
+     target:"student-subject.html?offeringId="+encodeURIComponent(targetOfferingId)
+    }))
+   ]);
    return result;
   }
 
