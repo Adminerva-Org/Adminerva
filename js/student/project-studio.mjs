@@ -8,7 +8,7 @@ import {
   projectTemplateLabel,readCodeProjects,saveCodeProject,writeCodeProjects,normalizeProject
 } from "./code-projects.mjs?v=2.1.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
-import {studioDigest,verifyStudioSnapshot} from "./studio-assessment-model.mjs?v=1.0.3";
+import {verifyLegacyStudioRecovery} from "./studio-assessment-model.mjs?v=20261121-legacy-recovery";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
 import {analyzeProjectEvidence,evidenceSnippet} from "./project-competency-evidence.mjs?v=2.1.0";
 import {
@@ -738,31 +738,15 @@ export function createProjectStudio({
       const headSnap=await getDocFromServer(doc(db,"studio_submissions",evidenceId));
       if(!headSnap.exists())continue;
       const head=headSnap.data();
-      if(head.ownerUid!==uid||head.studentId!==profile.id||
-        head.assessmentId!==assessmentId||!Number.isInteger(head.revision)||
-        head.revision<1||head.revision>30||typeof head.projectId!=="string"||
-        !/^[A-Za-z0-9_-]{1,128}$/.test(head.projectId))
-        throw Error("The existing Studio submission does not match this student account. No project was changed.");
-      if(matched)throw Error("Multiple historical submissions match this account. Ask your teacher to inspect the originals before restoring.");
+      if(matched)throw Error("Multiple historical submissions match this account. Ask your teacher to inspect the original submission records.");
       const versionSnap=await getDocFromServer(doc(
         db,"studio_submissions",evidenceId,"versions",String(head.revision)
       ));
       if(!versionSnap.exists())
         throw Error("Your submitted Studio revision exists, but its source copy is unavailable. No blank project was created.");
-      const version=versionSnap.data();
-      if(version.ownerUid!==uid||version.studentId!==profile.id||
-        version.assessmentId!==assessmentId||version.projectId!==head.projectId||
-        version.revision!==head.revision||version.snapshotHash!==head.snapshotHash||
-        typeof version.snapshotJson!=="string"||
-        await studioDigest(version.snapshotJson)!==head.snapshotHash)
-        throw Error("The submitted Studio revision did not pass its integrity check. No project was changed.");
-      const snapshot=verifyStudioSnapshot(version.snapshotJson,version.snapshotHash);
-      if(!["java","python","web","csharp","cpp","dart"].includes(snapshot.lang)||
-        !Object.keys(snapshot.files||{}).length||
-        Object.values(snapshot.files).every(text=>!String(text||"").trim()))
-        throw Error("The submitted source is empty or invalid. No starter project was substituted.");
-      matched={projectId:head.projectId,projectTitle:String(head.projectTitle||"Previous Studio project").slice(0,120),
-        revision:head.revision,snapshot};
+      matched=await verifyLegacyStudioRecovery(head,versionSnap.data(),{
+        uid,studentId:profile.id,assessmentId
+      });
     }
     if(auth.currentUser?.uid!==uid)throw Error("Student account changed during Studio recovery.");
     return matched;
