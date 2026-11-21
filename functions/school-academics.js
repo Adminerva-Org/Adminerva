@@ -1797,7 +1797,8 @@ function createSchoolAcademicsService({db}) {
         "Teacher "+record.data().teacherUid.slice(0,8)
     }));
    }
-   return {offeringId,primaryTeacherUid,primarySource,primaryNeedsReview,students:rows.map((record,i)=>({
+   return {offeringId,offeringRevision:Number(offering.data().revision)||1,
+    primaryTeacherUid,primarySource,primaryNeedsReview,students:rows.map((record,i)=>({
      personId:record.data().personId,enrollmentId:record.id,status:record.data().status,
      revision:Number(record.data().revision)||1,
      name:people[i].exists&&people[i].data().schoolId===ctx.schoolId?
