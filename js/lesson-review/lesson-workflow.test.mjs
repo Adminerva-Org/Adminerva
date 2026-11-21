@@ -5,11 +5,11 @@ import {readFileSync} from "node:fs";
 import vm from "node:vm";
 import {savedLessonSettings} from "./lesson-settings.mjs";
 
-test("lesson tools use the common authentication guard",()=>{
+test("lesson tools use a shared verified authentication guard",()=>{
   for (const path of ["lesson-planner.html","schedule.html","library.html","presentation.html"]) {
     const source=readFileSync(path,"utf8");
-    assert.ok(source.includes('src="js/core/auth-guard.js"') ||
-      source.includes('src="js/core/auth-guard.js?v='),path+" must protect instructor access");
+    assert.ok(/src="js\/core\/auth-guard(?:-v4-pilot)?\.js(?:\?v=[^"]+)?"?/.test(source),
+      path+" must protect instructor access");
   }
 });
 

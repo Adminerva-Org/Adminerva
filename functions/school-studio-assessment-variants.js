@@ -83,14 +83,17 @@ function createSchoolStudioAssessmentVariantService({db}){
   }
   if(attempt>30)deny("failed-precondition","The Studio revision limit was reached.");
 
-  const lifecycle=task.lifecycle||"active",now=Date.now(),
+  if(task.manualOpenRequired===true&&task.manualAccessState!=="open")
+  deny("failed-precondition","Your teacher has not opened this Studio exam session, or has already closed it.");
+ const lifecycle=task.lifecycle||"active",now=Date.now(),
     revisionOpen=head.exists&&headData.status==="reopened",
     revisionDeadline=revisionOpen?headData.revisionDueAt?.toMillis?.()||0:0;
   if(["archived","cancelled"].includes(lifecycle))
     deny("failed-precondition","This assessment is no longer available.");
   if(lifecycle==="closed"&&!revisionOpen)
     deny("failed-precondition","This assessment is closed to new submissions.");
-  if(now<task.opensAt.toMillis()||(now>task.dueAt.toMillis()&&now>revisionDeadline))
+  if((task.manualOpenRequired!==true&&now<task.opensAt.toMillis())||
+    (task.allowLateSubmissions!==true&&now>task.dueAt.toMillis()&&now>revisionDeadline))
     deny("failed-precondition","This personalized task cannot start outside its submission window.");
 
   const assignmentRef=db.doc(prefix+"studio_variant_assignments/"+submissionId+"/attempts/"+attempt),
@@ -125,6 +128,7 @@ function createSchoolStudioAssessmentVariantService({db}){
           ]);
         if(!latestTask.exists||latestTask.data().schoolId!==ctx.schoolId||
            latestTask.data().published!==true||
+           (latestTask.data().manualOpenRequired===true&&latestTask.data().manualAccessState!=="open")||
            latestTask.data().personalizedTask?.poolFingerprint!==task.personalizedTask.poolFingerprint||
            !variantIds(latestTask.data()).includes(variantId))
           deny("failed-precondition","The personalized deployment changed. Reload the assignment.");

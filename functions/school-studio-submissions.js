@@ -92,17 +92,27 @@ function createSchoolStudioSubmissionService({db}){
       revisionOpen=submission.exists&&submission.data().status==="reopened";
     if(["archived","cancelled"].includes(lifecycle))
      deny("failed-precondition","This assessment is no longer accepting student submissions.");
-    if(lifecycle==="closed"&&!revisionOpen)
+    if(assessment.manualOpenRequired===true&&assessment.manualAccessState!=="open")
+    deny("failed-precondition","Your teacher has not opened this Studio exam session, or has already closed it.");
+   if(lifecycle==="closed"&&!revisionOpen)
      deny("failed-precondition","This assessment is closed to new submissions.");
     const now=Date.now();
     const revisionDeadline=revisionOpen?
       submission.data().revisionDueAt?.toMillis?.()||0:0;
-    if(now<assessment.opensAt.toMillis()||
+    if((assessment.manualOpenRequired!==true&&now<assessment.opensAt.toMillis())||
        (assessment.allowLateSubmissions!==true&&now>assessment.dueAt.toMillis()&&now>revisionDeadline))
      deny("failed-precondition","The Studio submission deadline has passed. Ask your teacher for an explicit revision extension.");
     if(!project.exists||project.data().schoolId!==ctx.schoolId||
        project.data().ownerUid!==ctx.uid)
      deny("permission-denied","Choose one of your saved school Studio projects.");
+    if(assessment.manualOpenRequired===true){
+     const binding=project.data().artifacts?.assessment;
+     if(binding?.provisionedBy!=="assessment-launch"||
+        (binding.taskId||binding.assessmentId)!==taskId||
+        binding.offeringId!==offeringId||
+        Number(binding.sessionEpoch||0)!==Number(assessment.manualSessionEpoch||0))
+      deny("failed-precondition","Submit the project opened from this examination's current class session.");
+    }
     if(project.data().revision!==revision)
      deny("failed-precondition","Project changed. Save the latest revision before submitting.");
     const files=project.data().files;

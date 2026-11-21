@@ -12,6 +12,7 @@ import {
   setDoc,
   deleteDoc,
   writeBatch,
+  runTransaction,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const SUPER_ADMIN_EMAIL = "babaynike2013@gmail.com".toLowerCase();
@@ -370,6 +371,76 @@ window.loadDirectory = async function () {
     const summary=document.getElementById("directory-summary");if(summary){summary.textContent="The student roster could not load. Check your connection and use Refresh data to try again.";summary.dataset.tone="error";}
   }finally{end();}
 };
+// Existing accepted students may have a legacy roster identity without a section.
+// Assign a real catalog section to that SAME record; never create another student.
+let sectionAssignmentStudent=null,sectionAssignmentBusy=false;
+const sectionDialog=document.getElementById("student-section-dialog");
+const sectionForm=document.getElementById("student-section-form");
+document.getElementById("student-section-cancel")?.addEventListener("click",()=>{
+  if(!sectionAssignmentBusy)sectionDialog.close();
+});
+sectionDialog?.addEventListener("close",()=>{if(!sectionAssignmentBusy)sectionAssignmentStudent=null;});
+async function openStudentSectionAssignment(student){
+  if(sectionAssignmentBusy||!sectionDialog)return;
+  sectionAssignmentStudent=student;
+  const target=document.getElementById("student-section-target");
+  const message=document.getElementById("student-section-status");
+  const choice=document.getElementById("student-section-choice");
+  target.textContent=student.name+" · "+student.email+" · "+(student.section||"No Section");
+  message.textContent="Loading available school sections…";
+  choice.replaceChildren(new Option("Select a school section",""));
+  sectionDialog.showModal();
+  try{
+    const snap=await getDocs(collection(db,"school_catalog","sections","records"));
+    if(sectionAssignmentStudent?.id!==student.id)return;
+    const choices=snap.docs.map(record=>({id:record.id,...record.data()}))
+      .filter(row=>row.status!=="archived"&&typeof row.name==="string"&&row.name.trim())
+      .sort((a,b)=>a.name.localeCompare(b.name));
+    for(const section of choices)choice.add(new Option(section.name,section.name));
+    if(student.section&&choices.some(row=>row.name===student.section))choice.value=student.section;
+    message.textContent=choices.length
+      ?"Choose an existing school section. The student account will be kept."
+      :"No school sections are configured. Create a section in Academic Configuration first.";
+  }catch(error){message.textContent=error.message||"School sections could not be loaded.";}
+}
+sectionForm?.addEventListener("submit",event=>{
+  event.preventDefault();
+  if(sectionAssignmentBusy||!sectionAssignmentStudent)return;
+  const student=sectionAssignmentStudent,section=String(document.getElementById("student-section-choice").value||"");
+  const status=document.getElementById("student-section-status");
+  if(!section){status.textContent="Choose a configured school section.";return;}
+  if(student.section&&student.section.trim()&&!["No Section","Unassigned"].includes(student.section.trim())&&student.section!==section){
+    status.textContent="This student already has a section. Reassignment requires a separate academic transfer workflow to preserve history.";
+    return;
+  }
+  if(student.section===section){sectionDialog.close();return;}
+  const save=document.getElementById("student-section-save");
+  void (async()=>{
+    sectionAssignmentBusy=true;save.disabled=true;status.textContent="Assigning section to the existing student record…";
+    try{
+      if(await resolveStaffRole(auth.currentUser)!=="admin")throw Error("Administrator access is required.");
+      const existingSections=await getDocs(collection(db,"school_catalog","sections","records"));
+      if(!existingSections.docs.some(record=>{
+        const row=record.data();return row.name===section&&row.status!=="archived";
+      }))throw Error("The selected school section is no longer available.");
+      const ref=doc(db,"students",student.id);
+      await runTransaction(db,async tx=>{
+        const current=await tx.get(ref);
+        if(!current.exists())throw Error("The student roster record was not found.");
+        const row=current.data();
+        if(String(row.email||"").trim().toLowerCase()!==student.email.trim().toLowerCase())
+          throw Error("The student identity changed. Refresh the directory.");
+        if(String(row.section||"").trim()&&!["No Section","Unassigned"].includes(String(row.section).trim())&&row.section!==section)
+          throw Error("The student already has an assigned section. Refresh before continuing.");
+        tx.update(ref,{section,updatedAt:new Date().toISOString(),sectionUpdatedByUid:auth.currentUser.uid});
+      });
+      status.textContent="Section saved. The student's account was preserved.";
+      sectionDialog.close();
+      await window.loadDirectory();
+    }catch(error){status.textContent=error.message||"Unable to assign the section.";}
+    finally{sectionAssignmentBusy=false;save.disabled=false;}
+  })();
+});
 // ==========================================
 // SEARCH, FILTER, SORT & PAGINATION LOGIC
 // ==========================================
@@ -432,7 +503,7 @@ function applyFiltersAndRender() {
       const safeStatusClass = escapeHTML(data.ghStatusClass);
       const safeStatusText = escapeHTML(data.ghStatusText);
       const safeName = escapeHTML(data.name);
-      const safeSection = escapeHTML(data.section);
+      const safeSection = escapeHTML(data.section&&data.section.trim()&&!["Unassigned"].includes(data.section.trim())?data.section:"No Section");
       const safeEmail = escapeHTML(data.email);
       const safeId = escapeHTML(data.id);
 
@@ -465,13 +536,14 @@ function applyFiltersAndRender() {
                       ${repoLinkHtml}
                     </td>
                     <td class="px-6 py-4 text-right align-top whitespace-nowrap space-x-1">
+                        <button type="button" data-student-action="section" class="text-teal-700 hover:bg-teal-700 hover:text-white border border-teal-200 bg-teal-50 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded transition shadow-sm">${data.section&&data.section.trim()&&!["No Section","Unassigned"].includes(data.section.trim())?"View section":"Assign section"}</button>
                         <button type="button" data-student-action="view" class="text-blue-600 hover:text-white border border-blue-200 bg-blue-50 hover:bg-blue-600 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded transition shadow-sm">View As</button>
                         <button type="button" data-student-action="revoke" class="text-red-500 hover:text-white font-bold text-[10px] uppercase tracking-wider border border-red-100 bg-red-50 hover:bg-red-500 px-3 py-1.5 rounded transition shadow-sm">${accessSuspended?"Restore":"Suspend"}</button>
                     </td>
                 </tr>
             `;
       tbody.insertAdjacentHTML("beforeend", tr);
-      const row=tbody.lastElementChild;row.querySelector('[data-student-action="view"]').addEventListener("click",()=>window.viewAsStudent(data.email));row.querySelector('[data-student-action="revoke"]').addEventListener("click",()=>accessSuspended?window.restoreStudent(data.id):window.revokeStudent(data.id));
+      const row=tbody.lastElementChild;row.querySelector('[data-student-action="section"]').addEventListener("click",()=>void openStudentSectionAssignment(data));row.querySelector('[data-student-action="view"]').addEventListener("click",()=>window.viewAsStudent(data.email));row.querySelector('[data-student-action="revoke"]').addEventListener("click",()=>accessSuspended?window.restoreStudent(data.id):window.revokeStudent(data.id));
     });
   }
 

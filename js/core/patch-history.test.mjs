@@ -42,12 +42,27 @@ test('public projection excludes private metadata and malformed releases',()=>{
 test('shipped patch manifest contains only curated public fields and system labels',()=>{
   const data=JSON.parse(readFileSync('patch-history.json','utf8'));
   for(const item of data.releases){
-    assert.deepEqual(Object.keys(item).sort(),['version','status','public','releasedAt','title','summary','changes',...(item.displayVersion?['displayVersion']:[]),...(item.publishedAt?['publishedAt']:[])].sort());
+    assert.deepEqual(Object.keys(item).sort(),['version','status','public','releasedAt','title','summary','changes',...(item.displayVersion?['displayVersion']:[]),...(item.publishedAt?['publishedAt']:[]),...(item.highlights?['highlights']:[]),...(item.development?['development']:[])].sort());
     if(item.displayVersion)assert.match(item.displayVersion,/^\d+\.\d+\.\d+$/);
     assert.equal(typeof item.public,"boolean");if(item.status==="published")assert.equal(item.public,true);assert.doesNotMatch(JSON.stringify(item),/@|api[_ -]?key|ruleset|studentId/i);
     for(const change of item.changes){
       const allowed=['area','text','type',...(change.audience?['audience']:[]),...(change.impact?['impact']:[])].sort();
       assert.deepEqual(Object.keys(change).sort(),allowed);
+    }
+    for(const highlight of item.highlights||[]){
+      assert.deepEqual(Object.keys(highlight).sort(),['title','summary',...(highlight.audience?['audience']:[]),...(highlight.why?['why']:[]),...(highlight.media?['media']:[])].sort());
+      if(highlight.media){
+        assert.deepEqual(Object.keys(highlight.media).sort(),['src','alt',...(highlight.media.caption?['caption']:[]),...(highlight.media.redactions?['redactions']:[])].sort());
+        assert.match(highlight.media.src,/^assets\/releases\/[A-Za-z0-9._/-]+\.(?:png|jpe?g|webp|avif)$/i);
+        assert.ok(!highlight.media.src.includes('..'));
+        for(const redaction of highlight.media.redactions||[]){
+          assert.deepEqual(Object.keys(redaction).sort(),['x','y','width','height',...(redaction.label?['label']:[])].sort());
+          for(const key of ['x','y','width','height'])assert.ok(Number.isFinite(Number(redaction[key])));
+        }
+      }
+    }
+    for(const development of item.development||[]){
+      assert.deepEqual(Object.keys(development).sort(),['title','summary',...(development.audience?['audience']:[])].sort());
     }
   }
 });

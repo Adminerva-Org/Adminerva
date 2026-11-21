@@ -52,9 +52,14 @@ test("report UI contains controls and role-appropriate triage safeguards",()=>{
     "filterAudience","filterMine","resetReportFilters","issuesFeedSummary","adminControlLabel"])
     assert.ok(html.includes('id="'+id+'"'),"Missing report control "+id);
   const source=readFileSync("js/core/issues.js","utf8");
-  assert.match(source,/where\("reporterUid","==",user\.uid\)/);
-  assert.match(source,/where\("reporterEmail","==",currentUserEmail\)/);
-  assert.match(source,/filterReports\(allIssues/);
-  assert.match(source,/isSuperAdmin\s*\?\s*"Administrator controls:"\s*:\s*"Teacher controls:"/);
-  assert.match(source,/adminDeleteBtn"\)\.classList\.toggle\("hidden",!isSuperAdmin\)/);
+  // Verified-school support reports are server-scoped. Student/teacher
+  // visibility no longer depends on a client Firestore query or role flag.
+  assert.match(source,/httpsCallable\(functions,"schoolSupport"\)/);
+  assert.match(source,/const lease=picker\.scope\.lease\(\)/);
+  assert.match(source,/picker\.scope\.assertLease\(lease\)/);
+  assert.match(source,/scoped\("list",\{limit:100\}\)/);
+  assert.match(source,/scoped\("get",\{reportId\}\)/);
+  assert.match(source,/if\(!schoolAdmin\|\|!activeReport\)return/);
+  assert.match(source,/get\("adminControlPanel"\)\.classList\.toggle\("hidden",!schoolAdmin\)/);
+  assert.match(source,/get\("adminDeleteBtn"\)\?\.classList\.add\("hidden"\)/);
 });

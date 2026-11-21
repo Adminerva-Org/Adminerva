@@ -1,4 +1,5 @@
 /** Free-play programming simulations with bounded interpreters and explicit win conditions. */
+import {moveItem,enableArcadeDrag} from "./arcade-interactions.mjs?v=1.0.0";
 const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 const button=(text,action,cls="arcade-button")=>{const b=el("button",text,cls);b.type="button";b.addEventListener("click",action);return b;};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -29,7 +30,10 @@ function controlGame(root,i,ctx){
   palette.append(...moves);
   const controls=el("div",null,"arcade-controls");
   const run=button("▶ Run blocks",execute,"arcade-button primary"),clear=button("Clear program",()=>{program.length=0;position=l.start.slice();collected.clear();render();});
-  controls.append(run,clear);root.append(el("p",l.goalText),board,el("small","Gold diamonds = chips · blue circle = portal · striped cells = walls"),params,palette,meter,list,controls,status);
+  controls.append(run,clear);root.append(el("p",l.goalText),board,el("small","Gold diamonds = chips · blue circle = portal · striped cells = walls. Drag blocks to reorder on desktop, or use ↑/↓ on touch or keyboard."),params,palette,meter,list,controls,status);
+  enableArcadeDrag(list,{isLocked:()=>running||done||!ctx.active(),onDrop:(from,to)=>{
+    if(moveItem(program,from,to)){status.textContent="Block moved to position "+(to+1)+".";render();}
+  }});
   function render(){
     board.replaceChildren();for(let y=0;y<l.n;y++)for(let x=0;x<l.n;x++){
       const k=coord(x,y),robot=coord(...position)===k,goal=coord(...l.goal)===k,chip=chips.has(k)&&!collected.has(k),wall=walls.has(k);
@@ -40,7 +44,16 @@ function controlGame(root,i,ctx){
     quantity.textContent="× "+count;minus.disabled=running||done||kind!=="repeat"||count<=2;plus.disabled=running||done||kind!=="repeat"||count>=5;
     selectors.forEach((b,j)=>{b.setAttribute("aria-pressed",String(kinds[j]===kind));b.disabled=running||done;});
     moves.forEach(b=>b.disabled=running||done||program.length>=l.budget);
-    list.replaceChildren(...program.map((block,j)=>{const li=el("li",null,"arcade-program-block "+block.kind);const label=block.kind==="move"?"move "+block.dir:block.kind==="repeat"?"repeat "+block.count+" { move "+block.dir+" }":(block.kind==="while"?"while":"if")+" (clear "+block.dir+") { move "+block.dir+" }";const remove=button("Remove",()=>{program.splice(j,1);render();});remove.disabled=running||done;li.append(el("code",label),remove);return li;}));
+    list.replaceChildren(...program.map((block,j)=>{
+      const li=el("li",null,"arcade-program-block "+block.kind);li.dataset.arcadeItem=String(j);li.draggable=!running&&!done;
+      const label=block.kind==="move"?"move "+block.dir:block.kind==="repeat"?"repeat "+block.count+" { move "+block.dir+" }":(block.kind==="while"?"while":"if")+" (clear "+block.dir+") { move "+block.dir+" }";
+      const actions=el("div",null,"arcade-block-actions");
+      for(const [caption,to] of [["↑",j-1],["↓",j+1]]){
+        const b=button(caption,()=>{if(!running&&!done&&moveItem(program,j,to)){render();list.querySelector('[data-arcade-item="'+to+'"] button')?.focus();}},"arcade-step-control");
+        b.disabled=running||done||to<0||to>=program.length;b.setAttribute("aria-label","Move block "+(j+1)+(to<j?" earlier":" later"));actions.append(b);
+      }
+      const remove=button("Remove",()=>{if(!running&&!done){program.splice(j,1);render();}},"arcade-step-control");remove.disabled=running||done;actions.append(remove);li.append(el("code",label),actions);return li;
+    }));
     if(!program.length)list.append(el("li","Choose a block type and direction to write your program."));
     run.disabled=running||done||!program.length;clear.disabled=running||done;
   }

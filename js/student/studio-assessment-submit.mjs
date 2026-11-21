@@ -4,7 +4,7 @@ import {collection,doc,getDocs,query,where,runTransaction,serverTimestamp} from 
 import {snapshotStudioProject,studioDigest,studioEvidenceId,studioSourceDigest,studioSubmissionAllowed} from "./studio-assessment-model.mjs?v=1.0.3";
 import {
   currentV4StudioSchool,getV4StudioSubmissionStatus,listV4StudioAssignments,submitV4StudioProject
-} from "./v4-studio-service.mjs?v=4.2.2";
+} from "./v4-studio-service.mjs?v=20261121-exam-data-audit";
 
 const button=document.getElementById("studioSubmitAssessment");
 if(button){
@@ -17,7 +17,7 @@ if(button){
   const dueField=document.getElementById("studioSubmitDeadline");
   const confirmButton=document.getElementById("studioConfirmSubmit");
   const close=()=>{if(!busy&&!loadingChoices)dialog.close();};
-  let choices=new Map(),busy=false,loadingChoices=false,openedUser=null,usingV4=false,schoolMode=null;
+  let choices=new Map(),busy=false,loadingChoices=false,openedUser=null,usingV4=false,schoolMode=null,submissionFailed=false,submissionComplete=false;
   const notice=text=>{state.textContent=text;};
   const assessmentParam=new URL(location.href).searchParams.get("assessment");
   const linkedAssessmentId=()=>{
@@ -29,6 +29,9 @@ if(button){
     if(!choice?.task||!choice.status||choice.status.error)return false;
     if(choice.status.status==="reopened")return Number(choice.status.revisionDueAt||0)>Date.now();
     if(choice.status.submitted)return false;
+    if(choice.task.submissionDeadlinePassed===true||
+       (Number(choice.task.dueAt||0)<Date.now()&&choice.task.allowLateSubmissions!==true))
+      return false;
     return choice.task.windowStatus==="open";
   }
   async function loadV4(){
@@ -38,13 +41,25 @@ if(button){
     const tasks=await listV4StudioAssignments();
     if(!Array.isArray(tasks))return false;
     usingV4=true;
-    const linked=linkedAssessmentId(),studioTasks=tasks.filter(item=>item.submissionSource==="studio"&&(!linked||item.taskId===linked));
-    const rows=await Promise.all(studioTasks.map(async task=>{
-      let submissionStatus=null;
+    let activeBinding=null;
+    try{activeBinding=window.adminervaStudioSubmissionState?.()?.project?.assessment||null;}catch{}
+    const linked=linkedAssessmentId(),studioTasks=tasks.filter(item=>
+      item.submissionSource==="studio"&&(!linked||item.taskId===linked)&&
+      (item.manualOpenRequired!==true||(
+        activeBinding?.provisionedBy==="assessment-launch"&&
+        (activeBinding.taskId||activeBinding.assessmentId)===item.taskId&&
+        Number(activeBinding.sessionEpoch||0)===Number(item.manualSessionEpoch||0)
+      )));
+    // Manual practical exams are submitted only from their own active session
+    // project. Do not offer a misleading generic-project submission choice.
+    const rows=new Array(studioTasks.length);let next=0;
+    const worker=async()=>{while(next<studioTasks.length){
+      const index=next++,task=studioTasks[index];let submissionStatus=null;
       try{submissionStatus=await getV4StudioSubmissionStatus(task.taskId);}
       catch(error){submissionStatus={error:error?.message||"Status unavailable"};}
-      return {mode:"v4",task,status:submissionStatus,school};
-    }));
+      rows[index]={mode:"v4",task,status:submissionStatus,school};
+    }};
+    await Promise.all(Array.from({length:Math.min(5,studioTasks.length)},worker));
     if(auth.currentUser?.uid!==openedUser)throw Error("Account changed while loading.");
     for(const row of rows)choices.set("v4:"+row.task.taskId,row);
     return true;
@@ -71,7 +86,7 @@ if(button){
   const load=async()=>{
     const user=auth.currentUser;
     if(!user?.emailVerified||!user.email)throw Error("Sign in with a verified school email.");
-    openedUser=user.uid;usingV4=false;schoolMode=null;
+    openedUser=user.uid;usingV4=false;schoolMode=null;submissionFailed=false;submissionComplete=false;
     choices=new Map();choose.replaceChildren();
     if(details)details.textContent="Checking assigned assessments and submission windows…";
     notice("Loading available Studio assessments…");
@@ -124,7 +139,7 @@ if(button){
   };
   function syncExamChoice(){
     const chosen=choices.get(choose.value);
-    if(busy||loadingChoices||auth.currentUser?.uid!==openedUser){confirmButton.disabled=true;return;}
+    if(busy||loadingChoices||auth.currentUser?.uid!==openedUser||submissionFailed||submissionComplete){confirmButton.disabled=true;return;}
     if(!chosen){
       confirmButton.disabled=true;
       if(details)details.textContent="Choose an assessment to view its type and submission window.";
@@ -292,7 +307,7 @@ if(button){
     return {version:revision,status:"submitted",legacy:true};
   }
   confirmButton.addEventListener("click",async()=>{
-    if(busy||loadingChoices||auth.currentUser?.uid!==openedUser)return;
+    if(busy||loadingChoices||submissionFailed||submissionComplete||auth.currentUser?.uid!==openedUser)return;
     const chosen=choices.get(choose.value),uid=auth.currentUser?.uid;
     if(!chosen||!uid)return notice("Choose an available assessment first.");
     let captured;
@@ -305,14 +320,15 @@ if(button){
       const receipt=chosen.mode==="v4"?await submitV4(chosen,captured):await submitLegacy(chosen,captured,uid);
       if(!receipt||auth.currentUser?.uid!==uid)return;
       if(chosen.mode==="v4")chosen.status={...chosen.status,submitted:true,status:"submitted",version:receipt.version};
+      submissionComplete=true;
       notice(chosen.mode==="v4"?
-        (receipt.alreadyExisted?"This school project revision was already submitted. No duplicate was created.":
-          "School submission version "+receipt.version+" confirmed. Your working project remains editable."):
-        "Revision "+receipt.version+" was submitted successfully. Your current project remains editable.");
-      dialog.close();
+        (receipt.alreadyExisted?"This school project revision was already submitted. No duplicate was created. Close this form when ready.":
+          "School submission version "+receipt.version+" confirmed. Your working project remains editable. Close this form when ready."):
+        "Revision "+receipt.version+" was submitted successfully. Your working project remains editable. Close this form when ready.");
     }catch(error){
+      submissionFailed=true;
       notice("Submission not confirmed: "+String(error?.message||"Submission failed")+
-        ". Your project remains saved. Reload the assessment status before retrying.");
+        ". Your working project remains saved. Close and reopen this form to verify the current assessment status before retrying.");
     }finally{
       busy=false;confirmButton.disabled=false;
       const linkedId=linkedAssessmentId();

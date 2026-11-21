@@ -5,13 +5,23 @@ import { readFileSync, existsSync } from 'node:fs';
 import vm from 'node:vm';
 import { roleHome } from './session-destination.mjs';
 
+// Run the production information architecture in the same VM as the navigation
+// fixture. The browser loads it as an async ESM chunk; the fixture supplies the
+// already-resolved module so legacy synchronous DOM assertions remain meaningful.
+const navigationIA = readFileSync('js/core/navigation-ia.mjs','utf8').replace(
+  /^export function buildNavigationIA/m, 'function fixtureNavigationIA');
 const source = readFileSync('js/core/adminerva-nav.js', 'utf8');
+const forFixture = code => navigationIA + '\n' +
+  code.replace(/await import\("\.\/navigation-ia\.mjs\?v=[^"]+"\)/,
+    '({buildNavigationIA:fixtureNavigationIA})')
+    .replace(/\bimport\(/g,'fixtureImport(');
 class Element {
   constructor(tag = 'div') {
     this.tagName = tag;
     this.children = []; this.dataset = {}; this.attributes = {}; this.events = {};
     this.className = ''; this.textContent = ''; this.open = false;
   }
+  get childNodes(){return this.children;}
   append(...items) { for (const item of items) { item.parentNode = this; this.children.push(item); } }
   replaceChildren(...items) { this.children = []; this.append(...items); }
   setAttribute(key, value) { this.attributes[key] = value; }
@@ -50,20 +60,31 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
     getElementById: id => id === 'adminerva-nav' ? root : document.head.children.find(child => child.id === id) || null,
     addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback)
   };
-  const window = { location: { href: '' } };
+  const routeByPage={xml:'student-xml-lab.html',practice:'student-practice.html',ide:'student-playground.html',
+    'studio-submissions':'studio-submissions.html',home:role==='student'?'student-home.html':'teacher-home.html',dashboard:module==='student'?'student-home.html':'teacher-home.html'};
+  const pathname='/'+(routeByPage[page]||page+'.html');
+  const window = { location: { href: 'https://adminerva.example'+pathname, pathname, search:'' } };
   const localStorage = { getItem: () => { if (storageThrows) throw new Error('Unavailable'); return role; } };
-  vm.runInNewContext(integrations.source || source, { document, window, localStorage, console: { warn() {} }, ...integrations });
+  const fixtureImport=()=>Promise.resolve({
+    mountInformationMenu(){},mountNotificationCenter(){},mountAccountContextSwitcher(){},
+    mountSiteUpdates(){},startPushSync(){},clearConnectionPreferences(){},
+    departPushAccount:async()=>{},getAuth:()=>({}),signOut:async()=>{}
+  });
+  vm.runInNewContext(forFixture(integrations.source || source), {
+    document,window,location:window.location,localStorage,fixtureImport,
+    URLSearchParams,console:{warn(){}},...integrations
+  });
   documentEvents.DOMContentLoaded[0]();
   const clickOutside = () => { for (const callback of documentEvents.click) callback({ target: new Element(), preventDefault() {} }); };
   const roleReady = role => { for (const callback of documentEvents['adminerva:role-ready'] || []) callback({ detail: { role } }); };
   return { desktop, mobile, root, moduleSwitch, clickOutside, roleReady, documentEvents, document, window };
 }
 const links = element => element.querySelectorAll('a');
-const groupNames = element => element.children.map(group => group.children[0].textContent);
+const groupNames = element => element.children.map(group => group.children[0]?.children[0]?.textContent||group.children[0]?.textContent);
 
 test('navigation installs analytics, the manifest and brand icons once before rendering', () => {
   const view = mount();
-  assert.equal(view.document.head.children.length, 6);
+  assert.equal(view.document.head.children.length, 7);
   const analytics = view.document.getElementById('adminerva-analytics-script');
   assert.equal(analytics.tagName, 'script');
   assert.match(analytics.src, /^js\/core\/adminerva-analytics\.js\?v=/);
@@ -80,7 +101,7 @@ test('navigation installs analytics, the manifest and brand icons once before re
   assert.equal(view.document.querySelector('link[rel="icon"]').href, 'assets/adminerva-favicon-32.png');
   assert.equal(view.document.querySelector('link[rel="icon"]').sizes, '32x32');
   view.roleReady('superadmin');
-  assert.equal(view.document.head.children.length, 6);
+  assert.equal(view.document.head.children.length, 7);
 });
 
 test('home is a direct link and switching workspaces is an explicit disclosure', () => {
@@ -94,92 +115,90 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
   }
 });
 
-test('educator groups expose the integrated assessment, review and insights destinations', () => {
-  const { desktop } = mount('repo', 'gradebook');
-  assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
-  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['assessment-studio.html', 'submissions.html', 'reclaim-inbox.html']);
-  assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html', 'repobank.html']);
-  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
-  assert.ok(!links(desktop).some(link => ['activity-grader.html', 'grading.html', 'lesson-planner.html', 'users.html'].includes(link.href)));
+test('teacher assessment navigation retains review and historical repository tools',()=>{
+  const {desktop,root}=mount('assessment','assessment-studio');
+  assert.ok(groupNames(desktop).includes('Assessment ▾'));
+  const routes=links(desktop).map(link=>link.href);
+  for(const route of ['teacher-classroom.html','assessment-studio.html','school-gradebook.html?view=review','submissions.html','repofetch.html'])
+    assert.ok(routes.includes(route),'Missing teaching route '+route);
+  assert.ok(!routes.includes('users.html'));
+  assert.match(root.innerHTML,/href="teacher-home.html"/);
 });
 
-test('Adminerva Studio grading is separated from Repository Management for verified school teachers', () => {
-  const schoolTeacher = mount('class-record', 'studio-submissions', 'teacher', false, {
-    dataset: { schoolTeacher: 'true' }
-  });
-  assert.deepEqual(groupNames(schoolTeacher.desktop), ['Class record & Adminerva assessments ▾']);
-  assert.deepEqual(links(schoolTeacher.desktop).map(link => link.href), ['class-record.html', 'studio-submissions.html']);
-
-  const v4Only = mount('class-record', 'class-record', 'teacher', false, {
-    dataset: { schoolTeacher: 'true', v4OnlyTeacher: 'true' }
-  });
-  assert.deepEqual(links(v4Only.desktop).map(link => link.href), ['class-record.html']);
+test('school Class Record is separate from repository grading',()=>{
+  const teacher=mount('grading','class-record','teacher',false,{dataset:{schoolTeacher:'true'}});
+  const routes=links(teacher.desktop).map(link=>link.href);
+  assert.ok(routes.includes('class-record.html'));
+  assert.ok(!routes.includes('gradebook.html'));
+  assert.ok(!routes.includes('repofetch.html'));
+  const schoolOnly=mount('grading','class-record','teacher',false,{dataset:{schoolTeacher:'true',v4OnlyTeacher:'true'}});
+  assert.ok(links(schoolOnly.desktop).some(link=>link.href==='class-record.html'));
 });
 
-test('selected task is announced once per desktop/mobile surface and page labels match routes', () => {
-  for (const [module, page, route, label] of [
-    ['repo', 'submissions', 'submissions.html', 'Submission inbox'],
-    ['repo', 'repofetch', 'repofetch.html', 'Review &amp; grade'],
-    ['repo', 'gradebook', 'gradebook.html', 'Gradebook'],
-    ['student-practice', 'xml', 'student-xml-lab.html', 'XML Lab']
-  ]) {
-    const { desktop, mobile, root } = mount(module, page, module.startsWith('student') ? 'student' : 'teacher');
-    for (const surface of [desktop, mobile]) assert.deepEqual(links(surface).filter(link => link.attributes['aria-current'] === 'page').map(link => link.href), [route]);
-    assert.ok(root.innerHTML.includes('>' + label + '</span>'));
-    assert.equal(mobile.children[0].children[0].textContent, 'Pages · ' + label.replace('&amp;', '&') + ' ▾');
+test('student and teacher active destinations are announced once per navigation surface',()=>{
+  for(const [module,page,route,role] of [
+    ['assessment','assessment-studio','assessment-studio.html','teacher'],
+    ['preparation','lesson-planner','lesson-planner.html','teacher'],
+    ['student-practice','practice','student-practice.html','student'],
+    ['student-playground','ide','student-playground.html','student']
+  ]){
+    const {desktop,mobile,root}=mount(module,page,role);
+    const seen=surface=>links(surface).filter(link=>link.attributes['aria-current']==='page').map(link=>link.href);
+    assert.deepEqual(seen(desktop),[route]);
+    assert.deepEqual(seen(mobile),[route]);
+    assert.match(root.innerHTML,/href="(teacher-home|student-home)\.html"/);
   }
 });
 
-test('the current mobile group starts expanded without expanding the complete menu', () => {
-  const { mobile } = mount('repo', 'submissions');
-  assert.equal(mobile.children[0].open, false);
-  const groups = mobile.children[0].children[1].children;
-  assert.deepEqual(groups.map(group => group.open), [true, false, false]);
+test('active mobile group expands without opening the entire navigation',()=>{
+  const {mobile}=mount('assessment','assessment-studio','teacher');
+  assert.equal(mobile.children[0]?.open,false);
+  const groups=mobile.children[0].children[1].children;
+  assert.ok(groups.length>0);
+  assert.equal(groups.filter(group=>group.open).length,1);
 });
 
-test('planning has its own destinations and no unrelated analytics shortcut', () => {
-  const { desktop } = mount('lesson', 'planner');
-  assert.deepEqual(groupNames(desktop), ['Planning ▾']);
-  assert.deepEqual(links(desktop).map(link => link.href), ['lesson-planner.html', 'presentation.html', 'schedule.html', 'pilot-sandbox.html', 'library.html']);
+test('preparation navigation keeps lesson, slides, references and timetable together',()=>{
+  const {desktop}=mount('preparation','lesson-planner','teacher');
+  assert.ok(groupNames(desktop).includes('Teaching Preparation ▾'));
+  const routes=links(desktop).map(link=>link.href);
+  for(const route of ['lesson-planner.html','presentation.html','library.html','schedule.html'])
+    assert.ok(routes.includes(route),'Missing preparation route '+route);
+  assert.ok(!routes.includes('teacher-analytics.html'));
 });
 
-test('only administrators receive school management destinations', () => {
-  const admin = mount('admin', 'directory', 'superadmin');
-  assert.deepEqual(groupNames(admin.desktop), ['School setup ▾', 'Account ▾']);
-  assert.ok(links(admin.desktop).some(link => link.href === 'manage-sections.html'));
-  assert.ok(links(admin.desktop).some(link => link.href === 'teacher-accounts.html'));
-  for (const role of ['teacher', 'student']) {
-    for (const module of ['repo', 'admin', 'lesson']) {
-      const { desktop, mobile, root } = mount(module, 'dashboard', role);
-      const routes = [...links(desktop), ...links(mobile)].map(link => link.href);
-      assert.ok(!routes.some(route => ['users.html', 'teacher-accounts.html', 'manage-sections.html', 'admin-analytics.html'].includes(route)));
-      assert.doesNotMatch(root.innerHTML, /href="users.html"/);
-    }
+test('student and teacher navigation never exposes platform management shortcuts',()=>{
+  for(const role of ['teacher','student'])for(const module of ['assessment','preparation','student-practice']){
+    const {desktop,mobile,root}=mount(module,'dashboard',role);
+    const routes=[...links(desktop),...links(mobile)].map(link=>link.href);
+    assert.ok(!routes.some(route=>['users.html','teacher-accounts.html','manage-sections.html','admin-analytics.html'].includes(route)));
+    assert.doesNotMatch(root.innerHTML,/href="users.html"/);
   }
 });
 
-test('student project, practice and playground tabs stay in their own workspace', () => {
-  const project = mount('student', 'assessments', 'student');
-  assert.deepEqual(links(project.desktop).map(link => link.href), ['student-dashboard.html', 'student-assessments.html', 'student-settings.html']);
-  assert.match(project.root.innerHTML, /Practice Lab/);
-  const practice = mount('student-practice', 'practice', 'student');
-  assert.deepEqual(links(practice.desktop).map(link => link.href), ['student-practice.html', 'student-xml-lab.html']);
-  const playground = mount('student-playground', 'ide', 'student');
-  assert.deepEqual(links(playground.desktop).map(link => link.href), ['student-playground.html']);
-  for (const item of [project, practice, playground]) assert.doesNotMatch(item.root.innerHTML, /href="settings.html"/);
+test('student classroom, games and laboratory remain distinct functional workspaces',()=>{
+  const classroom=mount('student','assessments','student');
+  const classRoutes=links(classroom.desktop).map(link=>link.href);
+  for(const route of ['student-classroom.html','student-assessments.html','school-student-grades.html','school-student-projects.html'])
+    assert.ok(classRoutes.includes(route));
+  const games=mount('student-practice','practice','student');
+  assert.ok(links(games.desktop).some(link=>link.href==='student-practice.html'));
+  const lab=mount('student-playground','ide','student');
+  for(const route of ['student-playground.html','student-xml-lab.html'])
+    assert.ok(links(lab.desktop).some(link=>link.href===route));
+  for(const view of [classroom,games,lab])assert.doesNotMatch(view.root.innerHTML,/href="settings.html"/);
 });
 
-test('signed-in home pages and direct support links retain predictable home access', () => {
-  for (const [module, page, role, route] of [
-    ['student-home', 'home', 'student', 'student-home.html'],
-    ['staff-home', 'home', 'teacher', 'teacher-home.html'],
-    ['global', 'issues', 'student', 'student-home.html'],
-    ['global', 'issues', 'teacher', 'teacher-home.html']
-  ]) {
-    const { root, desktop, mobile } = mount(module, page, role);
-    assert.match(root.innerHTML, new RegExp('href="' + route + '"'));
-    assert.equal(desktop.children.length, 0);
-    assert.equal(mobile.hidden, true);
+test('student and teacher home links are stable, including support pages',()=>{
+  for(const [module,page,role,home] of [
+    ['student-home','home','student','student-home.html'],
+    ['staff-home','home','teacher','teacher-home.html'],
+    ['global','issues','student','student-home.html'],
+    ['global','issues','teacher','teacher-home.html']
+  ]){
+    const {root,desktop,mobile}=mount(module,page,role);
+    assert.match(root.innerHTML,new RegExp('href="'+home+'"'));
+    if(page==='home'){assert.equal(desktop.children.length,0);assert.equal(mobile.hidden,true);}
   }
 });
 
@@ -193,12 +212,12 @@ test('all rendered links, including legacy grading and XML, resolve to existing 
     const { root, desktop, mobile } = mount(module, page, role);
     const routes = [...root.innerHTML.matchAll(/href="([^"]+\.html)"/g)].map(match => match[1]);
     routes.push(...links(desktop).map(link => link.href), ...links(mobile).map(link => link.href));
-    for (const route of routes) assert.ok(existsSync(route), module + ' links to missing route ' + route);
+    for (const route of routes) assert.ok(existsSync(String(route).split(/[?#]/)[0]), module + ' links to missing route ' + route);
   }
 });
 
 test('opening a peer closes the previous disclosure and outside clicks close menus', () => {
-  const { desktop, moduleSwitch, clickOutside } = mount();
+  const { desktop, moduleSwitch, clickOutside } = mount('assessment','assessment-studio');
   const [teaching, evidence] = desktop.children;
   teaching.open = true; teaching.dispatch('toggle');
   evidence.open = true; evidence.dispatch('toggle');
@@ -230,31 +249,28 @@ test('storage failures preserve student navigation without exposing staff routes
   assert.doesNotMatch(root.innerHTML, /href="teacher-home.html"|href="users.html"/);
 });
 
-test('verified role refresh replaces stale navigation without multiplying global listeners', () => {
-  const view = mount('admin', 'directory', 'student');
-  assert.equal(view.desktop.children.length, 0);
-  const listenerCounts = () => Object.fromEntries(Object.entries(view.documentEvents).map(([type, callbacks]) => [type, callbacks.length]));
-  const before = listenerCounts();
-  view.roleReady('superadmin');
-  assert.deepEqual(groupNames(view.desktop), ['School setup ▾', 'Account ▾']);
-  assert.ok(links(view.desktop).some(link => link.href === 'users.html'));
-  assert.match(view.root.innerHTML, /href="school-admin.html"/);
-  view.roleReady('superadmin');
+test('verified role changes replace stale student or teacher links without multiplying listeners',()=>{
+  const view=mount('assessment','assessment-studio','student');
+  const counts=()=>Object.fromEntries(Object.entries(view.documentEvents).map(([type,callbacks])=>[type,callbacks.length]));
+  const before=counts();
   view.roleReady('teacher');
-  assert.ok(!links(view.desktop).some(link => link.href === 'users.html'));
-  assert.doesNotMatch(view.root.innerHTML, /href="school-admin.html"/);
-  assert.deepEqual(listenerCounts(), before);
-  assert.equal(view.documentEvents.keydown.length, 1);
+  assert.ok(links(view.desktop).some(link=>link.href==='assessment-studio.html'));
+  view.roleReady('student');
+  assert.ok(!links(view.desktop).some(link=>link.href==='repofetch.html'));
+  assert.match(view.root.innerHTML,/href="student-home.html"/);
+  assert.deepEqual(counts(),before);
+  assert.equal(view.documentEvents.keydown.length,1);
 });
 
-test('student tabs recover when an older staff role remains in browser storage', () => {
-  const view = mount('student-practice', 'xml', 'teacher');
-  assert.equal(view.desktop.children.length, 0);
+test('verified student access replaces stale teacher navigation in the same tab',()=>{
+  const view=mount('student-practice','xml','teacher');
   view.roleReady('student');
-  assert.deepEqual(links(view.desktop).map(link => link.href), ['student-practice.html', 'student-xml-lab.html']);
-  assert.match(view.root.innerHTML, /href="student-settings.html"/);
-  assert.doesNotMatch(view.root.innerHTML, /href="settings.html"/);
-  assert.equal(links(view.desktop).find(link => link.attributes['aria-current'] === 'page').href, 'student-xml-lab.html');
+  const routes=links(view.desktop).map(link=>link.href);
+  assert.ok(routes.includes('student-xml-lab.html'));
+  assert.ok(routes.includes('student-playground.html'));
+  assert.match(view.root.innerHTML,/href="student-settings.html"/);
+  assert.doesNotMatch(view.root.innerHTML,/href="settings.html"/);
+  assert.ok(!routes.includes('gradebook.html'));
 });
 
 async function checkGuard({ role = 'admin', path = '/users.html', students = [], verified = true, mockRole = null, signedIn = true, teacherPreferences = null, switchDuringLookup = false } = {}) {

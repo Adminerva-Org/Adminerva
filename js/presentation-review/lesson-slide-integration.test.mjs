@@ -6,13 +6,25 @@ import vm from 'node:vm';
 import {lessonStarterDeck,lessonSourceChanged} from './lesson-to-slides.mjs';
 function fixture(){
   const nodes=new Map();
-  const element=()=>({value:'',innerHTML:'',textContent:'',disabled:false,children:[],appendChild(node){this.children.push(node);},classList:{add(){},remove(){},replace(){}}});
-  for(const id of ['presentationPlanSelect','presentationSessionSelect','btnGenerateSlides','btnDeletePresentation','presentationSourceStatus'])nodes.set(id,element());
-  const window={renderSlideBlocks(){},selectSlide(){},sanitizePresentationHtml:value=>String(value||'')};
-  const context={window,db:{},AbortSignal,document:{addEventListener(){},getElementById:id=>nodes.get(id),createElement:element},URLSearchParams,location:{search:''},confirm:()=>true,alert(){},console:{error(){},warn(){}},lessonStarterDeck,lessonSourceChanged,doc:(_db,...parts)=>({path:parts.join('/')}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({forEach(){}})};
+  const element=()=>({value:'',innerHTML:'',textContent:'',disabled:false,children:[],
+    appendChild(node){this.children.push(node);},replaceChildren(...nodes){this.children=nodes;},
+    add(node){this.children.push(node);},
+    classList:{add(){},remove(){},replace(){},toggle(){}}
+  });
+  for(const id of ['presentationPlanSelect','presentationSessionSelect','btnGenerateSlides','btnDeletePresentation','btnSavePresentation','btnRetryPresentationSource','presentationSourceStatus'])nodes.set(id,element());
+  const window={renderSlideBlocks(){},selectSlide(){},addEventListener(){},sanitizePresentationHtml:value=>String(value||'')};
+  const storage=new Map();
+  const context={window,db:{},AbortSignal,document:{hidden:false,addEventListener(){},getElementById:id=>nodes.get(id),createElement:element},
+    URLSearchParams,location:{search:''},confirm:()=>true,alert(){},console:{error(){},warn(){}},
+    lessonStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
+    Option:class{constructor(text,value){this.textContent=text;this.value=value;}},
+    lessonStarterDeck,lessonSourceChanged,doc:(_db,...parts)=>({path:parts.join('/')}),
+    getDoc:async()=>({exists:()=>false}),getDocs:async()=>({forEach(){}})
+  };
   const source=readFileSync('js/presentation-review/presentation-firebase.js','utf8').replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm,'');
   context.workspaceOnReady=()=>{};
   context.workspaceUid=()=>"teacher-fixture";
+  context.assertWorkspaceAccount=()=>{};
   context.ownedDoc=(_db,...parts)=>({path:["staff_workspaces","teacher-fixture",...parts].join("/")});
   vm.runInNewContext(source,context);
   return {window,context,nodes};
@@ -35,6 +47,23 @@ test('a late saved-session response cannot replace the newly selected session de
   pending.get('staff_workspaces/teacher-fixture/presentations/saved_session0')(snapshot('Stale first session'));await first;
   assert.equal(page.window.currentPresentationDeck[0].content,'Second session');assert.equal(page.window.selectedSessionIndex,'1');assert.equal(page.window.presentationSourceLessonVersion,2);
 });
+test('failed cloud reads block presentation saves until an explicit session retry',async()=>{
+  const page=fixture();
+  page.window.selectedPlanData={id:'saved',version:1,sessions:[{session_name:'One'}]};
+  page.nodes.get('presentationPlanSelect').value='saved';
+  page.nodes.get('presentationSessionSelect').value='0';
+  page.context.getDoc=async()=>{throw Error('Cloud temporarily unavailable');};
+  await page.window.handleSessionSelection();
+  assert.match(page.nodes.get('presentationSourceStatus').textContent,/could not be checked/);
+  assert.equal(page.nodes.get('btnSavePresentation').disabled,true);
+  assert.equal(page.nodes.get('btnRetryPresentationSource').hidden,false);
+  await page.window.savePresentationToCloud();
+  page.context.getDoc=async()=>({exists:()=>false});
+  await page.window.handleSessionSelection(true);
+  assert.equal(page.nodes.get('btnRetryPresentationSource').hidden,true);
+  assert.equal(page.nodes.get('btnSavePresentation').disabled,false);
+});
+
 test('a late system-generated deck does not overwrite edits made while waiting',async()=>{
   const page=fixture();let resolveResponse;
   page.context.localStorage={getItem:key=>key==='Adminerva_ai_model'?'fixture-model':'fixture-provider-key'};
@@ -46,6 +75,6 @@ test('a late system-generated deck does not overwrite edits made while waiting',
   const request=page.window.generateAI_SlideDeck();
   page.window.currentPresentationDeck=[{content:'New teacher edits'}];page.window.adminervaPresentationDirty=true;
   const slides=Array.from({length:5},()=>({layout:'standard',label:'Draft',content:'Generated'}));
-  resolveResponse({ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify(slides)}]}}]})});await request;
+  resolveResponse({candidates:[{content:{parts:[{text:JSON.stringify(slides)}]}}]});await request;
   assert.equal(page.window.currentPresentationDeck[0].content,'New teacher edits');assert.equal(page.window.adminervaPresentationDirty,true);
 });

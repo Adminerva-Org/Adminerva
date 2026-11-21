@@ -1,3 +1,5 @@
+> **Planning authority:** This document is retained as a technical specification or historical implementation record. The canonical Adminerva product roadmap, development status and future priorities are maintained only in [Adminerva School OS — Master Development Plan](https://github.com/Adminerva-Org/Adminerva/blob/main/docs/adminerva-school-os-master-plan.md). Do not use this file as a competing progress tracker.
+
 # Adminerva Studio — CheerpJ Phases 1 and 2
 
 **Status:** The isolated Java runner protocol and optional Studio UI integration are implemented on a feature branch. **The browser runtime is not active by default.** Live CheerpJ execution has not been verified against the CDN in a real browser. Judge0 remains the default and assessment/grade workflows are unchanged.

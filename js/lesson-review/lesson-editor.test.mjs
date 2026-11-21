@@ -57,7 +57,7 @@ test("older saved lessons can render without a weekly overview",()=>{
      createElement:()=>({value:"",textContent:""})
    },
    lessonStorage:{setItem(){},getItem(){return null;}},alert(){},savedLessonSettings,
-   lessonDraftDirty:false,lessonDraftStatus:(...args)=>statuses.push(args)
+   lessonDraftDirty:false,lessonDraftRevision:0,lessonDraftTimer:null,clearTimeout(){},lessonDraftStatus:(...args)=>statuses.push(args)
  };
  context.workspaceUid=()=>"teacher-fixture";
  vm.runInNewContext(code,context);

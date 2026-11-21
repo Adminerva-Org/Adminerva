@@ -3,7 +3,7 @@
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
-const {checkId}=require("./school-academics.js");
+const {checkId,rowKey}=require("./school-academics.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function safeTitle(value){
  if(typeof value!=="string"||!value.trim()||value.trim().length>120)
@@ -83,6 +83,53 @@ function createSchoolStudioProjectService({db}){
   const projectCollection=db.collection(prefix+"student_code_projects/"+ctx.uid+"/projects");
   const membershipRef=db.doc(prefix+"memberships/"+ctx.uid);
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
+  async function authorizeAssessmentProject(tx,artifacts,{closingEpoch=0}={}){
+   const binding=artifacts?.assessment;
+   if(binding?.provisionedBy!=="assessment-launch")return {finalSave:false};
+   const taskId=checkId(binding.taskId||binding.assessmentId,"Assessment task",128);
+   const task=await tx.get(db.doc(prefix+"assessments/"+taskId));
+   if(!task.exists||task.data().schoolId!==ctx.schoolId||
+      task.data().submissionSource!=="studio")
+    deny("failed-precondition","This Studio assessment is no longer available.");
+   const data=task.data();
+   if(data.manualOpenRequired!==true)return {finalSave:false};
+   // A project marked for another offering must not be accepted as evidence
+   // for this task's class, even if an old browser supplies a valid task ID.
+   if(binding.offeringId!==data.offeringId)
+    deny("permission-denied","This assessment project is bound to a different course offering.");
+   // Verify the student belongs to this exact section on every protected save,
+   // including when a new class session reuses a previously saved project.
+   const member=await tx.get(membershipRef),
+     personId=checkId(member.data()?.personId,"Student person",128);
+   const [person,enrollment]=await Promise.all([
+     tx.get(db.doc(prefix+"people/"+personId)),
+     tx.get(db.doc(prefix+"enrollments/"+rowKey(personId,data.offeringId)))
+   ]);
+   if(!person.exists||person.data().schoolId!==ctx.schoolId||
+      person.data().kind!=="student"||person.data().status!=="active"||
+      person.data().authUid!==ctx.uid)
+    deny("permission-denied","Your school student identity is no longer verified for this exam.");
+   if(!enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
+      enrollment.data().personId!==personId||enrollment.data().offeringId!==data.offeringId||
+      enrollment.data().status!=="active")
+    deny("permission-denied","Your school enrollment is no longer active for this exam.");
+   const epoch=Number(data.manualSessionEpoch||0);
+   if(data.manualAccessState==="open") {
+    if(closingEpoch)deny("failed-precondition","Exam closing state changed. Reload the assessment.");
+    if(epoch<1||Number(binding.sessionEpoch||0)!==epoch)
+      deny("failed-precondition","This project belongs to an earlier exam session. Reopen the assessment from My Assessments.");
+    return {finalSave:false,taskId,personId};
+   }
+   if(["closed","closing"].includes(data.manualAccessState)&&closingEpoch>0&&
+      Number(binding.sessionEpoch||0)===closingEpoch&&epoch===closingEpoch){
+    // Expired closure permits a read-only replay of a checkpoint that was
+    // already committed, never creation of a new checkpoint or project write.
+    const graceEnd=data.manualCloseGraceUntil?.toMillis?.()||0;
+    return {finalSave:true,taskId,closingEpoch,personId,
+      receiptLookupOnly:Date.now()>graceEnd};
+   }
+   deny("failed-precondition","The Studio exam is closed to edits. Only an authorized final closing checkpoint may be saved.");
+  }
   async function authorizeTransaction(tx) {
    const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
    if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
@@ -115,6 +162,7 @@ function createSchoolStudioProjectService({db}){
    const ref=projectCollection.doc(),now=FieldValue.serverTimestamp();
    await db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
+    await authorizeAssessmentProject(tx,artifacts);
     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,
       language,files,artifacts,contentDigest:digestProject(files,artifacts),sourceDigest:digestSource(files,language),status:"active",revision:1,
       createdAt:now,updatedAt:now});
@@ -127,33 +175,87 @@ function createSchoolStudioProjectService({db}){
    const artifacts=validateArtifacts(input.artifacts),language=input.language;
    if(!["java","web","python","csharp","cpp","dart","text"].includes(language))
     deny("invalid-argument","Choose a supported Studio project language.");
-   const ref=projectCollection.doc(projectId),digest=digestProject(files,artifacts);
+   const ref=projectCollection.doc(projectId),digest=digestProject(files,artifacts),
+     closingEpoch=Number(input.closingSaveSessionEpoch||0);
+   if(closingEpoch&&(!Number.isSafeInteger(closingEpoch)||closingEpoch<1))
+    deny("invalid-argument","The closing exam session number is invalid.");
    let result;
    await db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
-    const current=await tx.get(ref),now=FieldValue.serverTimestamp();
+    const current=await tx.get(ref);
+    const access=await authorizeAssessmentProject(tx,artifacts,{closingEpoch});
+    if(current.exists){
+     const oldBinding=current.data().artifacts?.assessment,
+       newBinding=artifacts.assessment;
+     if(oldBinding?.provisionedBy==="assessment-launch"){
+      if(newBinding?.provisionedBy!=="assessment-launch"||
+         (oldBinding.taskId||oldBinding.assessmentId)!==(newBinding.taskId||newBinding.assessmentId))
+       deny("permission-denied","An assessment project cannot be detached from, or reassigned to, another exam.");
+      // The prior cloud project may be bound to the previous class epoch.
+      // Authorize the current incoming epoch without rejecting valid resumes.
+     }else if(closingEpoch)
+      deny("failed-precondition","A final exam checkpoint must belong to an existing assessment project.");
+    }
+    const receiptRef=access.finalSave?
+      db.doc(prefix+"studio_exam_close_receipts/"+access.taskId+
+        "/sessions/"+closingEpoch+"/studio_exam_final_checkpoints/"+ctx.uid):null;
+    const priorReceipt=receiptRef?await tx.get(receiptRef):null;
+    if(priorReceipt?.exists){
+      if(priorReceipt.data().projectId!==projectId||
+         priorReceipt.data().contentDigest!==digest||
+         priorReceipt.data().sourceDigest!==digestSource(files,language)||
+         priorReceipt.data().title!==title)
+       deny("failed-precondition","This exam session already has a different final saved checkpoint.");
+      result={projectId,revision:priorReceipt.data().projectRevision,
+        contentDigest:digest,created:false,unchanged:true,examFinalized:true};return;
+    }
+    if(access.receiptLookupOnly)
+     deny("failed-precondition","The final save window expired without a confirmed checkpoint. Contact your teacher with your device draft.");
+    const now=FieldValue.serverTimestamp();
+    // Freeze the exact source files once per student/class session. The live
+    // project may be edited next week; this immutable receipt is the evidence
+    // for what the school actually received when the teacher closed this class.
+    const frozenReceipt=receiptRef?{
+      schemaVersion:1,retentionClass:"academic_assessment_evidence",
+      schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
+      personId:access.personId,projectId,title,language,files,artifacts,sourceDigest:digestSource(files,language),
+      contentDigest:digest,closingEpoch,savedAt:now,
+      // This is the UTF-8 JSON payload size, not Firestore billed storage
+      // (which also includes document metadata and index overhead).
+      payloadBytes:Buffer.byteLength(JSON.stringify({files,artifacts}),"utf8")
+    }:null;
     if(!current.exists){
      tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,status:"active",
        contentDigest:digest,sourceDigest:digestSource(files,language),revision:1,createdAt:now,updatedAt:now});
-     result={projectId,revision:1,contentDigest:digest,created:true};return;
+     if(receiptRef)tx.create(receiptRef,{...frozenReceipt,projectRevision:1});
+     result={projectId,revision:1,contentDigest:digest,created:true,examFinalized:Boolean(receiptRef)};return;
     }
     const data=current.data();
     if(data.schoolId!==ctx.schoolId||data.ownerUid!==ctx.uid)
      deny("permission-denied","This project ID belongs to a different school account.");
     if(data.status==="archived")
      deny("failed-precondition","Restore this archived school project before synchronizing changes.");
+    // A matching payload already exists in the cloud. It is safe to confirm
+    // the same code even when a new device has no local revision marker,
+    // including when that device is creating a final-close receipt.
+    if(data.contentDigest===digest&&data.title===title&&data.language===language){
+     // Identical cloud content is safe even if another device has already
+     // advanced the revision. This is especially important at exam close.
+     if(receiptRef)tx.create(receiptRef,{...frozenReceipt,projectRevision:data.revision});
+     result={projectId,revision:data.revision,contentDigest:digest,created:false,unchanged:true,
+       examFinalized:Boolean(receiptRef)};return;
+    }
     const expected=input.expectedRevision;
     if(!Number.isInteger(expected)||expected<1)
      deny("failed-precondition","This project already exists in school storage. Reload its school revision before saving.");
     if(data.revision!==expected)
      deny("failed-precondition","Project changed in school storage. Reload before overwriting it.");
-    if(data.contentDigest===digest&&data.title===title&&data.language===language){
-     result={projectId,revision:data.revision,contentDigest:digest,created:false,unchanged:true};return;
-    }
     const revision=data.revision+1;
     tx.update(ref,{title,language,files,artifacts,contentDigest:digest,
       sourceDigest:digestSource(files,language),revision,updatedAt:now});
-    result={projectId,revision,contentDigest:digest,created:false,unchanged:false};
+    if(receiptRef)tx.create(receiptRef,{...frozenReceipt,projectRevision:revision});
+    result={projectId,revision,contentDigest:digest,created:false,unchanged:false,
+      examFinalized:Boolean(receiptRef)};
    });
    return result;
   }
@@ -164,6 +266,32 @@ function createSchoolStudioProjectService({db}){
    if(!doc.exists||doc.data().ownerUid!==ctx.uid||doc.data().schoolId!==ctx.schoolId)
     deny("not-found","Project is unavailable.");
    const data=doc.data();
+   const binding=data.artifacts?.assessment;
+   if(binding?.provisionedBy==="assessment-launch"){
+    const taskId=checkId(binding.taskId||binding.assessmentId,"Assessment task",128);
+    const task=await db.doc(prefix+"assessments/"+taskId).get();
+    if(!task.exists||task.data().schoolId!==ctx.schoolId)
+      deny("failed-precondition","The assessment assigned to this school project is unavailable.");
+    if(task.data().manualOpenRequired===true){
+      if(task.data().manualAccessState!=="open"||task.data().published!==true||
+         (task.data().lifecycle||"active")!=="active")
+       deny("failed-precondition","Your teacher has not opened this section's Studio exam.");
+      const member=await membershipRef.get(),
+        personId=checkId(member.data()?.personId,"Student person",128);
+      const [person,enrollment]=await Promise.all([
+        db.doc(prefix+"people/"+personId).get(),
+        db.doc(prefix+"enrollments/"+rowKey(personId,task.data().offeringId)).get()
+      ]);
+      if(member.data()?.status!=="active"||
+         !person.exists||person.data().schoolId!==ctx.schoolId||
+         person.data().authUid!==ctx.uid||person.data().kind!=="student"||
+         person.data().status!=="active"||
+         !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
+         enrollment.data().offeringId!==task.data().offeringId||
+         enrollment.data().personId!==personId||enrollment.data().status!=="active")
+        deny("permission-denied","Your enrollment in this Studio exam is no longer active.");
+    }
+   }
    if(data.status==="archived")deny("failed-precondition","This school project is archived. Restore it before opening.");
    return {projectId,title:data.title,language:data.language,status:data.status||"active",
     revision:data.revision,files:data.files,artifacts:data.artifacts||{},contentDigest:data.contentDigest,
@@ -184,6 +312,17 @@ function createSchoolStudioProjectService({db}){
     const data=doc.data();
     if(data.revision!==expectedRevision)
      deny("failed-precondition","Project changed in school storage. Reload before changing its status.");
+    // Exam projects remain part of the school's academic evidence chain.
+    // Generic project archive/restore is not an authorized way to dispose
+    // of an active teacher-controlled practical examination workspace.
+    const binding=data.artifacts?.assessment;
+    if(binding?.provisionedBy==="assessment-launch"){
+      const taskId=checkId(binding.taskId||binding.assessmentId,"Assessment task",128),
+        task=await tx.get(db.doc(prefix+"assessments/"+taskId));
+      if(task.exists&&task.data().schoolId===ctx.schoolId&&
+         task.data().manualOpenRequired===true)
+       deny("failed-precondition","A teacher-assigned practical exam project cannot be archived or restored from the student project directory.");
+    }
     const current=data.status||"active";
     if(restoring&&current!=="archived")deny("failed-precondition","Only an archived project can be restored.");
     if(!restoring&&current==="archived")deny("failed-precondition","This project is already archived.");
@@ -209,6 +348,12 @@ function createSchoolStudioProjectService({db}){
      deny("failed-precondition","Restore this archived school project before saving.");
     if(doc.data().revision!==revision)
      deny("failed-precondition","Project changed elsewhere. Load the latest version before saving.");
+    const incoming=artifacts.assessment,previous=doc.data().artifacts?.assessment;
+    if(previous?.provisionedBy==="assessment-launch"&&
+       (incoming?.provisionedBy!=="assessment-launch"||
+        (incoming.taskId||incoming.assessmentId)!==(previous.taskId||previous.assessmentId)))
+     deny("permission-denied","An assessment project cannot be detached from or reassigned to another exam.");
+    await authorizeAssessmentProject(tx,artifacts);
     tx.update(ref,{title,files,artifacts,contentDigest:digest,
       sourceDigest:digestSource(files,doc.data().language),revision:revision+1,
       updatedAt:FieldValue.serverTimestamp()});

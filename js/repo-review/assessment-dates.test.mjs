@@ -21,7 +21,7 @@ test('legacy no-deadline deployment remains supported',()=>{
 });
 test('date-picker accepts past issue dates and UI explains why',()=>{
   const code=readFileSync('js/repo-review/assessment-studio.js','utf8');
-  const html=readFileSync('assessment-studio.html','utf8');
+  const html=readFileSync('js/assessment/assessment-studio-library-shell.mjs','utf8');
   assert.doesNotMatch(code,/minDate:\s*["']today["']/);
   assert.match(code,/validateDeploymentDates/);
   assert.match(html,/original date it was assigned in class/);

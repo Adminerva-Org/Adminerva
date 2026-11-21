@@ -1,6 +1,9 @@
 /** Slide authoring controls and deck editing state. */
 window.currentPresentationDeck = [];
 const safeSlideHTML=value=>window.sanitizePresentationHtml?.(value) ?? "";
+const escapeSlideLabel=value=>String(value??"").slice(0,160).replace(/[&<>"']/g,letter=>({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+})[letter]);
 window.activeSlideIndex = -1;
 window.adminervaPresentationDirty = false;
 const deckUndoStack = [];
@@ -346,8 +349,8 @@ function renderSlideBlocks() {
           <div onclick="selectSlide(${index})" class="flex items-center gap-3 cursor-pointer">
               <span class="text-2xl font-black ${isActive ? "text-blue-600" : "text-gray-300"} w-6 text-center">${index + 1}</span>
               <div class="flex-1">
-                  <div class="text-sm font-bold ${isActive ? "text-gray-900" : "text-gray-700"} ${slide.hidden ? "line-through text-red-500" : ""}">${slide.label || "Slide"}</div>
-                  <div class="text-[9px] uppercase font-bold text-gray-400 mt-0.5">${slide.layout || "Standard"}</div>
+                  <div class="text-sm font-bold ${isActive ? "text-gray-900" : "text-gray-700"} ${slide.hidden ? "line-through text-red-500" : ""}">${escapeSlideLabel(slide.label || "Slide")}</div>
+                  <div class="text-[9px] uppercase font-bold text-gray-400 mt-0.5">${escapeSlideLabel(slide.layout || "Standard")}</div>
               </div>
           </div>
           
