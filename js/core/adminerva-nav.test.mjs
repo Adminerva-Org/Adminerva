@@ -115,22 +115,28 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
   }
 });
 
-test('teacher assessment routes resolve into the class-centered Classroom workflow',()=>{
-  const {desktop,root}=mount('assessment','assessment-studio');
-  const groups=groupNames(desktop);
-  assert.ok(groups.includes('My Classes ▾'));
-  assert.ok(groups.includes('Class Insights ▾'));
-  const routes=links(desktop).map(link=>link.href);
+test('assessment authoring stays in Preparation while live assessment work is class-centered',()=>{
+  const authored=mount('assessment','assessment-studio');
+  const preparationGroups=groupNames(authored.desktop);
+  assert.ok(preparationGroups.includes('Assessment Design ▾'));
+  assert.ok(preparationGroups.includes('Plan & Prepare ▾'));
+  const preparationRoutes=links(authored.desktop).map(link=>link.href);
+  for(const route of ['assessment-studio.html','lesson-planner.html','presentation.html','library.html'])
+    assert.ok(preparationRoutes.includes(route),'Missing preparation route '+route);
+  assert.ok(!preparationRoutes.includes('users.html'));
+  assert.match(authored.root.innerHTML,/href="teacher-home.html"/);
+  assert.match(authored.root.innerHTML,/Classroom/);
+  assert.match(authored.root.innerHTML,/Repository Management/);
+
+  const live=mount('grading','school-gradebook','teacher',false,{dataset:{schoolTeacher:'true'}});
+  const liveRoutes=links(live.desktop).map(link=>link.href);
   for(const route of [
     'teacher-classroom.html',
     'school-gradebook.html?view=submissions',
     'school-gradebook.html?view=review',
     'school-gradebook.html?view=results',
     'class-record.html'
-  ])assert.ok(routes.includes(route),'Missing class-centered teaching route '+route);
-  assert.ok(!routes.includes('users.html'));
-  assert.match(root.innerHTML,/href="teacher-home.html"/);
-  assert.match(root.innerHTML,/Repository Management/);
+  ])assert.ok(liveRoutes.includes(route),'Missing class-centered live assessment route '+route);
 });
 
 test('school Class Record is separate from repository grading',()=>{
