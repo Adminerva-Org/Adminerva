@@ -244,6 +244,11 @@ async function loadRegistrations(){
   registrations=(result.items||[]).slice().sort((a,b)=>
     registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));
   renderRegistrations();
+  if(cohortPreview){
+    ++cohortRun;cohortPreview=null;get("en-cohort-apply").disabled=true;
+    get("en-cohort-results").replaceChildren();
+    get("en-cohort-status").textContent="Registration data changed. Preview the cohort again before applying year-end progression.";
+  }
 }
 function historyEventLabel(action){
   return {
@@ -437,7 +442,7 @@ async function previewCohort(){
   }
   const candidates=cohortRows();
   if(!candidates.length){invalidateCohortPreview("No active registrations match the selected source cohort.");return;}
-  if(candidates.length>100){invalidateCohortPreview("This cohort exceeds 100 active registrations and requires paginated Registrar processing.");return;}
+  if(candidates.length>60){invalidateCohortPreview("This cohort exceeds 60 active registrations and requires paginated Registrar processing.");return;}
   const run=++cohortRun,signature=cohortSignature(selection);
   cohortPreview=null;get("en-cohort-apply").disabled=true;get("en-cohort-results").replaceChildren();
   message.textContent="Checking "+candidates.length+" learner"+(candidates.length===1?"":"s")+" against released Final Grades and target placement…";
@@ -1024,8 +1029,9 @@ picker=createTenantSchoolPicker({
     if(get("en-registration-change-dialog").open)get("en-registration-change-dialog").close();
     if(get("en-progression-dialog").open)get("en-progression-dialog").close();
     if(get("en-history-dialog").open)get("en-history-dialog").close();
-    form.reset();clearLoadedApplication({resetIdentity:true});
+    form.reset();cohortForm().reset();clearLoadedApplication({resetIdentity:true});
     get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
+    get("en-cohort-results").replaceChildren();get("en-cohort-status").textContent="Choose a source cohort and decision.";
     renderActivation("");workspace.hidden=true;
   },
   onReady:scope=>{
