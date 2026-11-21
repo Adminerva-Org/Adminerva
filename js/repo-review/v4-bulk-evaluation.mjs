@@ -27,7 +27,7 @@ export function bulkBatchLimit(sourceOrTask){
 }
 // Large code/repository projects can exceed an external model's context budget.
 // Refuse oversized packages explicitly rather than silently discard evidence.
-export const BULK_MAX_PACKAGE_CHARACTERS=650000;
+export const BULK_MAX_PACKAGE_CHARACTERS=1000000;
 
 export function assertBulkEvidence(source,evidence,{personalized=false}={}){
   if(!BULK_SOURCE_TYPES.includes(source))throw Error("No V4 evidence adapter exists for "+source+".");
