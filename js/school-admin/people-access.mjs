@@ -10,7 +10,8 @@ let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0,inviteRun=0,staffSe
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false,peopleReloadQueued=false,peopleRun=0;
 let accessChange=null,personChange=null,lifecycleChange=null,invitationChange=null,currentDetailPerson=null,
-  currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
+  currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false,
+  linkedStaffById=new Map();
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
@@ -94,7 +95,7 @@ const picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
     schoolReady=false;++peopleRun;peopleReloadQueued=false;clearTimeout(peopleSearchTimer);++workloadRun;++rosterRun;++inviteRun;++staffSearchRun;++detailRun;++academicRun;++membershipRun;workload=null;resetWorkload();
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-person-detail-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
+    linkedStaffById=new Map();workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-person-detail-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
   },
@@ -961,6 +962,7 @@ async function searchLinkedStaff(){
   catch(error){if(run===staffSearchRun&&schoolReady)throw error;return;}
   if(run!==staffSearchRun||!schoolReady||get("pa-staff-access-query").value.trim()!==query)return;
   const linked=(result.items||[]).filter(person=>person.accountLinked);
+  linkedStaffById=new Map(linked.map(person=>[person.personId,person]));
   for(const person of linked)select.append(new Option(person.displayName,person.personId));
   message.textContent=linked.length?
     linked.length+" linked staff record(s) found. Select the intended account.":
@@ -974,8 +976,12 @@ get("pa-activate-staff-form").addEventListener("submit",event=>{
   const form=event.currentTarget,data=new FormData(form);
   const personId=String(data.get("personId")||""),reason=String(data.get("reason")||"").trim();
   if(!personId)return;
+  const reviewed=linkedStaffById.get(personId);
+  if(!reviewed){get("pa-staff-access-status").textContent="Refresh the linked staff search before activating access.";return;}
   if(!confirm("Activate this verified linked teacher for the selected school? Class assignments remain unchanged."))return;
-  void submitForm(form,"activate_linked_staff",{personId,reason}).then(result=>{
+  void submitForm(form,"activate_linked_staff",{
+    personId,expectedPersonRevision:Number(reviewed.revision)||1,reason
+  }).then(result=>{
     if(!result)return;
     get("pa-staff-access-status").textContent=result.status==="already_active"?
       "This teacher already has active school access.":
