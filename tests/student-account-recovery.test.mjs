@@ -294,3 +294,38 @@ test("student access projection persists and hydrates compatibility profiles",as
   assert.match(access,/completeProjection/);
   assert.match(access,/stored\?\.profiles\?\.length/);
 });
+
+
+test("recovered students retain GitHub evidence ownership and can relink the exact provider safely",async()=>{
+  const [index,rules,assignments,evidence,receipts,dashboard,workflow]=await Promise.all([
+    readFile(new URL("../functions/index.js",import.meta.url),"utf8"),
+    readFile(new URL("../firestore.rules",import.meta.url),"utf8"),
+    readFile(new URL("../js/student/assessments.js",import.meta.url),"utf8"),
+    readFile(new URL("../js/student/assessment-evidence.mjs",import.meta.url),"utf8"),
+    readFile(new URL("../js/student/submission-receipts.mjs",import.meta.url),"utf8"),
+    readFile(new URL("../js/student/dashboard.js",import.meta.url),"utf8"),
+    readFile(new URL("../.github/workflows/shared-ui-cache-bump.yml",import.meta.url),"utf8")
+  ]);
+  assert.match(index,/repoUrl:String\(record\.data\?\.repoUrl/);
+  assert.match(index,/githubUsername:String\(record\.data\?\.githubUsername/);
+  assert.match(index,/accountUid:user\.uid/);
+  assert.match(index,/exports\.prepareRecoveredGithubLink/);
+  assert.match(index,/request\.data\?\.githubProviderUid/);
+  assert.match(index,/String\(provider\.uid\|\|""\)===githubProviderUid/);
+  assert.match(index,/providersToUnlink:\["github\.com"\]/);
+  assert.match(rules,/studentId in get\(access\)\.data\.get\("studentIds",\[\]\)/);
+  assert.match(assignments,/accountUid:String\(profile\.accountUid\|\|user\.uid\)/);
+  assert.match(evidence,/projectedOwner\?projectedOwner!==user\.uid:legacyEmail!==currentEmail/);
+  assert.match(evidence,/Adminerva_GitHub_Token_/);
+  assert.match(receipts,/projectedOwner\?projectedOwner!==user\.uid:legacyEmail!==currentEmail/);
+  assert.match(receipts,/Authorization:"Bearer "\+token/);
+  assert.match(dashboard,/prepareRecoveredGithubLink/);
+  assert.match(dashboard,/GithubAuthProvider\.credentialFromError\(error\)/);
+  assert.match(dashboard,/linkWithCredential\(currentUser,pendingCredential\)/);
+  assert.match(dashboard,/https:\/\/api\.github\.com\/user/);
+  assert.match(dashboard,/normalLegacyProfiles/);
+  assert.match(dashboard,/sessionStorage\.setItem\(tokenKey,token\)/);
+  assert.match(workflow,/"js\/student\/dashboard\.js"/);
+  assert.match(workflow,/"js\/student\/assessment-evidence\.mjs"/);
+  assert.match(workflow,/"js\/student\/submission-receipts\.mjs"/);
+});
