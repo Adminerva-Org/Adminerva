@@ -13,6 +13,7 @@ setGlobalOptions({region:"asia-southeast1"});
 const {createPracticeService,PracticeError}=require("./practice-service.js");
 const {createTeachingAccessService}=require("./teaching-access-service.js");
 const {createMonitoringService}=require("./monitoring-service.js");
+const {legacyStudentRecordsForAccount}=require("./legacy-student-identity.js");
 initializeApp();
 const db=getFirestore();
 const messaging=getMessaging();
@@ -271,27 +272,37 @@ exports.pushTestPing=onCall(callOptions,async request=>{
   if(!sent)throw new HttpsError("unavailable","No registered device accepted the test notification. Re-enable notifications on a device and try again.");
   return {sent};
 });
-async function rebuildStudentAccess(email){
+async function rebuildStudentAccess(email,expectedUid=null){
   const normalized=String(email||"").toLowerCase().trim();
   if(!normalized)return;
   let user;
-  try{user=await getAuth().getUserByEmail(normalized);}
+  try{user=expectedUid?await getAuth().getUser(expectedUid):await getAuth().getUserByEmail(normalized);}
   catch(error){if(error.code==="auth/user-not-found")return;throw error;}
-  const roster=await db.collection("students").where("email","==",normalized).limit(50).get();
-  const active=roster.docs.filter(record=>!["suspended","archived"].includes(String(record.data()?.status||"active")));
-  const sections=[...new Set(active.map(record=>String(record.data()?.section||"").trim()).filter(Boolean))].slice(0,40);
+  if(String(user.email||"").toLowerCase().trim()!==normalized)
+    throw Error("Student access refresh account email changed.");
+  const resolved=await legacyStudentRecordsForAccount({
+    db,uid:user.uid,email:normalized,schoolId:"mcs-manila",maxRecords:50
+  });
+  const active=resolved.records;
+  const profiles=active.map(record=>({
+    id:record.id,
+    section:String(record.data?.section||"").trim(),
+    name:String(record.data?.name||record.data?.studentName||"Student").slice(0,140)
+  })).filter(record=>record.section);
+  const sections=[...new Set(profiles.map(record=>record.section))].slice(0,40);
   const studentIds=active.map(record=>record.id).slice(0,50);
   await db.doc("student_access/"+user.uid).set({
-    ownerUid:user.uid,email:normalized,sections,studentIds,updatedAt:FieldValue.serverTimestamp()
+    ownerUid:user.uid,email:normalized,sections,studentIds,
+    identitySource:resolved.source,updatedAt:FieldValue.serverTimestamp()
   });
-  return {sections,studentIds};
+  return {sections,studentIds,profiles,identitySource:resolved.source};
 }
 exports.refreshStudentAccess=onCall(callOptions,async request=>{
   await requireLegacyMcsCompatibility();
   const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase().trim();
   if(!uid||request.auth?.token?.email_verified!==true||!email)
     throw new HttpsError("unauthenticated","Use a verified school account before loading assignments.");
-  const result=await rebuildStudentAccess(email);
+  const result=await rebuildStudentAccess(email,uid);
   if(!result){
     await db.doc("student_access/"+uid).set({ownerUid:uid,email,sections:[],studentIds:[],updatedAt:FieldValue.serverTimestamp()});
     return {sections:[],studentIds:[]};
