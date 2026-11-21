@@ -50,6 +50,18 @@ function setSaving(value){
   for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
+  if(!value){
+    if(progressionChange){
+      refreshProgressionPlacement();
+      const payload=progressionFormPayload();
+      get("en-progression-confirm").disabled=!progressionChange.preview?.canApply||
+        progressionChange.previewSignature!==progressionSignature(payload);
+    }
+    refreshCohortOptions();
+    const cohortReady=cohortPreview?.rows?.some(row=>row.preview?.canApply&&!row.applied)&&
+      cohortPreview.signature===cohortSignature();
+    get("en-cohort-apply").disabled=!cohortReady;
+  }
 }
 function discardDraft(){
   return !draftDirty||confirm("Discard the unsaved enrollment details for the current student?");
@@ -415,7 +427,9 @@ function renderCohortResults(rows){
 async function previewCohort(){
   if(saving)return;
   const form=cohortForm(),selection=cohortSelection(),message=get("en-cohort-status");
-  if(!form.reportValidity())return;
+  if(!selection.sourceYearId||!selection.sourceTermId||!selection.sourceSectionId){
+    message.textContent="Choose the complete source cohort before previewing.";return;
+  }
   if(!selection.progressionType){message.textContent="Choose Promotion, Retention or Graduation.";return;}
   if(selection.progressionType!=="graduation"&&
     (!selection.targetYearId||!selection.targetProgramId||!selection.targetTermId||!selection.targetSectionId)){
@@ -479,7 +493,7 @@ get("en-cohort-apply").addEventListener("click",()=>{
       get("en-cohort-apply").disabled=true;
       message.textContent=applied+" progression"+(applied===1?"":"s")+" applied · "+failed+
         " failed after final server revalidation · blocked learners were unchanged.";
-    }finally{setSaving(false);}
+    }finally{setSaving(false);get("en-cohort-apply").disabled=true;}
   })();
 });
 function automaticOfferings(item,sectionId){
