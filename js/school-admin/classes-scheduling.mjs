@@ -120,6 +120,22 @@ function button(text,handler,cls="border border-slate-300 bg-white text-slate-80
   const node=make("button","rounded-lg px-3 py-2 text-xs font-bold "+cls,text);node.type="button";node.addEventListener("click",handler);return node;
 }
 function empty(message){return make("div","rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600",message);}
+let reasonResolver=null;
+function closeReasonDialog(value=null){
+  const resolver=reasonResolver;reasonResolver=null;
+  const dialog=el("csReasonDialog");if(dialog?.open)dialog.close();
+  if(resolver)resolver(value);
+}
+function askReason({title,help,defaultValue=""}){
+  if(reasonResolver)closeReasonDialog(null);
+  const dialog=el("csReasonDialog"),value=el("csReasonValue");
+  el("csReasonTitle").textContent=title;el("csReasonHelp").textContent=help;
+  el("csReasonStatus").textContent="At least 12 characters. The reason is retained in the school audit trail.";
+  value.value=defaultValue;
+  return new Promise(resolve=>{
+    reasonResolver=resolve;dialog.showModal();requestAnimationFrame(()=>{value.focus();value.select();});
+  });
+}
 function renderClasses(rows){
   const host=el("csList");host.replaceChildren();if(!rows.length){host.append(empty("No classes match these filters."));return;}
   const teachers=teacherMap(),cards=make("div","grid gap-3 md:hidden"),
@@ -313,13 +329,15 @@ async function addSelectiveStudent(row){
 }
 async function changeSelectiveEnrollment(row,action){
   const item=selected();if(!item||item.rosterMode!=="selective"||busy)return;
-  const restoring=action==="restore_enrollment",reason=prompt(
-    (restoring?"Reason for restoring ":"Reason for removing ")+row.name+" "+(restoring?"to":"from")+" this selective class (at least 12 characters):",
-    restoring?"Selective class enrollment restored":"Selective class enrollment ended");
-  if(reason===null)return;if(reason.trim().length<12){say("Explain the selective class enrollment change in at least 12 characters.",true);return;}
+  const restoring=action==="restore_enrollment",reason=await askReason({
+    title:restoring?"Restore selective enrollment":"End selective enrollment",
+    help:(restoring?"Restore ":"Remove ")+row.name+" "+(restoring?"to":"from")+" this selective class while preserving enrollment history.",
+    defaultValue:restoring?"Selective class enrollment restored":"Selective class enrollment ended"
+  });
+  if(reason===null)return;
   setBusy(true);say(restoring?"Restoring class enrollment…":"Ending class enrollment…");
   try{
-    await scoped(action,{enrollmentId:row.enrollmentId,reason:reason.trim()});
+    await scoped(action,{enrollmentId:row.enrollmentId,reason});
     await openClass(item.offeringId);
     say(restoring?row.name+" restored to this selective class.":row.name+" removed from the active class roster; enrollment history was preserved.");
   }catch(error){say(error?.message||"The class enrollment could not be changed.",true);}
@@ -439,13 +457,16 @@ async function mutate(action,details,success){
 }
 async function setPrimaryTeacher(row){
   const item=selected();if(!item||busy||row.role==="primary")return;
-  const reason=prompt("Reason for making "+row.name+" the Primary Teacher (at least 12 characters):",
-    "Primary teaching responsibility updated");
-  if(reason===null)return;if(reason.trim().length<12){say("Explain the primary-teacher change in at least 12 characters.",true);return;}
+  const reason=await askReason({
+    title:"Make Primary Teacher",
+    help:"Make "+row.name+" the class lead. Existing assessment-review ownership will not be silently reassigned.",
+    defaultValue:"Primary teaching responsibility updated"
+  });
+  if(reason===null)return;
   setBusy(true);say("Updating class primary teacher…");
   try{
     const result=await scoped("set_primary_teacher",{
-      offeringId:item.offeringId,teacherUid:row.teacherUid,expectedRevision:Number(item.revision)||1,reason:reason.trim()
+      offeringId:item.offeringId,teacherUid:row.teacherUid,expectedRevision:Number(item.revision)||1,reason
     });
     await loadOverview({preserveSelection:true,force:true});
     say(result.alreadyCurrent?row.name+" is already the Primary Teacher.":
@@ -454,9 +475,13 @@ async function setPrimaryTeacher(row){
   finally{setBusy(false);}
 }
 async function endAssignment(row){
-  const reason=prompt("Reason for removing "+row.name+" from this class (at least 12 characters):","Teaching assignment ended");
-  if(reason===null)return;if(reason.trim().length<12){say("Explain the teaching assignment change in at least 12 characters.",true);return;}
-  await mutate("end_teacher_assignment",{teacherUid:row.teacherUid,offeringId:selectedId,reason:reason.trim()},"Teacher removed from this class.");
+  const reason=await askReason({
+    title:"End teaching assignment",
+    help:"Remove "+row.name+" from this class while preserving historical teaching and assessment records.",
+    defaultValue:"Teaching assignment ended"
+  });
+  if(reason===null)return;
+  await mutate("end_teacher_assignment",{teacherUid:row.teacherUid,offeringId:selectedId,reason},"Teacher removed from this class.");
 }
 async function loadOverview({preserveSelection=false,force=false}={}){
   if(!picker?.scope.current||(busy&&!force))return;const turn=++epoch;say("Loading classes and teaching assignments…");
@@ -527,20 +552,27 @@ el("csRosterModeForm").addEventListener("submit",event=>{
     finally{setBusy(false);}
   })();
 });
-el("csAdviserForm").addEventListener("submit",event=>{
+el("csAdviserForm").addEventListener("submit",async event=>{
   event.preventDefault();const item=selected(),teacherUid=el("csAdviserTeacher").value;if(!item||!teacherUid)return;
   const existing=currentAdviser(item),name=teacherMap().get(teacherUid)?.name||"selected teacher";
-  const reason=prompt((existing?"Reason for changing":"Reason for assigning")+" the section adviser (at least 12 characters):",
-    existing?"Section adviser reassignment":"Official homeroom/advisory assignment");
-  if(reason===null)return;if(reason.trim().length<12){say("Explain the adviser assignment change in at least 12 characters.",true);return;}
-  void mutate("set_section_adviser",{teacherUid,sectionId:item.sectionId,yearId:item.yearId,reason:reason.trim()},
+  const reason=await askReason({
+    title:existing?"Change section adviser":"Assign section adviser",
+    help:(existing?"Change":"Assign")+" the official adviser for "+item.sectionName+". Subject teaching assignments are separate.",
+    defaultValue:existing?"Section adviser reassignment":"Official homeroom/advisory assignment"
+  });
+  if(reason===null)return;
+  void mutate("set_section_adviser",{teacherUid,sectionId:item.sectionId,yearId:item.yearId,reason},
     name+" is now the adviser for "+item.sectionName+" in "+item.yearName+".");
 });
-el("csAdviserRemove").addEventListener("click",()=>{
+el("csAdviserRemove").addEventListener("click",async()=>{
   const item=selected(),adviser=currentAdviser(item);if(!item||!adviser||busy)return;
-  const reason=prompt("Reason for ending this adviser assignment (at least 12 characters):","Advisory responsibility ended");
-  if(reason===null)return;if(reason.trim().length<12){say("Explain the adviser assignment change in at least 12 characters.",true);return;}
-  void mutate("end_section_adviser",{sectionId:item.sectionId,yearId:item.yearId,reason:reason.trim()},
+  const reason=await askReason({
+    title:"End adviser assignment",
+    help:"End this section adviser relationship without changing any subject teaching assignments.",
+    defaultValue:"Advisory responsibility ended"
+  });
+  if(reason===null)return;
+  void mutate("end_section_adviser",{sectionId:item.sectionId,yearId:item.yearId,reason},
     "Section adviser assignment ended. Subject teaching assignments were not changed.");
 });
 el("csAssignForm").addEventListener("submit",event=>{
@@ -572,6 +604,13 @@ el("csHandoverForm").addEventListener("submit",event=>{
     finally{setBusy(false);}
   })();
 });
+el("csReasonForm").addEventListener("submit",event=>{
+  event.preventDefault();const value=el("csReasonValue").value.trim();
+  if(value.length<12){el("csReasonStatus").textContent="Explain the change in at least 12 characters.";el("csReasonValue").focus();return;}
+  closeReasonDialog(value);
+});
+for(const id of ["csReasonClose","csReasonCancel"])el(id).addEventListener("click",()=>closeReasonDialog(null));
+el("csReasonDialog").addEventListener("cancel",event=>{event.preventDefault();closeReasonDialog(null);});
 for(const node of [el("csSearch"),el("csYearFilter"),el("csTermFilter")])node.addEventListener(node.tagName==="INPUT"?"input":"change",renderList);
 for(const node of document.querySelectorAll("[data-cs-view]"))node.addEventListener("click",()=>setView(node.dataset.csView));
 for(const node of document.querySelectorAll("[data-cs-detail-tab]"))node.addEventListener("click",()=>setDetailTab(node.dataset.csDetailTab));
