@@ -30,7 +30,7 @@
     <main id="schoolTimetable" class="max-w-screen-xl mx-auto w-full p-4 sm:p-6 flex-1 space-y-4">
       <section class="av-panel p-4 sm:p-6 space-y-3">
         <div class="flex flex-wrap justify-between items-start gap-3">
-          <div><p class="text-xs font-bold uppercase text-blue-700">Verified school workspace</p><h1 class="text-2xl font-extrabold">My teaching timetable</h1><p class="text-sm text-slate-600 mt-1">Build your weekly schedule from the subjects and sections assigned by your school administrator. Save to resume on another device.</p></div>
+          <div><p class="text-xs font-bold uppercase text-blue-700">Verified school workspace</p><h1 class="text-2xl font-extrabold">My teaching timetable</h1><p class="text-sm text-slate-600 mt-1">Official class times and rooms come from School Administration. Your assigned timetable is read-only here; older personal timetable data remains available as a planning overlay.</p></div>
           <button id="schoolTimetableLegacy" hidden type="button" class="av-secondary-button">Open older timetable</button>
         </div>
         <div id="schoolTimetableSwitcher" hidden></div>
@@ -42,16 +42,28 @@
         <p id="schoolTimetableStatus" role="status" aria-live="polite" class="text-sm text-slate-700">Checking verified school access…</p>
         <p id="schoolTimetableSummary" class="text-sm font-semibold text-slate-800"></p>
       </section>
-      <fieldset id="schoolTimetableEditor" disabled class="av-panel p-4 sm:p-5 space-y-3">
-        <legend class="sr-only">Weekly timetable editor</legend>
+      <section class="av-panel p-4 sm:p-5 space-y-3">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div><p class="text-xs font-extrabold uppercase tracking-wider text-violet-700">Official timetable</p><h2 class="text-xl font-extrabold mt-1">Assigned class meetings</h2><p class="text-sm text-slate-600 mt-1">These times are controlled in School Administration → Classes &amp; Scheduling. Contact a School Administrator if an official time or room is incorrect.</p></div>
+          <a href="teacher-classroom.html" class="av-secondary-button">Open Classroom</a>
+        </div>
+        <p id="schoolOfficialTimetableSummary" class="text-sm font-semibold text-slate-800"></p>
+        <div id="schoolOfficialTimetableRows" class="grid md:grid-cols-2 gap-3"></div>
+      </section>
+      <details class="av-panel p-4 sm:p-5">
+        <summary class="font-extrabold cursor-pointer">Personal timetable overlay · compatibility</summary>
+        <p class="text-xs text-slate-600 mt-2">This older teacher-owned timetable is retained for personal planning and historical lesson-plan compatibility. Editing it does not change the official class schedule.</p>
+      <fieldset id="schoolTimetableEditor" disabled class="mt-4 space-y-3">
+        <legend class="sr-only">Personal weekly timetable editor</legend>
         <div class="flex flex-wrap gap-2">
           <button id="schoolTimetableAddClass" type="button" class="av-secondary-button">Add class slot</button>
           <button id="schoolTimetableAddEvent" type="button" class="av-secondary-button">Add daily event</button>
           <button id="schoolTimetableSave" disabled type="button" class="bg-blue-700 text-white min-h-11 rounded-lg font-bold px-4 py-2 disabled:opacity-50">Save timetable</button>
         </div>
-        <p class="text-xs text-slate-600">One time slot covers Monday–Friday. Use the same slot for different classes at the same time. Non-teaching events do not count toward scheduled class hours.</p>
+        <p class="text-xs text-slate-600">Personal overlay only: these rows can support planning and lesson context, but they do not change official School Admin meeting times.</p>
         <div id="schoolTimetableRows" class="space-y-3"></div>
       </fieldset>
+      </details>
     </main>
     <!-- Main Workspace: compatibility timetable -->
     <div id="legacyTimetable" hidden
@@ -273,7 +285,7 @@
 
     
 
-    <script type="module" src="js/lesson-review/school-timetable.mjs?v=1.0.0"></script>
+    <script type="module" src="js/lesson-review/school-timetable.mjs?v=20261121-official1"></script>
     <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
     <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
