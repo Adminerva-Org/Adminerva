@@ -249,7 +249,7 @@ function createSchoolAssessmentService({db}){
    if(input.action==="exam_close_project"){
     const studentUid=checkId(input.studentUid,"Student account",128),
       receipt=await db.doc(prefix+"studio_exam_close_receipts/"+taskId+
-        "/sessions/"+epoch+"/students/"+studentUid).get();
+        "/sessions/"+epoch+"/studio_exam_final_checkpoints/"+studentUid).get();
     if(!receipt.exists||receipt.data().schoolId!==ctx.schoolId||
        receipt.data().taskId!==taskId||receipt.data().studentUid!==studentUid||
        receipt.data().closingEpoch!==epoch)
@@ -264,7 +264,7 @@ function createSchoolAssessmentService({db}){
       savedAt:frozen.savedAt?.toMillis?.()||null};
    }
    const snap=await db.collection(prefix+"studio_exam_close_receipts/"+taskId+
-     "/sessions/"+epoch+"/students").limit(101).get();
+     "/sessions/"+epoch+"/studio_exam_final_checkpoints").limit(101).get();
    if(snap.size===101)
     deny("resource-exhausted","Close checkpoints require pagination for large cohorts.");
    const receipts=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
@@ -321,7 +321,7 @@ function createSchoolAssessmentService({db}){
     if(!Number.isSafeInteger(epoch)||epoch<1||epoch>Number(task.data().manualSessionEpoch||0))
      deny("invalid-argument","Choose a valid class session for the exam save receipt.");
     const receipt=await db.doc(prefix+"studio_exam_close_receipts/"+taskId+
-      "/sessions/"+epoch+"/students/"+ctx.uid).get();
+      "/sessions/"+epoch+"/studio_exam_final_checkpoints/"+ctx.uid).get();
     const row=receipt.exists?receipt.data():null;
     return {taskId,sessionEpoch:epoch,confirmed:Boolean(row&&row.schoolId===ctx.schoolId&&
       row.taskId===taskId&&row.studentUid===ctx.uid&&row.closingEpoch===epoch),
