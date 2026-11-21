@@ -7,7 +7,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Assignments | Adminerva</title>
+    <title>Classwork | Adminerva</title>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -30,14 +30,14 @@
           <h1
             class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2"
           >
-            <span class="text-indigo-600">📚</span> Assignments
+            <span class="text-indigo-600">📚</span> <span id="assignmentPageTitle">Assignments</span>
           </h1>
           <p class="text-sm sm:text-base text-slate-500 mt-1 font-medium">
-            Open verified school tasks and your existing programming assignments from one workspace.
+            <span id="assignmentPageDescription">Open verified school tasks and your existing programming assignments from one workspace.</span>
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <a href="student-classroom.html" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">← Classroom</a>
+          <a id="assignmentBackLink" href="student-classroom.html" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">← Classroom</a>
           <span id="assignmentSubjectLabel" class="rounded-full bg-cyan-100 text-cyan-900 px-3 py-2 text-xs font-extrabold">Computer Programming</span>
         </div>
         <select
@@ -46,9 +46,17 @@
           class="hidden w-full sm:w-auto text-sm border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 font-bold bg-indigo-50 px-3 py-2.5 sm:py-2 text-indigo-700 cursor-pointer outline-none border transition"
         ></select>
       </header>
+      <section id="v4ClassMaterialsPanel" hidden class="mb-5 rounded-2xl border border-sky-200 bg-sky-50/50 p-4 sm:p-5">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-sky-800">Class materials</p><h2 class="text-lg font-extrabold mt-1">Resources from your teacher</h2><p class="text-sm text-slate-600 mt-1">Materials shared in the class Stream also appear here so Classwork stays in one place.</p></div>
+          <span id="v4ClassMaterialsCount" class="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-extrabold text-sky-900"></span>
+        </div>
+        <p id="v4ClassMaterialsStatus" class="text-xs text-slate-500 mt-3" role="status"></p>
+        <div id="v4ClassMaterialsList" class="grid gap-3 mt-3"></div>
+      </section>
       <section id="v4AssignmentsPanel" class="hidden rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 sm:p-5">
     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-      <div><h2 class="text-lg font-extrabold">Current school tasks</h2><p class="text-sm text-slate-600 mt-1">Published grades and revision requests appear with the exact task they belong to.</p></div>
+      <div><h2 id="v4AssignmentsHeading" class="text-lg font-extrabold">Current school tasks</h2><p class="text-sm text-slate-600 mt-1">Published grades and revision requests appear with the exact task they belong to.</p></div>
       <div id="v4AssignmentsSchoolSwitcher" hidden class="min-w-[220px]"></div>
     </div>
     <p id="v4AssignmentsStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school assignments…</p>
@@ -374,7 +382,7 @@
     <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
     <script type="module" src="js/core/auth-guard-v4-pilot.js?v=21a534696b3d"></script>
-    <script type="module" src="js/student/v4-assessments.mjs?v=20261120-private-conversation1"></script>
+    <script type="module" src="js/student/v4-assessments.mjs?v=20261121-class-materials1"></script>
     <script type="module" src="js/student/assessments.js?v=4.0.13"></script>
     <script type="module" src="js/student/submission-receipts.mjs?v=1.3.1"></script>
     <script type="module" src="js/student/assessment-evidence.mjs?v=4.0.2"></script>
