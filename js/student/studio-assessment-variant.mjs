@@ -97,7 +97,7 @@ async function load(user){
       matchedSchoolAssessment=true;
       if(task.manualOpenRequired===true&&task.manualAccessState!=="open"){
         reportContext({status:"waiting_for_teacher",personalized:false,readOnly:true});
-        if(loadingNote)loadingNote.textContent=["closing","held"].includes(task.manualAccessState)
+        if(loadingNote)loadingNote.textContent=["closed","closing","held"].includes(task.manualAccessState)
           ?"This section's exam session is closed. Your school-saved project will be available when the teacher opens the next session."
           :"Waiting for your teacher to open this section's Studio examination.";
         return;
