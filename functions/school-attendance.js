@@ -42,9 +42,60 @@ function createSchoolAttendanceService({db}){
   const input=request.data||{},ctx=await getSchoolContext({
    db,request,schoolId:input.schoolId,roles:["teacher","school_admin"],allowDraftAdmin:true
   });
-  const prefix="schools/"+ctx.schoolId+"/",teacher=ctx.roles.includes("teacher"),admin=ctx.roles.includes("school_admin");
-  const sectionId=checkId(String(input.sectionId||""),"Section ID"),yearId=checkId(String(input.yearId||""),"Academic year ID"),
-   date=attendanceDate(input.date);
+  const prefix="schools/"+ctx.schoolId+"/",teacher=ctx.roles.includes("teacher"),admin=ctx.roles.includes("school_admin"),
+   action=String(input.action||""),date=attendanceDate(input.date);
+
+  if(action==="admin_overview"){
+   if(!admin)deny("permission-denied","School administration is required for attendance oversight.");
+   const [adviserSnap,daySnap]=await Promise.all([
+    db.collection(prefix+"section_advisers").where("status","==","active").limit(501).get(),
+    db.collection(prefix+"attendance_days").where("date","==",date).limit(501).get()
+   ]);
+   if(adviserSnap.size===501||daySnap.size===501)
+    deny("resource-exhausted","Attendance oversight requires pagination for this school.");
+   const advisers=adviserSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+    doc.data().sectionId&&doc.data().yearId&&doc.data().teacherUid);
+   const sectionIds=[...new Set(advisers.map(doc=>doc.data().sectionId))],
+    yearIds=[...new Set(advisers.map(doc=>doc.data().yearId))],
+    teacherUids=[...new Set(advisers.map(doc=>doc.data().teacherUid))];
+   const [sections,years,members]=await Promise.all([
+    Promise.all(sectionIds.map(id=>db.doc(prefix+"sections/"+id).get())),
+    Promise.all(yearIds.map(id=>db.doc(prefix+"academic_years/"+id).get())),
+    Promise.all(teacherUids.map(id=>db.doc(prefix+"memberships/"+id).get()))
+   ]);
+   const sectionNames=new Map(sections.map((doc,index)=>[sectionIds[index],
+    doc.exists&&doc.data().schoolId===ctx.schoolId?String(doc.data().name||sectionIds[index]):sectionIds[index]])),
+    yearData=new Map(years.map((doc,index)=>[yearIds[index],doc.exists&&doc.data().schoolId===ctx.schoolId?doc.data():null])),
+    teacherNames=new Map(members.map((doc,index)=>[teacherUids[index],
+     doc.exists&&doc.data().schoolId===ctx.schoolId?String(doc.data().displayName||("Teacher "+teacherUids[index].slice(0,8))):"Teacher "+teacherUids[index].slice(0,8)])),
+    days=new Map(daySnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
+     .map(doc=>[[doc.data().yearId,doc.data().sectionId].join("::"),doc.data()]));
+   const rows=[];
+   for(const adviser of advisers){
+    const data=adviser.data(),year=yearData.get(data.yearId);
+    if(!year)continue;
+    const start=String(year.startDate||""),end=String(year.endDate||"");
+    if(start&&date<start||end&&date>end)continue;
+    const day=days.get([data.yearId,data.sectionId].join("::"))||null,
+     counts={present:0,late:0,absent:0,excused:0,unmarked:0};
+    if(day?.entries&&typeof day.entries==="object")
+     for(const value of Object.values(day.entries)){
+      const state=STATUSES.has(value?.status)?value.status:"unmarked";counts[state]++;
+     }
+    rows.push({
+     advisoryId:adviser.id,sectionId:data.sectionId,sectionName:sectionNames.get(data.sectionId)||data.sectionId,
+     yearId:data.yearId,yearName:String(year.name||data.yearId),
+     teacherUid:data.teacherUid,teacherName:teacherNames.get(data.teacherUid)||"Teacher",
+     submitted:Boolean(day),revision:day?Number(day.revision)||1:0,counts,
+     updatedAt:day?.updatedAt?.toMillis?.()||null,updatedByUid:day?.updatedByUid||null
+    });
+   }
+   rows.sort((a,b)=>a.sectionName.localeCompare(b.sectionName)||a.yearName.localeCompare(b.yearName));
+   return {schoolId:ctx.schoolId,date,sections:rows};
+  }
+
+  const sectionId=checkId(String(input.sectionId||""),"Section ID"),
+   yearId=checkId(String(input.yearId||""),"Academic year ID");
   const sectionRef=db.doc(prefix+"sections/"+sectionId),yearRef=db.doc(prefix+"academic_years/"+yearId),
    dayRef=db.doc(prefix+"attendance_days/"+dayId(yearId,sectionId,date));
 
