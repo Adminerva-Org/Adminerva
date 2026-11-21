@@ -1372,8 +1372,14 @@ get("pa-account-recovery-preview")?.addEventListener("click",()=>{
       enrollmentBlocked=(preview.blockers||[]).some(message=>String(message).toLowerCase().includes("active class enrollment"));
     if(reconcile){
       reconcile.style.display=enrollmentBlocked?"inline-flex":"none";
-      if(enrollmentBlocked)reconcile.href="school-enrollment.html?personId="+encodeURIComponent(preview.replacement.personId);
-      else reconcile.removeAttribute("href");
+      if(enrollmentBlocked){
+        reconcile.textContent=standardEnrollmentMode?"Open enrollment reconciliation":"Open duplicate placement controls";
+        reconcile.href=(standardEnrollmentMode?"school-enrollment.html?personId=":"people-access.html?personId=")+
+          encodeURIComponent(preview.replacement.personId);
+      }else{
+        reconcile.textContent="Open enrollment reconciliation";
+        reconcile.removeAttribute("href");
+      }
     }
     get("pa-account-recovery-confirm").disabled=Boolean(preview.blockers?.length);
   }).catch(error=>resetRecoveryPreview(error?.message||"Account recovery preview failed."))
