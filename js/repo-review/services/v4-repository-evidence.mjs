@@ -1,7 +1,7 @@
 /**
  * School V4 repository evaluation adapter.
  *
- * The approved V4 evidence version is authoritative. The old RepoFetch
+ * The student-submitted frozen GitHub evidence is authoritative. The old RepoFetch
  * commit-substance analyzer is reused, but GitHub metadata is NEVER treated
  * as independently verified individual authorship or deadline evidence.
  * This is read-only preparation: no grade or evidence writes.
@@ -25,8 +25,9 @@ const eligibleSourcePath=path=>SOURCE_EXTENSIONS.has(fileExtension(path))&&
  * submission can be exercised with a deterministic GitHub client in tests.
  */
 export async function buildV4RepositoryEvaluationSnapshot({snapshot,client}={}){
-  if(!snapshot||!["approved","reviewed"].includes(snapshot.status))
-    throw Error("Approve this exact frozen GitHub evidence version before evaluation.");
+  if(!snapshot||!["submitted","approved","reviewed"].includes(snapshot.status)||
+     snapshot.hasSubmission===false)
+    throw Error("A student-submitted frozen GitHub evidence version is required for evaluation.");
   if(!client||typeof client.loadCommit!=="function"||typeof client.loadPinnedSource!=="function")
     throw Error("The repository evidence client is unavailable.");
   const repository=parseGithubRepository(snapshot.repository?.fullName||"").fullName;
@@ -36,6 +37,13 @@ export async function buildV4RepositoryEvaluationSnapshot({snapshot,client}={}){
      selected.some(sha=>!SHA.test(sha))||new Set(selected).size!==selected.length)
     throw Error("The frozen GitHub checkpoint or selected commit list is invalid.");
 
+  const history=await client.listCommits({repository,ref:checkpointSha});
+  const reachable=new Set((history.commits||[]).map(item=>String(item.sha||"").toLowerCase()));
+  const missing=selected.filter(sha=>!reachable.has(sha));
+  if(missing.length)
+    throw Error("Cannot verify "+missing.length+" submitted commit(s) in the frozen checkpoint history"+
+      (history.historyComplete?"": " (GitHub history pagination was incomplete)")+
+      ". Do not infer zero work; request a corrected submission or inspect manually.");
   const commits=[],candidatePaths=new Set(),limitations=[];
   let substantiveChanges=0,uncertainChanges=0,nonSubstantiveChanges=0;
   const checked=selected.slice(0,MAX_COMMITS);
@@ -94,7 +102,7 @@ export async function buildV4RepositoryEvaluationSnapshot({snapshot,client}={}){
     limitations.push("Pinned source unavailable: "+omitted.path+" ("+omitted.reason+").");
   if(!paths.length)
     limitations.push("No supported changed source files were detected; manually inspect the repository before scoring.");
-  limitations.push("Selected commit SHAs and their authors do not independently prove student identity, authorship or push time.");
+  limitations.push("Student-selected commit SHAs and GitHub authorship metadata do not independently prove individual authorship or push time.");
   limitations.push("Pinned files represent the inspected changed paths, not a complete independent test of repository behavior.");
 
   return {
