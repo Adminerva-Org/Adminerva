@@ -36,6 +36,7 @@ jobs:
           node --test tests/studio-assessment-variants.test.mjs tests/external-personalization.test.mjs
           node --test tests/assessment-personalization-planning.test.mjs
           node --test tests/school-legacy-studio-review.test.mjs
+          node --test tests/v4-bulk-evaluation.test.mjs
           node --test tests/studio-student-recovery-guard.test.mjs tests/studio-legacy-reopen.test.mjs
           node --test tests/school-student-records.test.mjs tests/registrar-role-access.test.mjs
           node --test js/analytics/academic-model.test.mjs
