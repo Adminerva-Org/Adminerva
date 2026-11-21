@@ -146,7 +146,7 @@ const picker=createTenantSchoolPicker({
       ?'Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; student registration continues in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>, while teaching assignments are managed in <a href="school-classes.html" style="font-weight:800;text-decoration:underline">Classes &amp; Scheduling</a>.'
       :"Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; enrollment and teaching relationships are managed in Teaching & classes.";
     if(get("pa-import-course-help"))get("pa-import-course-help").innerHTML=standardEnrollmentMode
-      ?'For Manila Cathedral School, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
+      ?'For this canonical school, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
       :"Section values from the roster are hints only. After the people import is committed, review each matched section, choose the exact active course offering, and explicitly enroll the listed students.";
     workspace.hidden=false;schoolReady=true;
     if(requestedPersonId&&requestedPersonSchoolId!==scope.current.schoolId){
