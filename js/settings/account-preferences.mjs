@@ -10,37 +10,123 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 const root=document.querySelector("[data-account-preferences]");
 if(root){
   const staff=root.dataset.accountPreferences==="staff";
-  const pushChoices=staff
-    ?[['submission','Student submissions & evidence'],['grading','Grading alerts'],['issue','Reports & replies'],['release','Website updates']]
-    :[['assessment','New assessments'],['submission','Submission updates / action required'],['grade','Published or corrected grades'],['issue','Reports & replies'],['release','Website updates']];
-  const pushMarkup=`
-    <fieldset class="mt-6" data-push-settings>
-      <legend class="font-bold">Device notifications</legend>
-      <p class="av-form-hint">Push alerts are on by default. Enable this device once to receive them.</p>
-      <label class="av-preference-option mt-3"><input type="checkbox" data-push-master checked> ${staff?'Push important teaching alerts to my enabled devices':'Push important student alerts to my enabled devices'}</label>
-      <div class="av-preference-options mt-2" data-push-options>
-        ${pushChoices.map(([value,label])=>`<label class="av-preference-option"><input type="checkbox" value="${value}" checked> ${label}</label>`).join('')}
+  root.innerHTML=`
+    <div class="av-settings-section-head">
+      <div>
+        <p class="av-eyebrow">Personal preferences</p>
+        <h2 id="notifications">Notifications, display & privacy</h2>
+        <p>These choices belong to your account and this browser. They do not change school records, grades, enrollments or role assignments.</p>
       </div>
-      <div class="flex flex-wrap gap-2 mt-3">
-        <button type="button" data-enable-push class="av-primary-button">Enable notifications on this device</button>
-        <button type="button" data-test-push class="hidden border rounded px-4 py-2 text-sm font-bold text-blue-700">Send test ping</button>
-        <button type="button" data-disable-push class="hidden border rounded px-4 py-2 text-sm font-bold">Disable on this device</button>
+    </div>
+    <form data-notification-form>
+      <section class="av-settings-card">
+        <h3>Interface</h3>
+        <p class="av-settings-muted">Choose how dense the interface feels and reduce decorative motion when preferred.</p>
+        <div class="av-settings-grid mt-3">
+          <label class="av-settings-preference-row">
+            <span><strong>Interface density</strong><small>Compact shows more information; comfortable adds breathing room.</small></span>
+            <select data-density class="border rounded px-2 py-2">
+              <option value="comfortable">Comfortable</option>
+              <option value="compact">Compact</option>
+            </select>
+          </label>
+          <label class="av-settings-preference-row">
+            <span><strong>Reduce decorative motion</strong><small>Minimizes non-essential transitions and movement.</small></span>
+            <input type="checkbox" data-reduce-motion>
+          </label>
+        </div>
+      </section>
+
+      <section class="av-settings-card">
+        <h3>Inbox notifications</h3>
+        <p class="av-settings-muted">Choose which supported notification categories appear in your Adminerva inbox.</p>
+        <div class="av-settings-list mt-3" data-notification-options></div>
+      </section>
+
+      <fieldset class="av-settings-card" data-push-settings>
+        <legend>Device notifications</legend>
+        <p class="av-settings-muted">Push is controlled per account and per device. Browser permission may also be required.</p>
+        <label class="av-settings-preference-row mt-3">
+          <span><strong>Push important alerts</strong><small>Master switch for the notification categories available to your current role.</small></span>
+          <input type="checkbox" data-push-master checked>
+        </label>
+        <div class="av-settings-list mt-3" data-push-options>
+        </div>
+        <div class="av-settings-actions mt-3">
+          <button type="button" data-enable-push class="av-primary-button">Enable on this device</button>
+          <button type="button" data-test-push class="hidden av-secondary-button">Send test notification</button>
+          <button type="button" data-disable-push class="hidden av-secondary-button">Disable on this device</button>
+        </div>
+        <p data-push-status role="status" class="av-settings-status mt-2"></p>
+      </fieldset>
+
+      <section data-release-admin hidden class="av-settings-card">
+        <h3>Release announcement</h3>
+        <p class="av-settings-muted">Notify enabled devices about the newest published Adminerva release. Duplicate sends for the same version are prevented.</p>
+        <div class="av-settings-actions mt-3">
+          <button type="button" data-send-release class="av-secondary-button">Notify devices about latest release</button>
+        </div>
+        <p data-release-status class="av-settings-status mt-2"></p>
+      </section>
+
+      <section class="av-settings-card">
+        <h3>Privacy & local data</h3>
+        <div class="space-y-3 mt-3">
+          <label class="av-settings-preference-row">
+            <span><strong>Anonymous product-usage analytics</strong><small>Excludes names, emails, student IDs, repository URLs, commit SHAs, grades, feedback and URL query parameters. Advertising signals are disabled.</small></span>
+            <input type="checkbox" data-usage-analytics>
+          </label>
+          <div class="av-settings-preference-row">
+            <span><strong>Activity sharing & diagnostics</strong><small>Optional activity sharing is off by default and never affects grades.</small></span>
+            <button type="button" data-activity-preferences class="av-secondary-button">Manage</button>
+          </div>
+        </div>
+        <div class="av-settings-actions mt-3">
+          <a href="wiki.html#privacy" class="av-secondary-link">Privacy information</a>
+          <a href="issues.html" class="av-secondary-link">My reports & support</a>
+          <button type="button" data-clear-interface class="av-secondary-button">Reset local interface</button>
+        </div>
+        <p class="av-settings-muted mt-2">Resetting local interface preferences does not delete your account, grades, submissions, projects or cloud-saved work.</p>
+      </section>
+
+      <div class="av-settings-savebar">
+        <p data-preference-status role="status" class="av-settings-status" hidden></p>
+        <button type="submit" class="av-primary-button">Save preferences</button>
       </div>
-      <p data-push-status role="status" class="av-badge mt-3"></p>
-    </fieldset>`;
-  root.innerHTML='<h2 id="notifications" class="text-xl font-bold">General, notifications &amp; display</h2><p class="av-form-hint">Control interface density, inbox categories, device push and motion from one place.</p><form data-notification-form><fieldset><legend class="font-bold mb-3">Interface</legend><label class="av-preference-option">Density <select data-density class="border rounded px-2 py-1 ml-2"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label class="av-preference-option mt-2"><input type="checkbox" data-reduce-motion> Reduce decorative motion</label></fieldset><fieldset class="mt-6"><legend class="font-bold mb-3">Show in my inbox</legend><div class="av-preference-options" data-notification-options></div></fieldset>'+pushMarkup+'<div data-release-admin hidden class="mt-6 rounded-lg border border-indigo-200 bg-indigo-50 p-4"><strong class="block">Release announcement</strong><p class="av-form-hint">After publishing patch notes, notify enabled devices about the newest published release. Each version may be announced only once.</p><button type="button" data-send-release class="av-secondary-button mt-2">Notify devices about latest release</button><p data-release-status class="av-form-hint mt-2"></p></div><fieldset class="mt-6"><legend class="font-bold">Usage analytics</legend><label class="av-preference-option mt-2"><input type="checkbox" data-usage-analytics> Share anonymous product-usage analytics to help improve Adminerva</label><p class="av-form-hint mt-2">Analytics excludes names, emails, student IDs, repository URLs, commit SHAs, grades, feedback, and URL query parameters. Advertising signals are disabled.</p></fieldset><fieldset class="mt-6"><legend class="font-bold">Account, privacy & local data</legend><div class="flex flex-wrap gap-2 mt-2"><a href="wiki.html#privacy" class="av-secondary-link">Privacy information</a><a href="issues.html" class="av-secondary-link">My reports & support</a><button type="button" data-clear-interface class="av-secondary-button">Reset interface preferences</button></div><p class="av-form-hint mt-2">Resetting interface preferences does not delete your account, grades, submissions, projects, or cloud-saved work.</p></fieldset><button type="submit" class="av-primary-button mt-4">Save my preferences</button><p data-preference-status role="status" class="av-form-hint" hidden></p></form>';
-  const categories=staff
-    ?[["submission","Student submissions"],["grading","Grading alerts"],["issue","Reports & replies"],["release","Website updates"]]
-    :[["assessment","Assignments"],["submission","Submission updates"],["grade","Published grades"],["issue","Reports & replies"],["release","Website updates"]];
-  const options=root.querySelector("[data-notification-options]");
-  for(const [value,title]of categories){const label=document.createElement("label"),input=document.createElement("input");label.className="av-preference-option";input.type="checkbox";input.value=value;input.name="notificationCategory";label.append(input,document.createTextNode(title));options.append(label);}
+    </form>`;
+  let settingsRole={role:staff?"staff":"student",canTeach:false};
+  function supportedChoices(){
+    if(!staff)return [["assessment","Assignments"],["submission","Submission updates"],["grade","Published grades"],["issue","Reports & replies"],["release","Website updates"]];
+    if(settingsRole.canTeach)return [["submission","Student submissions"],["grading","Grading alerts"],["issue","Reports & replies"],["release","Website updates"]];
+    return [["issue","Reports & replies"],["release","Website updates"]];
+  }
+  const options=root.querySelector("[data-notification-options]"),pushHost=root.querySelector("[data-push-options]");
   const pushMaster=root.querySelector("[data-push-master]");
-  const pushOptions=[...root.querySelectorAll("[data-push-options] input")];
+  let pushOptions=[];
+  function renderNotificationChoices(){
+    const choices=supportedChoices();
+    options.replaceChildren();pushHost.replaceChildren();
+    for(const [value,title] of choices){
+      const inboxLabel=document.createElement("label"),inbox=document.createElement("input");
+      inboxLabel.className="av-preference-option";inbox.type="checkbox";inbox.value=value;inbox.name="notificationCategory";
+      inbox.checked=!muted.has(value);inboxLabel.append(inbox,document.createTextNode(title));options.append(inboxLabel);
+      const pushLabel=document.createElement("label"),push=document.createElement("input");
+      pushLabel.className="av-preference-option";push.type="checkbox";push.value=value;push.checked=true;
+      pushLabel.append(push,document.createTextNode(title));pushHost.append(pushLabel);
+    }
+    pushOptions=[...pushHost.querySelectorAll("input")];
+  }
   const enablePush=root.querySelector("[data-enable-push]");
   const testPush=root.querySelector("[data-test-push]");
   const disablePush=root.querySelector("[data-disable-push]");
   const pushStatus=root.querySelector("[data-push-status]");
   let owner="",muted=new Set(),authVersion=0,savingPreferences=false,pushTurn=0;
+  renderNotificationChoices();
+  document.addEventListener("adminerva:settings-role-context",event=>{
+    settingsRole={...settingsRole,...(event.detail||{})};
+    renderNotificationChoices();
+    if(owner)void refreshPush(authVersion);
+  });
 
   function setPushBusy(value){
     if(enablePush)enablePush.disabled=value;

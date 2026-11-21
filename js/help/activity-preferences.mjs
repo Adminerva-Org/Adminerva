@@ -3,7 +3,7 @@ import {watchPreferences, savePreferences} from "../analytics/activity-client.mj
 export function mountActivityPreferences() {
   if (document.getElementById("activity-preferences-dialog")) return;
   const home = /\/(student|teacher)-home\.html$/.test(location.pathname);
-  const settings = /\/(student-)?settings\.html$/.test(location.pathname);
+  const settings = /\/(?:school-student-|student-)?settings\.html$/.test(location.pathname);
   const dialog = document.createElement("dialog");
   dialog.id = "activity-preferences-dialog";
   dialog.className = "av-preferences-dialog";
@@ -12,7 +12,6 @@ export function mountActivityPreferences() {
   document.body.append(dialog);
   const field = id => dialog.querySelector("#" + id);
   let snapshot = null, promptedUid = null, busy = false, dismissed = false;
-  const buttons = document.querySelectorAll("[data-activity-preferences]");
   function open() {
     if (document.querySelector("dialog[open]")) return false;
     if (snapshot?.ready) {
@@ -23,14 +22,16 @@ export function mountActivityPreferences() {
     dialog.showModal();
     return true;
   }
-  if (settings) {
+  if (settings && !document.querySelector("[data-account-preferences]")) {
     const section = document.createElement("section");
     section.className = "av-preferences-settings";
     section.innerHTML = '<h2 class="font-bold text-lg">Activity & privacy</h2><p>Manage optional sharing, diagnostic actions and the home-page reminder.</p><button type="button" data-activity-preferences>Manage activity preferences</button>';
     document.querySelector("main, #pageBody > div.max-w-screen-2xl")?.prepend(section);
-    section.querySelector("button").addEventListener("click", open);
   }
-  for (const button of buttons) button.addEventListener("click", open);
+  document.addEventListener("click", event => {
+    const button=event.target.closest?.("[data-activity-preferences]");
+    if(button){event.preventDefault();open();}
+  });
   const stop = watchPreferences(value => {
     if (snapshot?.uid !== value.uid) { dialog.close(); promptedUid = null; dismissed = false; }
     snapshot = value;
