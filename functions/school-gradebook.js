@@ -36,6 +36,15 @@ function validateScores(criteria,rubric){
  });
  return {criteria:cleaned,awarded,total:rubric.reduce((s,r)=>s+Number(r.points),0),pending};
 }
+function validatedBulkLinkReview(source,input){
+ // A frozen HTTPS link proves that a URL was submitted, not what it shows.
+ // Bulk AI scoring requires the teacher's per-student review of the actual link.
+ const note=String(input?.artifactReviewNote||"").trim();
+ if(source==="link"&&input?.onlyIfUngraded===true&&
+    (input.externalArtifactVerified!==true||note.length<15||note.length>3000))
+  deny("failed-precondition","Bulk grading of an external submission link requires individual teacher artifact verification and a 15–3000 character review note.");
+ return note;
+}
 function createSchoolGradebookService({db}){
  return async request=>{
   const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId});
@@ -278,14 +287,7 @@ function createSchoolGradebookService({db}){
    const feedback=String(input.feedback||"").trim();
    if(feedback.length>5000)deny("invalid-argument","Teacher feedback is too long.");
    const draftSource=DRAFT_SOURCES.has(String(input.draftSource||""))?String(input.draftSource):"teacher";
-   // A frozen HTTPS link proves that a URL was submitted, not what it shows.
-   // Bulk evaluation cannot save AI claims about external contents unless the
-   // teacher attests to inspecting that learner's actual artifact.
-   const artifactReviewNote=String(input.artifactReviewNote||"").trim();
-   if(source==="link"&&input.onlyIfUngraded===true&&
-      (input.externalArtifactVerified!==true||artifactReviewNote.length<15||
-       artifactReviewNote.length>3000))
-    deny("failed-precondition","Bulk grading of an external submission link requires individual teacher artifact verification and a 15–3000 character review note.");
+   const artifactReviewNote=validatedBulkLinkReview(source,input);
    const auditRef=db.collection(prefix+"grade_audit").doc();
    await db.runTransaction(async tx=>{
     const {task,submission}=await authorize(tx);
@@ -492,4 +494,4 @@ function createSchoolGradebookService({db}){
   deny("invalid-argument","Unknown Gradebook operation.");
  };
 }
-module.exports={createSchoolGradebookService,validateScores};
+module.exports={createSchoolGradebookService,validateScores,validatedBulkLinkReview};
