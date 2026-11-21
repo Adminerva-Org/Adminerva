@@ -18,7 +18,7 @@ const picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];legacyDeploymentHistory=[];legacyDeploymentWarning="";editing=null;sharing=null;deploying=null;
-    deployOfferings=[];deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
+    deployOfferings=[];deploymentOfferingNames.clear();deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
     deployVariantReview=null;deployVariantLoading=false;personalizingOfferings=[];
     lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
@@ -239,139 +239,193 @@ function showPreview(item){
     :"Standard assessment · one task for the class.";
   previewDialog.showModal();
 }
+
+let deploymentOfferingNames=new Map();
+function deploymentClassLabel(task){
+  const saved=[task.subjectName,task.sectionName].filter(Boolean).join(" · ");
+  const known=deploymentOfferingNames.get(task.offeringId);
+  return saved||known||("Class offering · "+String(task.offeringId||task.taskId||"unknown"));
+}
+function deployedActionLink(label,href,primary=false){
+  const link=document.createElement("a");
+  link.className="tl-action"+(primary?"":" alt");link.href=href;link.textContent=label;
+  return link;
+}
+function deploymentClassRow(task){
+  const lifecycle=task.lifecycle||"active";
+  const row=document.createElement("article");row.className="tl-deploy-class";
+  const main=document.createElement("div");main.className="tl-deploy-class-main";
+  const info=document.createElement("div");info.className="tl-deploy-class-info";
+  const name=document.createElement("h4");name.className="font-extrabold text-slate-900";
+  name.textContent=deploymentClassLabel(task);
+  const meta=document.createElement("p");meta.className="tl-muted";
+  const manualState=task.manualAccessState==="open"?"Exam open":
+    ["closing","closed","held"].includes(task.manualAccessState)?"Exam closed":"Awaiting teacher";
+  const due=task.dueAt?new Date(task.dueAt):null;
+  const dueLabel=due&&Number.isFinite(due.getTime())?due.toLocaleString():"Not scheduled";
+  meta.textContent=(task.published?"Published":"Private")+" · "+
+    (lifecycle==="active"?"Active":lifecycle)+" · Due "+dueLabel+
+    (task.manualOpenRequired?" · "+manualState:"")+
+    (task.allowLateSubmissions?" · Late allowed":"");
+  info.append(name,meta);
+  const quick=document.createElement("div");quick.className="tl-deploy-quick";
+  if(lifecycle!=="cancelled"){
+    quick.append(deployedActionLink("Review & Grade",
+      "school-gradebook.html?view=review&task="+encodeURIComponent(task.taskId),true));
+  }
+  if(["active","closed"].includes(lifecycle)){
+    quick.append(actionButton(task.published?"Unpublish":"Publish",
+      ()=>void setPublication(task,!task.published),!task.published));
+  }
+  if(lifecycle==="active"&&task.published&&task.manualOpenRequired&&task.submissionSource==="studio"){
+    const isOpen=task.manualAccessState==="open";
+    const finalSaving=["closed","closing"].includes(task.manualAccessState)&&
+      Number(task.manualCloseGraceUntil||0)>Date.now();
+    const control=actionButton(isOpen?"Close exam":finalSaving?"Finalizing saves…":"Open exam",
+      ()=>void setExamOpening(task,!isOpen),isOpen);
+    control.disabled=finalSaving;
+    if(finalSaving)control.title="Previous session's final cloud checkpoints are still being accepted.";
+    quick.append(control);
+  }
+  main.append(info,quick);
+  const more=document.createElement("details");more.className="tl-deploy-class-more";
+  const summary=document.createElement("summary");
+  summary.textContent="More actions";
+  more.append(summary);
+  const extra=document.createElement("div");extra.className="tl-deploy-more-actions";
+  if(lifecycle!=="cancelled"){
+    if(task.offeringId&&task.taskId)
+      extra.append(deployedActionLink("Add to Class Record",
+        "class-record.html?"+new URLSearchParams({
+          offering:task.offeringId,assessment:task.taskId,source:"school"
+        }).toString()));
+    extra.append(actionButton("Deployment settings",()=>openDeploymentSettings(task),true));
+  }
+  if(task.submissionSource==="studio"&&Number(task.manualSessionEpoch||0)>0)
+    extra.append(actionButton("Class save history",()=>void showExamCloseReport(task),true));
+  if(lifecycle==="active"){
+    extra.append(actionButton("Close assessment",()=>openLifecycle(task,"close"),true));
+    extra.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
+    extra.append(actionButton("Cancel assessment",()=>openLifecycle(task,"cancel"),true));
+  }else if(lifecycle==="closed"){
+    extra.append(actionButton("Reopen assessment",()=>openLifecycle(task,"reopen"),true));
+    extra.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
+    extra.append(actionButton("Cancel assessment",()=>openLifecycle(task,"cancel"),true));
+  }else if(lifecycle==="archived"){
+    extra.append(actionButton("Restore",()=>openLifecycle(task,"restore_archive"),true));
+  }
+  const context=document.createElement("p");context.className="tl-muted";
+  const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
+  context.textContent="Response: "+sourceLabel(task.submissionSource)+
+    (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
+    " · Revision "+(task.revision||1)+
+    (handedOver?" · Review responsibility transferred; blueprint ownership retained.":"");
+  more.append(extra,context);
+  row.append(main,more);return row;
+}
+function renderDeployedTasks(){
+  const current=deployments.filter(task=>task.lifecycle!=="archived"&&task.lifecycle!=="cancelled");
+  const historic=deployments.filter(task=>task.lifecycle==="archived"||task.lifecycle==="cancelled");
+  const summary=document.createElement("div");summary.className="tl-deploy-overview";
+  const title=document.createElement("h3");title.textContent="Class deployments";
+  const count=document.createElement("p");count.className="tl-muted";
+  count.textContent=current.length+" current class deployment"+(current.length===1?"":"s")+
+    " · "+current.filter(task=>task.published).length+" published · "+
+    current.filter(task=>!task.published).length+" private";
+  summary.append(title,count);list.append(summary);
+  if(legacyDeploymentWarning){
+    const warning=document.createElement("p");warning.className="tl-deploy-notice";
+    warning.textContent="Historical deployments could not be loaded: "+legacyDeploymentWarning+
+      ". No original records were changed.";
+    list.append(warning);
+  }
+  const groups=new Map();
+  for(const task of current){
+    const key=task.blueprintId||("unlinked:"+String(task.taskId||"unknown"));
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(task);
+  }
+  if(!current.length){
+    const empty=document.createElement("p");empty.className="tl-deploy-notice";
+    empty.textContent="No current class deployments. Open My Assessments to deploy a blueprint.";
+    list.append(empty);
+  }
+  for(const tasks of [...groups.values()].sort((a,b)=>
+    String(a[0]?.title||"").localeCompare(String(b[0]?.title||"")))){
+    const group=document.createElement("section");group.className="tl-deploy-group";
+    const header=document.createElement("div");header.className="tl-deploy-group-header";
+    const label=document.createElement("div");
+    const h=document.createElement("h3");h.textContent=tasks[0].title||"Assessment";
+    const meta=document.createElement("p");meta.className="tl-muted";
+    meta.textContent=tasks.length+" class"+(tasks.length===1?"":"es")+" · "+
+      sourceLabel(tasks[0].submissionSource)+" · "+
+      tasks.filter(task=>task.published).length+" published";
+    label.append(h,meta);header.append(label);
+    group.append(header);
+    for(const task of tasks.sort((a,b)=>deploymentClassLabel(a).localeCompare(deploymentClassLabel(b))))
+      group.append(deploymentClassRow(task));
+    list.append(group);
+  }
+  if(historic.length){
+    const past=document.createElement("details");past.className="tl-deploy-history";
+    const toggle=document.createElement("summary");
+    toggle.textContent="Archived / cancelled deployments ("+historic.length+")";
+    past.append(toggle);
+    for(const task of historic)past.append(deploymentClassRow(task));
+    list.append(past);
+  }
+  if(legacyDeploymentHistory.length){
+    const legacy=document.createElement("details");legacy.className="tl-deploy-history";
+    const toggle=document.createElement("summary");
+    toggle.textContent="Historical Repository Management assessments ("+legacyDeploymentHistory.length+")";
+    legacy.append(toggle);
+    const explanation=document.createElement("p");explanation.className="tl-muted tl-deploy-history-help";
+    explanation.textContent="Original class deployments and evidence are preserved. Their schedules use the historical editor; new deployments create separate school assessments.";
+    legacy.append(explanation);
+    for(const historical of legacyDeploymentHistory){
+      const assessment=document.createElement("details");assessment.className="tl-deploy-legacy-item";
+      const header=document.createElement("summary");
+      header.textContent=(historical.title||"Historical assessment")+" · "+
+        (historical.deploymentCount||historical.deployments?.length||0)+" classes";
+      assessment.append(header);
+      const entries=Array.isArray(historical.deployments)?historical.deployments:[];
+      for(const assigned of entries){
+        const entry=document.createElement("div");entry.className="tl-deploy-legacy-class";
+        const line=document.createElement("p");line.className="tl-muted";
+        const rawDue=assigned.deadline?new Date(assigned.deadline):null;
+        const validDue=rawDue&&Number.isFinite(rawDue.getTime());
+        line.textContent=(assigned.section||"Unassigned section")+" · "+
+          (assigned.deadlineEnabled===false?"No enforced deadline":
+            validDue?"Due "+rawDue.toLocaleString():"Deadline not set")+
+          (assigned.allowLateSubmissions?" · Late allowed":"");
+        entry.append(line,deployedActionLink("Edit schedule",
+          "repository-assessment-studio.html?"+new URLSearchParams({
+            legacyAssessment:historical.legacyAssessmentId,legacyDeployment:assigned.id
+          }).toString()));
+        assessment.append(entry);
+      }
+      const footer=document.createElement("div");footer.className="tl-deploy-more-actions";
+      if(historical.submissionSource==="studio")
+        footer.append(deployedActionLink("Review in V4",
+          "school-gradebook.html?"+new URLSearchParams({
+            view:"review",task:"legacy:"+historical.legacyAssessmentId
+          }).toString(),true));
+      footer.append(deployedActionLink("Open original deployment",
+        "repository-assessment-studio.html?"+new URLSearchParams({
+          legacyAssessment:historical.legacyAssessmentId,legacyView:"deployments"
+        }).toString()));
+      assessment.append(footer);legacy.append(assessment);
+    }
+    list.append(legacy);
+  }
+}
 function render(){
   document.querySelectorAll("[data-filter]").forEach(button=>
     button.setAttribute("aria-pressed",String(button.dataset.filter===filter)));
   list.replaceChildren();
   const uid=picker.scope.current?.uid;
   if(filter==="deployed"){
-    if(!deployments.length&&!legacyDeploymentHistory.length){
-      const empty=document.createElement("p");empty.className="tl-muted";
-      empty.textContent=legacyDeploymentWarning
-        ?"School-scoped deployments are empty, but historical deployments could not be checked. Open Repository Assessment Studio to manage existing legacy schedules."
-        :"No class assessment deployments yet.";
-      list.append(empty);
-    }
-    if(legacyDeploymentWarning){
-      const warning=document.createElement("p");warning.className="tl-muted";
-      warning.textContent="Historical Repository Management deployments could not be verified: "+legacyDeploymentWarning+
-        ". Your existing legacy records have not been modified.";
-      list.append(warning);
-    }
-    for(const task of deployments){
-      const lifecycle=task.lifecycle||"active";
-      const row=document.createElement("article");row.className="tl-row";
-      const text=document.createElement("div"),heading=document.createElement("h3"),meta=document.createElement("p");
-      heading.style.fontWeight="750";heading.textContent=task.title;
-      meta.className="tl-muted";
-      const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
-      meta.textContent=(task.published?"Published":"Private deployment")+" · "+sourceLabel(task.submissionSource)+
-        (task.manualOpenRequired?" · Teacher session: "+(task.manualAccessState==="open"?"OPEN":
-          ["closed","closing","held"].includes(task.manualAccessState)?"CLOSED":"WAITING"):"")+
-        (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
-        " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
-        new Date(task.dueAt).toLocaleString():"not scheduled")+
-        (task.allowLateSubmissions?" · late submissions allowed":"")+
-        (handedOver?" · review responsibility handed over; original blueprint ownership unchanged":"");
-      text.append(heading,meta);
-      const controls=document.createElement("div");controls.className="tl-actions";
-      if(lifecycle!=="cancelled"){
-        const gradebook=document.createElement("a");gradebook.className="tl-action alt";
-        gradebook.href="school-gradebook.html?view=review&task="+encodeURIComponent(task.taskId);
-        gradebook.textContent="Review & Grade";controls.append(gradebook);
-        // Navigation only: the teacher still chooses the linked Class Record
-        // column, and its school-scoped score/release policies remain enforced.
-        if(task.offeringId&&task.taskId){
-          const classRecord=document.createElement("a");classRecord.className="tl-action alt";
-          classRecord.href="class-record.html?"+new URLSearchParams({
-            offering:task.offeringId,assessment:task.taskId,source:"school"
-          }).toString();
-          classRecord.textContent="Add to Class Record";controls.append(classRecord);
-        }
-        controls.append(actionButton("Deployment settings",()=>openDeploymentSettings(task),true));
-      }
-      if(["active","closed"].includes(lifecycle)){
-        controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
-      }
-      if(lifecycle==="active"&&task.published&&task.manualOpenRequired&&task.submissionSource==="studio"){
-        const isOpen=task.manualAccessState==="open",
-          finalSaving=["closed","closing"].includes(task.manualAccessState)&&Number(task.manualCloseGraceUntil||0)>Date.now();
-        const button=actionButton(isOpen?"Close exam":finalSaving?"Finalizing saves…":"Open exam",
-          ()=>void setExamOpening(task,!isOpen),isOpen);
-        button.disabled=finalSaving;
-        if(finalSaving)button.title="Previous session's final cloud checkpoints are still being accepted.";
-        controls.append(button);
-      }
-      if(task.submissionSource==="studio"&&Number(task.manualSessionEpoch||0)>0){
-        controls.append(actionButton("Class save history",
-          ()=>void showExamCloseReport(task),true));
-      }
-      if(lifecycle==="active"){
-        controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
-        controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
-        controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
-      }else if(lifecycle==="closed"){
-        controls.append(actionButton("Reopen",()=>openLifecycle(task,"reopen")));
-        controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
-        controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
-      }else if(lifecycle==="archived"){
-        controls.append(actionButton("Restore",()=>openLifecycle(task,"restore_archive"),true));
-      }
-      row.append(text,controls);list.append(row);
-    }
-    if(legacyDeploymentHistory.length){
-      const heading=document.createElement("section");
-      heading.className="tl-row";
-      const title=document.createElement("h3");title.style.fontWeight="800";
-      title.textContent="Historical Repository Management deployments";
-      const explanation=document.createElement("p");explanation.className="tl-muted";
-      explanation.textContent="These deployments remain attached to the original legacy assessments. Edit their existing class deadlines or late-submission policy here; Deploy new creates a separate school assessment and does not change them.";
-      heading.append(title,explanation);list.append(heading);
-      for(const historical of legacyDeploymentHistory){
-        const row=document.createElement("article");row.className="tl-row";row.setAttribute("role","listitem");
-        const header=document.createElement("h3");header.style.fontWeight="750";
-        header.textContent=historical.title||"Historical assessment";
-        const meta=document.createElement("p");meta.className="tl-muted";
-        meta.textContent=(historical.published?"Published":"Unpublished")+" · Legacy "+
-          (historical.submissionSource==="studio"?"Adminerva Studio":"GitHub repository")+
-          " · "+(historical.deploymentCount||historical.deployments?.length||0)+" original class deployment(s)";
-        row.append(header,meta);
-        const entries=Array.isArray(historical.deployments)?historical.deployments:[];
-        for(const assigned of entries){
-          const detail=document.createElement("div");
-          detail.className="mt-2 flex flex-wrap items-center justify-between gap-2";
-          const line=document.createElement("p");line.className="tl-muted";
-          const rawDue=assigned.deadline?new Date(assigned.deadline):null;
-          const validDue=rawDue&&Number.isFinite(rawDue.getTime());
-          const due=assigned.deadlineEnabled===false?"No enforced deadline":
-            validDue?"Due "+rawDue.toLocaleString():"Deadline not set";
-          const expired=assigned.deadlineEnabled!==false&&validDue&&rawDue.getTime()<Date.now();
-          line.textContent=(assigned.section||"Unassigned section")+" · "+due+
-            (expired?" · Past due":"")+
-            (assigned.allowLateSubmissions?" · Late submissions permitted":"");
-          const link=document.createElement("a");link.className="tl-action alt";
-          link.href="repository-assessment-studio.html?"+new URLSearchParams({
-            legacyAssessment:historical.legacyAssessmentId,legacyDeployment:assigned.id
-          }).toString();
-          link.textContent="Edit deadline / late submissions";
-          detail.append(line,link);row.append(detail);
-        }
-        if(historical.submissionSource==="studio"){
-          const review=document.createElement("a");review.className="tl-action";
-          review.href="school-gradebook.html?"+new URLSearchParams({
-            view:"review",task:"legacy:"+historical.legacyAssessmentId
-          }).toString();
-          review.textContent="Review submissions in V4";
-          row.append(review);
-        }
-        const origin=document.createElement("a");origin.className="tl-action alt";
-        origin.href="repository-assessment-studio.html?"+new URLSearchParams({
-          legacyAssessment:historical.legacyAssessmentId,legacyView:"deployments"
-        }).toString();
-        origin.textContent="View original assessment and deployments";
-        row.append(origin);list.append(row);
-      }
-    }
+    renderDeployedTasks();
     return;
   }
   const visible=items.filter(item=>{
@@ -510,6 +564,16 @@ async function refresh(){
   deployments=deployed.assessments||[];
   legacyDeploymentHistory=historical.items||[];
   legacyDeploymentWarning=historical.error||"";
+  deploymentOfferingNames=new Map();
+  if(filter==="deployed"){
+    try{
+      const options=await performScoped(schoolAcademicsApi,"planning_options",{assignmentScope:"teacher"});
+      for(const offering of options.offerings||[])
+        if(offering.offeringId)deploymentOfferingNames.set(offering.offeringId,deploymentOfferingLabel(offering));
+    }catch(error){
+      console.warn("Class labels unavailable; showing stable offering identifiers.",error);
+    }
+  }
   render();
   if(result.truncated)say("Only the first assessment records are shown. Pagination is required for more.");
   if(filter==="deployed"&&legacyDeploymentWarning)
@@ -518,7 +582,9 @@ async function refresh(){
 document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListener("click",()=>{
   filter=button.dataset.filter;
   const url=new URL(location.href);url.searchParams.set("view",filter);history.replaceState(null,"",url);
-  render();
+  if(filter==="deployed"&&!deploymentOfferingNames.size)
+    void refresh().catch(error=>say(error.message));
+  else render();
 }));
 el("tl-new-assessment")?.addEventListener("click",openNewEditor);
 el("tl-editor-cancel")?.addEventListener("click",()=>editorDialog?.close());
