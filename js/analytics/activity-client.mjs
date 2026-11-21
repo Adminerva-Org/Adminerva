@@ -53,9 +53,14 @@ export async function savePreferences(enabled, keepDiagnostics, promptDismissed 
   let studentId = "";
   const email = (user.email || "").toLowerCase();
   if (!await resolveStaffRole(user)) {
-    const matches = await getDocs(query(collection(db, "students"), where("email", "==", email)));
-    if (matches.empty) throw Error("A linked student profile is required.");
-    studentId = matches.docs[0].id;
+    const access=await getDocFromServer(doc(db,"student_access",user.uid)).catch(()=>null);
+    const projected=access?.exists()?access.data()?.studentIds:[];
+    studentId=Array.isArray(projected)&&projected.length?String(projected[0]||""):"";
+    if(!studentId){
+      const matches = await getDocs(query(collection(db, "students"), where("email", "==", email)));
+      if (matches.empty) throw Error("A linked student profile is required.");
+      studentId = matches.docs[0].id;
+    }
   }
   if (generation !== epoch) throw Error("Account changed. Try again.");
   await setDoc(doc(db, "activity_preferences", user.uid), {ownerUid:user.uid, studentId, enabled:enabled === true, promptDismissed:promptDismissed === true, updatedAt:serverTimestamp()});
