@@ -471,11 +471,15 @@ export function createV4BulkEvaluationController({
       }
       if(session!==scopeGeneration)return;
       if(!items.length)throw Error("No frozen submissions passed the package checks.");
-      batchId=crypto.randomUUID();referenceMap=refs;
-      payload.value=JSON.stringify(
-        buildCompactBulkExternalEvaluationPackage({batchId,entries:items,task}),
-        null,2
+      const nextBatchId=crypto.randomUUID();
+      const nextPayload=JSON.stringify(
+        buildCompactBulkExternalEvaluationPackage({
+          batchId:nextBatchId,entries:items,task
+        }),null,2
       );
+      // Commit the anonymous ref binding only after all items validate.
+      // Failed exports must not leave an invalid importable batch behind.
+      batchId=nextBatchId;referenceMap=refs;payload.value=nextPayload;
       const exchange=payload.closest("details");
       if(exchange)exchange.open=true;
       payload.scrollIntoView({block:"nearest"});
