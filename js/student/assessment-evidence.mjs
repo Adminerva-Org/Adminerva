@@ -535,9 +535,7 @@ async function submit(){
     const wasReopened=saved?.status==="reopened";
     submissionStatus(wasReopened?"Resubmitting reopened evidence…":"Submitting selected evidence…");
     const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
-    const common={selectedCommits,checkpointSha:submissionCheckpointSha,
-      source:"student_submitted",submittedByUid:auth.currentUser.uid,
-      updatedAt:serverTimestamp()};
+    const common={selectedCommits,checkpointSha:submissionCheckpointSha,updatedAt:serverTimestamp()};
     if(saved){
       if(!studentMayChangeEvidence(saved))throw Error("Ask your instructor to reopen approved evidence first.");
       await changeEvidence(ref,saved,{...common,status:"submitted",submittedAt:serverTimestamp()},"Student resubmitted selected evidence");
