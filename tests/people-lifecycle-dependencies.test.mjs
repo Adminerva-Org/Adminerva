@@ -35,3 +35,13 @@ test("linked staff activation is pinned to the reviewed person revision",()=>{
   assert.match(source,/activate_linked_staff[\s\S]*expectedPersonRevision=Number\(input\.expectedPersonRevision\)/);
   assert.match(source,/staff identity changed after you selected it/);
 });
+
+
+test("both people list paths expose lifecycle revisions",()=>{
+  const listBlock=source.slice(source.indexOf('if(input.action==="list_people")'),
+    source.indexOf('if(input.action==="preview_import_people")'));
+  const searchBlock=source.slice(source.indexOf('if(input.action==="search_people")'),
+    source.indexOf('if(input.action==="activate_linked_staff")'));
+  assert.match(listBlock,/revision:Number\(person\.data\(\)\.revision\)\|\|1/);
+  assert.match(searchBlock,/revision:Number\(person\.data\(\)\.revision\)\|\|1/);
+});
