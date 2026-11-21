@@ -379,6 +379,30 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       if(token!==generation)return;
       bulkEvaluator?.reset();
       status.textContent=error?.message||"Submission inbox is unavailable.";
+      if(task?.legacyCompatibility&&task.submissionSource==="github"&&
+         /Import this original assessment blueprint/i.test(error?.message||"")){
+        const help=make("div","rounded-xl border border-sky-200 bg-sky-50 p-4");
+        help.append(make("p","text-sm font-semibold text-sky-950",
+          "This original repository assessment needs its school-scoped review reference prepared once. No student evidence or grades will be copied."));
+        const prepare=make("button",
+          "mt-3 rounded-lg bg-sky-800 text-white font-bold px-3 py-2 text-sm",
+          "Prepare this historical assessment for V4");
+        prepare.type="button";
+        const note=make("p","mt-2 text-xs text-sky-900");
+        prepare.addEventListener("click",()=>void (async()=>{
+          prepare.disabled=true;
+          note.textContent="Importing original assessment blueprint only…";
+          try{
+            await scoped(migrationApi,"import_legacy",{legacyAssessmentId:task.legacyAssessmentId});
+            await loadInbox();
+          }catch(e){
+            note.textContent=e?.message||"Could not prepare the original review. No submissions or grades were changed.";
+            prepare.disabled=false;
+          }
+        })());
+        help.append(prepare,note);inbox.append(help);
+        return;
+      }
       if(task?.legacyCompatibility){
         const help=make("div","rounded-xl border border-amber-200 bg-amber-50 p-4");
         help.append(make("p","text-sm text-amber-950",
