@@ -223,8 +223,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
               legacyAssessmentId:task.legacyAssessmentId
             });
             const counts=result.checked+" historical submission(s) checked · "+
-              result.verified+" currently matched · "+result.needsAttention+
-              " require migration mapping.";
+              result.identityAndClassMatched+" identity/class match(es) · "+
+              result.needsAttention+" need confirmed historical term and/or record mapping.";
             const issues=new Map();
             for(const row of result.rows||[])
               for(const reason of row.blockers||[])
