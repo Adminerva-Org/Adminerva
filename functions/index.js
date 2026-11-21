@@ -143,7 +143,7 @@ const {createStudioAssessmentVariantService}=require("./studio-assessment-varian
 const {createSchoolStudioAssessmentVariantService}=require("./school-studio-assessment-variants.js");
 exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioProjectService({db})));
 exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db})));
-exports.studioAssessmentVariant=onCall(callOptions,safeCallable(createStudioAssessmentVariantService({db,Timestamp})));
+exports.studioAssessmentVariant=onCall(callOptions,safeCallable(createStudioAssessmentVariantService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)})));
 exports.schoolStudioAssessmentVariant=onCall(callOptions,safeCallable(createSchoolStudioAssessmentVariantService({db})));
 const {createStudioAutoVerification}=require("./studio-auto-verification.js");
 const studioAutoVerification=createStudioAutoVerification({db});
@@ -281,7 +281,8 @@ async function rebuildStudentAccess(email,expectedUid=null){
   if(String(user.email||"").toLowerCase().trim()!==normalized)
     throw Error("Student access refresh account email changed.");
   const resolved=await legacyStudentRecordsForAccount({
-    db,uid:user.uid,email:normalized,schoolId:"mcs-manila",maxRecords:50
+    db,uid:user.uid,email:normalized,schoolId:"mcs-manila",maxRecords:50,
+    resolveUser:uid=>getAuth().getUser(uid)
   });
   const active=resolved.records;
   const profiles=active.map(record=>({
