@@ -318,9 +318,12 @@ exports.refreshStudentAccess=onCall(callOptions,async request=>{
 });
 exports.prepareRecoveredGithubLink=onCall(callOptions,async request=>{
   await requireLegacyMcsCompatibility();
-  const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase().trim();
+  const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase().trim(),
+    githubProviderUid=String(request.data?.githubProviderUid||"").trim();
   if(!uid||request.auth?.token?.email_verified!==true||!email)
     throw new HttpsError("unauthenticated","Use your verified school account before reconnecting GitHub.");
+  if(!/^[0-9]{1,32}$/.test(githubProviderUid))
+    throw new HttpsError("invalid-argument","Verify the GitHub account again before transferring the recovered connection.");
   const member=await db.doc("schools/mcs-manila/memberships/"+uid).get();
   if(!member.exists||member.data()?.status!=="active"||
      !Array.isArray(member.data()?.roles)||!member.data().roles.includes("student"))
@@ -339,7 +342,9 @@ exports.prepareRecoveredGithubLink=onCall(callOptions,async request=>{
   for(const oldUid of previous){
     try{
       const oldUser=await authAdmin.getUser(oldUid);
-      if(oldUser.providerData.some(provider=>provider.providerId==="github.com")){
+      const github=oldUser.providerData.find(provider=>
+        provider.providerId==="github.com"&&String(provider.uid||"")===githubProviderUid);
+      if(github){
         await authAdmin.updateUser(oldUid,{providersToUnlink:["github.com"]});
         released++;
       }
