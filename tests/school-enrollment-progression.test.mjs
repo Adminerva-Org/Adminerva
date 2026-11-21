@@ -62,3 +62,14 @@ test("student placement history is derived from canonical registrations and regi
     source.indexOf('if(input.action==="list_registrations")')
   ),/student_grades|class_record_period_grades/);
 });
+
+
+test("progression blocks mismatched canonical registration rosters",()=>{
+  assert.match(source,/registration_roster_mismatch/);
+  assert.match(source,/registration_course_count_mismatch/);
+  assert.match(source,/row\.registrationId===registrationId/);
+});
+
+test("placement history includes the initial registration audit event",()=>{
+  assert.match(source,/\^student_\(\?:registration_\|registered_\)/);
+});
