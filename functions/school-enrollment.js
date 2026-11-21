@@ -140,9 +140,15 @@ function createSchoolEnrollmentService({db}){
       if(source.status!=="active")
         deny("failed-precondition","Only an active registration can be progressed.");
       const personId=checkId(source.personId,"Person ID",128),
+        personRef=db.doc(root+"people/"+personId),
         enrollmentQuery=db.collection(root+"enrollments").where("personId","==",personId).limit(251),
         offeringQuery=db.collection(root+"course_offerings").limit(251),
-        [enrollmentSnap,offeringSnap]=await Promise.all([read(enrollmentQuery),read(offeringQuery)]);
+        [person,enrollmentSnap,offeringSnap]=await Promise.all([
+          read(personRef),read(enrollmentQuery),read(offeringQuery)
+        ]);
+      if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
+         person.data().status!=="active")
+        deny("failed-precondition","The student directory record must be active before progression.");
       if(enrollmentSnap.size===251||offeringSnap.size===251)
         deny("resource-exhausted","Progression review requires pagination before this student can be processed safely.");
       const offeringMap=new Map(offeringSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId)
@@ -167,8 +173,8 @@ function createSchoolEnrollmentService({db}){
           grade=grades[index],releasedRevision=finalization.exists&&finalization.data().schoolId===ctx.schoolId?
             Number(finalization.data().releasedRevision)||0:0,
           gradeData=grade.exists&&grade.data().schoolId===ctx.schoolId?grade.data():null,
-          ready=releasedRevision>0&&gradeData&&gradeData.personId===personId&&
-            gradeData.offeringId===enrollment.data().offeringId&&
+          ready=releasedRevision>0&&gradeData&&gradeData.status==="finalized"&&
+            gradeData.personId===personId&&gradeData.offeringId===enrollment.data().offeringId&&
             Number(gradeData.finalizationRevision)===releasedRevision;
         if(!ready)blockers.push({
           type:"final_grade_not_released",offeringId:enrollment.data().offeringId,
@@ -207,11 +213,15 @@ function createSchoolEnrollmentService({db}){
           if(sourceStart&&targetStart&&targetStart<=sourceStart)
             blockers.push({type:"target_year_not_future",message:"Choose an academic year after the current registration year."});
         }
-        const targetGrade=section.exists?section.data().gradeLevel:null;
+        const targetGrade=section.exists?section.data().gradeLevel:null,
+          targetStudentEmailRequired=gradeRequiresStudentEmail(targetGrade);
         if(!progressionGradeValid(progressionType,source.gradeLevel,targetGrade))
           blockers.push({type:"grade_progression_mismatch",message:progressionType==="retention"
             ?"Retention must keep the learner in the same grade level."
             :"Promotion must move the learner to the next numeric grade level, or to a different configured non-numeric level."});
+        if(targetStudentEmailRequired&&!person.data().authUid&&!person.data().activationEmailHash)
+          blockers.push({type:"student_identity_required",
+            message:"The target grade requires a student sign-in identity. Prepare the student's activation email or link their verified account in People & Access before progression."});
         targetOfferings=offeringSnap.docs.filter(doc=>{
           const row=doc.data();
           return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId&&
@@ -235,9 +245,11 @@ function createSchoolEnrollmentService({db}){
         if(targetEnrollmentDocs.some(doc=>doc.exists))
           blockers.push({type:"target_enrollment_history_exists",message:"One or more target classes already contain enrollment history for this learner. Review those records before progression."});
         target={yearId,programId,termId,sectionId,gradeLevel:targetGrade,
-          registrationId:targetRegistrationId};
+          studentEmailRequired:targetStudentEmailRequired,
+          accountResponsibility:targetStudentEmailRequired?"student":"guardian",
+          courseCount:targetOfferings.length,registrationId:targetRegistrationId};
       }
-      return {registrationId,registrationRef,registration,source,personId,progressionType,
+      return {registrationId,registrationRef,registration,source,personId,personRef,person,progressionType,
         completion,sourceEnrollments,offeringMap,blockers,target,targetRegistrationRef,targetSlotRef,
         targetOfferings,targetEnrollmentRefs,targetEnrollmentDocs,targetRegistration,targetSlot,
         canApply:blockers.length===0};
@@ -749,11 +761,7 @@ function createSchoolEnrollmentService({db}){
         const review=await reviewProgression(input,tx);
         if(!review.canApply)
           deny("failed-precondition",review.blockers[0]?.message||"This student is not ready for progression.");
-        const {source,registrationRef,registrationId,personId,progressionType}=review,
-          personRef=db.doc(root+"people/"+personId),person=await tx.get(personRef);
-        if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
-           person.data().status!=="active")
-          deny("failed-precondition","The student directory record must remain active before progression.");
+        const {source,registrationRef,registrationId,personId,personRef,person,progressionType}=review;
         const sourceSlotRef=db.doc(root+"student_registration_slots/"+key(personId,source.yearId,source.termId)),
           sourceSlot=await tx.get(sourceSlotRef),now=FieldValue.serverTimestamp(),
           targetRegistrationId=review.target?.registrationId||null;
@@ -774,6 +782,8 @@ function createSchoolEnrollmentService({db}){
           registrationId,status:"ended",updatedByUid:ctx.uid,updatedAt:now};
         if(sourceSlot.exists&&sourceSlot.data().registrationId===registrationId)
           tx.set(sourceSlotRef,{...endedSlot,revision:(Number(sourceSlot.data().revision)||1)+1},{merge:true});
+        else if(!sourceSlot.exists)
+          tx.create(sourceSlotRef,{...endedSlot,revision:1,createdByUid:ctx.uid,createdAt:now});
 
         let createdCourses=0;
         if(review.target){
@@ -786,8 +796,8 @@ function createSchoolEnrollmentService({db}){
             guardianEmail:source.guardianEmail||person.data().primaryGuardianEmail||null,
             guardianMobile:source.guardianMobile||person.data().primaryGuardianMobile||null,
             studentEmailType:source.studentEmailType||person.data().studentEmailType||null,
-            studentEmailRequired:source.studentEmailRequired===true,
-            accountResponsibility:source.accountResponsibility||person.data().accountResponsibility||"student",
+            studentEmailRequired:target.studentEmailRequired===true,
+            accountResponsibility:target.accountResponsibility,
             yearId:target.yearId,programId:target.programId,termId:target.termId,
             sectionId:target.sectionId,gradeLevel:target.gradeLevel||null,status:"active",
             courseCount:review.targetOfferings.length,accountLinked:Boolean(source.accountLinked||person.data().authUid),
@@ -796,6 +806,9 @@ function createSchoolEnrollmentService({db}){
             revision:1,createdByUid:ctx.uid,createdAt:now,updatedByUid:ctx.uid,updatedAt:now
           };
           tx.create(review.targetRegistrationRef,targetData);
+          if(person.data().accountResponsibility!==target.accountResponsibility)
+            tx.update(personRef,{accountResponsibility:target.accountResponsibility,
+              updatedByUid:ctx.uid,updatedAt:now,revision:(Number(person.data().revision)||1)+1});
           const placement={schoolId:ctx.schoolId,personId,yearId:target.yearId,
             programId:target.programId,termId:target.termId,sectionId:target.sectionId,
             registrationId:target.registrationId,status:"active",updatedByUid:ctx.uid,updatedAt:now};
