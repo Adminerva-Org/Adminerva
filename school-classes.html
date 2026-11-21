@@ -136,8 +136,17 @@
         </section>
         <section>
           <div class="flex items-center justify-between gap-3"><h3 class="font-extrabold">Students</h3><span id="csStudentCount" class="text-xs text-slate-500"></span></div>
-          <p class="text-xs text-slate-500 mt-1">Roster is read-only here. Change official placement through Enrollment.</p>
-          <div id="csRoster" class="mt-2 max-h-72 overflow-auto rounded-xl border border-slate-200"></div>
+          <p id="csRosterAuthorityHelp" class="text-xs text-slate-500 mt-1">Roster is read-only here. Change official placement through Enrollment.</p>
+          <section id="csSelectiveRosterTools" hidden class="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+            <div><p class="text-xs uppercase tracking-wider font-bold text-blue-800">Selective roster</p><p class="text-xs text-blue-900 mt-1">Search the school directory and add an intentional elective/irregular class member. Ending or restoring an enrollment preserves its history.</p></div>
+            <div class="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-2 mt-3">
+              <input id="csStudentSearchQuery" type="search" minlength="2" maxlength="120" class="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm" placeholder="Student name or exact student number">
+              <button id="csStudentSearchButton" type="button" class="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-bold text-blue-900">Search</button>
+            </div>
+            <div id="csStudentSearchResults" class="mt-2 space-y-2"></div>
+            <p id="csStudentSearchStatus" class="text-xs text-blue-900 mt-2" role="status"></p>
+          </section>
+          <div id="csRoster" class="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-200"></div>
         </section>
         <div class="grid sm:grid-cols-2 gap-2">
           <a id="csRecordLink" href="school-class-records.html" class="rounded-lg border border-slate-300 px-3 py-2.5 text-center text-sm font-bold">Class Record oversight</a>
@@ -151,6 +160,6 @@
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261120-admin-classes"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
-<script type="module" src="js/school-admin/classes-scheduling.mjs?v=20261121-roster-source1"></script>
+<script type="module" src="js/school-admin/classes-scheduling.mjs?v=20261121-selective-roster1"></script>
 </body>
 </html>
