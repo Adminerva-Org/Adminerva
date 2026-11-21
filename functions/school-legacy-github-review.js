@@ -112,8 +112,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    const importRef=db.doc(prefix+"assessment_blueprints/legacy_"+hash(ctx.schoolId,ctx.uid,id).slice(0,48));
    const imported=await importRef.get();
    if(!imported.exists||imported.data().schoolId!==ctx.schoolId||
-      imported.data().ownerUid!==ctx.uid||imported.data().legacyImport?.assessmentId!==id||
-      imported.data().legacyImport?.origin!=="repository_management")
+      imported.data().ownerUid!==ctx.uid||imported.data().legacyImport?.assessmentId!==id)
      deny("failed-precondition","Import this original assessment blueprint into the selected school before using V4 historical review.");
    const total=Number(taskData.maxScore||20);
    if(!Number.isFinite(total)||total<=0||total>2000)
