@@ -1410,9 +1410,16 @@ function createSchoolAcademicsService({db}) {
    const offeringId=checkId(input.offeringId,"Course offering ID",330),
     fromTeacherUid=checkId(input.fromTeacherUid,"Current teacher UID",128),
     toTeacherUid=checkId(input.toTeacherUid,"Replacement teacher UID",128),
+    expectedOfferingRevision=Number(input.expectedOfferingRevision),
+    expectedFromRevision=Number(input.expectedFromRevision),
+    expectedToRevision=Number(input.expectedToRevision),
     reason=checkName(input.reason,"Teacher handover reason");
    if(fromTeacherUid===toTeacherUid)
     deny("invalid-argument","Choose a different replacement teacher.");
+   if(!Number.isSafeInteger(expectedOfferingRevision)||expectedOfferingRevision<1||
+      !Number.isSafeInteger(expectedFromRevision)||expectedFromRevision<1||
+      !Number.isSafeInteger(expectedToRevision)||expectedToRevision<0)
+    deny("invalid-argument","Refresh this class before handing over teaching responsibility.");
    if(reason.length<12)
     deny("invalid-argument","Explain the teacher handover in at least 12 characters.");
    const offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
@@ -1434,11 +1441,18 @@ function createSchoolAcademicsService({db}) {
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId||
        offering.data().status!=="active")
       deny("failed-precondition","Teacher handover requires an active course offering.");
+    if((Number(offering.data().revision)||1)!==expectedOfferingRevision)
+      deny("failed-precondition","This class changed after you opened it. Refresh before handing over teaching responsibility.");
     if(!fromAssignment.exists||fromAssignment.data().schoolId!==ctx.schoolId||
        fromAssignment.data().teacherUid!==fromTeacherUid||
        fromAssignment.data().offeringId!==offeringId||
        fromAssignment.data().status!=="active")
       deny("failed-precondition","The current teacher does not have an active assignment for this offering.");
+    if((Number(fromAssignment.data().revision)||1)!==expectedFromRevision)
+      deny("failed-precondition","The current teacher assignment changed after you opened this class. Refresh before handover.");
+    const targetRevision=toAssignment.exists?(Number(toAssignment.data().revision)||1):0;
+    if(targetRevision!==expectedToRevision)
+      deny("failed-precondition","The replacement teacher assignment changed after you opened this class. Refresh before handover.");
     if(!toMember.exists||toMember.data().schoolId!==ctx.schoolId||
        toMember.data().status!=="active"||!Array.isArray(toMember.data().roles)||
        !toMember.data().roles.includes("teacher"))
