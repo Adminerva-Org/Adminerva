@@ -115,6 +115,13 @@ const {createSchoolAcademicsService}=require("./school-academics.js");
 exports.schoolAcademics=onCall(callOptions,safeCallable(createSchoolAcademicsService({db})));
 const {createSchoolAssessmentService}=require("./school-assessments.js");
 exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db})));
+// Teacher Open/Close writes a durable outbox atomically with its exam state.
+// Delivery and roster capture must never block the teacher's callable.
+const {createSchoolStudioExamSessionFanout}=require("./school-studio-exam-fanout.js");
+exports.schoolStudioExamSessionFanout=onDocumentCreated({
+  document:"schools/{schoolId}/studio_exam_session_events/{eventId}",
+  region:"asia-southeast1",retry:true,maxInstances:3,concurrency:1,timeoutSeconds:300
+},createSchoolStudioExamSessionFanout({db}));
 const {createSchoolAssessmentMigrationService}=require("./school-assessment-migration.js");
 exports.schoolAssessmentMigration=onCall(callOptions,safeCallable(createSchoolAssessmentMigrationService({db})));
 const {createSchoolStudentProfileService}=require("./school-student-profile.js");
