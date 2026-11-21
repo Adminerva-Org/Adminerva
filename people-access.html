@@ -187,6 +187,18 @@
           <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Recent audit history</h3><div id="pa-person-detail-audit"></div></section>
         </div>
       </dialog>
+      <dialog id="pa-invitation-lifecycle-dialog" aria-labelledby="pa-invitation-lifecycle-title" style="width:min(500px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
+        <form id="pa-invitation-lifecycle-form">
+          <h2 id="pa-invitation-lifecycle-title" style="font-size:1.2rem;font-weight:750">Revoke invitation</h2>
+          <p id="pa-invitation-lifecycle-target" class="pa-muted"></p>
+          <p class="pa-muted">Revoking prevents this invitation from being accepted. The invitation and its audit history remain retained.</p>
+          <label>Reason<input name="reason" class="pa-field" minlength="12" maxlength="500" required placeholder="Explain why this invitation should be revoked"></label>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button id="pa-invitation-lifecycle-confirm" class="pa-action" type="submit" style="background:#9a3412">Revoke invitation</button>
+            <button id="pa-invitation-lifecycle-cancel" class="pa-action" type="button" style="background:#475569">Cancel</button>
+          </div>
+        </form>
+      </dialog>
       <dialog id="pa-person-dialog" aria-labelledby="pa-person-dialog-title" style="width:min(500px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
         <form id="pa-person-dialog-form">
           <h2 id="pa-person-dialog-title" style="font-size:1.2rem;font-weight:750">Update person</h2>
@@ -442,7 +454,7 @@
 <script defer src="js/core/adminerva-nav.js?v=20261121-admin-reconciled2"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261121-admin-reconciled2"></script>
 <script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=20261120-assist-context"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=20261121-admin-reconciled2"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=20261121-crud-lifecycle2"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
