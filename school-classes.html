@@ -166,6 +166,27 @@
     </aside>
   </div>
 </main>
+<dialog id="csReasonDialog" class="rounded-2xl p-0 w-[min(560px,calc(100%-1rem))] max-h-[90dvh] backdrop:bg-slate-900/50">
+  <form id="csReasonForm" class="bg-white rounded-2xl p-4 sm:p-5">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <p class="text-xs font-extrabold uppercase tracking-wider text-blue-700">Administrative change</p>
+        <h2 id="csReasonTitle" class="text-lg font-extrabold mt-1">Confirm change</h2>
+        <p id="csReasonHelp" class="text-sm text-slate-600 mt-1"></p>
+      </div>
+      <button id="csReasonClose" type="button" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold">Close</button>
+    </div>
+    <label class="block text-sm font-bold mt-4">Reason
+      <textarea id="csReasonValue" rows="3" minlength="12" maxlength="500" required class="mt-1 w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Explain why this administrative relationship is changing."></textarea>
+    </label>
+    <p id="csReasonStatus" class="text-xs text-slate-500 mt-1">At least 12 characters. The reason is retained in the school audit trail.</p>
+    <div class="grid grid-cols-2 gap-2 mt-4">
+      <button id="csReasonCancel" type="button" class="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-bold">Cancel</button>
+      <button type="submit" class="rounded-lg bg-blue-700 text-white px-3 py-2.5 text-sm font-extrabold">Confirm change</button>
+    </div>
+  </form>
+</dialog>
+
 <script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
 <script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261120-admin-classes"></script>
