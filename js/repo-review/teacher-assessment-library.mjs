@@ -555,7 +555,7 @@ async function showExamCloseSnapshot(task,epoch,student){
   if(!dialog.open)dialog.showModal();
   try{
     const frozen=await performScoped(scopedAssessmentApi,"exam_close_project",{
-      taskId:task.taskId,sessionEpoch:epoch,studentUid:student.studentUid
+      taskId:task.taskId,sessionEpoch:epoch,studentUid:student.receiptStudentUid||student.studentUid
     });
     if(!dialog.open)return;
     meta.textContent="School received project revision "+frozen.projectRevision+
@@ -665,9 +665,9 @@ async function showExamCloseReport(task){
       return '"'+cell.replaceAll('"','""')+'"';
     };
     const rows=[
-      ["Session","Student","Student UID","Final checkpoint","Project revision","Saved at","Project SHA-256","Source SHA-256","Payload bytes"],
+      ["Session","Student","Saved account UID","Final checkpoint","Project revision","Saved at","Project SHA-256","Source SHA-256","Payload bytes"],
       ...(lastReport.students||[]).map(student=>[
-        lastReport.sessionEpoch,student.displayName,student.studentUid||"",
+        lastReport.sessionEpoch,student.displayName,student.receiptStudentUid||student.studentUid||"",
         student.checkpointConfirmed?"Confirmed":lastReport.sessionClosed?"Unconfirmed":"In progress",
         student.projectRevision||"",
         student.savedAt?new Date(student.savedAt).toISOString():"",
@@ -730,7 +730,7 @@ async function showExamCloseReport(task){
           td.textContent=value;tr.append(td);
         });
         const codeCell=document.createElement("td");codeCell.className="px-3 py-2";
-        if(student.checkpointConfirmed&&student.studentUid){
+        if(student.checkpointConfirmed&&(student.receiptStudentUid||student.studentUid)){
           const inspect=document.createElement("button");inspect.type="button";
           inspect.className="tl-action alt";inspect.textContent="View code";
           inspect.addEventListener("click",()=>void showExamCloseSnapshot(task,epoch,student));
