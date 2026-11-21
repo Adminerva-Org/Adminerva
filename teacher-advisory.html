@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Teacher advisory and homeroom overview from official school section placement.">
+  <title>Advisory / Homeroom · Adminerva</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <script defer src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=21a534696b3d">
+</head>
+<body id="pageBody" class="hidden min-h-screen bg-slate-50 text-slate-900">
+<div id="adminerva-nav" data-module="teacher" data-page="advisory"></div>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+  <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+      <div>
+        <p class="text-xs uppercase tracking-widest font-extrabold text-emerald-300">Teacher · Advisory</p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Advisory / Homeroom</h1>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">View the official students and class coverage for sections assigned to you as adviser. Advisory responsibility is separate from subject teaching and does not grant Gradebook or Classroom access to subjects you do not teach.</p>
+      </div>
+      <div id="advisorySchoolSwitcher" hidden class="w-full lg:w-auto lg:min-w-[250px]"></div>
+    </div>
+  </header>
+
+  <section class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+    <div class="grid lg:grid-cols-[minmax(0,1fr)_auto] gap-3 lg:items-end">
+      <label class="text-sm font-bold">Advisory section
+        <select id="advisorySection" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5"></select>
+      </label>
+      <button id="advisoryRefresh" type="button" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold">Refresh</button>
+    </div>
+    <p id="advisoryStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Loading advisory assignments…</p>
+  </section>
+
+  <section id="advisoryWorkspace" hidden class="space-y-5">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Students</p><strong id="advisoryStudentCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+      <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Active classes</p><strong id="advisoryClassCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+      <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Unstaffed classes</p><strong id="advisoryUnstaffedCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+      <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-500">Linked accounts</p><strong id="advisoryAccountCount" class="block text-3xl font-extrabold mt-1">—</strong></article>
+    </div>
+
+    <section class="grid xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)] gap-5 items-start">
+      <article class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="p-4 sm:p-5 border-b border-slate-200">
+          <p class="text-xs uppercase tracking-wider font-bold text-emerald-700">Official section roster</p>
+          <h2 id="advisoryRosterTitle" class="text-xl font-extrabold mt-1">Students</h2>
+          <p class="text-sm text-slate-600 mt-1">For standard enrollment, this uses the active registration placement. Legacy-compatible sections fall back to distinct active class enrollments.</p>
+        </div>
+        <div class="p-3 border-b border-slate-100">
+          <label class="text-xs font-bold">Find student
+            <input id="advisoryStudentSearch" type="search" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Name or student number">
+          </label>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="px-4 py-3 text-left">Student</th><th class="px-4 py-3 text-left">Student no.</th><th class="px-4 py-3 text-left">Account</th><th class="px-4 py-3 text-left">Roster source</th></tr></thead>
+            <tbody id="advisoryRoster"></tbody>
+          </table>
+        </div>
+        <p id="advisoryRosterEmpty" hidden class="p-5 text-sm text-slate-500">No students match this view.</p>
+      </article>
+
+      <aside class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden xl:sticky xl:top-20">
+        <div class="p-4 sm:p-5 border-b border-slate-200">
+          <p class="text-xs uppercase tracking-wider font-bold text-blue-700">Section coverage</p>
+          <h2 class="text-xl font-extrabold mt-1">Subjects &amp; teachers</h2>
+          <p class="text-sm text-slate-600 mt-1">This is a coverage view for your advisory section. Subject teachers retain instructional authority for their classes.</p>
+        </div>
+        <div id="advisoryClasses" class="p-4 space-y-2"></div>
+      </aside>
+    </section>
+  </section>
+</main>
+<script defer src="js/core/release-footer.js?v=21a534696b3d"></script>
+<script src="js/core/adminerva-loader.js?v=21a534696b3d"></script>
+<script defer src="js/core/adminerva-nav.js?v=20261121-advisory1"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261120-admin-foundation"></script>
+<script type="module" src="js/teacher/advisory.mjs?v=20261121-advisory1"></script>
+</body>
+</html>
