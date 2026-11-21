@@ -550,9 +550,23 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const client=createGithubEvidenceClient({
       token:prefs.githubToken||null,maxPages:10,maxCommitFilesPages:10,retryCount:1
     });
+    const historicalGithub=Boolean(currentTask?.legacyCompatibility);
+    const selected=Array.isArray(currentSnapshot?.selectedCommitShas)?
+      currentSnapshot.selectedCommitShas:[];
+    const verified=Array.isArray(currentSnapshot?.verifiedContributionCommits)?
+      currentSnapshot.verifiedContributionCommits:[];
+    if(historicalGithub&&!verified.length)
+      throw Error("The historical checkpoint has no teacher-verified individual commits. Use the original contribution approval workflow or review and score manually.");
+    // The visible list contains every selected historical commit; only the
+    // original teacher-verified subset may enter an individual AI package.
+    const evaluationEvidence=historicalGithub?
+      {...currentSnapshot,selectedCommitShas:verified}:currentSnapshot;
     const result=await buildV4RepositoryEvaluationSnapshot({
-      snapshot:currentSnapshot,client
+      snapshot:evaluationEvidence,client
     });
+    if(historicalGithub&&verified.length!==selected.length)
+      result.limitations.push((selected.length-verified.length)+
+        " selected historical commit(s) were excluded because individual contribution has not been teacher-verified.");
     const inspection=document.getElementById("gbV4GithubAnalysisStatus");
     if(inspection)inspection.textContent=
       "Repository inspection: "+result.analysis.inspectedCount+"/"+result.analysis.selectedCount+
@@ -560,7 +574,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       " substantive file changes detected · "+result.analysis.pinnedFileCount+
       " pinned source files loaded."+
       (result.analysis.complete?"":" Coverage is partial; see the evaluator limitations.")+
-      " These signals do not independently establish individual authorship.";
+      " These signals do not independently establish individual authorship."+
+      (historicalGithub?" Only the verified historical commit subset was evaluated.":"");
     return result;
   }
   function applyEvaluationSuggestion(suggestion,label){
@@ -862,7 +877,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   document.getElementById("gbV4Close").addEventListener("click",()=>{if(!busy)dialog.close();});
   dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
   bulkPublish?.addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||bulkPublish.dataset.ready!=="true")return;
+    if(busy||!currentTask||bulkPublish.dataset.ready!=="true"||
+      (currentTask.legacyCompatibility&&currentTask.submissionSource==="github"))return;
     const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
     if(!count)return;
     if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? This confirmation is the teacher approval step. Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
@@ -910,7 +926,21 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     try{
       const criteria=collectCriteria();
       setBusy(true,"Saving grade draft…");
-      if(currentTask.legacyCompatibility){
+      if(currentTask.legacyCompatibility&&currentTask.submissionSource==="github"){
+        const reviewNote=document.getElementById("gbV4LegacyGithubReviewNote").value.trim();
+        if(reviewNote.length<15||!document.getElementById("gbV4LegacyGithubConfirm").checked)
+          throw Error("Inspect the approved commits, confirm the evidence check, and enter a verification note of at least 15 characters.");
+        await scoped(migrationApi,"legacy_github_save_draft",{
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          legacyEvidenceId:currentRow.recordId,
+          expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
+          expectedCheckpointSha:currentSnapshot.checkpointSha,
+          expectedGradeRevision:currentGrade?.revision||0,
+          criteria,reviewNote,
+          feedback:document.getElementById("gbV4Feedback").value.trim(),
+          draftSource:currentDraftSource
+        });
+      }else if(currentTask.legacyCompatibility){
         await scoped(migrationApi,"legacy_review_save_draft",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
           legacySubmissionId:currentRow.recordId,criteria,
@@ -927,9 +957,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       }
       saved=true;
       const refreshed=currentTask.legacyCompatibility?
-        await scoped(migrationApi,"legacy_review_inspect",{
+        await scoped(migrationApi,currentTask.submissionSource==="github"?
+          "legacy_github_inspect":"legacy_review_inspect",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
-          legacySubmissionId:currentRow.recordId
+          ...(currentTask.submissionSource==="github"?
+            {legacyEvidenceId:currentRow.recordId}:{legacySubmissionId:currentRow.recordId})
         }):
         await scoped(gradeApi,"get_draft",{
           taskId:currentTask.taskId,studentUid:currentRow.studentUid
@@ -950,10 +982,18 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     try{
       setBusy(true,"Verifying current submission and publishing grade…");
       const result=currentTask.legacyCompatibility?
-        await scoped(migrationApi,"legacy_review_publish",{
+        await scoped(migrationApi,currentTask.submissionSource==="github"?
+          "legacy_github_publish":"legacy_review_publish",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
-          legacySubmissionId:currentRow.recordId,
-          expectedGradeRevision:currentGrade?.revision
+          ...(currentTask.submissionSource==="github"?{
+            legacyEvidenceId:currentRow.recordId,
+            expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
+            expectedCheckpointSha:currentSnapshot.checkpointSha,
+            expectedGradeRevision:currentGrade?.revision
+          }:{
+            legacySubmissionId:currentRow.recordId,
+            expectedGradeRevision:currentGrade?.revision
+          })
         }):
         await scoped(gradeApi,"publish",{
           taskId:currentTask.taskId,studentUid:currentRow.studentUid
@@ -961,7 +1001,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       document.getElementById("gbV4ReviewStatus").textContent="Published "+result.awarded+" / "+result.total+" to the student.";
       currentGrade={...(currentGrade||{}),status:"published"};
       currentRow={...currentRow,status:"reviewed"};
-      currentSnapshot={...(currentSnapshot||{}),status:"reviewed"};
+      if(!currentTask.legacyCompatibility)
+        currentSnapshot={...(currentSnapshot||{}),status:"reviewed"};
       refreshReviewControls();
       await loadInbox();
     }catch(error){
