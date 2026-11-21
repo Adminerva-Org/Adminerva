@@ -279,7 +279,8 @@ function createPeopleDirectoryService({db}) {
           personId:person.id,displayName:person.data().displayName,
           kind:person.data().kind,status:person.data().status,
           accountLinked:Boolean(person.data().authUid),
-          activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId
+          activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId,
+          revision:Number(person.data().revision)||1
         })),
         nextCursor:snap.docs.length>pageSize?(docs.at(-1)?.data().searchKey||null):null
       };
