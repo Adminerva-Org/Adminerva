@@ -121,13 +121,30 @@ export function createV4BulkEvaluationController({
     }
     stagedList.replaceChildren();
     for(const data of staged.values()){
-      const line=document.createElement("div");
+      const line=document.createElement("details");
       line.className="rounded-lg border border-slate-200 bg-white p-2 text-xs";
+      const summary=document.createElement("summary");
+      summary.className="cursor-pointer font-bold text-slate-800";
       const student=rows.find(row=>key(row)===data.key);
-      line.textContent=(student?.studentName||"Learner")+
+      summary.textContent=(student?.studentName||"Learner")+
         " · "+data.source+" · "+data.review.awarded+" pts"+
         (data.review.pending?" · "+data.review.pending+" pending":"")+
         (data.review.reason?" · "+data.review.reason:" · eligible private draft");
+      line.append(summary);
+      const feedback=document.createElement("p");
+      feedback.className="mt-2 whitespace-pre-wrap text-slate-700";
+      feedback.textContent=data.review.feedback;
+      line.append(feedback);
+      (data.review.criteria||[]).forEach((row,index)=>{
+        const rubric=task?.rubric?.[index]||{};
+        const entry=document.createElement("p");
+        entry.className="mt-2 whitespace-pre-wrap border-t border-slate-100 pt-2 text-slate-700";
+        entry.textContent=String(rubric.name||"Criterion "+(index+1))+
+          " · "+row.awardedPoints+" / "+Number(rubric.points||0)+
+          (row.pendingPoints?" · "+row.pendingPoints+" pending":"")+
+          "\n"+row.comment;
+        line.append(entry);
+      });
       stagedList.append(line);
     }
     errors.replaceChildren();
