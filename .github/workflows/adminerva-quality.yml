@@ -31,7 +31,7 @@ jobs:
           node --test tests/google-docs-export.test.mjs
           node --test tests/staff-workspaces.test.mjs
           node --test tests/admissions.test.mjs
-          node --test tests/admin-setup.test.mjs tests/student-practice-ux.test.mjs tests/student-workspace-ux.test.mjs tests/practice-review-ux.test.mjs tests/settings-connections.test.mjs tests/connection-cache.test.mjs tests/library-processing.test.mjs tests/pages-release.test.mjs js/core/report-dialog.test.mjs
+          node --test tests/admin-setup.test.mjs tests/student-practice-ux.test.mjs tests/student-workspace-ux.test.mjs tests/practice-review-ux.test.mjs tests/settings-connections.test.mjs tests/settings-architecture.test.mjs tests/connection-cache.test.mjs tests/library-processing.test.mjs tests/pages-release.test.mjs js/core/report-dialog.test.mjs
           node --test tests/review-resilience.test.mjs js/repo-review/services/github-evidence-client.test.mjs
           node --test tests/evidence-readiness.test.mjs
           node --test tests/student-search.test.mjs tests/help-access.test.mjs
@@ -101,6 +101,12 @@ jobs:
           node --input-type=module --check < js/student/practice.js
           node --input-type=module --check < js/student/practice-playground-bridge.mjs
           node --input-type=module --check < js/student/submission-receipts.mjs
+          node --input-type=module --check < js/student/github-session.mjs
+          node --input-type=module --check < js/student/school-student-settings.mjs
+          node --input-type=module --check < js/student/school-student-projects.mjs
+          node --input-type=module --check < js/settings/role-settings.mjs
+          node --input-type=module --check < js/settings/account-preferences.mjs
+          node --input-type=module --check < js/settings/settings-core.js
           node --input-type=module --check < js/lesson-review/library.js
           node --input-type=module --check < js/presentation-review/presentation-export.js
           node --input-type=module --check < js/core/issues.js
