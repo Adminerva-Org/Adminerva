@@ -151,11 +151,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const evidenceReady=currentTask?.submissionSource!=="github"||
       ["approved","reviewed"].includes(currentSnapshot?.status);
     const readThrough=Boolean(currentTask?.legacyCompatibility);
+    const historicalGithub=readThrough&&currentTask?.submissionSource==="github";
+    const historicalScalar=historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1";
     const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1"&&!readThrough;
     document.getElementById("gbV4SaveDraft").disabled=
-      busy||!loaded||!evidenceReady||published||reopened||legacyScalar;
+      busy||!loaded||!evidenceReady||published||reopened||legacyScalar||historicalScalar;
     document.getElementById("gbV4Publish").disabled=
-      busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar;
+      busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar;
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened||readThrough;
     document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||readThrough;
@@ -617,6 +619,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     clearEvaluationReview(document.getElementById("gbV4SystemReview"),"Internal AI has not been run for this submission.");
     clearEvaluationReview(document.getElementById("gbV4ExternalReview"),"No External AI review has been imported for this submission.");
     document.getElementById("gbV4ExternalEvaluationPanel").classList.remove("hidden");
+    const legacyGithub=currentTask.legacyCompatibility&&currentTask.submissionSource==="github";
+    document.getElementById("gbV4LegacyGithubPanel").hidden=!legacyGithub;
+    document.getElementById("gbV4LegacyGithubReviewNote").value="";
+    document.getElementById("gbV4LegacyGithubConfirm").checked=false;
+    document.getElementById("gbV4LegacyGithubAttribution").textContent="";
+    document.getElementById("gbV4LegacyGithubVerifyLink").hidden=true;
+    document.getElementById("gbV4GithubVerify").hidden=legacyGithub;
     document.getElementById("gbV4LegacyGradePanel").hidden=true;
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
     document.getElementById("gbV4StudioEvidence").classList.toggle("hidden",currentTask.submissionSource!=="studio");
@@ -630,6 +639,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     githubVerification=null;dialog.showModal();setBusy(true);
     try{
       const historicalStudio=currentTask.legacyCompatibility&&currentTask.submissionSource==="studio";
+      const historicalGithub=currentTask.legacyCompatibility&&currentTask.submissionSource==="github";
       const evidenceApi=sourceApi(currentTask.submissionSource,{
         studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
       });
@@ -640,8 +650,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         await scoped(migrationApi,"legacy_review_inspect",{
           legacyAssessmentId:currentTask.legacyAssessmentId,legacySubmissionId:row.recordId
         }):
-        null;
-      if(historicalStudio){
+        historicalGithub?
+        await scoped(migrationApi,"legacy_github_inspect",{
+          legacyAssessmentId:currentTask.legacyAssessmentId,legacyEvidenceId:row.recordId
+        }):null;
+      if(historicalStudio||historicalGithub){
         currentSnapshot=result.snapshot;
         currentGrade=result.grade;
         currentPrivateConfig={checkingInstructions:result.checkingInstructions||""};
@@ -695,8 +708,26 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           document.getElementById("gbV4PersonalizedNotes").textContent=
             currentSnapshot.personalizedTask.evaluationNotes||"No private variant notes were saved.";
         }
-      }else if(currentTask.submissionSource==="github")renderGithubEvidence(currentSnapshot);
-      else renderGeneralEvidence(currentSnapshot);
+      }else if(currentTask.submissionSource==="github"){
+        renderGithubEvidence(currentSnapshot);
+        if(historicalGithub){
+          const approved=currentSnapshot?.status==="approved";
+          document.getElementById("gbV4GithubApproval").classList.add("hidden");
+          const link=document.getElementById("gbV4LegacyGithubVerifyLink");
+          link.href="assessment-evidence-review.html?"+
+            new URLSearchParams({assessment:currentTask.legacyAssessmentId,
+              student:currentRow.studentUid}).toString();
+          link.hidden=approved;
+          document.getElementById("gbV4GithubVerifyStatus").textContent=approved?
+            "Original teacher-approved checkpoint retained; V4 grading uses the verified individual commit subset.":
+            "Original contribution approval is required before V4 can save or evaluate this historical repository.";
+          document.getElementById("gbV4LegacyGithubAttribution").textContent=
+            (currentSnapshot.verifiedContributionCommits||[]).length+" / "+
+            (currentSnapshot.selectedCommitShas||[]).length+
+            " selected commits explicitly verified for individual credit. "+
+            "Unverified commits remain viewable but cannot be used for automatic individual scoring.";
+        }
+      }else renderGeneralEvidence(currentSnapshot);
       renderRubric(currentGrade);
       const revisionDue=document.getElementById("gbV4RevisionDue");
       const revisionDueLabel=document.getElementById("gbV4RevisionDueLabel");
@@ -712,12 +743,16 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       document.getElementById("gbV4ReviewStatus").textContent=published?
         (historicalStudio?
           "Original published Studio grade preserved. Corrections still require the audited historical correction workflow.":
+          historicalGithub?
+          "Original published GitHub grade preserved. Legacy publication revisions cannot be corrected through ordinary V4 editing.":
           currentGrade?.gradeSchema==="legacy_scalar_v1"?
             "This imported historical grade preserves the original total but has no saved rubric breakdown. Reconstruct the breakdown without changing the score before any correction.":
             "This grade is published. Use the correction workflow for changes."):
         reopened?"A revision is already requested. Wait for the student to resubmit.":
         currentTask.submissionSource==="github"&&!["approved","reviewed"].includes(currentSnapshot.status)?
-          "Verify and approve the exact frozen GitHub evidence before starting a grade draft.":
+          (historicalGithub?"Use original evidence verification for this historical submission before grading.":"Verify and approve the exact frozen GitHub evidence before starting a grade draft."):
+        historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1"?
+          "An existing historical grade has no trusted rubric allocation. Its score is preserved; review or correct it through the original audited workflow.":
         currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
