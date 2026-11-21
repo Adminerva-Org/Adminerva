@@ -10,15 +10,10 @@ const list=document.getElementById("v4AssignmentsList");
 const status=document.getElementById("v4AssignmentsStatus");
 const schoolHost=document.getElementById("v4AssignmentsSchoolSwitcher");
 const assignmentSubjectLabel=document.getElementById("assignmentSubjectLabel");
-const classMaterialsPanel=document.getElementById("v4ClassMaterialsPanel");
-const classMaterialsList=document.getElementById("v4ClassMaterialsList");
-const classMaterialsCount=document.getElementById("v4ClassMaterialsCount");
-const classMaterialsStatus=document.getElementById("v4ClassMaterialsStatus");
 const assignmentParams=new URLSearchParams(location.search);
 const requestedSubjectId=assignmentParams.get("subjectId")||"";
 const requestedOfferingId=assignmentParams.get("offeringId")||"";
 const requestedSubjectName=assignmentParams.get("subject")||"";
-const requestedConversationTaskId=assignmentParams.get("conversation")||"";
 
 function node(tag,className,text){
   const item=document.createElement(tag);
@@ -60,10 +55,8 @@ if(panel&&list&&status&&schoolHost){
   const submissionsApi=httpsCallable(functions,"schoolStudioSubmissions");
   const generalSubmissionsApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const gradebookApi=httpsCallable(functions,"schoolGradebook");
-  const conversationApi=httpsCallable(functions,"schoolAssessmentConversation");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const reclaimsApi=httpsCallable(functions,"schoolReclaims");
-  const streamApi=httpsCallable(functions,"schoolClassroomStream");
   let renderGeneration=0,picker=null,githubTask=null,githubTaskStatus=null;
   let githubCommits=[],githubSelected=new Set(),githubCheckpoint="",githubBusy=false,reclaimTarget=null,githubSessionToken="";
   let githubClaims=new Map(),historyRepository="",githubTokenOwner="";
@@ -73,104 +66,35 @@ if(panel&&list&&status&&schoolHost){
     scope.assertLease(lease);
     return result;
   }
-  function configurePageContext(){
-    const classScoped=Boolean(requestedOfferingId);
-    const title=document.getElementById("assignmentPageTitle"),description=document.getElementById("assignmentPageDescription"),
-      heading=document.getElementById("v4AssignmentsHeading"),back=document.getElementById("assignmentBackLink"),
-      legacy=document.getElementById("legacyAssignmentsSection");
-    if(title)title.textContent=classScoped?"Classwork":"Assignments";
-    if(description)description.textContent=classScoped?
-      "Teacher materials, active assignments, submission status and released results for this class.":
-      "Open verified school tasks and your existing programming assignments from one workspace.";
-    if(heading)heading.textContent=classScoped?"Assignments & activities":"Current school tasks";
-    if(back)back.href=classScoped?"student-subject.html?offeringId="+encodeURIComponent(requestedOfferingId):"student-classroom.html";
-    if(legacy)legacy.hidden=classScoped;
-    document.title=(classScoped?"Classwork":"Assignments")+" | Adminerva";
-  }
-  function renderClassMaterials(posts=[],error=""){
-    if(!classMaterialsPanel||!classMaterialsList)return;
-    classMaterialsList.replaceChildren();
-    if(!requestedOfferingId){classMaterialsPanel.hidden=true;return;}
-    classMaterialsPanel.hidden=false;
-    const materials=posts.filter(post=>post.kind==="material")
-      .sort((a,b)=>Number(b.pinned)-Number(a.pinned)||Number(b.createdAt||0)-Number(a.createdAt||0));
-    classMaterialsCount.textContent=materials.length+" material"+(materials.length===1?"":"s");
-    classMaterialsStatus.textContent=error?"Class materials are temporarily unavailable. Assignments below are unaffected.":
-      materials.length?"These are the same teacher resources shown in your class Stream.":"No class materials have been posted yet.";
-    if(error){
-      classMaterialsList.append(node("p","rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900",error));return;
+  async function displayExamCloseReceipt(scope){
+    const taskId=assignmentParams.get("examClosed")||"";
+    if(!taskId)return;
+    let banner=document.getElementById("v4ExamCloseReceipt");
+    if(!banner){
+      banner=node("div","mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950");
+      banner.id="v4ExamCloseReceipt";banner.setAttribute("role","status");
+      panel.prepend(banner);
     }
-    if(!materials.length){
-      classMaterialsList.append(node("p","rounded-xl border border-dashed border-sky-200 bg-white/70 p-4 text-sm text-sky-900","Your teacher has not shared any class materials yet."));return;
+    const sessionEpoch=Number(assignmentParams.get("examSession"));
+    if(!Number.isSafeInteger(sessionEpoch)||sessionEpoch<1){
+      banner.textContent="Your teacher closed the Studio exam. The cloud checkpoint has not been independently verified.";
+      return;
     }
-    for(const material of materials){
-      const card=node("article","rounded-xl border border-sky-100 bg-white p-4 shadow-sm");
-      const top=node("div","flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2"),text=node("div","min-w-0");
-      text.append(node("h3","font-extrabold text-slate-900",material.title||"Class material"),
-        node("p","text-xs text-slate-500 mt-1",[material.authorName||"Teacher",date(material.createdAt),material.pinned?"Pinned":""].filter(Boolean).join(" · ")));
-      top.append(text);card.append(top);
-      if(material.body)card.append(node("p","mt-3 text-sm text-slate-700 whitespace-pre-wrap break-words",material.body));
-      if(material.linkUrl)try{
-        const url=new URL(material.linkUrl);
-        if(["http:","https:"].includes(url.protocol)){
-          const link=node("a","inline-block mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700","Open resource ↗");
-          link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";card.append(link);
-        }
-      }catch{}
-      classMaterialsList.append(card);
-    }
-  }
-  function privateConversation(scope,task){
-    const details=node("details","mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3");
-    const summary=node("summary","font-bold text-cyan-950 cursor-pointer","Private conversation with teacher");
-    const statusNode=node("p","text-xs text-cyan-900 mt-2","Open to load learner-specific messages.");
-    const host=node("div","hidden mt-3 max-h-56 overflow-auto rounded-lg border border-cyan-200 bg-white p-3 space-y-2");
-    const form=node("form","hidden mt-3 flex flex-col sm:flex-row gap-2");
-    const input=node("textarea","min-w-0 flex-1 rounded-lg border border-cyan-300 bg-white p-3 text-sm");
-    input.rows=2;input.maxLength=4000;input.placeholder="Ask your teacher a private question about this assessment…";input.required=true;
-    const send=node("button","self-end rounded-lg bg-cyan-800 text-white font-bold px-4 py-2.5","Send privately");send.type="submit";
-    form.append(input,send);details.append(summary,statusNode,host,form);
-    let loaded=false,loading=false,conversation=null;
-    const paint=()=>{
-      host.replaceChildren();host.classList.remove("hidden");
-      const messages=conversation?.messages||[];
-      if(!messages.length)host.append(node("p","text-sm text-slate-500","No private messages yet."));
-      for(const message of messages){
-        const mine=message.authorUid===auth.currentUser?.uid,row=node("div","rounded-lg border p-3 "+(mine?"border-cyan-200 bg-cyan-50":"border-slate-200 bg-slate-50"));
-        row.append(node("p","text-xs font-bold "+(mine?"text-cyan-800":"text-slate-600"),(mine?"You":message.authorName||"Teacher")+" · "+date(message.createdAt)),
-          node("p","mt-1 text-sm text-slate-800 whitespace-pre-wrap break-words",message.body||""));
-        host.append(row);
+    banner.textContent="Verifying your final practical-exam save with school cloud storage…";
+    try{
+      const receipt=await scoped(scope,assessmentsApi,"exam_close_status",{taskId,sessionEpoch});
+      if(receipt?.confirmed===true){
+        banner.className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-950";
+        banner.textContent="Exam session "+sessionEpoch+" closed · Final project revision "+
+          receipt.projectRevision+" confirmed in school cloud"+
+          (receipt.savedAt?" at "+date(receipt.savedAt):"")+
+          ". You may resume during the next teacher-opened session. This is not a formal submission or grade.";
+      }else{
+        banner.textContent="Exam session "+sessionEpoch+" closed · No final cloud checkpoint confirmation is recorded for this account. Earlier cloud saves may still be present. Contact your teacher if the latest changes are missing.";
       }
-      host.scrollTop=host.scrollHeight;
-      form.classList.toggle("hidden",conversation?.canSend===false);
-      statusNode.textContent=conversation?.canSend===false?"This assessment conversation is closed.":"Only you and the currently responsible teacher can read this thread.";
-      input.disabled=loading||conversation?.canSend===false;send.disabled=loading||conversation?.canSend===false;
-    };
-    const load=async(force=false)=>{
-      if((loaded&&!force)||loading||!picker?.scope.current)return;
-      loading=true;statusNode.textContent="Loading private assessment messages…";input.disabled=true;send.disabled=true;
-      try{
-        conversation=await scoped(scope,conversationApi,"list",{taskId:task.taskId});loaded=true;paint();
-      }catch(error){
-        conversation=null;host.classList.add("hidden");form.classList.add("hidden");
-        statusNode.textContent=error?.message||"Private assessment messages are unavailable.";
-      }finally{loading=false;if(conversation)paint();}
-    };
-    details.addEventListener("toggle",()=>{if(details.open)void load();});
-    form.addEventListener("submit",event=>void (async()=>{
-      event.preventDefault();if(loading||conversation?.canSend===false)return;
-      const body=input.value.trim();if(!body){statusNode.textContent="Write a private message before sending.";return;}
-      loading=true;input.disabled=true;send.disabled=true;statusNode.textContent="Sending private message…";
-      try{
-        await scoped(scope,conversationApi,"create_message",{taskId:task.taskId,body});
-        input.value="";loaded=false;loading=false;await load(true);
-      }catch(error){statusNode.textContent=error?.message||"Private message could not be sent.";}
-      finally{loading=false;if(conversation)paint();}
-    })());
-    if(requestedConversationTaskId===task.taskId){
-      details.open=true;queueMicrotask(()=>void load());
+    }catch(error){
+      banner.textContent="Exam session "+sessionEpoch+" closed · Cloud checkpoint verification is unavailable. Your school-saved revision has not been independently confirmed on this page.";
     }
-    return details;
   }
   function assignmentState(task,submission,grade){
     if(grade)return {label:"Graded",className:"bg-emerald-100 text-emerald-800"};
@@ -185,7 +109,13 @@ if(panel&&list&&status&&schoolHost){
         submission.status==="approved"?"Evidence approved":"Submitted",
       className:"bg-blue-100 text-blue-800"
     };
+    if(task.windowStatus==="waiting_for_teacher")return {
+      label:["closed","closing","held"].includes(task.manualAccessState)?"Closed by teacher":"Waiting for teacher",
+      className:"bg-amber-100 text-amber-900"
+    };
     if(task.windowStatus==="upcoming")return {label:"Upcoming",className:"bg-slate-100 text-slate-700"};
+    if(task.manualOpenRequired===true&&task.manualAccessState==="open"&&task.submissionDeadlinePassed)
+      return {label:"Class open · Submission past due",className:"bg-amber-100 text-amber-900"};
     if(task.windowStatus==="closed")return {label:"Past due",className:"bg-rose-100 text-rose-800"};
     if(task.late===true)return {label:"Late submission allowed",className:"bg-amber-100 text-amber-900"};
     return {label:"Ready to work",className:"bg-indigo-100 text-indigo-800"};
@@ -206,13 +136,13 @@ if(panel&&list&&status&&schoolHost){
       const results=await Promise.all([
         scoped(scope,assessmentsApi,"list_student"),
         scoped(scope,gradebookApi,"my_published").catch(error=>({grades:[],error:error?.message||"Grades unavailable"})),
-        scoped(scope,profileApi,"my_profile"),
-        requestedOfferingId?scoped(scope,streamApi,"list",{offeringId:requestedOfferingId})
-          .catch(error=>({posts:[],materialError:error?.message||"Class materials unavailable"})):Promise.resolve({posts:[]})
+        scoped(scope,profileApi,"my_profile")
       ]);
       if(generation!==renderGeneration)return;
+      // Receipt verification is independent of the assessment list.
+      // Do not block the student's assignment page on a separate history lookup.
+      void displayExamCloseReceipt(scope);
       const profile=results[2]||{},classes=profile.classes||[];
-      renderClassMaterials(results[3]?.posts||[],results[3]?.materialError||"");
       let subjectId=requestedSubjectId,subjectName=requestedSubjectName,offeringId=requestedOfferingId;
       const allowedOfferings=new Set(classes.filter(item=>
         (!offeringId||item.offeringId===offeringId)&&(!subjectId||item.subjectId===subjectId)&&(!subjectName||Boolean(subjectId)||String(item.subject||"").toLowerCase()===subjectName.toLowerCase())
@@ -293,11 +223,22 @@ if(panel&&list&&status&&schoolHost){
           if(grade.feedback)result.append(node("p","mt-2 whitespace-pre-wrap",grade.feedback));
           article.append(result);
         }
-        article.append(privateConversation(scope,task));
         const actions=node("div","mt-4 flex flex-wrap gap-2");
         if(submission?.error)article.append(node("p","mt-3 text-sm text-amber-900","Submission status could not be confirmed. Refresh this page before starting a new submission."));
-        const canSubmit=!submission?.error&&(submission?.status==="reopened"?Number(submission.revisionDueAt||0)>Date.now():!submission?.submitted&&!grade&&!["upcoming","closed"].includes(task.windowStatus));
-        if(task.submissionSource==="studio"){
+        const canSubmit=!submission?.error&&(submission?.status==="reopened"?
+          Number(submission.revisionDueAt||0)>Date.now():
+          !submission?.submitted&&!grade&&!task.submissionDeadlinePassed&&
+          !["upcoming","closed","waiting_for_teacher"].includes(task.windowStatus));
+        if(task.submissionSource==="studio"&&task.manualOpenRequired===true&&task.manualAccessState!=="open"){
+          article.append(node("p","mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-950",
+            ["closed","closing","held"].includes(task.manualAccessState)
+              ?"Your teacher has closed this class session. Editing is locked; previously confirmed cloud saves remain available when the teacher opens the next session."
+              :"Your teacher has not opened this section's Studio examination. The task instructions and personalized scenario are locked until opening."));
+          const check=node("button","rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-bold text-white","Check opening status");
+          check.type="button";
+          check.addEventListener("click",()=>void render(scope));
+          actions.append(check);
+        }else if(task.submissionSource==="studio"){
           const studioSubmitted=submission?.submitted&&submission.status!=="reopened";
           const link=node("a","rounded-lg px-4 py-2.5 text-sm font-bold "+(studioSubmitted?"border border-emerald-200 bg-emerald-50 text-emerald-800":"bg-indigo-700 text-white"),
             submission?.status==="reopened"?"Open Studio to revise":
@@ -648,8 +589,6 @@ if(panel&&list&&status&&schoolHost){
     finally{githubBusy=false;ghSubmit.disabled=!historyRepository;document.getElementById("v4GithubLoad").disabled=false;}
   })());
 
-  configurePageContext();
-  renderClassMaterials();
   await auth.authStateReady();
   if(auth.currentUser){
     picker=createTenantSchoolPicker({
@@ -657,7 +596,7 @@ if(panel&&list&&status&&schoolHost){
       onReady:scope=>void render(scope),
       onBeforeChange:async()=>{
         if(githubBusy||generalBusy||ghDialog.open||generalDialog.open)throw Error("Close the open assessment editor before switching schools.");
-        renderGeneration++;list.replaceChildren();renderClassMaterials();
+        renderGeneration++;list.replaceChildren();
         status.textContent="Switching verified school…";
       }
     });
