@@ -217,11 +217,12 @@ function createSchoolAssessmentService({db}){
       if(!opening){
        // Retain the class roster as it existed at closing, rather than rebuilding
        // historical reports from memberships that may change next semester.
-       const roster=people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
-         person.data().status==="active"&&person.data().kind==="student").map(person=>({
-           personId:person.id,displayName:String(person.data().displayName||"Student").slice(0,140),
-           studentUid:person.data().authUid||null
-         }));
+       const roster=[...new Map(people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
+         person.data().status==="active"&&person.data().kind==="student").map(person=>[
+           person.id,{personId:person.id,
+             displayName:String(person.data().displayName||"Student").slice(0,140),
+             studentUid:person.data().authUid||null}
+         ])).values()];
        try{
         await db.doc(prefix+"studio_exam_session_rosters/"+taskId+"/sessions/"+result.sessionEpoch)
           .create({schoolId:ctx.schoolId,taskId,offeringId:result.offeringId,
@@ -320,11 +321,11 @@ function createSchoolAssessmentService({db}){
       doc.data().status==="active"&&typeof doc.data().personId==="string");
     const people=await Promise.all(active.map(doc=>
       db.doc(prefix+"people/"+doc.data().personId).get()));
-    roster=people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
+    roster=[...new Map(people.filter(person=>person.exists&&person.data().schoolId===ctx.schoolId&&
       person.data().status==="active"&&person.data().kind==="student")
-      .map(person=>({personId:person.id,
+      .map(person=>[person.id,{personId:person.id,
         displayName:String(person.data().displayName||"Student").slice(0,140),
-        studentUid:person.data().authUid||null}));
+        studentUid:person.data().authUid||null}])).values()];
    }
    const byUid=new Map(receipts.map(row=>[row.studentUid,row]));
    const students=roster.map(person=>{
