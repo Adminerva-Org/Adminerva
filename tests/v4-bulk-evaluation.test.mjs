@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   BULK_PACKAGE_FORMAT,BULK_RESPONSE_FORMAT,BULK_MAX_BATCH,
-  bulkSuggestionState,readBulkExternalResponse,bulkSaveableStages
+  bulkSuggestionState,readBulkExternalResponse,bulkSaveableStages,
+  nextBulkSelection,canClearCompletedBulkExchange
 } from "../js/repo-review/v4-bulk-evaluation.mjs";
 import {parseGeneralExternalEvaluationResponse} from
   "../js/assessment/general-external-evaluation.mjs";
@@ -104,4 +105,67 @@ test("private-draft save selection excludes existing grades, resubmissions and e
   {submissionId:"e",version:1,status:"submitted",gradeStatus:null}
  ];
  assert.deepEqual(bulkSaveableStages({staged,saveSelection,rows}).map(x=>x.key),["a"]);
+});
+
+test("the selection never exceeds ten and advances after the first ten have saved grades",()=>{
+ const rows=Array.from({length:88},(_,i)=>({
+   submissionId:"submitted-"+String(i+1).padStart(3,"0"),
+   version:1,status:"submitted",gradeStatus:null
+ }));
+ const first=nextBulkSelection(rows);
+ assert.equal(first.length,10);
+ assert.equal(first[0],rows[0].submissionId);
+ assert.equal(first.at(-1),rows[9].submissionId);
+ for(const row of rows.slice(0,10))row.gradeStatus="draft";
+ const next=nextBulkSelection(rows);
+ assert.equal(next.length,10);
+ assert.equal(next[0],rows[10].submissionId);
+ assert.equal(next.at(-1),rows[19].submissionId);
+ assert.equal(new Set([...first,...next]).size,20);
+});
+test("new batches exclude exceptions, staged work and reopened submissions",()=>{
+ const rows=[
+  {submissionId:"graded",gradeStatus:"published",status:"reviewed"},
+  {submissionId:"reopened",gradeStatus:null,status:"reopened"},
+  {submissionId:"pending",gradeStatus:null,status:"submitted"},
+  {submissionId:"error",gradeStatus:null,status:"submitted"},
+  {submissionId:"good",gradeStatus:null,status:"submitted"},
+  {recordId:"native",gradeStatus:null,status:"submitted"}
+ ];
+ assert.deepEqual(nextBulkSelection(rows,{
+   excluded:new Set(["pending","error"])
+ }),["good","native"]);
+ assert.deepEqual(nextBulkSelection(rows,{limit:1}),["pending"]);
+ assert.deepEqual(nextBulkSelection(rows,{limit:50}).length,4);
+ assert.deepEqual(nextBulkSelection(rows,{limit:0}),[]);
+});
+test("completed ten-item external batch can clear its package and imported response",()=>{
+ const rows=Array.from({length:10},(_,i)=>({
+   submissionId:"s"+i,gradeStatus:null
+ }));
+ const referenceMap=new Map(rows.map((row,i)=>[
+   "anonymous"+i,{key:row.submissionId}
+ ]));
+ const savedIds=new Set(rows.map(row=>row.submissionId));
+ assert.equal(canClearCompletedBulkExchange({
+   referenceMap,staged:new Map(),rows,savedIds
+ }),true);
+});
+test("partial saves preserve original JSON batch mapping and unsaved graded suggestions",()=>{
+ const rows=[{submissionId:"one",gradeStatus:null},{submissionId:"two",gradeStatus:null}];
+ const referenceMap=new Map([
+  ["ref1",{key:"one"}],["ref2",{key:"two"}]
+ ]);
+ assert.equal(canClearCompletedBulkExchange({
+   referenceMap,staged:new Map(),rows,savedIds:new Set(["one"])
+ }),false);
+ assert.equal(canClearCompletedBulkExchange({
+   referenceMap,
+   staged:new Map([["two",{key:"two",review:{saveEligible:false}}]]),
+   rows,savedIds:new Set(["one"])
+ }),false);
+ rows[1].gradeStatus="draft";
+ assert.equal(canClearCompletedBulkExchange({
+   referenceMap,staged:new Map(),rows,savedIds:new Set(["one"])
+ }),true);
 });
