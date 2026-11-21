@@ -3,6 +3,7 @@ const {getSchoolContext,TenantAccessError,checkedSchoolId,verifiedUid}=require("
 const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {rosterEmailHash}=require("./school-roster-identity.js");
+const {legacyStudentRecordsForAccount}=require("./legacy-student-identity.js");
 function invalid(message){throw new TenantAccessError("invalid-argument",message)}
 function field(value,max,label) {
   if(typeof value!=="string"||!value.trim()||value.trim().length>max)invalid(label+" is required and must be shorter.");
@@ -529,6 +530,7 @@ function createPeopleDirectoryService({db}) {
           primaryGuardianMobile:data.primaryGuardianMobile||"",
           contactEmail:data.email||"",
           accountLinked:Boolean(authUid),activationReady:Boolean(data.activationEmailHash),
+          legacyStudentIds:Array.isArray(data.legacyStudentIds)?data.legacyStudentIds.slice(0,50):[],
           revision:data.revision||1
         },
         membership:membership?.exists&&membership.data().schoolId===ctx.schoolId?{
@@ -844,6 +846,142 @@ function createPeopleDirectoryService({db}) {
           previousAccountSuspended};
       });
       return result;
+    }
+    if(input.action==="search_legacy_student_candidates"){
+      if(ctx.schoolId!=="mcs-manila")
+        throw new TenantAccessError("failed-precondition",
+          "Legacy identity reconciliation is available only while the MCS compatibility layer is active.");
+      const personId=id(input.personId),raw=String(input.query||"").trim().toLocaleLowerCase("en");
+      if(raw.length<2||raw.length>100)invalid("Search the legacy student directory with at least 2 characters.");
+      const person=await base.doc(personId).get();
+      if(!person.exists||person.data().schoolId!==ctx.schoolId||
+         person.data().kind!=="student"||person.data().status!=="active")
+        throw new TenantAccessError("failed-precondition","Choose an active canonical student record.");
+      const canonical=person.data(),snap=await db.collection("students").limit(501).get();
+      if(snap.size===501)
+        throw new TenantAccessError("resource-exhausted",
+          "Legacy identity reconciliation requires paginated search before this directory grows beyond the pilot limit.");
+      const value=(data,key)=>String(data?.[key]||"").trim();
+      const matches=snap.docs.map(doc=>{
+        const data=doc.data()||{},name=value(data,"name")||value(data,"studentName"),
+          email=value(data,"email").toLowerCase(),section=value(data,"section"),
+          studentNumber=value(data,"studentNumber")||value(data,"studentNo")||value(data,"lrn");
+        const fields=[doc.id,name,email,section,studentNumber].map(item=>String(item||"").toLocaleLowerCase("en"));
+        const exact=fields.some(item=>item===raw);
+        return {doc,data,name,email,section,studentNumber,exact,
+          matched:fields.some(item=>item.includes(raw))};
+      }).filter(row=>row.matched)
+        .sort((a,b)=>Number(b.exact)-Number(a.exact)||a.name.localeCompare(b.name))
+        .slice(0,20);
+      const candidates=await Promise.all(matches.map(async row=>{
+        const linked=await base.where("legacyStudentIds","array-contains",row.doc.id).limit(4).get();
+        const linkedPersonIds=linked.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>doc.id);
+        return {
+          legacyStudentId:row.doc.id,
+          displayName:row.name||"Legacy student",
+          email:row.email,
+          section:row.section,
+          studentNumber:row.studentNumber,
+          status:String(row.data.status||"active"),
+          exactMatch:row.exact,
+          linkedPersonIds,
+          alreadyLinkedHere:linkedPersonIds.includes(personId),
+          nameMatchesCanonical:Boolean(row.name&&canonical.displayName&&
+            row.name.toLocaleLowerCase("en")===String(canonical.displayName).toLocaleLowerCase("en")),
+          studentNumberMatchesCanonical:Boolean(row.studentNumber&&canonical.studentNumber&&
+            row.studentNumber===String(canonical.studentNumber))
+        };
+      }));
+      return {
+        person:{
+          personId,displayName:String(canonical.displayName||"Student").slice(0,140),
+          studentNumber:String(canonical.studentNumber||""),
+          revision:Number(canonical.revision)||1,
+          legacyStudentIds:Array.isArray(canonical.legacyStudentIds)?canonical.legacyStudentIds.slice(0,50):[]
+        },
+        candidates
+      };
+    }
+    if(input.action==="link_legacy_student_identity"){
+      if(ctx.schoolId!=="mcs-manila")
+        throw new TenantAccessError("failed-precondition",
+          "Legacy identity reconciliation is available only while the MCS compatibility layer is active.");
+      const personId=id(input.personId),legacyStudentId=id(input.legacyStudentId),
+        expectedRevision=Number(input.expectedRevision),
+        reason=field(input.reason,500,"Identity reconciliation reason");
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        invalid("Refresh the canonical student before linking a legacy identity.");
+      if(reason.length<20)
+        invalid("Explain the legacy identity reconciliation in at least 20 characters.");
+      const personRef=base.doc(personId),legacyRef=db.doc("students/"+legacyStudentId),
+        auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      let authUid=null,legacySnapshot=null,newRevision=null;
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const [person,legacy,linked]=await Promise.all([
+          tx.get(personRef),tx.get(legacyRef),
+          tx.get(base.where("legacyStudentIds","array-contains",legacyStudentId).limit(4))
+        ]);
+        if(!person.exists||person.data().schoolId!==ctx.schoolId||
+           person.data().kind!=="student"||person.data().status!=="active")
+          throw new TenantAccessError("failed-precondition","The canonical student must still be active.");
+        const data=person.data(),currentRevision=Number(data.revision)||1;
+        if(currentRevision!==expectedRevision)
+          throw new TenantAccessError("failed-precondition",
+            "The canonical student changed after the reconciliation preview. Refresh and review the latest record.");
+        if(!legacy.exists)
+          throw new TenantAccessError("not-found","The selected legacy student record no longer exists.");
+        const legacyData=legacy.data()||{},legacyStatus=String(legacyData.status||"active").toLowerCase();
+        if(legacyData.active===false||
+           ["disabled","archived","suspended","inactive","deleted","ended"].includes(legacyStatus))
+          throw new TenantAccessError("failed-precondition",
+            "The selected legacy student record is inactive and cannot drive current compatibility access.");
+        const conflicts=linked.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.id!==personId&&
+          !(doc.data().status==="archived"&&doc.data().mergedIntoPersonId===personId));
+        if(conflicts.length)
+          throw new TenantAccessError("failed-precondition",
+            "This legacy student identity is already linked to another school person. Resolve that identity conflict first.");
+        authUid=typeof data.authUid==="string"&&data.authUid?id(data.authUid):null;
+        legacySnapshot={
+          displayName:String(legacyData.name||legacyData.studentName||"Legacy student").slice(0,140),
+          email:String(legacyData.email||"").slice(0,254),
+          section:String(legacyData.section||"").slice(0,140)
+        };
+        newRevision=currentRevision+1;
+        const now=FieldValue.serverTimestamp();
+        tx.update(personRef,{
+          legacyStudentIds:FieldValue.arrayUnion(legacyStudentId),
+          legacyIdentityReconciledAt:now,legacyIdentityReconciledByUid:ctx.uid,
+          revision:newRevision,updatedAt:now,updatedByUid:ctx.uid
+        });
+        tx.create(auditRef,{
+          schoolId:ctx.schoolId,actorUid:ctx.uid,personId,legacyStudentId,
+          action:"legacy_student_identity_linked",reason,
+          legacyDisplayName:legacySnapshot.displayName,
+          legacySection:legacySnapshot.section,
+          revision:newRevision,createdAt:now
+        });
+      });
+      // Rebuild the server-owned compatibility projection immediately so the
+      // learner can retry without another administrative step.
+      if(authUid){
+        const resolved=await legacyStudentRecordsForAccount({
+          db,uid:authUid,email:"",schoolId:ctx.schoolId,maxRecords:50
+        });
+        const profiles=resolved.records.map(record=>({
+          id:record.id,
+          section:String(record.data?.section||"").trim(),
+          name:String(record.data?.name||record.data?.studentName||"Student").slice(0,140)
+        })).filter(record=>record.section);
+        await db.doc("student_access/"+authUid).set({
+          ownerUid:authUid,
+          sections:[...new Set(profiles.map(record=>record.section))].slice(0,40),
+          studentIds:resolved.records.map(record=>record.id).slice(0,50),
+          profiles,identitySource:"admin_reconciled_legacy_id",
+          updatedAt:FieldValue.serverTimestamp()
+        },{merge:true});
+      }
+      return {personId,legacyStudentId,revision:newRevision,status:"linked",legacy:legacySnapshot};
     }
     if(input.action==="list_invitable_people") {
       const role=input.role;
