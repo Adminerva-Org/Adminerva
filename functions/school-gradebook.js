@@ -12,6 +12,7 @@ const {digestProject}=require("./school-studio-projects.js");
 const {digestEvidence}=require("./school-github-evidence.js");
 const {digestSubmission}=require("./school-assessment-submissions.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
+const {studentRecordUidAllowed}=require("./student-account-history.js");
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function deny(code,message){throw new TenantAccessError(code,message)}
 const DRAFT_SOURCES=new Set(["teacher","internal_ai","external_ai"]);
@@ -51,10 +52,11 @@ function createSchoolGradebookService({db}){
    if(!person.exists||person.data().schoolId!==ctx.schoolId||
       person.data().authUid!==ctx.uid||person.data().kind!=="student")
     deny("permission-denied","Your school identity is not verified.");
-   const snap=await grades.where("studentUid","==",ctx.uid).limit(101).get();
+   const snap=await grades.where("personId","==",personId).limit(101).get();
    if(snap.size===101)deny("resource-exhausted","Published grade history requires pagination.");
    return {grades:snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
-      doc.data().status==="published"&&doc.data().personId===personId)
+      doc.data().status==="published"&&doc.data().personId===personId&&
+      studentRecordUidAllowed(person.data(),ctx.uid,doc.data().studentUid))
      .map(doc=>({gradeId:doc.id,taskId:doc.data().taskId,
       total:doc.data().total,awarded:doc.data().awarded,
       criteria:Array.isArray(doc.data().criteria)?doc.data().criteria:[],feedback:doc.data().feedback,
