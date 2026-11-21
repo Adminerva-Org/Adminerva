@@ -42,61 +42,32 @@
       class="max-w-screen-2xl mx-auto w-full p-4 sm:p-6 mt-2 sm:mt-4 flex-1 flex flex-col md:flex-row gap-6 md:gap-8"
     >
       <!-- LEFT SIDEBAR -->
-      <aside
-        aria-label="Settings categories" class="av-settings-nav w-full md:w-56 shrink-0 flex flex-col gap-1 overflow-x-auto md:overflow-visible"
-      >
-        <button
-          onclick="switchSettingsCategory('security')"
-          id="navBtn-security"
-          class="sidebar-btn w-full text-left px-4 py-3.5 sm:py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between bg-purple-50 text-purple-700 border-l-4 md:border-l-0 md:border-r-4 border-purple-600"
-        >
-          <span>Connections &amp; keys</span> <span class="text-lg opacity-60">🔒</span>
+      <aside aria-label="Settings categories" class="av-settings-nav w-full md:w-60 shrink-0 flex flex-col gap-1 overflow-x-auto md:overflow-visible">
+        <div class="mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Personal</div>
+        <button type="button" onclick="switchSettingsCategory('account')" id="navBtn-account"
+          class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between bg-purple-50 text-purple-700 border-l-4 md:border-l-0 md:border-r-4 border-purple-600">
+          <span>Account &amp; notifications</span><span class="text-lg opacity-60">⚙</span>
         </button>
 
-        <div
-          class="mt-4 md:mt-5 mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider"
-        >
-          RepoReview
-        </div>
-
-        <button
-          onclick="switchSettingsCategory('rubrics')"
-          id="navBtn-rubrics"
-          class="sidebar-btn w-full text-left px-4 py-3.5 sm:py-3 rounded-lg text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100"
-        >
-          <span>Grading Rubrics</span>
-          <span class="text-lg opacity-60">📋</span>
+        <div data-teaching-settings class="mt-4 md:mt-5 mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Connected services</div>
+        <button data-teaching-settings type="button" onclick="switchSettingsCategory('security')" id="navBtn-security"
+          class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100 rounded-lg">
+          <span>Connections &amp; keys</span><span class="text-lg opacity-60">🔒</span>
         </button>
 
-        <div
-          class="mt-4 md:mt-5 mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider"
-        >
-          LessonReview
-        </div>
-
-        <button
-          onclick="switchSettingsCategory('lesson')"
-          id="navBtn-lesson"
-          class="sidebar-btn w-full text-left px-4 py-3.5 sm:py-3 rounded-lg text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100"
-        >
-          <span>Export Defaults</span>
-          <span class="text-lg opacity-60">📘</span>
+        <div data-teaching-settings class="mt-4 md:mt-5 mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Teaching defaults</div>
+        <button data-teaching-settings type="button" onclick="switchSettingsCategory('rubrics')" id="navBtn-rubrics"
+          class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100 rounded-lg">
+          <span>Grading rubrics</span><span class="text-lg opacity-60">📋</span>
         </button>
-
-        <div
-          class="mt-4 md:mt-5 mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider"
-        >
-          Slide editor
-        </div>
-
-        <button
-          onclick="switchSettingsCategory('presentation')"
-          id="navBtn-presentation"
-          class="sidebar-btn w-full text-left px-4 py-3.5 sm:py-3 rounded-lg text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100"
-        >
-          <span>Presentations</span> <span class="text-lg opacity-60">📽️</span>
+        <button data-teaching-settings type="button" onclick="switchSettingsCategory('lesson')" id="navBtn-lesson"
+          class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100 rounded-lg">
+          <span>Documents &amp; export</span><span class="text-lg opacity-60">📘</span>
         </button>
-        <button type="button" onclick="switchSettingsCategory('account')" id="navBtn-account" class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold rounded-lg text-gray-600 hover:bg-gray-100">General &amp; notifications</button>
+        <button data-teaching-settings type="button" onclick="switchSettingsCategory('presentation')" id="navBtn-presentation"
+          class="sidebar-btn w-full text-left px-4 py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between text-gray-600 hover:bg-gray-100 rounded-lg">
+          <span>Presentation defaults</span><span class="text-lg opacity-60">📽️</span>
+        </button>
       </aside>
 
       <!-- RIGHT MAIN PANEL -->
@@ -104,10 +75,10 @@
         class="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[600px] flex flex-col"
       >
         <!-- PANEL: SECURITY -->
-        <header class="px-5 sm:px-8 pt-5"><p class="av-eyebrow">My workspace</p><h1 class="text-xl font-bold">Account &amp; integrations</h1></header>
+        <header class="px-5 sm:px-8 pt-5"><p class="av-eyebrow">My account</p><h1 class="text-xl font-bold">Settings &amp; preferences</h1><p id="settingsRoleSummary" class="av-form-hint mt-1">Loading settings available to your current role…</p></header>
         <div
-          id="panel-security"
-          class="settings-panel block p-5 sm:p-8 h-full overflow-y-auto"
+          id="panel-security" data-teaching-settings
+          class="settings-panel hidden p-5 sm:p-8 h-full overflow-y-auto"
         >
           <h3
             class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-6"
@@ -200,7 +171,7 @@
 
         <!-- PANEL: RUBRICS -->
         <div
-          id="panel-rubrics"
+          id="panel-rubrics" data-teaching-settings
           class="settings-panel hidden p-5 sm:p-8 h-full overflow-y-auto space-y-6"
         >
           <h3
@@ -374,7 +345,7 @@
 
         <!-- PANEL: LESSON DEFAULTS -->
         <div
-          id="panel-lesson"
+          id="panel-lesson" data-teaching-settings
           class="settings-panel hidden p-5 sm:p-8 h-full overflow-y-auto"
         >
           <h3
@@ -589,7 +560,7 @@
 
         <!-- PANEL: PRESENTATIONS -->
         <div
-          id="panel-presentation"
+          id="panel-presentation" data-teaching-settings
           class="settings-panel hidden p-5 sm:p-8 h-full overflow-y-auto"
         >
           <h3
@@ -702,7 +673,16 @@
             </button>
           </div>
         </div>
-        <section id="panel-account" class="settings-panel hidden p-5 sm:p-8"><div data-account-preferences="staff"></div></section>
+        <section id="panel-account" class="settings-panel block p-5 sm:p-8">
+          <section id="staffAccountSummary" class="rounded-xl border border-slate-200 bg-slate-50 p-4 mb-6">
+            <p class="text-xs uppercase tracking-wide font-bold text-slate-500">Signed-in account</p>
+            <div class="grid sm:grid-cols-2 gap-3 mt-3">
+              <div><span class="text-xs text-slate-500">Email</span><strong id="settingsAccountEmail" class="block text-sm mt-1 break-all">—</strong></div>
+              <div><span class="text-xs text-slate-500">Current role</span><strong id="settingsAccountRole" class="block text-sm mt-1">—</strong></div>
+            </div>
+          </section>
+          <div data-account-preferences="staff"></div>
+        </section>
       </main>
     </div>
 
@@ -716,5 +696,6 @@
     <script type="module" src="js/settings/settings-repo.js?v=1.3.0"></script>
     <script type="module" src="js/settings/settings-lesson.js?v=1.3.0"></script>
     <script type="module" src="js/settings/settings-presentation.js?v=1.3.0"></script>
-<script type="module" src="js/settings/account-preferences.mjs?v=bc49c032bde0"></script>  <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4d90ddb7ea65"></script></body>
+<script type="module" src="js/settings/account-preferences.mjs?v=20261122-settings"></script>
+<script type="module" src="js/settings/role-settings.mjs?v=20261122-settings"></script>  <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4d90ddb7ea65"></script></body>
 </html>
