@@ -5,7 +5,7 @@ import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnU
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
 import {createProjectStudio} from "./project-studio.mjs?v=20261121-exam-data-audit";
 import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
-import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=4.2.4";
+import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261121-exam-data-audit";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=46763fd68540";
