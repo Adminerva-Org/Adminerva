@@ -26,16 +26,23 @@ async function previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId}){
     const offering=await db.doc(schoolPrefix+"course_offerings/"+grant.offeringId).get();
     const course=offering.exists?offering.data():null;
     if(!course||course.schoolId!==ctx.schoolId||!safeId(course.sectionId))continue;
-    const section=await db.doc(schoolPrefix+"sections/"+course.sectionId).get();
+    const [section,subject]=await Promise.all([
+      db.doc(schoolPrefix+"sections/"+course.sectionId).get(),
+      safeId(course.subjectId)?
+        db.doc(schoolPrefix+"subjects/"+course.subjectId).get():Promise.resolve(null)
+    ]);
     if(!section.exists||section.data().schoolId!==ctx.schoolId)continue;
     teacherOfferings.push({offeringId:grant.offeringId,
       sectionName:canonical(section.data().name),
+      subjectName:subject?.exists&&subject.data().schoolId===ctx.schoolId?
+        canonical(subject.data().name):"",
       assignmentStatus:grant.status});
   }
   const snap=await db.collection("studio_submissions")
     .where("assessmentId","==",legacyAssessmentId).limit(101).get();
   if(snap.size===101)deny("resource-exhausted","Migration preview requires paginated source inspection.");
   const originalSections=new Set((legacy.data().deployments||[]).map(d=>canonical(d?.section)).filter(Boolean));
+  const originalSubject=canonical(legacy.data().subject);
   const rows=[];
   for(const document of snap.docs){
     const head=document.data(),reasons=[];
@@ -44,8 +51,13 @@ async function previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId}){
        !safeId(head.ownerUid)||!Number.isInteger(head.revision)||head.revision<1||
        head.revision>30)
       reasons.push("invalid_submission_identity");
-    const matched=teacherOfferings.filter(o=>o.sectionName===canonical(head.section));
-    if(matched.length!==1)reasons.push(matched.length?"ambiguous_course_offering":"course_offering_not_verified");
+    const matched=teacherOfferings.filter(o=>o.sectionName===canonical(head.section)&&
+      originalSubject&&o.subjectName===originalSubject);
+    if(matched.length!==1)reasons.push(matched.length?
+      "ambiguous_course_offering":"original_subject_or_course_offering_not_verified");
+    // Even a unique current section/subject name is not enough to prove the
+    // historical academic term. No automatic cutover is authorized by this preview.
+    reasons.push("historical_term_requires_explicit_mapping");
     if(matched.length===1&&matched[0].assignmentStatus!=="active")
       reasons.push("historical_teacher_assignment_not_active");
     let personId=null;
@@ -96,7 +108,7 @@ async function previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId}){
   }
   return {
     legacyAssessmentId,schoolId:ctx.schoolId,checked:rows.length,
-    fullyVerified:rows.every(row=>row.mapped),
+    fullyVerified:rows.length>0&&rows.every(row=>row.mapped),
     verified:rows.filter(row=>row.mapped).length,
     needsAttention:rows.filter(row=>!row.mapped).length,
     mode:"preview_only_no_writes",rows
