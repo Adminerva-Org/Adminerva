@@ -253,12 +253,12 @@ test("compact package refuses mixed task/rubric, duplicate refs and missing pers
  assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
    ...options,entries:[a,{...b,ref:a.ref}]
  }),/duplicate anonymous reference/);
- const modified=structuredClone(b);
+ const modified=JSON.parse(JSON.stringify(b));
  modified.evaluationData.assessment.rubric[0].points=9;
  assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
    ...options,entries:[a,modified]
  }),/mixes different assessment/);
- const without=structuredClone(a);
+ const without=JSON.parse(JSON.stringify(a));
  without.evaluationData.evidence.personalizedTask=null;
  assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
    ...options,entries:[without]
