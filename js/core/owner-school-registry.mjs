@@ -7,7 +7,9 @@ const readinessApi=httpsCallable(functions,"schoolCutoverReadiness");
 const byId=id=>document.getElementById(id);
 const status=byId("owner-status"),workspace=byId("owner-content"),
   schoolList=byId("owner-schools"),actions=byId("owner-actions");
-let selected=null,schools=[],governanceRoles=[],schoolAdmins=[],busy=false,latestReadiness=null,latestCutoverPackage=null,onboardingSchoolId="",selectionEpoch=0;
+let selected=null,schools=[],governanceRoles=[],schoolGovernanceAssignments=[],governanceRoleEdit=null,
+  governanceLifecycleChange=null,schoolAdmins=[],busy=false,latestReadiness=null,latestCutoverPackage=null,
+  onboardingSchoolId="",selectionEpoch=0;
 const say=text=>status.textContent=text;
 function scopedForms(){return [...actions.querySelectorAll("form")].filter(form=>form.id!=="owner-governance-create");}
 function setFormReady(form,ready){
@@ -357,6 +359,113 @@ async function loadCutoverPackage(schoolId=selected?.schoolId){
     return null;
   }
 }
+function governanceRoleById(roleId){
+  return governanceRoles.find(role=>role.roleId===roleId)||null;
+}
+function cancelGovernanceRoleEdit({quiet=false}={}){
+  const form=byId("owner-governance-create");
+  governanceRoleEdit=null;
+  if(form){
+    form.reset();
+    form.elements.roleId.readOnly=false;
+    byId("owner-governance-create-submit").textContent="Create governance role";
+    byId("owner-governance-edit-cancel").hidden=true;
+  }
+  if(!quiet)say("Governance role edit cancelled.");
+}
+function beginGovernanceRoleEdit(role){
+  if(busy||role.status!=="active")return;
+  governanceRoleEdit={...role};
+  const form=byId("owner-governance-create");
+  form.elements.roleId.value=role.roleId;form.elements.roleId.readOnly=true;
+  form.elements.displayName.value=role.displayName||"";
+  form.elements.description.value=role.description||"";
+  byId("owner-governance-create-submit").textContent="Save governance role";
+  byId("owner-governance-edit-cancel").hidden=false;
+  form.scrollIntoView({behavior:"smooth",block:"center"});
+  form.elements.displayName.focus({preventScroll:true});
+}
+function openGovernanceLifecycle(change){
+  if(busy)return;
+  governanceLifecycleChange=change;
+  const form=byId("owner-governance-lifecycle-form");form.reset();
+  const role=change.role||governanceRoleById(change.assignment?.roleId),
+    actionLabel=change.type==="role"
+      ?(change.mode==="restore"?"Restore role":"Archive role")
+      :(change.mode==="restore"?"Restore school assignment":"End school assignment");
+  byId("owner-governance-lifecycle-title").textContent=actionLabel;
+  byId("owner-governance-lifecycle-target").textContent=
+    (role?.displayName||role?.roleId||change.assignment?.roleId||"Governance role")+
+    (change.type==="assignment"&&selected?" · "+selected.displayName:"");
+  byId("owner-governance-lifecycle-help").textContent=change.type==="role"
+    ?change.mode==="restore"
+      ?"Restoring makes this policy-responsibility label available for assignment again. It does not grant any application permission."
+      :"Archive only after active school assignments are ended. Historical assignments and audit events remain retained."
+    :change.mode==="restore"
+      ?"Restoring reactivates this policy-responsibility assignment only. The platform role definition must also be active."
+      :"Ending removes this governance responsibility from the selected school without deleting its assignment history.";
+  const confirm=byId("owner-governance-lifecycle-confirm");
+  confirm.textContent=actionLabel;confirm.className="own-button "+(change.mode==="restore"?"":"warn");
+  byId("owner-governance-lifecycle-dialog").showModal();
+}
+function renderGovernanceRoles(){
+  const catalogHost=byId("owner-governance-catalog-list"),
+    assignmentHost=byId("owner-governance-assignment-list");
+  if(catalogHost){
+    catalogHost.replaceChildren();
+    const ordered=[...governanceRoles].sort((a,b)=>
+      Number(a.status==="archived")-Number(b.status==="archived")||
+      String(a.displayName||a.roleId).localeCompare(String(b.displayName||b.roleId)));
+    for(const role of ordered){
+      const card=document.createElement("article");
+      card.style.cssText="display:flex;justify-content:space-between;align-items:flex-start;gap:.65rem;flex-wrap:wrap;border:1px solid #e2e8f0;border-radius:10px;padding:.7rem;background:#f8fafc";
+      const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
+      name.textContent=role.displayName||role.roleId;meta.className="own-muted";
+      meta.textContent=role.roleId+" · "+role.status+" · revision "+(role.revision||1)+(role.description?" · "+role.description:"");
+      info.append(name,meta);
+      const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.4rem;flex-wrap:wrap";
+      if(role.status==="active"){
+        const edit=document.createElement("button");edit.type="button";edit.className="own-button";
+        edit.textContent="Edit";edit.addEventListener("click",()=>beginGovernanceRoleEdit(role));actions.append(edit);
+        const archive=document.createElement("button");archive.type="button";archive.className="own-button warn";
+        archive.textContent="Archive";archive.addEventListener("click",()=>openGovernanceLifecycle({type:"role",mode:"archive",role}));actions.append(archive);
+      }else if(role.status==="archived"){
+        const restore=document.createElement("button");restore.type="button";restore.className="own-button";
+        restore.textContent="Restore";restore.addEventListener("click",()=>openGovernanceLifecycle({type:"role",mode:"restore",role}));actions.append(restore);
+      }
+      card.append(info,actions);catalogHost.append(card);
+    }
+    if(!catalogHost.children.length){
+      const empty=document.createElement("p");empty.className="own-muted";empty.textContent="No custom governance roles exist yet.";catalogHost.append(empty);
+    }
+  }
+  if(assignmentHost){
+    assignmentHost.replaceChildren();
+    const ordered=[...schoolGovernanceAssignments].sort((a,b)=>
+      Number(a.status==="ended")-Number(b.status==="ended")||
+      String(governanceRoleById(a.roleId)?.displayName||a.roleId).localeCompare(String(governanceRoleById(b.roleId)?.displayName||b.roleId)));
+    for(const assignment of ordered){
+      const role=governanceRoleById(assignment.roleId),card=document.createElement("article");
+      card.style.cssText="display:flex;justify-content:space-between;align-items:flex-start;gap:.65rem;flex-wrap:wrap;border:1px solid #e2e8f0;border-radius:10px;padding:.7rem;background:#f8fafc";
+      const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
+      name.textContent=role?.displayName||assignment.roleId;meta.className="own-muted";
+      meta.textContent=assignment.status+" · revision "+(assignment.revision||1)+
+        (assignment.assignedAt?" · assigned "+new Date(assignment.assignedAt).toLocaleString():"");
+      info.append(name,meta);
+      const action=document.createElement("button");action.type="button";
+      action.className="own-button "+(assignment.status==="active"?"warn":"");
+      action.textContent=assignment.status==="active"?"End assignment":"Restore assignment";
+      action.addEventListener("click",()=>openGovernanceLifecycle({
+        type:"assignment",mode:assignment.status==="active"?"end":"restore",assignment,role
+      }));
+      card.append(info,action);assignmentHost.append(card);
+    }
+    if(!assignmentHost.children.length){
+      const empty=document.createElement("p");empty.className="own-muted";
+      empty.textContent="No governance-role assignment history is recorded for this school.";assignmentHost.append(empty);
+    }
+  }
+}
 async function loadGovernanceRoles(schoolId=selected?.schoolId){
   const turn=selectionEpoch;
   const message=byId("owner-governance-status"),select=byId("owner-governance-role-select");
@@ -369,27 +478,36 @@ async function loadGovernanceRoles(schoolId=selected?.schoolId){
       execute("list_governance_roles"),execute("list_school_governance_roles",{schoolId})
     ]);
     if(turn!==selectionEpoch||selected?.schoolId!==schoolId)return null;
-    governanceRoles=(catalog.roles||[]).filter(role=>role.status==="active");
-    const assignedIds=new Set((assigned.roles||[]).filter(role=>role.status==="active").map(role=>role.roleId)),
+    governanceRoles=catalog.roles||[];
+    schoolGovernanceAssignments=assigned.roles||[];
+    const assignmentIds=new Set(schoolGovernanceAssignments.map(role=>role.roleId)),
+      activeAssignments=schoolGovernanceAssignments.filter(role=>role.status==="active"),
+      available=governanceRoles.filter(role=>role.status==="active"&&!assignmentIds.has(role.roleId)),
       previous=select.value;
     select.replaceChildren();
-    const blank=document.createElement("option");blank.value="";blank.textContent="Choose governance role…";select.append(blank);
-    for(const role of governanceRoles){
+    const blank=document.createElement("option");blank.value="";blank.textContent="Choose unassigned governance role…";select.append(blank);
+    for(const role of available){
       const option=document.createElement("option");option.value=role.roleId;
-      option.textContent=role.displayName+" · "+role.roleId+(assignedIds.has(role.roleId)?" · assigned":"");
-      select.append(option);
+      option.textContent=role.displayName+" · "+role.roleId;select.append(option);
     }
-    if(governanceRoles.some(role=>role.roleId===previous))select.value=previous;
-    setFormReady(form,true);
-    message.textContent=assignedIds.size?
-      assignedIds.size+" governance role(s) assigned to "+selected.displayName+".":
-      "No custom governance role is assigned to this school. School Admin remains the default data steward.";
-    return {catalog:governanceRoles,assigned:[...assignedIds]};
+    if(available.some(role=>role.roleId===previous))select.value=previous;
+    renderGovernanceRoles();
+    setFormReady(form,available.length>0);
+    message.textContent=activeAssignments.length?
+      activeAssignments.length+" active governance role assignment"+(activeAssignments.length===1?"":"s")+" for "+selected.displayName+
+        (available.length?" · "+available.length+" additional role"+(available.length===1?"":"s")+" available.":" · no additional unassigned active roles.")
+      :"No active custom governance role is assigned to this school. School Admin remains the default data steward."+
+        (available.length?" "+available.length+" role"+(available.length===1?" is":"s are")+" available to assign.":"");
+    return {catalog:governanceRoles,assignments:schoolGovernanceAssignments};
   }catch(error){
-    if(turn===selectionEpoch&&selected?.schoolId===schoolId)message.textContent=error?.message||"Governance roles could not be loaded.";
+    if(turn===selectionEpoch&&selected?.schoolId===schoolId){
+      governanceRoles=[];schoolGovernanceAssignments=[];renderGovernanceRoles();
+      message.textContent=error?.message||"Governance roles could not be loaded.";
+    }
     return null;
   }
 }
+
 async function loadCutoverDecisions(schoolId=selected?.schoolId){
   const turn=selectionEpoch;
   const form=byId("owner-cutover-decisions"),message=byId("owner-cutover-decisions-status");
@@ -566,21 +684,58 @@ byId("owner-onboarding-policies")?.addEventListener("click",()=>{
   target?.querySelector("a,button")?.focus();
 });
 byId("owner-onboarding-preview")?.addEventListener("click",()=>enterSchoolPreview("schooladmin"));
+byId("owner-governance-edit-cancel").addEventListener("click",()=>cancelGovernanceRoleEdit());
 byId("owner-governance-create").addEventListener("submit",event=>{
-  event.preventDefault();const f=event.currentTarget,d=new FormData(f);
-  void submit(f,"create_governance_role",{
-    roleId:String(d.get("roleId")||"").trim().toLowerCase(),
-    displayName:String(d.get("displayName")||"").trim(),
-    description:String(d.get("description")||"").trim()
-  });
+  event.preventDefault();const form=event.currentTarget,d=new FormData(form),edit=governanceRoleEdit;
+  const action=edit?"update_governance_role":"create_governance_role",
+    details={
+      schoolId:selected?.schoolId||undefined,
+      roleId:edit?edit.roleId:String(d.get("roleId")||"").trim().toLowerCase(),
+      displayName:String(d.get("displayName")||"").trim(),
+      description:String(d.get("description")||"").trim(),
+      ...(edit?{expectedRevision:edit.revision}: {})
+    };
+  void (async()=>{
+    const response=await submit(form,action,details);
+    if(response){governanceRoleEdit=null;byId("owner-governance-edit-cancel").hidden=true;
+      byId("owner-governance-create-submit").textContent="Create governance role";
+      form.elements.roleId.readOnly=false;
+    }
+  })();
 });
 byId("owner-governance-assign").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
-  const f=event.currentTarget,d=new FormData(f);
-  void submit(f,"assign_governance_role",{
+  const form=event.currentTarget,d=new FormData(form);
+  void submit(form,"assign_governance_role",{
     schoolId:selected.schoolId,roleId:String(d.get("roleId")||"").trim(),
     reason:String(d.get("reason")||"").trim()
   });
+});
+byId("owner-governance-lifecycle-cancel").addEventListener("click",()=>{
+  if(busy)return;governanceLifecycleChange=null;byId("owner-governance-lifecycle-dialog").close();
+});
+byId("owner-governance-lifecycle-dialog").addEventListener("cancel",event=>{
+  if(busy)event.preventDefault();else governanceLifecycleChange=null;
+});
+byId("owner-governance-lifecycle-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(busy||!selected||!governanceLifecycleChange||!event.currentTarget.reportValidity())return;
+  const form=event.currentTarget,d=new FormData(form),change=governanceLifecycleChange,
+    reason=String(d.get("reason")||"").trim();
+  let action,details;
+  if(change.type==="role"){
+    action=change.mode==="restore"?"restore_governance_role":"archive_governance_role";
+    details={schoolId:selected.schoolId,roleId:change.role.roleId,
+      expectedRevision:change.role.revision,reason};
+  }else{
+    action=change.mode==="restore"?"restore_governance_role_assignment":"end_governance_role_assignment";
+    details={schoolId:selected.schoolId,roleId:change.assignment.roleId,
+      expectedRevision:change.assignment.revision,reason};
+  }
+  void (async()=>{
+    const response=await submit(form,action,details);
+    if(response){governanceLifecycleChange=null;byId("owner-governance-lifecycle-dialog").close();}
+  })();
 });
 byId("owner-grant").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
