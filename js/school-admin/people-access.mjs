@@ -131,12 +131,12 @@ const picker=createTenantSchoolPicker({
     if(get("pa-invite-title"))get("pa-invite-title").textContent=
       standardEnrollmentMode?"Create staff invitation":"Create pending invitation";
     if(get("pa-invite-help"))get("pa-invite-help").textContent=standardEnrollmentMode
-      ?"Manila Cathedral School students activate from Enrollment & Registration. Use invitations here for verified staff access."
+      ?"Students in this canonical school activate from Enrollment & Registration. Use invitations here for verified staff access."
       :"The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.";
     for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card"])
       if(get(id))get(id).hidden=standardEnrollmentMode;
     if(get("pa-classes-help"))get("pa-classes-help").innerHTML=standardEnrollmentMode
-      ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for Manila Cathedral School. Teaching assignments, teacher load, schedules and roster review are managed in <a href="school-classes.html" style="font-weight:800;text-decoration:underline">Classes &amp; Scheduling</a>.'
+      ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for this canonical school. Teaching assignments, teacher load, schedules and roster review are managed in <a href="school-classes.html" style="font-weight:800;text-decoration:underline">Classes &amp; Scheduling</a>.'
       :"School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.";
     const enrollmentSummary=get("pa-enrollment-summary-link");
     if(enrollmentSummary)enrollmentSummary.href=standardEnrollmentMode?"school-enrollment.html":"people-access.html#classes";
