@@ -204,7 +204,7 @@ export function bulkSaveableStages({staged,saveSelection,rows}){
   return [...staged.values()].filter(item=>{
     const row=byId.get(item.key);
     return saveSelection.has(item.key)&&item.review?.saveEligible===true&&
-      row&&!row.gradeStatus&&
+      row&&!row.gradeStatus&&row.bulkReady!==false&&
       !["reopened","revision_requested"].includes(row.status)&&
       Number(row.version)===Number(item.version);
   });
