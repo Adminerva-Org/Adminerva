@@ -41,6 +41,7 @@ if(main){
     const size=h?main.clientWidth:main.clientHeight;
     if(fullMode&&size>0)active=Math.max(0,Math.min(chapters.length-1,Math.round(pos/size)));
     [...nav.children].forEach((b,i)=>i===active?b.setAttribute('aria-current','step'):b.removeAttribute('aria-current'));
+    chapters.forEach((chapter,i)=>chapter.dataset.active=String(i===active));
     progress.firstElementChild?.style.setProperty('--avfx-progress',chapters.length>1?((active/(chapters.length-1))*100)+'%':'100%');
   }
   chapters.forEach((chapter,i)=>{
