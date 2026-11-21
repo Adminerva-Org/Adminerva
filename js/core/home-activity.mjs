@@ -142,8 +142,9 @@ if (home) {
     if (!reduceMotion?.matches && config.items.length > 1) {
       const timer = window.setInterval(() => {
         if (document.hidden || Date.now() < pauseUntil || !stage.isConnected || reduceMotion.matches) return;
+        if (document.documentElement.dataset.motion === 'reduce' || document.documentElement.dataset.adminervaReduceMotion === 'true') return;
         if (stage.matches(':hover') || stage.contains(document.activeElement)) return;
-        select((selected + 1) % config.items.length);
+        select((selected + 1 + Math.floor(Math.random() * (config.items.length - 1))) % config.items.length);
       }, 9000);
       window.addEventListener('pagehide', () => clearInterval(timer), {once: true});
     }
