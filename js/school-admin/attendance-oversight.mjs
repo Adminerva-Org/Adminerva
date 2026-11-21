@@ -27,8 +27,8 @@ function renderSummary(){
  el("attendanceConcernCount").textContent=c.concern.toLocaleString();
 }
 function renderTable(){
- const body=el("attendanceTable"),empty=el("attendanceEmpty"),q=el("attendanceSearch").value.trim().toLocaleLowerCase();
- body.replaceChildren();
+ const body=el("attendanceTable"),cards=el("attendanceCards"),empty=el("attendanceEmpty"),q=el("attendanceSearch").value.trim().toLocaleLowerCase();
+ body.replaceChildren();cards?.replaceChildren();
  const visible=rows.filter(row=>!q||[row.sectionName,row.teacherName,row.yearName].some(value=>String(value||"").toLocaleLowerCase().includes(q)));
  empty.hidden=visible.length>0;
  for(const row of visible){
@@ -47,6 +47,27 @@ function renderTable(){
    button.type="button";button.addEventListener("click",()=>void openDetail(row));action.append(button);
   }else action.append(make("span","text-xs text-slate-400","Awaiting adviser"));
   tr.append(action);body.append(tr);
+
+  if(cards){
+   const card=make("article","rounded-xl border border-slate-200 bg-white p-4");
+   const top=make("div","flex items-start justify-between gap-3"),info=make("div","min-w-0");
+   info.append(make("h3","font-extrabold text-slate-900",row.sectionName),make("p","text-xs text-slate-500 mt-1",row.teacherName+" · "+row.yearName));
+   const badge=make("span","shrink-0 rounded-full px-2 py-1 text-[11px] font-bold "+(row.submitted?"bg-emerald-50 text-emerald-800":"bg-amber-50 text-amber-800"),row.submitted?"Submitted":"Missing");
+   top.append(info,badge);card.append(top);
+   const metrics=make("div","grid grid-cols-5 gap-1 mt-3 text-center");
+   for(const [key,label] of [["present","P"],["late","L"],["absent","A"],["excused","E"],["unmarked","—"]]){
+    const box=make("div","rounded-lg bg-slate-50 px-1.5 py-2"),value=make("strong","block text-base",row.submitted?Number(row.counts?.[key]||0).toLocaleString():"—");
+    if(key==="absent"&&Number(row.counts?.[key])>0)value.className+=" text-rose-700";
+    if(key==="late"&&Number(row.counts?.[key])>0)value.className+=" text-amber-700";
+    box.append(make("span","block text-[10px] font-bold uppercase text-slate-500",label),value);metrics.append(box);
+   }
+   card.append(metrics);
+   if(row.submitted){
+    const review=make("button","mt-3 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-bold","Review saved roster");
+    review.type="button";review.addEventListener("click",()=>void openDetail(row));card.append(review);
+   }else card.append(make("p","mt-3 text-xs font-bold text-amber-700","Awaiting adviser submission"));
+   cards.append(card);
+  }
  }
 }
 async function openDetail(row){
