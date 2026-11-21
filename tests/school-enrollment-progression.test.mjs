@@ -90,3 +90,10 @@ test("cohort preview is invalidated when canonical registrations refresh",()=>{
   assert.match(frontend,/cohortPreview=null/);
   assert.match(frontend,/cohortForm\(\)\.reset\(\)/);
 });
+
+
+test("year-end progression is blocked before the final configured academic period",()=>{
+  assert.match(source,/where\("yearId","==",source\.yearId\)/);
+  assert.match(source,/source_period_not_final/);
+  assert.match(source,/last active academic period configured for this year and program/);
+});
