@@ -36,6 +36,7 @@ const validSnapshot=(head,version)=>{
     version.studentId!==head.studentId||
     version.projectId!==head.projectId||
     version.revision!==head.revision||
+    String(version.variantId||"")!==String(head.variantId||"")||
     version.snapshotHash!==head.snapshotHash||
     typeof version.snapshotJson!=="string"||
     Buffer.byteLength(version.snapshotJson,"utf8")>320000||
@@ -152,19 +153,36 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
     const inspectWithVariant=async raw=>{
       const variantId=String(raw.head.variantId||"");
       if(!variantId)return {...raw.snapshot,personalizedTask:null};
-      if(!/^[a-f0-9]{24}$/.test(variantId))
+      // Original Repository Management supports 16–64-character frozen variant
+      // digests; V4 cannot assume its own newer 24-character variant format.
+      if(!/^[a-f0-9]{16,64}$/.test(variantId))
         deny("failed-precondition","The submitted personalized variant ID is invalid.");
-      const variant=await db.doc("assessment_private/"+legacyAssessmentId+
-        "/variants/"+variantId).get();
-      const variantData=variant.exists?variant.data():null;
-      const prompt=String(variantData?.prompt||"");
-      const valid=variantData&&variantData.variantId===variantId&&prompt.trim().length>=20;
+      const student=legacyDocumentId(raw.head.studentId,"Student",160);
+      const assignment=await db.doc("studio_assessment_variants/"+
+        student+"_"+legacyAssessmentId+"/attempts/"+raw.head.revision).get();
+      const assigned=assignment.exists?assignment.data():null;
+      const assignedValid=assigned&&
+        assigned.assessmentId===legacyAssessmentId&&assigned.studentId===student&&
+        assigned.attempt===raw.head.revision&&assigned.variantId===variantId&&
+        typeof assigned.prompt==="string"&&assigned.prompt.trim().length>=20;
+      let value=assignedValid?assigned:null,source="exact_attempt_assignment";
+      if(!value){
+        const privateVariant=await db.doc("assessment_private/"+legacyAssessmentId+
+          "/variants/"+variantId).get();
+        const data=privateVariant.exists?privateVariant.data():null;
+        if(data&&data.variantId===variantId&&typeof data.prompt==="string"&&
+           data.prompt.trim().length>=20){
+          value=data;source="exact_private_variant";
+        }
+      }
       return {...raw.snapshot,
-        personalizedTask:valid?{
-          variantId,prompt,evaluationNotes:String(variantData.evaluationNotes||""),
-          source:"exact_legacy_variant"
+        personalizedTask:value?{
+          variantId,prompt:value.prompt,
+          evaluationNotes:String(value.evaluationNotes||""),
+          source
         }:null,
-        legacyVariantWarning:valid?null:"The original personalized prompt is unavailable from the stored private variant. AI evaluation is disabled; original source remains readable."
+        legacyVariantWarning:value?null:
+          "The exact historical personalized task could not be recovered. The original frozen source remains available; AI evaluation is disabled."
       };
     };
     const gradeRef=id=>db.doc("student_grades/"+id);
