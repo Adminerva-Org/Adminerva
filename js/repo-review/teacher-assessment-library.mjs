@@ -279,10 +279,10 @@ function render(){
         button.disabled=finalSaving;
         if(finalSaving)button.title="Previous session's final cloud checkpoints are still being accepted.";
         controls.append(button);
-        if(task.manualSessionEpoch>0){
-          controls.append(actionButton("Close save receipts",
-            ()=>void showExamCloseReport(task),true));
-        }
+      }
+      if(task.submissionSource==="studio"&&Number(task.manualSessionEpoch||0)>0){
+        controls.append(actionButton("Class save history",
+          ()=>void showExamCloseReport(task),true));
       }
       if(lifecycle==="active"){
         controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
