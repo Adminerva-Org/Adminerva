@@ -258,3 +258,33 @@ test("mismatched frozen personalized variant fails the integrity check",async()=
  }}),error=>error.code==="failed-precondition");
  assert.equal(writes.length,0);
 });
+
+test("bulk evaluation cannot replace an existing private legacy Studio grade",async()=>{
+ const oldGrade={studentId,taskId:legacyId,gradeSource:"studio_teacher_review",
+   studioRevision:1,studioSnapshotHash:data().hash,
+   reviewedBy:ctx.uid,score:32,maxScore:40,pending:0,
+   reviewRequired:false,published:false,gradeVersion:3};
+ const {service,map,writes}=dbHarness({grade:oldGrade});
+ await assert.rejects(service({ctx,input:{
+   ...input("legacy_review_save_draft").input,
+   legacySubmissionId:submittedId,expectedSubmissionVersion:1,
+   expectedSnapshotHash:data().hash,onlyIfUngraded:true,draftSource:"internal_ai",
+   criteria:[{awardedPoints:19,pendingPoints:0,comment:"Clear evidence"},
+     {awardedPoints:19,pendingPoints:0,comment:"Clear evidence"}],
+   feedback:"The student has demonstrated the assigned OOP requirements."
+ }}),error=>error.code==="failed-precondition");
+ assert.equal(map.get("student_grades/"+submittedId).score,32);
+ assert.equal(writes.length,0);
+});
+test("bulk evaluation refuses an outdated frozen hash before a new grade is created",async()=>{
+ const {service,writes}=dbHarness();
+ await assert.rejects(service({ctx,input:{
+   ...input("legacy_review_save_draft").input,
+   legacySubmissionId:submittedId,expectedSubmissionVersion:1,
+   expectedSnapshotHash:"outdated-digest",onlyIfUngraded:true,
+   criteria:[{awardedPoints:18,pendingPoints:0,comment:"Verified"},
+     {awardedPoints:18,pendingPoints:0,comment:"Verified"}],
+   feedback:"The frozen work was evaluated, but this request is stale."
+ }}),error=>error.code==="failed-precondition");
+ assert.equal(writes.length,0);
+});
