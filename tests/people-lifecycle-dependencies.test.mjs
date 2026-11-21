@@ -14,3 +14,8 @@ test("directory reconciliation includes adviser assignments in integrity review"
   assert.match(source,/\["people","memberships","enrollments","student_registrations","staff_assignments","section_advisers","course_offerings","invitations"\]/);
   assert.match(source,/advisersByTeacher/);
 });
+
+test("person lifecycle changes require the reviewed revision",()=>{
+  assert.match(source,/expectedRevision=Number\(input\.expectedRevision\)/);
+  assert.match(source,/currentRevision!==expectedRevision/);
+});
