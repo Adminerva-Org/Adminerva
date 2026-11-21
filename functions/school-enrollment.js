@@ -33,6 +33,12 @@ function optionalText(value,max=80){
   if(out.length>max)deny("invalid-argument","Optional student information is too long.");
   return out||null;
 }
+function millis(value){
+  if(!value)return null;
+  if(typeof value.toMillis==="function")return value.toMillis();
+  const numeric=Number(value);
+  return Number.isFinite(numeric)?numeric:null;
+}
 function normalizedEmail(value,label,required=true){
   const out=typeof value==="string"?value.trim().toLowerCase():"";
   if(!out&&!required)return null;
@@ -363,6 +369,56 @@ function createSchoolEnrollmentService({db}){
           revision:Number(data.revision)||1
         },
         activeRegistrations
+      };
+    }
+
+    if(input.action==="student_history"){
+      const personId=checkId(input.personId,"Person ID",128),
+        personRef=db.doc(root+"people/"+personId),
+        [person,registrationSnap,auditSnap]=await Promise.all([
+          personRef.get(),
+          db.collection(root+"student_registrations").where("personId","==",personId).limit(101).get(),
+          db.collection(root+"directory_audit").where("personId","==",personId).limit(101).get()
+        ]);
+      if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student")
+        deny("not-found","The student record was not found in this school.");
+      if(registrationSnap.size===101||auditSnap.size===101)
+        deny("resource-exhausted","Student placement history requires pagination before it can be shown safely.");
+      const registrations=registrationSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId)
+        .map(doc=>{
+          const row=doc.data();
+          return {
+            registrationId:doc.id,status:row.status||"active",revision:Number(row.revision)||1,
+            yearId:row.yearId,programId:row.programId,termId:row.termId,sectionId:row.sectionId,
+            gradeLevel:row.gradeLevel||null,courseCount:Number(row.courseCount)||0,
+            source:row.source||"onsite",endReasonType:row.endReasonType||null,
+            progressionType:row.progressionType||null,
+            previousRegistrationId:row.previousRegistrationId||null,
+            progressedToRegistrationId:row.progressedToRegistrationId||null,
+            createdAt:millis(row.createdAt),endedAt:millis(row.endedAt),
+            progressedAt:millis(row.progressedAt),restoredAt:millis(row.restoredAt)
+          };
+        }).sort((a,b)=>(b.createdAt||b.progressedAt||0)-(a.createdAt||a.progressedAt||0));
+      const registrationIds=new Set(registrations.map(row=>row.registrationId));
+      const events=auditSnap.docs.map(doc=>({auditId:doc.id,...doc.data()}))
+        .filter(row=>row.schoolId===ctx.schoolId&&(
+          registrationIds.has(row.registrationId)||
+          registrationIds.has(row.previousRegistrationId)||
+          registrationIds.has(row.targetRegistrationId)))
+        .filter(row=>/^student_registration_/.test(String(row.action||"")))
+        .map(row=>({
+          auditId:row.auditId,action:String(row.action||"registration_change").slice(0,120),
+          registrationId:row.registrationId||null,previousRegistrationId:row.previousRegistrationId||null,
+          targetRegistrationId:row.targetRegistrationId||null,
+          progressionType:row.progressionType||null,endReasonType:row.endReasonType||null,
+          fromSectionId:row.fromSectionId||null,toSectionId:row.toSectionId||null,
+          reason:String(row.reason||"").slice(0,500),createdAt:millis(row.createdAt)
+        })).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+      return {
+        person:{personId,displayName:person.data().displayName||"Student",
+          studentNumber:person.data().studentNumber||"",status:person.data().status||"active"},
+        registrations,events,
+        activeRegistrationCount:registrations.filter(row=>row.status==="active").length
       };
     }
 
