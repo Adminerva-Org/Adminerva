@@ -33,6 +33,21 @@ function normalizePayload(source,input={}){
   }
   deny("invalid-argument","This assessment submission type is not supported by the general response service.");
 }
+// Drafts accept incomplete answers, unlike the submitted immutable payload.
+function normalizeDraftPayload(source,input={}){
+  if(source==="text"){
+    const response=String(input.response??"");
+    if(response.length>50000)deny("invalid-argument","Written drafts are limited to 50,000 characters.");
+    return {response};
+  }
+  if(source==="link"){
+    const url=String(input.url??""),note=String(input.note??"");
+    if(url.length>4096||note.length>10000)
+      deny("invalid-argument","The link draft exceeds the URL or note limit.");
+    return {url,note};
+  }
+  deny("invalid-argument","Only written and link responses support this draft.");
+}
 function digestSubmission(source,payload){
   if(!GENERAL_SOURCES.has(source))throw Error("Unsupported general assessment source.");
   return createHash("sha256").update(JSON.stringify({source,payload})).digest("hex");
@@ -72,7 +87,13 @@ function createSchoolAssessmentSubmissionService({db}){
   }
   async function verifyStudentRead(){
     if(!ctx.roles.includes("student"))deny("permission-denied","Student submission access is required.");
-    const member=await memberRef.get(),personId=member.data()?.personId;
+    const [member,school]=await Promise.all([memberRef.get(),schoolRef.get()]);
+    if(!member.exists||member.data().status!=="active"||
+       member.data().schoolId!==ctx.schoolId||
+       !Array.isArray(member.data().roles)||!member.data().roles.includes("student")||
+       !school.exists||!["active","pilot"].includes(school.data().state))
+      deny("permission-denied","Your active school student membership is required.");
+    const personId=member.data()?.personId;
     if(typeof personId!=="string")deny("failed-precondition","Link your verified school person record first.");
     checkId(personId,"Person ID",128);
     const [person,enrollment]=await Promise.all([
@@ -90,6 +111,9 @@ function createSchoolAssessmentSubmissionService({db}){
 
   const submissionId=hash(ctx.schoolId,taskId,ctx.uid);
   const submissionRef=collection.doc(submissionId);
+  // Unsubmitted drafts stay separate from the immutable graded submission
+  // chain and are accessible exclusively through authenticated school callables.
+  const draftRef=db.doc(prefix+"assessment_response_drafts/"+submissionId);
 
   if(input.action==="my_status"){
     if(taskData.published!==true)deny("not-found","This assessment is not published to students.");
@@ -104,6 +128,96 @@ function createSchoolAssessmentSubmissionService({db}){
       currentVersion:data.currentVersion,submissionSource:source,payload:data.payload||{},
       requestMessage:data.status==="reopened"?data.revisionRequestMessage||"":"",
       revisionDueAt:data.status==="reopened"?data.revisionDueAt?.toMillis?.()||null:null};
+  }
+
+  if(input.action==="get_draft"){
+    if(taskData.published!==true)deny("not-found","This assessment is not published to students.");
+    const {personId}=await verifyStudentRead();
+    const [current,draft]=await Promise.all([submissionRef.get(),draftRef.get()]);
+    if(current.exists&&(current.data().schoolId!==ctx.schoolId||
+       current.data().taskId!==taskId||current.data().studentUid!==ctx.uid||
+       current.data().personId!==personId||current.data().offeringId!==offeringId))
+      deny("permission-denied","The existing assessment submission has a different owner.");
+    const version=current.exists?Number(current.data().currentVersion||0):0;
+    const submitted=current.exists&&current.data().status!=="reopened";
+    if(!draft.exists||submitted)return {taskId,revision:0,payload:null,
+      submissionVersion:version,submitted:Boolean(submitted)};
+    const row=draft.data();
+    if(row.schoolId!==ctx.schoolId||row.taskId!==taskId||row.studentUid!==ctx.uid||
+       row.personId!==personId||row.offeringId!==offeringId||
+       row.submissionSource!==source)
+      deny("permission-denied","The stored draft belongs to a different school context.");
+    if(row.submissionVersion!==version)return {taskId,revision:0,payload:null,
+      submissionVersion:version,submitted:false};
+    return {taskId,revision:row.revision,payload:row.payload,
+      submissionVersion:version,updatedAt:row.updatedAt?.toMillis?.()||null,submitted:false};
+  }
+
+  if(input.action==="save_draft"){
+    if(!ctx.roles.includes("student"))deny("permission-denied","Student draft access is required.");
+    const payload=normalizeDraftPayload(source,input),digest=digestSubmission(source,payload);
+    const expectedRevision=Number(input.expectedRevision);
+    const baseSubmissionVersion=Number(input.submissionVersion);
+    if(!Number.isSafeInteger(expectedRevision)||expectedRevision<0||
+       !Number.isSafeInteger(baseSubmissionVersion)||baseSubmissionVersion<0)
+      deny("invalid-argument","The last confirmed draft and submission versions are required.");
+    let receipt;
+    await db.runTransaction(async tx=>{
+      const member=await verifyMembership(tx,"student");
+      const personId=checkId(member.personId,"Student person ID",128);
+      const [currentTask,person,enrollment,submission,draft]=await Promise.all([
+        tx.get(taskRef),
+        tx.get(db.doc(prefix+"people/"+personId)),
+        tx.get(db.doc(prefix+"enrollments/"+rowKey(personId,offeringId))),
+        tx.get(submissionRef),tx.get(draftRef)
+      ]);
+      if(!currentTask.exists||currentTask.data().schoolId!==ctx.schoolId||
+         currentTask.data().status!=="deployed"||currentTask.data().submissionSource!==source||
+         currentTask.data().offeringId!==offeringId||currentTask.data().published!==true)
+        deny("failed-precondition","This assessment is no longer accepting draft changes.");
+      if(!person.exists||person.data().schoolId!==ctx.schoolId||
+         person.data().kind!=="student"||person.data().status!=="active"||
+         person.data().authUid!==ctx.uid||
+         !enrollment.exists||enrollment.data().schoolId!==ctx.schoolId||
+         enrollment.data().personId!==personId||enrollment.data().offeringId!==offeringId||
+         enrollment.data().status!=="active")
+        deny("permission-denied","Student identity or enrollment changed.");
+      if(submission.exists&&(submission.data().schoolId!==ctx.schoolId||
+         submission.data().taskId!==taskId||submission.data().studentUid!==ctx.uid||
+         submission.data().personId!==personId||submission.data().offeringId!==offeringId))
+        deny("permission-denied","Existing submission belongs to a different school context.");
+      const assessment=currentTask.data(),lifecycle=assessment.lifecycle||"active";
+      const revisionOpen=submission.exists&&submission.data().status==="reopened";
+      if(["archived","cancelled"].includes(lifecycle)||(lifecycle==="closed"&&!revisionOpen)||
+         (submission.exists&&!revisionOpen))
+        deny("failed-precondition","This response is no longer editable.");
+      const now=Date.now(),extension=revisionOpen?submission.data().revisionDueAt?.toMillis?.()||0:0;
+      if(now<assessment.opensAt.toMillis()||
+         (assessment.allowLateSubmissions!==true&&now>assessment.dueAt.toMillis()&&now>extension))
+        deny("failed-precondition","The assessment draft window is closed. Keep your device copy and contact your teacher.");
+      const submissionVersion=submission.exists?Number(submission.data().currentVersion||0):0;
+      if(baseSubmissionVersion!==submissionVersion)
+        deny("failed-precondition","A newer submission version exists. Reload before saving this draft.");
+      const previous=draft.exists?draft.data():null;
+      if(previous&&(previous.schoolId!==ctx.schoolId||previous.taskId!==taskId||
+         previous.studentUid!==ctx.uid||previous.personId!==personId||
+         previous.offeringId!==offeringId||previous.submissionSource!==source||
+         previous.submissionVersion!==submissionVersion))
+        deny("failed-precondition","The saved draft belongs to a different revision. Reload before continuing.");
+      if(previous?.contentDigest===digest){
+        receipt={taskId,revision:previous.revision,submissionVersion,unchanged:true};return;
+      }
+      const revision=previous?previous.revision+1:1;
+      if((previous?.revision||0)!==expectedRevision)
+        deny("failed-precondition","A newer cloud draft is already saved. Reopen the response editor to compare copies.");
+      const document={schoolId:ctx.schoolId,taskId,offeringId,studentUid:ctx.uid,personId,
+        submissionSource:source,submissionVersion,payload,contentDigest:digest,
+        revision,updatedAt:FieldValue.serverTimestamp()};
+      if(previous)tx.update(draftRef,document);
+      else tx.create(draftRef,{...document,createdAt:FieldValue.serverTimestamp()});
+      receipt={taskId,revision,submissionVersion,unchanged:false};
+    });
+    return receipt;
   }
 
   if(input.action==="submit"){
@@ -166,6 +280,10 @@ function createSchoolAssessmentSubmissionService({db}){
         tx.create(submissionRef,{...immutable,status:"submitted",currentVersion:version,
           createdAt:when,updatedAt:when});
       }
+      // Clear editable draft only with successful immutable submission.
+      // A racing save_draft transaction must retry against the new submitted
+      // state and cannot recreate drafts after the student has submitted.
+      tx.delete(draftRef);
       tx.create(auditRef,{schoolId:ctx.schoolId,taskId,submissionId,studentUid:ctx.uid,
         action:version===1?"assessment_response_submitted":"assessment_response_resubmitted",
         source,version,submissionDigest:digest,createdAt:when});
