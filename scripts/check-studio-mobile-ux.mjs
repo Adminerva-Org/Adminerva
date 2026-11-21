@@ -28,8 +28,8 @@ for(const [name,page] of [['student',student],['guest',guest]]){
   assert.match(page,/css\/playground-workspace\.css\?v=[A-Za-z0-9._-]+/,name+' must load versioned Studio workspace CSS');
   assert.ok(page.includes('enterkeyhint="send"'),name+' needs the terminal keyboard Send action');
   assert.match(page,/id="studioMobileTerminal" type="button" aria-label="Show terminal"/);
-  assert.ok(page.includes('-mobilekb1'),name+' should refresh mobile workspace script');
-  assert.ok(page.includes('-taskview2'),name+' must refresh task workspace JS');
+  assert.match(page,/src="js\/student\/playground\.js\?v=[A-Za-z0-9._-]+"/,name+' must load a versioned Studio controller');
+  // Verify the actual task controls below instead of pinning an obsolete cache tag.
   for(const id of ['studioTaskBar','studioTaskBarTitle','studioTaskBarStatus',
     'studioTaskBarType','studioTaskOpenDesktop','studioTaskDockStatus']){
     assert.equal((page.match(new RegExp('id="'+id+'"','g'))||[]).length,1,
@@ -37,7 +37,7 @@ for(const [name,page] of [['student',student],['guest',guest]]){
   }
   assert.match(page,/aria-hidden="true" tabindex="-1"/);
   assert.match(page,/data-task-jump="instructions"/);
-  assert.ok(page.includes('-mobiletask1'),name+' must refresh JS cache');
+  // Exact cache IDs change for exam and evidence releases.
 }
 assert.match(student,/id="studioTaskOverview"/);
 assert.match(student,/id="studioTaskSubmitShortcut"/);
