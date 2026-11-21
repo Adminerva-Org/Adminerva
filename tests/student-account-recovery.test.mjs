@@ -280,3 +280,17 @@ test("People & Access provides explicit reviewed legacy identity reconciliation"
   assert.match(ui,/link_legacy_student_identity/);
   assert.match(ui,/does not rewrite enrollment, grades, submissions or Studio work/);
 });
+
+
+test("student access projection persists and hydrates compatibility profiles",async()=>{
+  const [index,access]=await Promise.all([
+    readFile(new URL("../functions/index.js",import.meta.url),"utf8"),
+    readFile(new URL("../js/student/student-access.mjs",import.meta.url),"utf8")
+  ]);
+  assert.match(index,/ownerUid:user\.uid,email:normalized,sections,studentIds,profiles/);
+  assert.match(index,/profiles:\[\]/);
+  assert.match(access,/persistedProjection/);
+  assert.match(access,/getDoc\(doc\(db,"student_access",uid\)\)/);
+  assert.match(access,/completeProjection/);
+  assert.match(access,/stored\?\.profiles\?\.length/);
+});
