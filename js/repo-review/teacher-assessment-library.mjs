@@ -146,7 +146,9 @@ function renderPersonalizationState(){
     ?"Current enrollment: "+Number(data.roster?.totalStudents||0)+" student(s) across "+personalizingOfferings.length+
       " class(es). Largest class: "+Number(data.roster?.largestClass||0)+
       ". Variants are unique within each class deployment; a minimum pool of 10 is supported."
-    :"Choose classes and dates in Deploy first. Adminerva will calculate the necessary variant count. Existing student assignments and submitted work are not reset.";
+    :(personalizing?.legacyImport?.assessmentId
+        ?"The original Repository Management variants and completed student work remain in the historical assessment. They were not copied into this school pool. Open the historical assessment to review them; choose new classes in Deploy only if you are preparing a new assessment deployment."
+        :"Choose classes and dates in Deploy first. Adminerva will calculate the necessary variant count. Existing student assignments and submitted work are not reset.");
   const host=el("tl-personalization-samples");host.replaceChildren();
   for(const sample of data.samples||[]){
     const article=document.createElement("article");article.className="rounded-lg border border-violet-200 bg-white p-3";
@@ -345,7 +347,7 @@ function render(){
     if(item.canShare&&item.legacyImport?.assessmentId){
       const legacy=document.createElement("a");legacy.className="tl-action alt";
       legacy.href="repository-assessment-studio.html?legacyAssessment="+encodeURIComponent(item.legacyImport.assessmentId);
-      legacy.textContent="Edit legacy assessment";controls.append(legacy);
+      legacy.textContent="Open historical assessment";controls.append(legacy);
     }
     if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
@@ -805,7 +807,9 @@ function updateDeploymentVariantMessage(){
   if(!ids.length){
     review.textContent=existing
       ?existing+" class deployment(s) already exist for this blueprint. Their original student variants are preserved. Select only a new class if you need another deployment."
-      :"Choose at least one assigned class. Variant requirements will be calculated automatically.";
+      :deploying?.legacyImport?.assessmentId
+        ?"This is a legacy-imported blueprint. Its original personalized tasks and completed student submissions remain in Repository Management. Open the historical assessment to review them; select a new class only if you intend another deployment."
+        :"Choose at least one assigned class. Variant requirements will be calculated automatically.";
     return;
   }
   if(deployVariantLoading){
