@@ -38,9 +38,9 @@ if(home){
   fullButton.type=quickButton.type='button';
   modeSwitch.append(fullButton,quickButton);
   document.body.append(modeSwitch);
-  function applyMode(mode,{focus=false}={}){
+  function applyMode(mode,{focus=false,persist=true}={}){
     document.documentElement.dataset.adminervaExperience=mode;
-    saveMode(mode);
+    if(persist)saveMode(mode);
     fullButton.setAttribute('aria-pressed',String(mode==='full'));
     quickButton.setAttribute('aria-pressed',String(mode==='quick'));
     if(mode==='quick'&&publicLike){
@@ -53,7 +53,7 @@ if(home){
   }
   fullButton.addEventListener('click',()=>applyMode('full',{focus:true}));
   quickButton.addEventListener('click',()=>applyMode('quick',{focus:true}));
-  applyMode(initial);
+  applyMode(initial,{persist:requested!==null});
 
   const paths={
     public:[
