@@ -588,6 +588,8 @@ function createSchoolAcademicsService({db}) {
     if(!current.exists||current.data().schoolId!==ctx.schoolId)
       deny("not-found","Academic record was not found in this school.");
     const currentRevision=Number(current.data().revision)||1;
+    if(current.data().status!=="active")
+      deny("failed-precondition","Restore this academic record before editing it.");
     if(currentRevision!==expectedRevision)
       deny("failed-precondition","This academic record changed after you opened it. Refresh Academic Structure, review the latest values, then save again.");
     if(kind==="terms"||kind==="sections"){
@@ -622,6 +624,102 @@ function createSchoolAcademicsService({db}) {
    });
    return {recordId:itemId,kind,status:"active",revision:expectedRevision+1};
   }
+  if(["archive_catalog","restore_catalog"].includes(input.action)){
+   requireAdmin();
+   const kind=input.kind;
+   if(!CATALOG.has(kind))deny("invalid-argument","Unknown academic catalog type.");
+   const itemId=checkId(input.recordId),expectedRevision=Number(input.expectedRevision),
+    reason=checkName(input.reason,input.action==="archive_catalog"?"Archive reason":"Restore reason"),
+    ref=schoolRoot.doc(kind+"/"+itemId),restoring=input.action==="restore_catalog";
+   if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","Refresh this academic record before changing its lifecycle.");
+   if(reason.length<12)deny("invalid-argument","Explain this academic lifecycle change in at least 12 characters.");
+   const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const current=await tx.get(ref);
+    if(!current.exists||current.data().schoolId!==ctx.schoolId)
+      deny("not-found","Academic record was not found in this school.");
+    const data=current.data(),revision=Number(data.revision)||1;
+    if(revision!==expectedRevision)
+      deny("failed-precondition","This academic record changed after you opened it. Refresh before changing its lifecycle.");
+    if(restoring&&data.status!=="archived")
+      deny("failed-precondition","Only an archived academic record can be restored.");
+    if(!restoring&&data.status!=="active")
+      deny("failed-precondition","Only an active academic record can be archived.");
+
+    if(restoring){
+      if(kind==="terms"){
+        const [year,program]=await Promise.all([
+          tx.get(schoolRoot.doc("academic_years/"+checkId(data.yearId,"Academic year ID"))),
+          tx.get(schoolRoot.doc("academic_programs/"+checkId(data.programId,"Academic program ID")))
+        ]);
+        if(!year.exists||year.data().schoolId!==ctx.schoolId||year.data().status!=="active")
+          deny("failed-precondition","Restore the academic year before restoring this academic period.");
+        if(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active")
+          deny("failed-precondition","Restore the academic program/division before restoring this academic period.");
+      }
+      if(kind==="sections"){
+        const program=await tx.get(schoolRoot.doc("academic_programs/"+checkId(data.programId,"Academic program ID")));
+        if(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active")
+          deny("failed-precondition","Restore the academic program/division before restoring this section.");
+      }
+    }else{
+      const specs={
+        academic_years:[
+          ["terms","yearId","academic period"],
+          ["course_offerings","yearId","course offering"],
+          ["student_registrations","yearId","student registration"]
+        ],
+        academic_programs:[
+          ["terms","programId","academic period"],
+          ["sections","programId","section"],
+          ["course_offerings","programId","course offering"],
+          ["student_registrations","programId","student registration"]
+        ],
+        terms:[
+          ["course_offerings","termId","course offering"],
+          ["student_registrations","termId","student registration"]
+        ],
+        subjects:[
+          ["course_offerings","subjectId","course offering"]
+        ],
+        sections:[
+          ["course_offerings","sectionId","course offering"],
+          ["student_registrations","sectionId","student registration"],
+          ["section_advisers","sectionId","section adviser"]
+        ]
+      }[kind]||[];
+      const snapshots=await Promise.all(specs.map(([collection,field])=>
+        tx.get(db.collection("schools/"+ctx.schoolId+"/"+collection).where(field,"==",itemId).limit(51))));
+      const blockers=[];
+      snapshots.forEach((snap,index)=>{
+        if(snap.size===51)
+          deny("resource-exhausted","Academic archive dependency review requires pagination before this record can be changed safely.");
+        const count=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active").length;
+        if(count)blockers.push(count+" active "+specs[index][2]+(count===1?"":"s"));
+      });
+      if(blockers.length)
+        deny("failed-precondition","Archive dependent active records first: "+blockers.join(", ")+". Historical records will remain linked after this record is archived.");
+    }
+
+    const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+    tx.update(ref,restoring?{
+      status:"active",restoredByUid:uid,restoredAt:now,restoreReason:reason,
+      revision:nextRevision,updatedByUid:uid,updatedAt:now
+    }:{
+      status:"archived",archivedByUid:uid,archivedAt:now,archiveReason:reason,
+      revision:nextRevision,updatedByUid:uid,updatedAt:now
+    });
+    tx.create(auditRef,audit(restoring?"academic_catalog_restored":"academic_catalog_archived",{
+      kind,recordId:itemId,reason,revision:nextRevision
+    }));
+    result={recordId:itemId,kind,status:restoring?"active":"archived",revision:nextRevision};
+   });
+   return result;
+  }
+
   if(input.action==="list_catalog"){
    requireAdmin();
    const kind=input.kind;
@@ -737,6 +835,166 @@ function createSchoolAcademicsService({db}) {
       rosterMode:ROSTER_MODES.has(doc.data().rosterMode)?doc.data().rosterMode:"legacy",
       revision:Number(doc.data().revision)||1}))};
   }
+  if(["archive_offering","restore_offering"].includes(input.action)){
+   requireAdmin();
+   const offeringId=checkId(input.offeringId,"Course offering ID",330),
+    expectedRevision=Number(input.expectedRevision),
+    reason=checkName(input.reason,input.action==="archive_offering"?"Class archive reason":"Class restore reason"),
+    offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
+    scheduleRef=schoolRoot.doc("class_schedules/"+offeringId),
+    restoring=input.action==="restore_offering",
+    auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","Refresh this class before changing its lifecycle.");
+   if(reason.length<12)deny("invalid-argument","Explain this class lifecycle change in at least 12 characters.");
+
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const offering=await tx.get(offeringRef);
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId)
+      deny("not-found","Course offering was not found in this school.");
+    const data=offering.data(),revision=Number(data.revision)||1;
+    if(revision!==expectedRevision)
+      deny("failed-precondition","This class changed after you opened it. Refresh before changing its lifecycle.");
+    if(restoring&&data.status!=="archived")
+      deny("failed-precondition","Only an archived course offering can be restored.");
+    if(!restoring&&data.status!=="active")
+      deny("failed-precondition","Only an active course offering can be archived.");
+
+    if(restoring){
+      const refs=[
+        schoolRoot.doc("academic_programs/"+checkId(data.programId,"Academic program/division")),
+        schoolRoot.doc("academic_years/"+checkId(data.yearId,"Academic year")),
+        schoolRoot.doc("terms/"+checkId(data.termId,"Academic period")),
+        schoolRoot.doc("subjects/"+checkId(data.subjectId,"Subject")),
+        schoolRoot.doc("sections/"+checkId(data.sectionId,"Section"))
+      ];
+      const catalog=await Promise.all(refs.map(ref=>tx.get(ref)));
+      if(catalog.some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active"))
+        deny("failed-precondition","Restore the class's academic year, program, period, subject and section before restoring this course offering.");
+      if(catalog[2].data().yearId!==data.yearId||catalog[2].data().programId!==data.programId)
+        deny("failed-precondition","The class academic period no longer matches its year and program.");
+      if(catalog[4].data().programId!==data.programId)
+        deny("failed-precondition","The class section no longer matches its program.");
+
+      let registrations=[],enrollmentRefs=[],enrollments=[];
+      const mode=ROSTER_MODES.has(data.rosterMode)?data.rosterMode:"legacy";
+      if(mode==="section"){
+        const registrationSnap=await tx.get(db.collection("schools/"+ctx.schoolId+"/student_registrations")
+          .where("sectionId","==",data.sectionId).limit(201));
+        if(registrationSnap.size===201)
+          deny("resource-exhausted","Section roster restoration requires pagination before this class can be restored safely.");
+        registrations=registrationSnap.docs.filter(doc=>{
+          const row=doc.data();
+          return row.schoolId===ctx.schoolId&&row.status==="active"&&
+            row.yearId===data.yearId&&row.programId===data.programId&&row.termId===data.termId&&
+            row.sectionId===data.sectionId&&row.personId;
+        });
+        enrollmentRefs=registrations.map(registration=>
+          schoolRoot.doc("enrollments/"+rowKey(registration.data().personId,offeringId)));
+        enrollments=await Promise.all(enrollmentRefs.map(ref=>tx.get(ref)));
+        const conflicting=enrollments.find(doc=>doc.exists&&doc.data().status!=="active"&&
+          doc.data().endedByOfferingId!==offeringId);
+        if(conflicting)
+          deny("failed-precondition","A currently placed student has class enrollment history ended for another reason. Review that student before restoring the official class roster.");
+      }
+
+      const now=FieldValue.serverTimestamp();let restoredEnrollments=0,createdEnrollments=0,alreadyActive=0;
+      registrations.forEach((registration,index)=>{
+        const prior=enrollments[index],registrationData=registration.data();
+        if(prior.exists&&prior.data().status==="active"){alreadyActive++;return;}
+        if(prior.exists){
+          tx.update(prior.ref,{status:"active",restoredByUid:uid,restoredAt:now,
+            restoreReason:reason,registrationId:registration.id,
+            revision:(Number(prior.data().revision)||1)+1});
+          restoredEnrollments++;
+        }else{
+          tx.create(enrollmentRefs[index],{
+            schoolId:ctx.schoolId,personId:registrationData.personId,offeringId,
+            programId:data.programId,yearId:data.yearId,termId:data.termId,sectionId:data.sectionId,subjectId:data.subjectId,
+            status:"active",revision:1,enrollmentSource:"official_section_placement",
+            registrationId:registration.id,createdByUid:uid,createdAt:now
+          });
+          createdEnrollments++;
+        }
+        tx.update(registration.ref,{
+          courseCount:(Number(registrationData.courseCount)||0)+1,
+          updatedByUid:uid,updatedAt:now,revision:(Number(registrationData.revision)||1)+1
+        });
+      });
+      const nextRevision=revision+1;
+      tx.update(offeringRef,{status:"active",restoredByUid:uid,restoredAt:now,restoreReason:reason,
+        revision:nextRevision,updatedByUid:uid,updatedAt:now});
+      tx.create(auditRef,audit("course_offering_restored",{
+        offeringId,reason,rosterMode:mode,restoredEnrollments,createdEnrollments,alreadyActive,revision:nextRevision
+      }));
+      result={offeringId,status:"active",revision:nextRevision,rosterMode:mode,
+        restoredEnrollments,createdEnrollments,alreadyActive};
+    }else{
+      const [enrollmentSnap,assignmentSnap,assessmentSnap,schedule]=await Promise.all([
+        tx.get(db.collection("schools/"+ctx.schoolId+"/enrollments").where("offeringId","==",offeringId).limit(201)),
+        tx.get(db.collection("schools/"+ctx.schoolId+"/staff_assignments").where("offeringId","==",offeringId).limit(101)),
+        tx.get(db.collection("schools/"+ctx.schoolId+"/assessments").where("offeringId","==",offeringId).limit(101)),
+        tx.get(scheduleRef)
+      ]);
+      if(enrollmentSnap.size===201||assignmentSnap.size===101||assessmentSnap.size===101)
+        deny("resource-exhausted","Class lifecycle review requires pagination before this offering can be archived safely.");
+      const nowMillis=Date.now();
+      const activeAssessment=assessmentSnap.docs.find(doc=>{
+        const row=doc.data();
+        if(row.schoolId!==ctx.schoolId)return false;
+        const due=row.dueAt?.toMillis?.()||0;
+        return row.manualAccessState==="open"||(row.published===true&&due>nowMillis&&row.lifecycle!=="archived");
+      });
+      if(activeAssessment)
+        deny("failed-precondition","This class has an open or future published assessment. Close or complete that assessment before retiring the class.");
+
+      const activeEnrollments=enrollmentSnap.docs.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+      const activeAssignments=assignmentSnap.docs.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+      const registrationIds=[...new Set(activeEnrollments.map(doc=>doc.data().registrationId).filter(Boolean))];
+      const registrationDocs=await Promise.all(registrationIds.map(id=>
+        tx.get(schoolRoot.doc("student_registrations/"+checkId(id,"Registration ID",330)))));
+      const registrationMap=new Map(registrationDocs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId)
+        .map(doc=>[doc.id,doc]));
+      const decrementByRegistration=new Map();
+      activeEnrollments.forEach(doc=>{
+        const registrationId=doc.data().registrationId;
+        if(registrationId)decrementByRegistration.set(registrationId,(decrementByRegistration.get(registrationId)||0)+1);
+      });
+
+      const now=FieldValue.serverTimestamp();
+      for(const enrollment of activeEnrollments)
+        tx.update(enrollment.ref,{status:"ended",endedByUid:uid,endedAt:now,endReason:reason,
+          endReasonType:"offering_archived",endedByOfferingId:offeringId,
+          revision:(Number(enrollment.data().revision)||1)+1});
+      for(const assignment of activeAssignments)
+        tx.update(assignment.ref,{status:"ended",endedByUid:uid,endedAt:now,endReason:reason,
+          endedByOfferingId:offeringId,revision:(Number(assignment.data().revision)||1)+1});
+      for(const [registrationId,count] of decrementByRegistration){
+        const registration=registrationMap.get(registrationId);if(!registration)continue;
+        tx.update(registration.ref,{courseCount:Math.max(0,(Number(registration.data().courseCount)||0)-count),
+          updatedByUid:uid,updatedAt:now,revision:(Number(registration.data().revision)||1)+1});
+      }
+      if(schedule.exists&&schedule.data().schoolId===ctx.schoolId&&schedule.data().status!=="archived")
+        tx.update(scheduleRef,{status:"archived",archivedByUid:uid,archivedAt:now,archiveReason:reason,
+          revision:(Number(schedule.data().revision)||1)+1,updatedAt:now});
+      const nextRevision=revision+1;
+      tx.update(offeringRef,{status:"archived",archivedByUid:uid,archivedAt:now,archiveReason:reason,
+        revision:nextRevision,updatedByUid:uid,updatedAt:now});
+      tx.create(auditRef,audit("course_offering_archived",{
+        offeringId,reason,endedEnrollments:activeEnrollments.length,
+        endedAssignments:activeAssignments.length,scheduleArchived:Boolean(schedule.exists),revision:nextRevision
+      }));
+      result={offeringId,status:"archived",revision:nextRevision,
+        endedEnrollments:activeEnrollments.length,endedAssignments:activeAssignments.length};
+    }
+   });
+   return result;
+  }
+
   if(input.action==="set_offering_roster_mode"){
    requireAdmin();
    const offeringId=checkId(input.offeringId,"Course offering ID",330),
