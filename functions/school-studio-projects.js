@@ -198,7 +198,7 @@ function createSchoolStudioProjectService({db}){
     // for what the school actually received when the teacher closed this class.
     const frozenReceipt=receiptRef?{
       schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
-      projectId,title,language,files,sourceDigest:digestSource(files,language),
+      projectId,title,language,files,artifacts,sourceDigest:digestSource(files,language),
       contentDigest:digest,closingEpoch,savedAt:now
     }:null;
     if(!current.exists){
