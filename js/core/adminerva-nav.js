@@ -70,21 +70,23 @@ document.addEventListener("DOMContentLoaded", () => {
   const isStudent = userRole === "student" || (!userRole && activeModule.startsWith("student"));
   const isSuperAdmin = userRole === "superadmin";
   const isSchoolAdmin = userRole === "schooladmin" || root.dataset.schoolAdmin === "true";
+  const isRegistrar = userRole === "registrar" || root.dataset.schoolRegistrar === "true";
   const isPlatformOwner = userRole === "platformowner" || root.dataset.platformAdmin === "true";
   const hasSchoolTeacher = root.dataset.schoolTeacher === "true";
   const hasSchoolStudent = root.dataset.schoolStudent === "true";
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   const platformTestMode = root.dataset.platformTestMode === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=47eba756913e");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=20261121-registrar1");
   if(turn!==navigationEpoch)return;
   const ia=buildNavigationIA({
-    isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
+    isStudent,isSuperAdmin,isSchoolAdmin,isRegistrar,isPlatformOwner,
     hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent,platformTestMode
   });
   const {groups,currentArea,currentPage,currentRoute,workspaceRoute,homeRoute,homeLabel,roleLabel,
     workspaceSections,activeWorkspaceId}=ia;
-  currentRole=ia.systemDefault?"platformowner":ia.studentView?"student":ia.schoolAdminView?"schooladmin":"teacher";
+  currentRole=ia.systemDefault?"platformowner":ia.studentView?"student":ia.schoolAdminView?"schooladmin":
+    ia.registrarView?"registrar":"teacher";
   const escapeHTML = value => String(value??"").replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const workspaceHealth=item=>{
@@ -371,7 +373,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // This event changes presentation; it does not authorize any data operation.
   document.addEventListener("adminerva:role-ready", event => {
     const role = event.detail?.role;
-    if (!["student", "teacher", "superadmin", "schooladmin", "platformowner"].includes(role)) return;
+    if (!["student", "teacher", "registrar", "superadmin", "schooladmin", "platformowner"].includes(role)) return;
     // V4 school/platform flags are written to the nav dataset by the verified
     // auth guard immediately before this event. Always rebuild once so newly
     // granted pilot controls are visible without requiring a reload.
