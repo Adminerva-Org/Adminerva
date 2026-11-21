@@ -711,12 +711,18 @@ function createPeopleDirectoryService({db}) {
             if(enrollments.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
               throw new TenantAccessError("failed-precondition","End this student's remaining active course enrollments before archiving the person record.");
           }else if(data.kind==="staff"&&data.authUid){
-            const assignments=await tx.get(db.collection("schools/"+ctx.schoolId+"/staff_assignments")
-              .where("teacherUid","==",id(data.authUid)).limit(101));
-            if(assignments.size===101)
-              throw new TenantAccessError("resource-exhausted","Teaching assignment history requires reviewed pagination before archiving.");
-            if(assignments.docs.some(doc=>doc.data().status==="active"))
+            const teacherUid=id(data.authUid),[assignments,advisers]=await Promise.all([
+              tx.get(db.collection("schools/"+ctx.schoolId+"/staff_assignments")
+                .where("teacherUid","==",teacherUid).limit(101)),
+              tx.get(db.collection("schools/"+ctx.schoolId+"/section_advisers")
+                .where("teacherUid","==",teacherUid).limit(101))
+            ]);
+            if(assignments.size===101||advisers.size===101)
+              throw new TenantAccessError("resource-exhausted","Teacher assignment history requires reviewed pagination before archiving.");
+            if(assignments.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
               throw new TenantAccessError("failed-precondition","End this teacher's active course assignments before archiving the person record.");
+            if(advisers.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
+              throw new TenantAccessError("failed-precondition","End this teacher's active Section Adviser / Homeroom assignment before archiving the person record.");
           }
         }
         const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
