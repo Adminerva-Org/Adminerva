@@ -180,7 +180,7 @@ export function responseShape(task={}){
     limitations:"Only unresolved evidence or verification limitations"
   };
 }
-export function buildGeneralExternalEvaluationPackage({task={},snapshot={},checkingInstructions=""}={}){
+export function buildGeneralExternalEvaluationData({task={},snapshot={},checkingInstructions=""}={}){
   const assessment=compactTask(task);
   if(!assessment.rubric.length)throw Error("This assessment has no rubric.");
   const rubricTotal=assessment.rubric.reduce((sum,row)=>sum+Number(row.points||0),0);
@@ -211,13 +211,9 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
         "Not applicable."
     }
   };
-  return [
-    "ADMINERVA GENERAL ASSESSMENT EXTERNAL EVALUATION PACKAGE",
-    "",
-    "TASK",
-    "Evaluate this anonymous learner submission against the published assessment instructions and rubric.",
-    "",
-    "REQUIRED RULES",
+  return payload;
+}
+export const GENERAL_EXTERNAL_EVALUATION_REQUIRED_RULES=Object.freeze([
     "1. Keep rubric criteria in exactly the published order and preserve each criterion name exactly.",
     "2. awardedPoints + pendingPoints must never exceed the criterion maximum.",
     "3. Use pendingPoints only for genuinely unresolved evidence; confirmed deficiencies are unearned points, not pending credit.",
@@ -227,6 +223,18 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
     "7. Do not infer authorship, plagiarism, misconduct, or AI use from coding style or identifiers.",
     "8. Return only one valid JSON object matching REQUIRED RESPONSE JSON. No Markdown fences or surrounding commentary.",
     "9. The result remains a teacher draft until explicitly published in Adminerva.",
+]);
+
+export function buildGeneralExternalEvaluationPackage({task={},snapshot={},checkingInstructions=""}={}){
+  const payload=buildGeneralExternalEvaluationData({task,snapshot,checkingInstructions});
+  return [
+    "ADMINERVA GENERAL ASSESSMENT EXTERNAL EVALUATION PACKAGE",
+    "",
+    "TASK",
+    "Evaluate this anonymous learner submission against the published assessment instructions and rubric.",
+    "",
+    "REQUIRED RULES",
+    ...GENERAL_EXTERNAL_EVALUATION_REQUIRED_RULES,
     "",
     "REQUIRED RESPONSE JSON",
     JSON.stringify(responseShape(task),null,2),
@@ -234,6 +242,7 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
     "ASSESSMENT AND FROZEN EVIDENCE",
     JSON.stringify(payload,null,2)
   ].join("\n");
+
 }
 function extractJson(raw){
   let value=String(raw||"").replace(/^\uFEFF/,"").trim();
