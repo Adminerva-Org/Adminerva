@@ -1128,11 +1128,23 @@ function openPersonDialog(person,mode){
   confirm.textContent=mode==="edit"?"Save profile":mode==="archive"?"Archive person":"Restore person";
   confirm.style.background=mode==="archive"?"#9a3412":mode==="restore"?"#166534":"#1d4ed8";
   get("pa-person-dialog-help").textContent=mode==="archive"?
-    "Archiving is blocked until active school access, enrollments or teaching assignments are ended. Nothing is deleted.":
-    mode==="restore"?"Restoring the person record does not automatically restore school access, enrollments or teaching assignments.":
+    "Archiving is blocked until active school access, official registration/class relationships, teaching assignments and active pending invitations are ended. Nothing is deleted.":
+    mode==="restore"?"Restoring the person record does not automatically restore school access, enrollment, invitations or teaching assignments.":
     "Edit school identity and student guardian details. For section membership use the student details placement panel.";
+  const lifecycleActions=get("pa-person-lifecycle-actions"),
+    enrollmentLink=get("pa-person-open-enrollment"),classesLink=get("pa-person-open-classes");
+  lifecycleActions.style.display=mode==="archive"?"flex":"none";
+  enrollmentLink.style.display=mode==="archive"&&person.kind==="student"?"inline-flex":"none";
+  classesLink.style.display=mode==="archive"?"inline-flex":"none";
+  if(person.kind==="student")
+    enrollmentLink.href="school-enrollment.html?personId="+encodeURIComponent(person.personId);
   get("pa-person-dialog").showModal();
 }
+for(const id of ["pa-person-open-access","pa-person-open-invites"]){
+  get(id)?.addEventListener("click",()=>{if(get("pa-person-dialog").open)get("pa-person-dialog").close();personChange=null;});
+}
+get("pa-person-open-classes")?.addEventListener("click",()=>{personChange=null;});
+get("pa-person-open-enrollment")?.addEventListener("click",()=>{personChange=null;});
 get("pa-person-dialog-cancel").addEventListener("click",()=>{
   if(pendingWrite)return;
   personChange=null;get("pa-person-dialog").close();
