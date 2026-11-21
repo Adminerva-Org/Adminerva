@@ -336,7 +336,7 @@ function createSchoolAssessmentService({db}){
    // Fetch the full immutable code only when the teacher selects View code.
    const receiptQuery=db.collection(prefix+"studio_exam_close_receipts/"+taskId+
      "/sessions/"+epoch+"/studio_exam_final_checkpoints")
-     .select("schoolId","closingEpoch","studentUid","projectId","projectRevision",
+     .select("schoolId","closingEpoch","studentUid","personId","projectId","projectRevision",
        "contentDigest","sourceDigest","payloadBytes","savedAt")
      .orderBy(FieldPath.documentId());
    const receipts=[];
@@ -348,8 +348,8 @@ function createSchoolAssessmentService({db}){
     for(const doc of page.docs){
      const data=doc.data();
      if(data.schoolId!==ctx.schoolId||data.closingEpoch!==epoch)continue;
-     receipts.push({studentUid:data.studentUid,projectId:data.projectId,
-       projectRevision:data.projectRevision,
+     receipts.push({studentUid:data.studentUid,personId:data.personId||null,
+       projectId:data.projectId,projectRevision:data.projectRevision,
        contentDigest:data.contentDigest||"",sourceDigest:data.sourceDigest||"",
        payloadBytes:Number(data.payloadBytes||0),
        savedAt:data.savedAt?.toMillis?.()||null});
@@ -377,10 +377,13 @@ function createSchoolAssessmentService({db}){
         studentUid:person.data().authUid||null}])).values()];
    }
    const byUid=new Map(receipts.map(row=>[row.studentUid,row]));
+   const byPersonId=new Map(receipts.filter(row=>row.personId).map(row=>[row.personId,row]));
    const students=roster.map(person=>{
-     const uid=person.studentUid||null,receipt=uid?byUid.get(uid):null;
+     const uid=person.studentUid||null,
+       receipt=(uid?byUid.get(uid):null)||(person.personId?byPersonId.get(person.personId):null);
      return {displayName:String(person.displayName||"Student").slice(0,140),
-       studentUid:uid,checkpointConfirmed:Boolean(receipt),
+       studentUid:uid,receiptStudentUid:receipt?.studentUid||null,
+       checkpointConfirmed:Boolean(receipt),
        projectRevision:receipt?.projectRevision||null,
        contentDigest:receipt?.contentDigest||"",sourceDigest:receipt?.sourceDigest||"",
        payloadBytes:receipt?.payloadBytes||0,
