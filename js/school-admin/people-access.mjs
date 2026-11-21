@@ -15,7 +15,7 @@ const tabNames=new Set(["overview","people","import","invites","classes","access
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
 const requestedPersonId=String(new URL(location.href).searchParams.get("personId")||"");
 let requestedPersonSchoolId=null;
-let schoolReady=false,standardEnrollmentMode=false;
+let schoolReady=false,canonicalClassMode=false,standardEnrollmentMode=false;
 function rememberedTab(){
   const hash=location.hash.slice(1);
   if(tabNames.has(hash))return hash;
@@ -44,6 +44,10 @@ async function loadSelectedTab(name){
   finally{active?.removeAttribute("aria-busy");}
 }
 function setTab(name,{remember=true}={}) {
+  if(name==="classes"&&canonicalClassMode){
+    if(get("pa-person-detail-dialog")?.open)get("pa-person-detail-dialog").close();
+    location.href="school-classes.html";return;
+  }
   const target=tabNames.has(name)?name:"overview";
   for(const button of document.querySelectorAll("[data-tab]")){
     const active=button.dataset.tab===target;
@@ -98,8 +102,14 @@ const picker=createTenantSchoolPicker({
       workspace.hidden=true;say("This school has not granted you directory administration access.");
       return;
     }
-    standardEnrollmentMode=scope.current.schoolId==="manila-cathedral-school"&&
-      scope.current.compatibilityMode==="v4_only";
+    canonicalClassMode=scope.current.compatibilityMode==="v4_only";
+    standardEnrollmentMode=scope.current.enrollmentMode==="canonical";
+    const classTab=get("pa-tab-classes"),classPanel=get("pa-classes");
+    if(classTab)classTab.hidden=canonicalClassMode;
+    if(classPanel&&canonicalClassMode)classPanel.hidden=true;
+    if(canonicalClassMode&&activeTab()==="classes"){
+      location.replace("school-classes.html");return;
+    }
     const studentInvite=get("pa-invite-role-student"),inviteForm=get("pa-create-invite");
     if(studentInvite){
       studentInvite.hidden=standardEnrollmentMode;studentInvite.disabled=standardEnrollmentMode;
@@ -109,22 +119,22 @@ const picker=createTenantSchoolPicker({
     if(get("pa-invite-title"))get("pa-invite-title").textContent=
       standardEnrollmentMode?"Create staff invitation":"Create pending invitation";
     if(get("pa-invite-help"))get("pa-invite-help").textContent=standardEnrollmentMode
-      ?"Manila Cathedral School students activate from Enrollment & Registration. Use invitations here for verified staff access."
+      ?"Students in this canonical school activate from Enrollment & Registration. Use invitations here for verified staff access."
       :"The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.";
     for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card","pa-section-enrollment-card"])
       if(get(id))get(id).hidden=standardEnrollmentMode;
     if(get("pa-classes-help"))get("pa-classes-help").innerHTML=standardEnrollmentMode
-      ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for Manila Cathedral School. Teaching assignments and roster review remain available here.'
-      :"School-specific teaching assignments and class relationships. Changes preserve earlier grades and term history.";
+      ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for this canonical school. Teaching assignments, teacher load, schedules and roster review are managed in <a href="school-classes.html" style="font-weight:800;text-decoration:underline">Classes &amp; Scheduling</a>.'
+      :"Legacy class-relationship tools for compatibility schools. Changes preserve earlier grades and term history.";
     const enrollmentSummary=get("pa-enrollment-summary-link");
     if(enrollmentSummary)enrollmentSummary.href=standardEnrollmentMode?"school-enrollment.html":"people-access.html#classes";
     if(get("pa-enrollment-summary-action"))get("pa-enrollment-summary-action").textContent=standardEnrollmentMode
       ?"Open Enrollment & Registration →":"Manage enrollment relationships →";
     if(get("pa-legacy-requests-help"))get("pa-legacy-requests-help").innerHTML=standardEnrollmentMode
-      ?'Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; student registration continues in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>, while teaching assignments remain in Teaching &amp; classes.'
-      :"Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; enrollment and teaching relationships are managed in Teaching & classes.";
+      ?'Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; student registration continues in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>, while teaching assignments are managed in <a href="school-classes.html" style="font-weight:800;text-decoration:underline">Classes &amp; Scheduling</a>.'
+      :"Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; enrollment and teaching relationships remain in this compatibility workflow.";
     if(get("pa-import-course-help"))get("pa-import-course-help").innerHTML=standardEnrollmentMode
-      ?'For Manila Cathedral School, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
+      ?'For this canonical school, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
       :"Section values from the roster are hints only. After the people import is committed, review each matched section, choose the exact active course offering, and explicitly enroll the listed students.";
     workspace.hidden=false;schoolReady=true;
     if(requestedPersonId&&requestedPersonSchoolId!==scope.current.schoolId){
@@ -133,8 +143,6 @@ const picker=createTenantSchoolPicker({
       void openPersonDetail({personId:requestedPersonId,displayName:"Student record"});
       return;
     }
-    // Load only the active section. Large school directories should not fetch
-    // six unrelated panels when the administrator only needs the overview.
     void loadSelectedTab(activeTab());
   }
 });
@@ -1183,6 +1191,13 @@ async function openPersonDetail(person){
     get("pa-person-detail-access").textContent=result.membership?
       result.membership.status+" · "+result.membership.roles.join(", "):"No school membership";
     get("pa-person-detail-relationships").textContent=String(result.relationships?.length||0);
+    const classesAction=get("pa-person-detail-classes-action"),enrollmentAction=get("pa-person-detail-enrollment-action");
+    if(p.kind==="student"&&standardEnrollmentMode){
+      classesAction.hidden=true;enrollmentAction.style.display="inline-flex";
+    }else{
+      classesAction.hidden=false;classesAction.textContent=p.kind==="student"?"Enrollment relationships":"Teaching & classes";
+      enrollmentAction.style.display="none";
+    }
     const placementCard=get("pa-detail-placement-card");
     placementCard.hidden=p.kind!=="student"||standardEnrollmentMode;
     if(!placementCard.hidden){
