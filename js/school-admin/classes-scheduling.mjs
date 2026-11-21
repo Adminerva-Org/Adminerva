@@ -9,7 +9,7 @@ const scheduleApi=httpsCallable(functions,"schoolSchedules");
 const params=new URLSearchParams(location.search);
 let picker=null,busy=false,epoch=0,view=["classes","teachers","sections","schedule"].includes(params.get("view"))?params.get("view"):"classes";
 let model={teachers:[],offerings:[],advisories:[],schedules:new Map()},selectedId=String(params.get("offeringId")||""),roster=null;
-let scheduleDraft=[],scheduleRevision=0,scheduleDirty=false;
+let scheduleDraft=[],scheduleRevision=0,scheduleDirty=false,studentSearchResults=[];
 
 function platformMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":undefined;}catch{return undefined;}
@@ -221,6 +221,61 @@ function renderScheduleEditor(){
   });
   status.textContent=scheduleDirty?"Unsaved official schedule changes.":"Official schedule changes are audited and checked for teacher, section and room conflicts.";
 }
+function renderStudentSearchResults(){
+  const host=el("csStudentSearchResults");if(!host)return;host.replaceChildren();
+  const item=selected();if(!item||item.rosterMode!=="selective"){studentSearchResults=[];return;}
+  const existing=new Set((roster?.students||[]).map(row=>row.personId));
+  const available=studentSearchResults.filter(row=>!existing.has(row.personId));
+  if(!studentSearchResults.length)return;
+  if(!available.length){
+    host.append(make("p","rounded-lg border border-blue-200 bg-white p-3 text-xs text-blue-900","All matching students already have active or historical enrollment in this class. Restore ended history from the roster instead of creating a duplicate."));
+    return;
+  }
+  for(const row of available){
+    const card=make("div","flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white p-3"),
+      info=make("div","min-w-0");
+    info.append(make("strong","block text-sm truncate",row.name),
+      make("span","block text-[11px] text-slate-500 mt-1",[row.studentNumber||"No student number",row.accountLinked?"account linked":"no linked account"].join(" · ")));
+    const add=button("Add to class",()=>void addSelectiveStudent(row),"bg-blue-700 text-white");
+    card.append(info,add);host.append(card);
+  }
+}
+async function searchStudents(){
+  const item=selected(),query=el("csStudentSearchQuery").value.trim();
+  if(!item||item.rosterMode!=="selective"||busy)return;
+  if(query.length<2){el("csStudentSearchStatus").textContent="Enter at least 2 characters.";return;}
+  setBusy(true);el("csStudentSearchStatus").textContent="Searching active students…";
+  try{
+    const result=await scoped("search_students",{query});studentSearchResults=result.students||[];
+    renderStudentSearchResults();el("csStudentSearchStatus").textContent=studentSearchResults.length?
+      studentSearchResults.length+" matching active student"+(studentSearchResults.length===1?"":"s")+".":"No matching active students.";
+  }catch(error){studentSearchResults=[];renderStudentSearchResults();el("csStudentSearchStatus").textContent=error?.message||"Student search failed.";}
+  finally{setBusy(false);}
+}
+async function addSelectiveStudent(row){
+  const item=selected();if(!item||item.rosterMode!=="selective"||busy)return;
+  setBusy(true);say("Adding "+row.name+" to this selective class…");
+  try{
+    await scoped("enroll_student",{personId:row.personId,offeringId:item.offeringId});
+    studentSearchResults=[];el("csStudentSearchQuery").value="";el("csStudentSearchStatus").textContent="";
+    await openClass(item.offeringId);say(row.name+" added to this selective class. Official section placement was not changed.");
+  }catch(error){say(error?.message||"The student could not be added to this class.",true);}
+  finally{setBusy(false);}
+}
+async function changeSelectiveEnrollment(row,action){
+  const item=selected();if(!item||item.rosterMode!=="selective"||busy)return;
+  const restoring=action==="restore_enrollment",reason=prompt(
+    (restoring?"Reason for restoring ":"Reason for removing ")+row.name+" "+(restoring?"to":"from")+" this selective class (at least 12 characters):",
+    restoring?"Selective class enrollment restored":"Selective class enrollment ended");
+  if(reason===null)return;if(reason.trim().length<12){say("Explain the selective class enrollment change in at least 12 characters.",true);return;}
+  setBusy(true);say(restoring?"Restoring class enrollment…":"Ending class enrollment…");
+  try{
+    await scoped(action,{enrollmentId:row.enrollmentId,reason:reason.trim()});
+    await openClass(item.offeringId);
+    say(restoring?row.name+" restored to this selective class.":row.name+" removed from the active class roster; enrollment history was preserved.");
+  }catch(error){say(error?.message||"The class enrollment could not be changed.",true);}
+  finally{setBusy(false);}
+}
 function renderDetail(){
   const item=selected();if(!item){el("csDetail").hidden=true;el("csDetailEmpty").hidden=false;return;}
   el("csDetailEmpty").hidden=true;el("csDetail").hidden=false;el("csDetailTitle").textContent=classLabel(item);el("csDetailMeta").textContent=classMeta(item);
@@ -232,12 +287,48 @@ function renderDetail(){
     const text=make("div","min-w-0");text.append(make("strong","block truncate",row.name),make("span","block text-xs text-slate-500","Teaching assignment"));
     const end=button("Remove",()=>void endAssignment(row),"border border-rose-200 bg-white text-rose-700");card.append(text,end);staff.append(card);
   }
-  const students=(roster?.students||[]).filter(row=>row.status==="active"),rosterHost=el("csRoster");rosterHost.replaceChildren();el("csStudentCount").textContent=students.length+" active";
-  if(!students.length)rosterHost.append(make("p","p-4 text-sm text-slate-500","No active students are enrolled in this class."));
+  const allStudents=roster?.students||[],students=allStudents.filter(row=>row.status==="active"),
+    endedStudents=allStudents.filter(row=>row.status==="ended"),rosterHost=el("csRoster"),
+    selective=item.rosterMode==="selective";
+  rosterHost.replaceChildren();el("csStudentCount").textContent=students.length+" active";
+  el("csSelectiveRosterTools").hidden=!selective;
+  el("csRosterAuthorityHelp").textContent=selective?
+    "This class intentionally uses a selective roster. Add/remove class enrollment here; official section placement is unchanged.":
+    item.rosterMode==="section"?
+      "This class follows official section placement. Change the student's official registration through Enrollment & Registration.":
+      "Classify the roster source above before using the canonical roster workflow.";
+  if(!students.length&&!endedStudents.length)rosterHost.append(make("p","p-4 text-sm text-slate-500","No student enrollment exists for this class."));
   else{
-    const list=make("ol","divide-y divide-slate-100");
-    students.sort((a,b)=>String(a.name).localeCompare(String(b.name))).forEach((row,index)=>{const li=make("li","flex gap-3 px-3 py-2 text-sm");li.append(make("span","text-slate-400 w-6 text-right",index+1),make("span","font-medium",row.name));list.append(li);});rosterHost.append(list);
+    const list=make("div","divide-y divide-slate-100");
+    const ordered=[...students].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+    ordered.forEach((row,index)=>{
+      const li=make("div","flex items-center justify-between gap-3 px-3 py-2 text-sm"),
+        info=make("div","min-w-0 flex gap-3 items-start");
+      info.append(make("span","text-slate-400 w-6 text-right",index+1));
+      const label=make("div","min-w-0");label.append(make("span","block font-medium truncate",row.name),
+        make("span","block text-[11px] text-slate-500 mt-0.5",[row.studentNumber||"",row.accountLinked?"account linked":"no linked account"].filter(Boolean).join(" · ")));
+      info.append(label);li.append(info);
+      if(selective){
+        const end=button("Remove",()=>void changeSelectiveEnrollment(row,"end_enrollment"),"border border-rose-200 bg-white text-rose-700");
+        li.append(end);
+      }
+      list.append(li);
+    });
+    if(selective&&endedStudents.length){
+      const history=make("div","bg-slate-50 px-3 py-2 text-xs font-extrabold uppercase text-slate-500","Ended enrollment history");
+      list.append(history);
+      for(const row of [...endedStudents].sort((a,b)=>String(a.name).localeCompare(String(b.name)))){
+        const li=make("div","flex items-center justify-between gap-3 px-3 py-2 text-sm bg-slate-50/50"),
+          info=make("div","min-w-0");
+        info.append(make("span","block font-medium text-slate-600 truncate",row.name),
+          make("span","block text-[11px] text-slate-500 mt-0.5","Ended class enrollment · history preserved"));
+        const restore=button("Restore",()=>void changeSelectiveEnrollment(row,"restore_enrollment"),"border border-emerald-200 bg-white text-emerald-700");
+        li.append(info,restore);list.append(li);
+      }
+    }
+    rosterHost.append(list);
   }
+  renderStudentSearchResults();
   renderTeacherSelectors();
   const adviser=currentAdviser(item),teacherById=teacherMap(),adviserSelect=el("csAdviserTeacher");
   adviserSelect.replaceChildren(new Option("Choose adviser…",""));
@@ -266,7 +357,8 @@ function renderDetail(){
 }
 async function openClass(offeringId){
   if(scheduleDirty&&offeringId!==selectedId&&!confirm("Discard unsaved official schedule changes before opening another class?"))return;
-  selectedId=offeringId;roster=null;resetScheduleDraft();renderDetail();say("Loading class roster…");
+  selectedId=offeringId;roster=null;studentSearchResults=[];if(el("csStudentSearchQuery"))el("csStudentSearchQuery").value="";if(el("csStudentSearchStatus"))el("csStudentSearchStatus").textContent="";
+  resetScheduleDraft();renderDetail();say("Loading class roster…");
   const url=new URL(location.href);url.searchParams.set("offeringId",offeringId);history.replaceState({},"",url);
   const turn=++epoch;
   try{const result=await scoped("class_roster",{offeringId});if(turn!==epoch||selectedId!==offeringId)return;roster=result;renderDetail();say("Class ready: "+classLabel(selected())+".");}
@@ -301,6 +393,8 @@ async function loadOverview({preserveSelection=false,force=false}={}){
     if(selectedId)await openClass(selectedId);else say(model.offerings.length?"Scheduling workspace ready.":"No active classes exist yet. Create course offerings in Academic Configuration.");
   }catch(error){if(turn===epoch){model={teachers:[],offerings:[],advisories:[],schedules:new Map()};renderSummary();renderList();say(error?.message||"Classes & Scheduling could not load.",true);}}
 }
+el("csStudentSearchButton").addEventListener("click",()=>void searchStudents());
+el("csStudentSearchQuery").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();void searchStudents();}});
 el("csScheduleAdd").addEventListener("click",()=>{
   const item=selected();if(!item||busy)return;
   const day=el("csScheduleDay").value,startTime=el("csScheduleStart").value,endTime=el("csScheduleEnd").value,
@@ -387,7 +481,7 @@ window.addEventListener("popstate",()=>{const next=new URLSearchParams(location.
 
 picker=createTenantSchoolPicker({host:el("csSchoolSwitcher"),status:null,onBeforeChange:async()=>{
   if(busy||scheduleDirty)throw Error("Save or discard the current official schedule changes before switching schools.");
-  ++epoch;model={teachers:[],offerings:[],advisories:[],schedules:new Map()};selectedId="";roster=null;resetScheduleDraft();renderSummary();renderList();renderDetail();
+  ++epoch;model={teachers:[],offerings:[],advisories:[],schedules:new Map()};selectedId="";roster=null;studentSearchResults=[];resetScheduleDraft();renderSummary();renderList();renderDetail();
 },onReady:scope=>{if(scope.current?.roles.includes("school_admin")||platformMode()==="assist")void loadOverview();else say("School Administrator access is required.",true);}});
 window.addEventListener("beforeunload",event=>{if(scheduleDirty){event.preventDefault();event.returnValue="";}});
 setView(view,{replace:true});renderSummary();renderDetail();
