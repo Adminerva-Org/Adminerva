@@ -103,6 +103,8 @@ async function previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId}){
       offeringId:reasons.length===0?matched[0].offeringId:null,
       personId:reasons.length===0?personId:null,
       hasGrade:Boolean(grade),publishedGrade:grade?.published===true,
+      identityAndClassMatched:reasons.length===1&&
+        reasons[0]==="historical_term_requires_explicit_mapping",
       blockers:[...new Set(reasons)]
     });
   }
@@ -110,6 +112,7 @@ async function previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId}){
     legacyAssessmentId,schoolId:ctx.schoolId,checked:rows.length,
     fullyVerified:rows.length>0&&rows.every(row=>row.mapped),
     verified:rows.filter(row=>row.mapped).length,
+    identityAndClassMatched:rows.filter(row=>row.identityAndClassMatched).length,
     needsAttention:rows.filter(row=>!row.mapped).length,
     mode:"preview_only_no_writes",rows
   };
