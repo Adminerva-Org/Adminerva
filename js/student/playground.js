@@ -1500,6 +1500,17 @@ window.adminervaStudioSubmissionState=()=>{
   if(!persistWorkspace())throw Error("Your latest edits could not be saved locally. Export a ZIP and check storage before submitting.");
   return {project:projectStudio.getActiveProject(),state:currentState()};
 };
+window.adminervaFlushStudioSubmission=async expectedProjectId=>{
+  const project=projectStudio?.getActiveProject();
+  if(!project||project.id!==expectedProjectId)
+    throw Error("The active project changed before submission. Reopen the assigned project.");
+  if(!persistWorkspace())
+    throw Error("The current code could not be saved on this device. Export a ZIP before leaving.");
+  const confirmed=await projectStudio.flushCloudSaves();
+  if(!confirmed)
+    throw Error("Your latest project was not confirmed in school cloud storage. Submission was stopped to protect your code. Reconnect and try Save before submitting.");
+  return {project:projectStudio.getActiveProject(),state:currentState()};
+};
 window.adminervaImportLegacyPlayground = function () {
   if(examRestrictionsActive())return alert("Importing older code is disabled in this practical exam.");
   const uid=ownerUid();
