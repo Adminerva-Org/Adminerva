@@ -9,7 +9,7 @@ let busy=false,epoch=0,profile=null;
 
 function say(message,error=false){
   el("studentSettingsStatus").textContent=message;
-  el("studentSettingsStatus").className="text-sm "+(error?"text-rose-700":"text-slate-600");
+  el("studentSettingsStatus").className="av-settings-status "+(error?"text-rose-700":"text-slate-600");
 }
 function make(tag,className,text){
   const node=document.createElement(tag);if(className)node.className=className;
@@ -38,8 +38,8 @@ function renderAccount(){
   el("studentSettingsAccountEmail").textContent=user?.email||"Unavailable";
   el("studentSettingsProviders").textContent=providers.length?providers.join(" · "):"Primary sign-in";
   el("studentSettingsAccountBadge").textContent=user?.emailVerified===false?"Email verification needed":"Verified sign-in";
-  el("studentSettingsAccountBadge").className="rounded-full px-3 py-1 text-xs font-bold "+
-    (user?.emailVerified===false?"bg-amber-50 text-amber-700":"bg-emerald-50 text-emerald-700");
+  el("studentSettingsAccountBadge").className="av-settings-role-chip";
+  el("studentSettingsAccountBadge").dataset.primary=String(user?.emailVerified!==false);
   renderGithub();
 }
 function renderGithub(){
@@ -75,31 +75,31 @@ async function connectGithub(){
   }finally{setBusy(false);}
 }
 function repositoryForm(item){
-  const form=make("form","rounded-xl border border-slate-200 p-4");
+  const form=make("form","av-settings-card");
   form.dataset.offeringId=item.offeringId;
   const heading=make("div","flex flex-col sm:flex-row gap-2 sm:items-start sm:justify-between");
   const identity=make("div","");
   identity.append(make("strong","block",classLabel(item)),
     make("span","block text-xs text-slate-500 mt-1","Offering "+item.offeringId));
-  const saved=make("span","text-xs font-bold rounded-full bg-slate-100 px-2 py-1",
+  const saved=make("span","av-settings-role-chip",
     item.repository?"Configured":"Not configured");
   heading.append(identity,saved);form.append(heading);
   const grid=make("div","grid sm:grid-cols-2 gap-3 mt-4");
   const repoLabel=make("label","text-sm font-bold","Repository URL");
   const repoInput=document.createElement("input");repoInput.name="repositoryUrl";repoInput.type="url";
-  repoInput.required=true;repoInput.maxLength=300;repoInput.className="mt-1 w-full border rounded-lg p-2.5";
+  repoInput.required=true;repoInput.maxLength=300;repoInput.className="mt-1 w-full border border-slate-300 rounded-lg p-2.5 bg-white";
   repoInput.placeholder="https://github.com/owner/repository";repoInput.value=item.repositoryUrl||"";
   repoLabel.append(repoInput);
   const userLabel=make("label","text-sm font-bold","GitHub username (optional)");
   const userInput=document.createElement("input");userInput.name="githubUsername";userInput.maxLength=39;
-  userInput.className="mt-1 w-full border rounded-lg p-2.5";
+  userInput.className="mt-1 w-full border border-slate-300 rounded-lg p-2.5 bg-white";
   userInput.value=item.githubUsername||getGithubSession().username||"";
   userLabel.append(userInput);grid.append(repoLabel,userLabel);form.append(grid);
   const actions=make("div","mt-3 flex flex-wrap gap-2");
-  const save=make("button","rounded-lg bg-cyan-800 text-white px-4 py-2 text-sm font-bold","Save repository");
+  const save=make("button","av-primary-button","Save repository");
   save.type="submit";actions.append(save);
   if(item.repository){
-    const clear=make("button","rounded-lg border border-rose-200 bg-rose-50 text-rose-700 px-4 py-2 text-sm font-bold","Clear");
+    const clear=make("button","av-secondary-button text-rose-700","Clear");
     clear.type="button";
     clear.addEventListener("click",()=>void clearRepository(item));
     actions.append(clear);
@@ -117,7 +117,7 @@ function render(){
   renderAccount();
   const host=el("studentSettingsClasses");host.replaceChildren();
   if(!profile?.classes?.length){
-    host.append(make("p","rounded-xl border border-dashed p-4 text-sm text-slate-500",
+    host.append(make("p","av-settings-card av-settings-muted",
       "No active course offering is linked to this school account yet."));
     return;
   }
@@ -156,6 +156,23 @@ async function clearRepository(item){
 }
 el("studentSettingsGithubConnect")?.addEventListener("click",()=>void connectGithub());
 document.addEventListener("adminerva:github-session",()=>{renderAccount();render();});
+
+const settingsLinks=[...document.querySelectorAll('#studentSettingsWorkspace .av-settings-nav a[href^="#"]')];
+function setCurrentSettingsLink(id){
+  for(const link of settingsLinks)link.toggleAttribute("aria-current",link.hash==="#"+id);
+}
+for(const link of settingsLinks)link.addEventListener("click",()=>setCurrentSettingsLink(link.hash.slice(1)));
+if("IntersectionObserver" in window){
+  const observer=new IntersectionObserver(entries=>{
+    const visible=entries.filter(entry=>entry.isIntersecting)
+      .sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];
+    if(visible)setCurrentSettingsLink(visible.target.id);
+  },{rootMargin:"-18% 0px -68% 0px",threshold:0});
+  for(const link of settingsLinks){
+    const section=document.querySelector(link.hash);if(section)observer.observe(section);
+  }
+}
+if(location.hash&&document.querySelector(location.hash))setCurrentSettingsLink(location.hash.slice(1));
 
 const picker=createTenantSchoolPicker({
   host:el("studentSettingsSchoolSwitcher"),status:el("studentSettingsStatus"),
