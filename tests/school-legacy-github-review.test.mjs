@@ -125,6 +125,12 @@ test("approval is required; unapproved GitHub evidence remains read-only",async(
    error=>error.code==="failed-precondition");
  assert.equal(f.writes.length,0);
 });
+test("historical blueprint imports predating origin metadata remain compatible",async()=>{
+ const f=fixture();
+ delete f.map.get("schools/"+ctx.schoolId+"/assessment_blueprints/"+blueprintId).legacyImport.origin;
+ const res=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(res.evidence.length,1);
+});
 test("wrong school and assessment owner cannot expose original evidence",async()=>{
  const f=fixture();
  f.map.delete("schools/"+ctx.schoolId+"/assessment_blueprints/"+blueprintId);
