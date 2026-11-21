@@ -208,6 +208,7 @@ function createSchoolAssessmentService({db}){
       offeringId:data.offeringId,title:data.title||"Practical exam"};
    });
    if(!result.alreadyCurrent){
+    try{
     const enrolled=await db.collection(prefix+"enrollments")
       .where("offeringId","==",result.offeringId).limit(101).get().catch(()=>null);
     if(enrolled&&enrolled.size<=100){
@@ -244,6 +245,12 @@ function createSchoolAssessmentService({db}){
           type:"assessment",sourceId:taskId,target:"student-assessments.html"
         }):Promise.resolve();
       }));
+    }
+    }catch(error){
+      // The teacher's authoritative open/close transaction has committed.
+      // A bad roster row or notification failure must not falsely report
+      // that the exam remained open or closed to the teacher.
+      console.warn("Exam session post-commit roster/notification fanout failed",taskId,error);
     }
    }
    return result;
