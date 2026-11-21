@@ -1,5 +1,6 @@
 /** Assigns server-owned personalized Adminerva Studio variants from a teacher-approved private pool. */
 const {randomBytes}=require("node:crypto");
+const {legacyStudentRecordsForAccount}=require("./legacy-student-identity.js");
 
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
 const MAX_POOL_SIZE=600;
@@ -65,20 +66,21 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     const email=String(actor.token?.email||"").toLowerCase().trim();
     if(!actor.uid||actor.token?.email_verified!==true||!email)
       deny("unauthenticated","Use a verified school account before opening a personalized task.");
-    const snap=await db.collection("students").where("email","==",email).limit(20).get();
-    const matches=snap.docs.filter(record=>{
-      const data=record.data();
+    const resolved=await legacyStudentRecordsForAccount({
+      db,uid:actor.uid,email,schoolId:"mcs-manila",maxRecords:50
+    });
+    const matches=resolved.records.filter(record=>{
+      const data=record.data;
       return activeStudent(data)&&Array.isArray(assessment.sectionIds)&&assessment.sectionIds.includes(data.section);
     });
     if(!matches.length)deny("permission-denied","This assessment is not assigned to your verified class.");
     if(matches.length>1){
-      const distinct=[...new Set(matches.map(record=>record.data().section))];
+      const distinct=[...new Set(matches.map(record=>record.data.section))];
       if(distinct.length>1)deny("failed-precondition","This account has multiple matching class records. Open the assignment from My Assessments.");
     }
     const record=matches[0];
-    return {id:record.id,...record.data()};
+    return {id:record.id,...record.data};
   }
-
   function windowOpen(assessment,section,now){
     const entry=assessment.studioWindows?.[section];
     return Boolean(entry)&&now>=millis(entry.opensAt)&&now<=millis(entry.closesAt);
