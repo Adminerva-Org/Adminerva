@@ -4,7 +4,8 @@ import {
   BULK_PACKAGE_FORMAT,BULK_RESPONSE_FORMAT,BULK_MAX_BATCH,
   bulkSuggestionState,readBulkExternalResponse,bulkSaveableStages,
   nextBulkSelection,canClearCompletedBulkExchange,
-  BULK_COMPACT_PACKAGE_FORMAT,buildCompactBulkExternalEvaluationPackage
+  BULK_COMPACT_PACKAGE_FORMAT,buildCompactBulkExternalEvaluationPackage,
+  BULK_SOURCE_TYPES,BULK_MAX_PACKAGE_CHARACTERS,assertBulkEvidence
 } from "../js/repo-review/v4-bulk-evaluation.mjs";
 import {
   buildGeneralExternalEvaluationData,buildGeneralExternalEvaluationPackage,
@@ -34,7 +35,7 @@ test("bulk response validates exact anonymous batch identity and rubric order",(
  assert.equal(rows[0].review.pending,0);
  assert.equal(rows[0].review.saveEligible,true);
  assert.match(rows[0].review.criteria[0].comment,/Evidence: Source contains derived class/);
- assert.equal(BULK_MAX_BATCH,10);
+ assert.equal(BULK_MAX_BATCH,20);
  assert.match(BULK_PACKAGE_FORMAT,/bulk-evaluation-package-v2/);
 });
 test("zero scores and unresolved rubric points are not eligible for saving",()=>{
@@ -110,21 +111,21 @@ test("private-draft save selection excludes existing grades, resubmissions and e
  assert.deepEqual(bulkSaveableStages({staged,saveSelection,rows}).map(x=>x.key),["a"]);
 });
 
-test("the selection never exceeds ten and advances after the first ten have saved grades",()=>{
+test("20-learner selection advances to the next 20 ungraded records",()=>{
  const rows=Array.from({length:88},(_,i)=>({
    submissionId:"submitted-"+String(i+1).padStart(3,"0"),
    version:1,status:"submitted",gradeStatus:null
  }));
  const first=nextBulkSelection(rows);
- assert.equal(first.length,10);
+ assert.equal(first.length,20);
  assert.equal(first[0],rows[0].submissionId);
- assert.equal(first.at(-1),rows[9].submissionId);
- for(const row of rows.slice(0,10))row.gradeStatus="draft";
+ assert.equal(first.at(-1),rows[19].submissionId);
+ for(const row of rows.slice(0,20))row.gradeStatus="draft";
  const next=nextBulkSelection(rows);
- assert.equal(next.length,10);
- assert.equal(next[0],rows[10].submissionId);
- assert.equal(next.at(-1),rows[19].submissionId);
- assert.equal(new Set([...first,...next]).size,20);
+ assert.equal(next.length,20);
+ assert.equal(next[0],rows[20].submissionId);
+ assert.equal(next.at(-1),rows[39].submissionId);
+ assert.equal(new Set([...first,...next]).size,40);
 });
 test("new batches exclude exceptions, staged work and reopened submissions",()=>{
  const rows=[
@@ -265,8 +266,8 @@ test("compact package refuses mixed task/rubric, duplicate refs and missing pers
    ...options,entries:[without]
  }),/missing the exact assigned task/);
  assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
-   ...options,entries:Array.from({length:11},(_,i)=>compactExample(i))
- }),/1–10/);
+   ...options,entries:Array.from({length:21},(_,i)=>compactExample(i))
+ }),/1–20/);
 });
 test("new compact package keeps the original response JSON contract and single-submission export intact",()=>{
  const item=compactExample(1);
@@ -295,4 +296,76 @@ test("new compact package keeps the original response JSON contract and single-s
  assert.match(oldSingle,/ADMINERVA GENERAL ASSESSMENT EXTERNAL EVALUATION PACKAGE/);
  assert.match(oldSingle,/REQUIRED RESPONSE JSON/);
  assert.match(oldSingle,/scenario 1/);
+});
+
+test("bulk selection and stage lookup support GitHub evidence IDs without changing student IDs",()=>{
+ const rows=[
+   {evidenceId:"github-1",studentUid:"old-uid",status:"approved",version:2,bulkReady:true},
+   {evidenceId:"github-2",studentUid:"old-uid-2",status:"submitted",version:1,bulkReady:false},
+   {submissionId:"essay-1",status:"submitted",version:1,bulkReady:true}
+ ];
+ assert.deepEqual(nextBulkSelection(rows),["github-1","essay-1"]);
+ const staged=new Map([["github-1",{key:"github-1",version:2,
+   review:{saveEligible:true}}]]);
+ assert.equal(bulkSaveableStages({staged,saveSelection:new Set(["github-1"]),rows}).length,1);
+ assert.equal(canClearCompletedBulkExchange({referenceMap:new Map([["ref",{key:"github-1"}]]),
+   staged:new Map(),rows,savedIds:new Set(["github-1"])}),true);
+});
+
+test("all native V4 evidence sources share one 20-learner compact evaluation contract",()=>{
+ assert.deepEqual([...BULK_SOURCE_TYPES],["studio","github","text","link"]);
+ const ordinary={...compactAssessment,personalizedTask:{enabled:false}};
+ const configs=[
+   {source:"studio",task:compactAssessment,entries:Array.from({length:20},(_,i)=>compactExample(i))},
+   ...["text","link","github"].map(source=>({
+     source,task:{...ordinary,submissionSource:source},
+     entries:Array.from({length:20},(_,i)=>{
+       const snapshot=source==="text"?{version:1,payload:{
+         response:"Essay submission #"+i+" with detailed evidence."}}:
+         source==="link"?{version:1,payload:{
+           url:"https://example.edu/student/"+i,note:"A submitted link."}}:
+         {version:1,checkpointSha:"c".repeat(40),selectedCommitShas:["a".repeat(40)],
+           commits:[{sha:"a".repeat(40),files:[{path:"src/Main.java",
+             patch:"@@ -1 +1 @@\n-public class Old {}\n+public class Main {}",
+             substantive:true,mergeContext:false}]}],
+           pinnedSource:[{path:"src/Main.java",checkpointSha:"c".repeat(40),
+             content:"public class Main {}"}],
+           limitations:["Git author does not independently prove learner authorship"]};
+       return {ref:source+"-"+i,evaluationData:buildGeneralExternalEvaluationData({
+         task:{...ordinary,submissionSource:source},snapshot
+       })};
+     })
+   }))
+ ];
+ for(const {source,task,entries} of configs){
+   const pack=buildCompactBulkExternalEvaluationPackage({
+     batchId:"batch-"+source,task,entries
+   });
+   assert.equal(pack.items.length,20,source);
+   assert.equal(pack.shared.assessment.submissionSource,source);
+   assert.equal(pack.shared.assessment.rubric.length,2);
+   assert.ok(JSON.stringify(pack).length<BULK_MAX_PACKAGE_CHARACTERS);
+   assert.equal("assessment" in pack.items[0],false);
+   if(source==="github")assert.equal(pack.items[0].frozenEvidence.pinnedSource.length,1);
+   if(source==="text")assert.match(pack.items.at(-1).frozenEvidence.response,/Essay submission #19/);
+   if(source==="link")assert.equal(pack.items[0].frozenEvidence.type,"submission_link");
+ }
+});
+test("unverified GitHub, empty essays, missing links and unsupported MCQ are excluded",()=>{
+ assert.throws(()=>assertBulkEvidence("github",{type:"github_frozen_commit_evidence",
+   version:1,checkpointSha:"c".repeat(40),selectedCommitShas:[],commits:[]}),/approved GitHub/);
+ assert.throws(()=>assertBulkEvidence("text",{type:"written_response",version:1,response:""}),/essay/);
+ assert.throws(()=>assertBulkEvidence("link",{type:"submission_link",version:1,url:"http://unsafe"}),/submission link/);
+ assert.throws(()=>assertBulkEvidence("mcq",{type:"objective_response",version:1}),/No V4 evidence adapter/);
+});
+test("oversized 20-learner external packages report context limit instead of truncating evidence",()=>{
+ const textTask={...compactAssessment,submissionSource:"text",personalizedTask:{enabled:false}};
+ const entries=Array.from({length:20},(_,i)=>({
+   ref:"essay-"+i,evaluationData:buildGeneralExternalEvaluationData({
+     task:textTask,snapshot:{version:1,payload:{response:"S"+i+" "+("a".repeat(49900))}}
+   })
+ }));
+ assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
+   batchId:"large",task:textTask,entries
+ }),/safe external AI context budget/);
 });
