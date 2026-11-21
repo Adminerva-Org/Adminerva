@@ -17,8 +17,8 @@ const requestedPersonId=(()=>{try{
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)?value:"";
 }catch{return "";}})();
 let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]},
-  saving=false,draftDirty=false,loadedApplication=null,loadedPerson=null,registrations=[],registrationChange=null,
-  progressionChange=null,cohortPreview=null;
+  saving=false,draftDirty=false,loadedApplication=null,loadedPerson=null,registrations=[],legacyRegistrations=[],
+  registrationChange=null,legacyCleanup=null,progressionChange=null,cohortPreview=null;
 const requestVersions={catalog:0,applications:0,registrations:0};
 let refreshVersion=0,progressionPreviewRun=0,historyRun=0,cohortRun=0;
 
@@ -47,7 +47,7 @@ function setSaving(value){
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
-  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
   if(!value){
@@ -240,12 +240,62 @@ function renderRegistrations(){
     row.append(info,actions);host.append(row);
   }
 }
+function legacyPlacementLabel(item){
+  const sections=(item.sectionIds||[]).map(id=>catalog.sections.find(row=>row.id===id)?.name||id),
+    years=(item.yearIds||[]).map(id=>catalog.years.find(row=>row.id===id)?.name||id),
+    terms=(item.termIds||[]).map(id=>catalog.terms.find(row=>row.id===id)?.name||id);
+  return [...new Set([...years,...terms,...sections])].filter(Boolean).join(" · ");
+}
+function renderLegacyRegistrations(){
+  const host=get("en-legacy-registration-list");
+  if(!host)return;
+  host.replaceChildren();
+  const query=String(get("en-registration-search")?.value||"").trim().toLocaleLowerCase("en"),
+    sectionId=String(get("en-registration-section")?.value||"");
+  const items=legacyRegistrations.filter(item=>{
+    if(sectionId&&!(item.sectionIds||[]).includes(sectionId))return false;
+    if(!query)return true;
+    return [item.displayName,item.studentNumber,legacyPlacementLabel(item)]
+      .some(value=>String(value||"").toLocaleLowerCase("en").includes(query));
+  });
+  if(!items.length){
+    const empty=document.createElement("p");empty.className="en-muted";
+    empty.textContent=legacyRegistrations.length
+      ?"No pre-canonical enrollment records match the current student/section filter."
+      :"No pre-canonical active enrollments require reconciliation.";
+    host.append(empty);return;
+  }
+  for(const item of items){
+    const row=document.createElement("article");row.className="en-row";row.setAttribute("role","listitem");
+    const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
+    name.textContent=item.displayName;meta.className="en-muted";
+    meta.textContent=(legacyPlacementLabel(item)||"Older class placement")+" · "+item.courseCount+
+      " active legacy class enrollment"+(item.courseCount===1?"":"s")+
+      (item.studentNumber?" · "+item.studentNumber:"");
+    info.append(name,meta);
+    if(item.hasRegistrationLinkedEnrollment){
+      const warning=document.createElement("p");warning.className="en-muted";
+      warning.textContent="Some active class records reference registration history and require manual review.";
+      info.append(warning);
+    }
+    const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;justify-content:flex-end";
+    const badge=document.createElement("span");badge.className="en-badge";badge.dataset.state="ended";
+    badge.textContent="pre-canonical";actions.append(badge);
+    const button=document.createElement("button");button.type="button";button.className="en-btn secondary";
+    button.textContent="Reconcile";
+    button.disabled=item.personStatus!=="active"||item.hasRegistrationLinkedEnrollment;
+    button.addEventListener("click",()=>openLegacyReconciliation(item));
+    actions.append(button);
+    row.append(info,actions);host.append(row);
+  }
+}
 async function loadRegistrations(){
   const result=await latest("registrations","list_registrations");
   if(!result)return;
   registrations=(result.items||[]).slice().sort((a,b)=>
     registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));
-  renderRegistrations();
+  legacyRegistrations=(result.legacyItems||[]).slice().sort((a,b)=>a.displayName.localeCompare(b.displayName));
+  renderRegistrations();renderLegacyRegistrations();
   if(cohortPreview){
     ++cohortRun;cohortPreview=null;get("en-cohort-apply").disabled=true;
     get("en-cohort-results").replaceChildren();
@@ -764,6 +814,51 @@ get("en-registration-change-form").addEventListener("submit",event=>{
   })();
 });
 
+function openLegacyReconciliation(item){
+  if(saving)return;
+  legacyCleanup=item;
+  const dialog=get("en-legacy-reconciliation-dialog"),form=get("en-legacy-reconciliation-form");
+  form.reset();
+  get("en-legacy-reconciliation-target").textContent=item.displayName+" · "+item.courseCount+
+    " active pre-canonical class enrollment"+(item.courseCount===1?"":"s")+
+    (legacyPlacementLabel(item)?" · "+legacyPlacementLabel(item):"");
+  dialog.showModal();
+}
+function closeLegacyReconciliation(){
+  if(saving)return;
+  legacyCleanup=null;
+  get("en-legacy-reconciliation-dialog").close();
+}
+get("en-legacy-reconciliation-close").addEventListener("click",closeLegacyReconciliation);
+get("en-legacy-reconciliation-cancel").addEventListener("click",closeLegacyReconciliation);
+get("en-legacy-reconciliation-dialog").addEventListener("cancel",event=>{
+  if(saving)event.preventDefault();else legacyCleanup=null;
+});
+get("en-legacy-reconciliation-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(saving||!legacyCleanup||!event.currentTarget.reportValidity())return;
+  const item=legacyCleanup,reason=String(new FormData(event.currentTarget).get("reason")||"").trim();
+  if(!confirm("End "+item.courseCount+" reviewed pre-canonical class enrollment"+(item.courseCount===1?"":"s")+
+    " for "+item.displayName+"? Historical records will be preserved."))return;
+  void (async()=>{
+    setSaving(true);status.textContent="Reconciling older class enrollment records for "+item.displayName+"…";
+    try{
+      const result=await perform("end_orphan_enrollments",{
+        personId:item.personId,reason,
+        enrollments:(item.enrollments||[]).map(row=>({
+          enrollmentId:row.enrollmentId,expectedRevision:Number(row.expectedRevision)||1
+        }))
+      });
+      legacyCleanup=null;get("en-legacy-reconciliation-dialog").close();
+      await loadRegistrations();
+      status.textContent=item.displayName+" · "+result.courseCount+
+        " pre-canonical class enrollment"+(result.courseCount===1?"":"s")+" ended; history preserved.";
+    }catch(error){
+      status.textContent=error?.message||"The pre-canonical enrollment reconciliation was not saved.";
+    }finally{setSaving(false);}
+  })();
+});
+
 function applicationMeta(item){
   const year=catalog.years.find(x=>x.id===item.yearId)?.name||item.yearId;
   const program=catalog.programs.find(x=>x.id===item.preferredProgramId)?.name||"No program preference";
@@ -959,8 +1054,8 @@ form.elements.yearId.addEventListener("change",refreshPlacement);
 form.elements.programId.addEventListener("change",refreshPlacement);
 form.elements.termId.addEventListener("change",updateCoursePreview);
 form.elements.sectionId.addEventListener("change",updateCoursePreview);
-get("en-registration-search")?.addEventListener("input",renderRegistrations);
-get("en-registration-section")?.addEventListener("change",renderRegistrations);
+get("en-registration-search")?.addEventListener("input",()=>{renderRegistrations();renderLegacyRegistrations();});
+get("en-registration-section")?.addEventListener("change",()=>{renderRegistrations();renderLegacyRegistrations();});
 form.addEventListener("input",()=>{draftDirty=true;});
 form.addEventListener("change",()=>{draftDirty=true;});
 get("en-clear-application").addEventListener("click",()=>{if(!saving&&discardDraft())clearLoadedApplication({resetIdentity:true});});
