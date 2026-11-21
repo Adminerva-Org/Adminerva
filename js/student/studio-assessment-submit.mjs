@@ -38,7 +38,17 @@ if(button){
     const tasks=await listV4StudioAssignments();
     if(!Array.isArray(tasks))return false;
     usingV4=true;
-    const linked=linkedAssessmentId(),studioTasks=tasks.filter(item=>item.submissionSource==="studio"&&(!linked||item.taskId===linked));
+    let activeBinding=null;
+    try{activeBinding=window.adminervaStudioSubmissionState?.()?.project?.assessment||null;}catch{}
+    const linked=linkedAssessmentId(),studioTasks=tasks.filter(item=>
+      item.submissionSource==="studio"&&(!linked||item.taskId===linked)&&
+      (item.manualOpenRequired!==true||(
+        activeBinding?.provisionedBy==="assessment-launch"&&
+        (activeBinding.taskId||activeBinding.assessmentId)===item.taskId&&
+        Number(activeBinding.sessionEpoch||0)===Number(item.manualSessionEpoch||0)
+      )));
+    // Manual practical exams are submitted only from their own active session
+    // project. Do not offer a misleading generic-project submission choice.
     const rows=new Array(studioTasks.length);let next=0;
     const worker=async()=>{while(next<studioTasks.length){
       const index=next++,task=studioTasks[index];let submissionStatus=null;
