@@ -28,19 +28,28 @@ function contextualHref(href){
   if(schoolId&&!target.searchParams.has("schoolId"))target.searchParams.set("schoolId",schoolId);
   return target.pathname.split("/").pop()+target.search+target.hash;
 }
-function render(){
-  if(document.querySelector("[data-school-admin-workflow]"))return;
+function verifiedRoles(explicit){
+  if(Array.isArray(explicit)&&explicit.length)return explicit;
+  return String(document.documentElement.dataset.adminervaSchoolRoles||"").split(",").filter(Boolean);
+}
+function render(explicitRoles){
+  document.querySelector("[data-school-admin-workflow]")?.remove();
   const anchor=document.getElementById("adminerva-nav");if(!anchor)return;
-  const file=location.pathname.split("/").pop()||"school-admin.html",active=aliases[file]||"overview";
+  const file=location.pathname.split("/").pop()||"school-admin.html",active=aliases[file]||"overview",
+    roles=verifiedRoles(explicitRoles),registrarOnly=roles.includes("registrar")&&!roles.includes("school_admin"),
+    sisPage=["school-enrollment.html","school-student-records.html"].includes(file),
+    visible=registrarOnly||(!roles.length&&sisPage)
+      ?items.filter(item=>["enrollment","student-records"].includes(item.key)):items;
   const shell=document.createElement("div");shell.className="saw-shell";shell.dataset.schoolAdminWorkflow="";
-  const nav=document.createElement("nav");nav.className="saw-nav";nav.setAttribute("aria-label","School administration workflow");
+  const nav=document.createElement("nav");nav.className="saw-nav";
+  nav.setAttribute("aria-label",registrarOnly?"Registrar workflow":"School administration workflow");
   const head=document.createElement("div");head.className="saw-head";
-  const title=document.createElement("strong");title.textContent="School administration workflow";
-  const hint=document.createElement("span");hint.textContent="Set up → operate → monitor";
+  const title=document.createElement("strong");title.textContent=registrarOnly?"Registrar workflow":"School administration workflow";
+  const hint=document.createElement("span");hint.textContent=registrarOnly?"Enrollment → Student Records":"Set up → operate → monitor";
   head.append(title,hint);
   const list=document.createElement("div");list.className="saw-list";
   let lastGroup="";
-  items.forEach((item,index)=>{
+  visible.forEach((item,index)=>{
     if(lastGroup&&lastGroup!==item.group){const divider=document.createElement("span");divider.className="saw-divider";divider.setAttribute("aria-hidden","true");list.append(divider);}
     lastGroup=item.group;
     const link=document.createElement("a");link.className="saw-step";link.href=contextualHref(item.href);
@@ -52,4 +61,5 @@ function render(){
   nav.append(head,list);shell.append(nav);anchor.insertAdjacentElement("afterend",shell);
   list.querySelector('[aria-current="page"]')?.scrollIntoView({block:"nearest",inline:"center"});
 }
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",render,{once:true});else render();
+document.addEventListener("adminerva:school-ready",event=>render(event.detail?.roles||[]));
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>render(),{once:true});else render();
