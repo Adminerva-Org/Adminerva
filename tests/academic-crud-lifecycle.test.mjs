@@ -92,3 +92,11 @@ test("class restore normalizes stale authority and schedule relationships",()=>{
   assert.match(backend,/archiveReasonType:"offering_restore_normalization"/);
   assert.match(backend,/active class enrollment no longer matches this class's official placement metadata/i);
 });
+
+
+test("section program moves protect active combined section-program grading policies",()=>{
+  const source=readFileSync(new URL("../functions/school-academics.js",import.meta.url),"utf8");
+  assert.match(source,/sectionProgramChange/);
+  assert.match(source,/where\("applicability\.sectionId","==",itemId\)/);
+  assert.match(source,/Archive or update grading policy/);
+});
