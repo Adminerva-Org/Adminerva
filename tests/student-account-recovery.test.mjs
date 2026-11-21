@@ -139,3 +139,20 @@ test("recovered students retain legacy assessment and personalized-task identity
   assert.match(variants,/legacyStudentRecordsForAccount/);
   assert.doesNotMatch(variants,/db\.collection\("students"\)\.where\("email","==",email\)/);
 });
+
+
+test("student assessment recovery bundle is cache-versioned end to end",async()=>{
+  const [html,assignments,workflow]=await Promise.all([
+    readFile(new URL("../student-assessments.html",import.meta.url),"utf8"),
+    readFile(new URL("../js/student/assessments.js",import.meta.url),"utf8"),
+    readFile(new URL("../.github/workflows/shared-ui-cache-bump.yml",import.meta.url),"utf8")
+  ]);
+  const pageVersion=html.match(/js\/student\/assessments\.js\?v=([^"']+)/)?.[1];
+  const accessVersion=assignments.match(/student-access\.mjs\?v=([^"']+)/)?.[1];
+  assert.ok(pageVersion&&pageVersion!=="20261121-studio-route-hotfix");
+  assert.ok(accessVersion&&accessVersion!=="1.3.6");
+  assert.match(workflow,/"js\/student\/assessments\.js"/);
+  assert.match(workflow,/"js\/student\/student-access\.mjs"/);
+  assert.match(workflow,/js\/student\/assessments\\\.js\\\?v=/);
+  assert.match(workflow,/student-access\\\.mjs\\\?v=/);
+});
