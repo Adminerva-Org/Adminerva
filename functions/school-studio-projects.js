@@ -114,12 +114,12 @@ function createSchoolStudioProjectService({db}){
     if(closingEpoch)deny("failed-precondition","Exam closing state changed. Reload the assessment.");
     if(epoch<1||Number(binding.sessionEpoch||0)!==epoch)
       deny("failed-precondition","This project belongs to an earlier exam session. Reopen the assessment from My Assessments.");
-    return {finalSave:false,taskId};
+    return {finalSave:false,taskId,personId};
    }
    if(["closed","closing"].includes(data.manualAccessState)&&closingEpoch>0&&
       Number(binding.sessionEpoch||0)===closingEpoch&&epoch===closingEpoch&&
       Date.now()<=(data.manualCloseGraceUntil?.toMillis?.()||0)){
-    return {finalSave:true,taskId,closingEpoch};
+    return {finalSave:true,taskId,closingEpoch,personId};
    }
    deny("failed-precondition","The Studio exam is closed to edits. Only an authorized final closing checkpoint may be saved.");
   }
@@ -206,7 +206,7 @@ function createSchoolStudioProjectService({db}){
     const frozenReceipt=receiptRef?{
       schemaVersion:1,retentionClass:"academic_assessment_evidence",
       schoolId:ctx.schoolId,taskId:access.taskId,studentUid:ctx.uid,
-      projectId,title,language,files,artifacts,sourceDigest:digestSource(files,language),
+      personId:access.personId,projectId,title,language,files,artifacts,sourceDigest:digestSource(files,language),
       contentDigest:digest,closingEpoch,savedAt:now,
       // This is the UTF-8 JSON payload size, not Firestore billed storage
       // (which also includes document metadata and index overhead).
