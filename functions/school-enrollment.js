@@ -235,7 +235,10 @@ function createSchoolEnrollmentService({db}){
     }
 
     if(["end_registration","restore_registration"].includes(input.action)){
-      const registrationId=checkId(input.registrationId,"Registration ID",128);
+      const registrationId=checkId(input.registrationId,"Registration ID",128),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        deny("invalid-argument","Refresh this registration before changing its lifecycle.");
       const reason=text(input.reason,input.action==="end_registration"?"Registration end reason":"Registration restore reason",500);
       if(reason.length<12)deny("invalid-argument","Explain the registration change in at least 12 characters.");
       const endReasonType=input.action==="end_registration"?String(input.endReasonType||"").trim().toLowerCase():null;
@@ -282,7 +285,9 @@ function createSchoolEnrollmentService({db}){
         const registration=await tx.get(registrationRef);
         if(!registration.exists||registration.data().schoolId!==ctx.schoolId)
           deny("not-found","The student registration was not found.");
-        const data=registration.data();
+        const data=registration.data(),currentRevision=Number(data.revision)||1;
+        if(currentRevision!==expectedRevision)
+          deny("failed-precondition","This registration changed after you opened it. Refresh and review the latest status.");
         if(restoring&&data.status!=="ended")
           deny("failed-precondition","Only an ended registration can be restored.");
         if(!restoring&&data.status!=="active")
@@ -314,7 +319,7 @@ function createSchoolEnrollmentService({db}){
           changedCourses=restorable.length;
           tx.update(registrationRef,{status:"active",restoredByUid:ctx.uid,restoredAt:now,
             restoreReason:reason,updatedByUid:ctx.uid,updatedAt:now,
-            revision:(data.revision||1)+1});
+            revision:currentRevision+1});
           const slotData={schoolId:ctx.schoolId,personId:data.personId,yearId:data.yearId,
             programId:data.programId,termId:data.termId,sectionId:data.sectionId,
             registrationId,status:"active",updatedByUid:ctx.uid,updatedAt:now};
@@ -339,7 +344,7 @@ function createSchoolEnrollmentService({db}){
           changedCourses=active.length;
           tx.update(registrationRef,{status:"ended",endedByUid:ctx.uid,endedAt:now,
             endReason:reason,endReasonType,updatedByUid:ctx.uid,updatedAt:now,
-            revision:(data.revision||1)+1});
+            revision:currentRevision+1});
           const slotData={schoolId:ctx.schoolId,personId:data.personId,yearId:data.yearId,
             programId:data.programId,termId:data.termId,sectionId:data.sectionId,
             registrationId,status:"ended",updatedByUid:ctx.uid,updatedAt:now};
@@ -354,7 +359,7 @@ function createSchoolEnrollmentService({db}){
           courseCount:changedCourses,reason,...(!restoring?{endReasonType}:{}),createdAt:FieldValue.serverTimestamp()});
       });
       return {registrationId,status:restoring?"active":"ended",courseCount:changedCourses,
-        ...(!restoring?{endReasonType}:{})};
+        revision:expectedRevision+1,...(!restoring?{endReasonType}:{})};
     }
 
     if(input.action==="change_registration_section"){
