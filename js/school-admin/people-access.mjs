@@ -9,7 +9,8 @@ let schoolPrograms=[],schoolTerms=[],schoolSections=[],schoolOfferings=[];
 let workload=null,workloadRun=0,workloadLimit=12,rosterRun=0,inviteRun=0,staffSearchRun=0,detailRun=0,academicRun=0,membershipRun=0;
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false,peopleReloadQueued=false,peopleRun=0;
-let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
+let accessChange=null,personChange=null,lifecycleChange=null,invitationChange=null,currentDetailPerson=null,
+  currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
@@ -1154,7 +1155,7 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   });
 });
 
-for(const id of ["pa-person-dialog","pa-suspension-dialog","pa-academic-lifecycle-dialog"]){
+for(const id of ["pa-person-dialog","pa-suspension-dialog","pa-academic-lifecycle-dialog","pa-invitation-lifecycle-dialog"]){
   get(id)?.addEventListener("cancel",event=>{if(pendingWrite)event.preventDefault();});
 }
 function detailRow(label,value){
@@ -1170,6 +1171,35 @@ function renderDetailList(host,items,formatter,emptyText){
     row.append(formatter(item));host.append(row);
   }
 }
+function openInvitationLifecycle(invitation){
+  invitationChange={invitation,person:currentDetailPerson};
+  const form=get("pa-invitation-lifecycle-form");form.reset();
+  get("pa-invitation-lifecycle-target").textContent=
+    (currentDetailPerson?.displayName||"School person")+" · "+(invitation.requestedRole||"invitation")+
+    " · "+invitation.invitationId;
+  get("pa-invitation-lifecycle-dialog").showModal();
+}
+function renderPersonInvitations(items){
+  const host=get("pa-person-detail-invites");host.replaceChildren();
+  if(!items?.length){host.append(detailRow("Status","No invitation records"));return;}
+  const now=Date.now();
+  for(const item of items){
+    const row=document.createElement("div");row.className="pa-row";
+    const info=document.createElement("div"),title=document.createElement("strong"),meta=document.createElement("p");
+    title.textContent=item.requestedRole||"Invitation";meta.className="pa-muted";
+    const expired=item.status==="pending"&&item.expiresAt&&item.expiresAt<=now;
+    meta.textContent=(expired?"expired":item.status||"unknown")+
+      (item.expiresAt?" · expires "+new Date(item.expiresAt).toLocaleString():"")+
+      " · revision "+(item.revision||1);
+    info.append(title,meta);row.append(info);
+    if(item.status==="pending"){
+      const revoke=document.createElement("button");revoke.type="button";revoke.className="pa-action";
+      revoke.style.background="#9a3412";revoke.textContent=expired?"Revoke expired invite":"Revoke invitation";
+      revoke.addEventListener("click",()=>openInvitationLifecycle(item));row.append(revoke);
+    }
+    host.append(row);
+  }
+}
 async function openPersonDetail(person){
   const run=++detailRun,dialog=get("pa-person-detail-dialog");
   get("pa-person-detail-title").textContent=person.displayName;
@@ -1181,7 +1211,7 @@ async function openPersonDetail(person){
   try{
     const result=await perform("get_person",{personId:person.personId});
     if(!dialog.open||run!==detailRun||!schoolReady)return;
-    const p=result.person;
+    const p=result.person;currentDetailPerson=p;
     get("pa-person-detail-title").textContent=p.displayName;
     get("pa-person-detail-meta").textContent=p.kind+" · "+p.status+" · directory revision "+p.revision+
       (p.accountLinked?" · verified account linked":" · no account linked");
@@ -1208,10 +1238,7 @@ async function openPersonDetail(person){
       updateDetailPlacementPicker();
     }
 
-    renderDetailList(get("pa-person-detail-invites"),result.invitations,item=>
-      detailRow(item.requestedRole||"Invitation",(item.status||"unknown")+
-        (item.expiresAt?" · expires "+new Date(item.expiresAt).toLocaleString():"")),
-      "No invitation records");
+    renderPersonInvitations(result.invitations);
     renderDetailList(get("pa-person-detail-links"),result.relationships,item=>
       detailRow(item.kind==="enrollment"?"Enrollment":"Teaching assignment",
         item.offeringId+" · "+item.status+" · revision "+item.revision),
@@ -1284,6 +1311,31 @@ get("pa-detail-placement-form")?.addEventListener("submit",event=>{
   }).catch(error=>{
     get("pa-detail-placement-status").textContent=error?.message||"Section assignment failed.";
   }).finally(()=>{pendingWrite=false;button.disabled=false;});
+});
+get("pa-invitation-lifecycle-cancel").addEventListener("click",()=>{
+  if(pendingWrite)return;invitationChange=null;get("pa-invitation-lifecycle-dialog").close();
+});
+get("pa-invitation-lifecycle-dialog").addEventListener("cancel",event=>{
+  if(pendingWrite)event.preventDefault();else invitationChange=null;
+});
+get("pa-invitation-lifecycle-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(pendingWrite||!invitationChange||!event.currentTarget.reportValidity())return;
+  const form=event.currentTarget,change=invitationChange,
+    reason=String(new FormData(form).get("reason")||"").trim(),
+    button=get("pa-invitation-lifecycle-confirm");
+  pendingWrite=true;button.disabled=true;say("Revoking school invitation…");
+  void perform("revoke_invitation",{
+    invitationId:change.invitation.invitationId,
+    expectedRevision:Number(change.invitation.revision)||1,reason
+  }).then(async()=>{
+    invitationChange=null;get("pa-invitation-lifecycle-dialog").close();
+    say("Invitation revoked. The record and audit history were preserved.");
+    if(change.person&&get("pa-person-detail-dialog").open)
+      await openPersonDetail(change.person);
+    await Promise.allSettled([loadOverview(),loadInvitePeople()]);
+  }).catch(error=>say(error?.message||"The invitation was not revoked."))
+    .finally(()=>{pendingWrite=false;button.disabled=false;});
 });
 get("pa-person-detail-close").addEventListener("click",()=>get("pa-person-detail-dialog").close());
 
