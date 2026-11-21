@@ -7,7 +7,7 @@ const el=id=>document.getElementById(id);
 const functions=getFunctions(app,"asia-southeast1"),academics=httpsCallable(functions,"schoolAcademics"),schedules=httpsCallable(functions,"schoolSchedules");
 const panel=el("schoolTimetable"),legacy=el("legacyTimetable"),status=el("schoolTimetableStatus"),period=el("schoolTimetablePeriod"),editor=el("schoolTimetableEditor"),host=el("schoolTimetableRows");
 const days=[["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thursday"],["fri","Friday"]];
-let picker=null,rows=[],offerings=[],periods=[],activePeriod="",revision=0,dirty=false,busy=false,ready=false,epoch=0,legacyLoaded=false,legacyAvailable=false;
+let picker=null,rows=[],offerings=[],periods=[],officialSchedules=[],activePeriod="",revision=0,dirty=false,busy=false,ready=false,epoch=0,legacyLoaded=false,legacyAvailable=false;
 const node=(tag,text="",className="")=>{const n=document.createElement(tag);n.textContent=text;n.className=className;return n;};
 function say(message){status.textContent=message;}
 function markDirty(){dirty=true;el("schoolTimetableSave").disabled=!ready||busy;say("Unsaved timetable changes. Save to sync across devices.");}
@@ -16,7 +16,7 @@ function updateControls(){
   el("schoolTimetableReload").disabled=busy||!activePeriod;
   el("schoolTimetableSave").disabled=busy||!ready||!dirty;
 }
-function reset(){++epoch;rows=[];offerings=[];periods=[];activePeriod="";revision=0;dirty=false;busy=false;ready=false;host.replaceChildren();period.replaceChildren(new Option("Choose academic period",""));updateControls();el("schoolTimetableSummary").textContent="";}
+function reset(){++epoch;rows=[];offerings=[];periods=[];officialSchedules=[];activePeriod="";revision=0;dirty=false;busy=false;ready=false;host.replaceChildren();period.replaceChildren(new Option("Choose academic period",""));updateControls();el("schoolTimetableSummary").textContent="";el("schoolOfficialTimetableRows").replaceChildren();el("schoolOfficialTimetableSummary").textContent="";}
 async function scoped(api,action,fields={}){
   const lease=picker.scope.lease(),result=(await api({schoolId:lease.schoolId,action,...fields})).data;
   picker.scope.assertLease(lease);
@@ -32,6 +32,39 @@ function choices(){
   return [...pairs].sort((a,b)=>a[1].localeCompare(b[1]));
 }
 function minutes(text){const m=/^([0-9]{2}):([0-9]{2})$/.exec(text||"");return m&&Number(m[1])<24&&Number(m[2])<60?Number(m[1])*60+Number(m[2]):null;}
+const dayNames={mon:"Monday",tue:"Tuesday",wed:"Wednesday",thu:"Thursday",fri:"Friday",sat:"Saturday"};
+function renderOfficial(){
+  const host=el("schoolOfficialTimetableRows"),summary=el("schoolOfficialTimetableSummary");host.replaceChildren();
+  const schedules=officialSchedules.filter(row=>!activePeriod||row.termId===activePeriod),meetings=[];
+  for(const schedule of schedules){
+    const offering=offerings.find(row=>row.offeringId===schedule.offeringId);
+    for(const meeting of schedule.meetings||[])meetings.push({meeting,offering});
+  }
+  meetings.sort((a,b)=>Object.keys(dayNames).indexOf(a.meeting.day)-Object.keys(dayNames).indexOf(b.meeting.day)||
+    minutes(a.meeting.startTime)-minutes(b.meeting.startTime));
+  const weekly=meetings.reduce((sum,row)=>sum+Math.max(0,(minutes(row.meeting.endTime)||0)-(minutes(row.meeting.startTime)||0)),0);
+  summary.textContent=meetings.length?
+    meetings.length+" official class meeting"+(meetings.length===1?"":"s")+" · "+Math.floor(weekly/60)+"h "+weekly%60+"m scheduled/week":
+    activePeriod?"No official class meetings have been scheduled for your assigned classes in this period.":"Choose an academic period to view its official meetings.";
+  if(!meetings.length){
+    const empty=node("p",activePeriod?"School Administration has not scheduled your assigned classes in this period yet.":"Choose an academic period.","rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600 md:col-span-2");
+    host.append(empty);return;
+  }
+  const grouped=new Map();
+  for(const entry of meetings){const list=grouped.get(entry.meeting.day)||[];list.push(entry);grouped.set(entry.meeting.day,list);}
+  for(const day of Object.keys(dayNames)){
+    const entries=grouped.get(day);if(!entries?.length)continue;
+    const card=node("article","","rounded-xl border border-violet-100 bg-violet-50/50 p-4"),title=node("h3",dayNames[day],"font-extrabold text-violet-950");
+    card.append(title);
+    for(const {meeting,offering} of entries){
+      const row=node("div","","mt-2 rounded-lg border border-violet-100 bg-white p-3");
+      row.append(node("strong",[meeting.startTime+"–"+meeting.endTime,offering?.subjectName||"Class"].join(" · "),"block text-sm"),
+        node("span",[offering?.sectionName,meeting.room].filter(Boolean).join(" · ")||"Assigned class","block text-xs text-slate-500 mt-1"));
+      card.append(row);
+    }
+    host.append(card);
+  }
+}
 function renderSummary(){
   let sessions=0,weekly=0;
   for(const row of rows){const start=minutes(row.startTime),end=minutes(row.endTime);if(row.type!=="class")continue;
@@ -101,9 +134,12 @@ async function loadPeriod(id){
 async function loadOptions(){
   const run=++epoch;busy=true;updateControls();say("Loading your active school teaching assignments…");
   try{
-    const result=await scoped(academics,"planning_options",{assignmentScope:"teacher"});
+    const [result,official]=await Promise.all([
+      scoped(academics,"planning_options",{assignmentScope:"teacher"}),
+      scoped(schedules,"my_official_schedule")
+    ]);
     if(run!==epoch)return;
-    offerings=result.offerings||[];
+    offerings=result.offerings||[];officialSchedules=official.schedules||[];
     const used=new Set(offerings.map(row=>row.termId));
     periods=(result.periodRecords||[]).filter(row=>used.has(row.termId));
     period.replaceChildren(new Option("Choose academic period",""));
@@ -112,7 +148,8 @@ async function loadOptions(){
       period.add(new Option([sample?.yearName,sample?.programName,row.name].filter(Boolean).join(" · "),row.termId));
     }
     if(periods.length===1){await loadPeriod(periods[0].termId);return;}
-    say(periods.length?"Choose an academic period to open its school-saved timetable.":"No active assigned periods. Ask your school administrator to assign your classes.");
+    renderOfficial();
+    say(periods.length?"Choose an academic period to view the official timetable and personal planning overlay.":"No active assigned periods. Ask your school administrator to assign your classes.");
   }catch(error){if(run===epoch)say(error?.message||"Teaching assignments unavailable.");}
   finally{if(run===epoch){busy=false;updateControls();}}
 }
