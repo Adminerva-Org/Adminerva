@@ -59,7 +59,7 @@ function fixture(handle=()=>undefined){
     },
     createTenantSchoolPicker(options){pickerOptions=options;return {scope,load:async()=>null};},
     document:{getElementById:field,querySelectorAll:()=>[],querySelector:()=>null,createElement:element},
-    location:{hash:"",href:"https://example.edu/people-access.html"},sessionStorage:{getItem:()=>null,setItem(){}},
+    location:{hash:"",href:"https://example.edu/people-access.html"},URL,sessionStorage:{getItem:()=>null,setItem(){}},
     FormData:class{constructor(form){this.form=form;}get(key){return this.form.elements[key].value;}},
     Option:function(text,value){return {textContent:text,value};},
     confirm:()=>true,prompt:()=>null,setTimeout,clearTimeout,console
