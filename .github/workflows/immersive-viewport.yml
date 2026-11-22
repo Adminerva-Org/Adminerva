@@ -1,0 +1,45 @@
+name: Immersive viewport QA
+on:
+  pull_request:
+    paths:
+      - "index.html"
+      - "guest-home.html"
+      - "opportunities.html"
+      - "pulse.html"
+      - "student-home.html"
+      - "teacher-home.html"
+      - "school-admin.html"
+      - "owner-schools.html"
+      - "css/experience-mode.css"
+      - "js/core/experience-mode.mjs"
+      - "js/core/experience-world.mjs"
+      - "js/core/opportunities-page.mjs"
+      - "js/core/pulse-page.mjs"
+      - "tests/immersive-viewport.mjs"
+      - ".github/workflows/immersive-viewport.yml"
+  workflow_dispatch:
+jobs:
+  viewport:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate viewport harness syntax
+        run: node --check tests/immersive-viewport.mjs
+      - name: Install isolated Chromium test dependencies
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Exercise 7 viewports and 8 entry contexts
+        run: node tests/immersive-viewport.mjs
+      - name: Upload visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adminerva-immersive-viewport-evidence
+          path: /tmp/adminerva-*.png
+          if-no-files-found: ignore
+          retention-days: 7

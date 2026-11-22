@@ -3,87 +3,57 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#070f23">
-<title>Adminerva Pulse — The Signal Room</title>
-<meta name="description" content="Explore verified Adminerva releases, Friday highlights, and hands-on discoveries in an interactive signal room.">
+<meta name="theme-color" content="#06101d">
+<title>Adminerva Pulse — Movement over time</title>
+<meta name="description" content="Move through verified Adminerva releases, weekly Pulse stories, public experiences and announcements over time.">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/adminerva-favicon-32.png">
 <link rel="stylesheet" href="css/adminerva-ui.css?v=02e1513cbfce">
 <link rel="stylesheet" href="css/public-shell.css?v=02e1513cbfce">
-<link rel="stylesheet" href="css/editorial-cinematic.css?v=20261122-1">
-<link rel="stylesheet" href="css/experience-mode.css?v=20261122-1"></head>
-<body class="av-cine-page">
+<link rel="stylesheet" href="css/experience-mode.css?v=20261122-2">
+</head>
+<body class="avx-world-page">
 <div id="adminerva-public-nav" data-page="pulse"></div>
-<main class="av-cine av-signal" id="pulse-main">
-<section class="av-cine-hero av-signal-hero av-cine-chapter" data-cine-chapter="0" data-cine-scene aria-labelledby="pulse-title">
-  <canvas class="av-cine-particles" data-cine-particles aria-hidden="true"></canvas>
-  <div class="av-cine-noise" aria-hidden="true"></div>
-  <div class="av-cine-topline"><span><i class="av-cine-light" aria-hidden="true"></i> ADMINERVA / SIGNAL ROOM</span><span>TRANSMISSION 02 — PULSE</span><button type="button" class="av-cine-motion-toggle" data-cine-motion-toggle aria-pressed="false">Pause motion ⏸</button></div>
-  <div class="av-signal-hero-inner">
-    <div class="av-cine-intro">
-      <p class="av-cine-micro">STORIES FROM A CHANGING SCHOOL OS</p>
-      <h1 id="pulse-title">There's more to the story <em>every day.</em></h1>
-      <p class="av-cine-lead">Move between what shipped, what's being explored, and what deserves your attention. Every real update links back to its published source.</p>
-      <div class="av-cine-actions">
-        <a class="av-cine-main-cta" href="#transmissions">Enter the signal room <span aria-hidden="true">↘</span></a>
-        <a class="av-cine-ghost-cta" href="opportunities.html">Find opportunities <span aria-hidden="true">↗</span></a>
-      </div>
-      <p class="av-cine-fine">A curated public experience. No private student, teacher or school activity is broadcast here.</p>
+<main id="pulse-main" class="avx-editorial-world avx-pulse-world" data-adminerva-world="pulse">
+  <section class="avx-editorial-hero avx-pulse-hero" aria-labelledby="pulse-title">
+    <div class="avx-editorial-copy">
+      <p class="avx-kicker">ADMINERVA / PULSE</p>
+      <h1 id="pulse-title">See how Adminerva <em>moves through time.</em></h1>
+      <p>Releases, weekly stories, experiences and announcements enter the same current only after their authoritative sources publish them.</p>
+      <div class="avx-editorial-actions"><a class="avx-editorial-action" href="#time-current">Enter the current ↓</a><a class="avx-editorial-action" href="opportunities.html">Follow Opportunity Hunter ↗</a></div>
+      <p class="avx-editorial-fine">No private learner, teacher or school activity appears in this public experience.</p>
     </div>
-    <div class="av-signal-art" aria-hidden="true">
-      <div class="av-signal-disc av-signal-disc--outer"></div>
-      <div class="av-signal-disc av-signal-disc--middle"></div>
-      <div class="av-signal-disc av-signal-disc--inner"></div>
-      <div class="av-signal-art-core"><img src="assets/adminerva-owl.png" width="96" height="96" alt=""><span>ADMINERVA</span></div>
-      <div class="av-signal-orbit-label av-signal-orbit-label--a">WHAT'S NEW <b>↗</b></div>
-      <div class="av-signal-orbit-label av-signal-orbit-label--b">DISCOVER <b>✳</b></div>
-      <div class="av-signal-orbit-label av-signal-orbit-label--c">THIS WEEK <b>●</b></div>
-      <div class="av-signal-oscilloscope"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-    </div>
-  </div>
-  <div class="av-cine-bottomline"><span>VERIFIED RELEASES / PUBLIC STORIES / DISCOVERIES</span><a href="#transmissions">TUNE THE FREQUENCY ↓</a></div>
-</section>
-<section class="av-signal-room av-cine-chapter" data-cine-chapter="1" id="transmissions" aria-labelledby="signal-console-title">
-  <div class="av-cine-section-heading">
-    <p class="av-cine-micro">03 / TUNE INTO ADMINERVA</p>
-    <h2 id="signal-console-title">Choose your <em>frequency.</em></h2>
-    <p>Use the channels to explore actual releases, approved weekly summaries, public announcements, or hands-on discoveries. Select any transmission to view its full signal.</p>
-  </div>
-  <div class="av-signal-console">
-    <nav class="av-signal-channels" aria-label="Pulse channels">
-      <button type="button" data-signal-channel="releases" aria-pressed="true"><span>01</span><strong>Shipped & verified</strong><small>Published releases</small></button>
-      <button type="button" data-signal-channel="weekly-pulse" aria-pressed="false"><span>02</span><strong>The Friday Pulse</strong><small>Weekly recap</small></button>
-      <button type="button" data-signal-channel="experiences" aria-pressed="false"><span>03</span><strong>Open experiments</strong><small>Things to explore</small></button>
-      <button type="button" data-signal-channel="announcements" aria-pressed="false"><span>04</span><strong>Announcements</strong><small>Approved updates</small></button>
-    </nav>
-    <div class="av-signal-display">
-      <div class="av-signal-display-meta"><span><i class="av-cine-light" aria-hidden="true"></i> <span id="signal-channel-name">SHIPPED & VERIFIED</span></span><span id="signal-index">01 / 01</span></div>
-      <article class="av-signal-story" id="signal-story" aria-live="polite">
-        <p class="av-cine-micro">CONNECTING TO PUBLISHED HISTORY</p>
-        <h3>Checking the latest signal…</h3>
-      </article>
-      <div class="av-signal-navigation">
-        <button type="button" id="signal-prev" aria-label="Previous transmission">←</button>
-        <span id="signal-current-status" role="status" aria-live="polite">Loading published stories</span>
-        <button type="button" id="signal-next" aria-label="Next transmission">→</button>
+    <div class="avx-time-current" aria-hidden="true">
+      <div class="avx-current-band">
+        <div class="avx-current-marker"><small>Published</small><strong>Release</strong></div>
+        <div class="avx-current-marker"><small>Reflected</small><strong>Weekly Pulse</strong></div>
+        <div class="avx-current-marker"><small>Opened</small><strong>Experience</strong></div>
+        <div class="avx-current-marker"><small>Now</small><strong>Signal</strong></div>
       </div>
     </div>
-    <aside class="av-signal-queue">
-      <div class="av-signal-queue-head"><span>TRANSMISSION QUEUE</span><strong id="signal-total">00 SIGNALS</strong></div>
-      <div class="av-signal-queue-items" id="signal-queue" aria-label="Choose a transmission"></div>
-      <p id="signal-queue-empty" class="av-signal-queue-empty" hidden>No reviewed content in this channel yet. The signal room does not invent activity.</p>
-    </aside>
-  </div>
-  <p class="av-cine-disclaimer">The Friday Pulse and announcements only appear after editorial approval. Verified release history remains the authoritative source for product changes; drafts and incomplete development are not announcements.</p>
-</section>
-<section class="av-cine-next av-cine-chapter" data-cine-chapter="2">
-  <div class="av-cine-next-mark" aria-hidden="true">✳</div>
-  <div><p class="av-cine-micro">NEXT STOP</p><h2>Somewhere there's a <em>new opportunity.</em></h2></div>
-  <a class="av-cine-main-cta" href="opportunities.html">Enter Opportunity Hunter ↗</a>
-</section>
+  </section>
+  <section class="avx-time-body" id="time-current" aria-labelledby="pulse-current-title">
+    <header class="avx-time-head"><p class="avx-kicker">THE TIME CURRENT</p><h2 id="pulse-current-title">Choose a stream, then move through its history.</h2><p>Release history remains authoritative for shipped product changes. Other streams appear only when their public editorial source is approved.</p></header>
+    <div class="avx-time-layout">
+      <nav class="avx-time-channels" aria-label="Pulse streams">
+        <button type="button" data-signal-channel="releases" aria-pressed="true"><span>01</span><strong>Shipped &amp; verified</strong><small>Published releases</small></button>
+        <button type="button" data-signal-channel="weekly-pulse" aria-pressed="false"><span>02</span><strong>Friday Pulse</strong><small>Weekly recap</small></button>
+        <button type="button" data-signal-channel="experiences" aria-pressed="false"><span>03</span><strong>Open experiences</strong><small>Things to enter</small></button>
+        <button type="button" data-signal-channel="announcements" aria-pressed="false"><span>04</span><strong>Announcements</strong><small>Approved updates</small></button>
+      </nav>
+      <section class="avx-time-stage" tabindex="-1">
+        <div class="avx-time-meta"><strong id="signal-channel-name">SHIPPED &amp; VERIFIED</strong><span id="signal-index">00 / 00</span></div>
+        <article class="avx-story" id="signal-story" aria-live="polite"><p class="avx-kicker">CONNECTING TO PUBLISHED HISTORY</p><h3>Reading the current…</h3></article>
+        <div class="avx-story-nav"><button type="button" id="signal-prev" aria-label="Previous entry">←</button><span id="signal-current-status" role="status" aria-live="polite">Loading published stories</span><button type="button" id="signal-next" aria-label="Next entry">→</button></div>
+      </section>
+      <aside class="avx-time-queue-wrap"><div class="avx-time-queue-head"><span>IN THIS STREAM</span><strong id="signal-total">00 ENTRIES</strong></div><div id="signal-queue" class="avx-time-queue" aria-label="Choose an entry"></div><p id="signal-queue-empty" class="avx-time-empty" hidden>No reviewed content has been published in this stream yet.</p></aside>
+    </div>
+    <p class="avx-disclaimer">The Friday Pulse and announcements only appear after editorial approval. Drafts, branch-only work and incomplete development are not presented as released product.</p>
+  </section>
+  <section class="avx-editorial-crossing"><div><p class="avx-kicker">FOLLOW THE NEXT CURRENT</p><h2>Time reveals what changed. Opportunity reveals where to go.</h2></div><a class="avx-editorial-action" href="opportunities.html">Enter Opportunity Hunter ↗</a></section>
 </main>
 <script type="module" src="js/core/public-shell.mjs?v=02e1513cbfce"></script>
 <script defer src="js/core/release-footer.js?v=02e1513cbfce"></script>
 <script src="js/core/adminerva-loader.js?v=02e1513cbfce"></script>
-<script type="module" src="js/core/editorial-motion.mjs?v=20261122-1"></script>
-<script type="module" src="js/core/pulse-page.mjs?v=20261122-1"></script>
-<script type="module" src="js/core/cinematic-navigation.mjs?v=20261122-1"></script></body></html>
+<script type="module" src="js/core/pulse-page.mjs?v=20261122-2"></script>
+</body>
+</html>
