@@ -24,18 +24,21 @@ test("Global Games leaderboard includes every active student membership, includi
     ["schools/school-a/practice_season_scores",snap([
       doc("u1",{schoolId:"school-a",ownerUid:"u1",season:"season-1",alias:"Player One",optIn:false,points:100,completedCount:4})
     ])],
+    ["schools/school-a/legacy_roots/practice_season_scores/documents",snap([])],
     ["schools/school-b/memberships",snap([
       doc("u5",{schoolId:"school-b",status:"active",roles:["student"]})
     ])],
-    ["schools/school-b/practice_season_scores",snap([
-      doc("u5",{schoolId:"school-b",ownerUid:"u5",season:"season-1",alias:"Pilot Five",optIn:false,points:200,completedCount:8})
+    ["schools/school-b/practice_season_scores",snap([])],
+    ["schools/school-b/legacy_roots/practice_season_scores/documents",snap([
+      doc("u5",{season:"season-1",alias:"Pilot Five",optIn:false,points:200,completedCount:8})
     ])],
     ["schools/school-c/memberships",snap([
       doc("u6",{schoolId:"school-c",status:"active",roles:["student"]})
     ])],
     ["schools/school-c/practice_season_scores",snap([
       doc("u6",{schoolId:"school-c",ownerUid:"u6",season:"season-1",alias:"Suspended Six",points:300,completedCount:9})
-    ])]
+    ])],
+    ["schools/school-c/legacy_roots/practice_season_scores/documents",snap([])]
   ]);
   const db={collection(path){return {get:async()=>collections.get(path)||snap([])};}};
   const service=createSchoolPracticeSeasonService({
