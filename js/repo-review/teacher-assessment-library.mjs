@@ -10,18 +10,18 @@ const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
 const requestedFilter=new URL(location.href).searchParams.get("view");
-let items=[],deployments=[],legacyDeploymentHistory=[],legacyDeploymentWarning="",filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,
-  lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
+let items=[],archivedItems=[],archivedNextCursor=null,archivedLoading=false,archivedEpoch=0,deployments=[],legacyDeploymentHistory=[],legacyDeploymentWarning="",filter=["mine","shared","school","deployed","archived"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,
+  lifecycleTask=null,lifecycleAction=null,blueprintLifecycle=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
-    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];deployments=[];legacyDeploymentHistory=[];legacyDeploymentWarning="";editing=null;sharing=null;deploying=null;
+    ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];archivedItems=[];archivedNextCursor=null;archivedEpoch++;archivedLoading=false;deployments=[];legacyDeploymentHistory=[];legacyDeploymentWarning="";editing=null;sharing=null;deploying=null;
     deployOfferings=[];deploymentOfferingNames.clear();deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
     bulkSettingsDialog?.close();bulkSettingsTasks=[];bulkSettingsSucceeded.clear();
     deployVariantReview=null;deployVariantLoading=false;personalizingOfferings=[];
-    lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
+    lifecycleTask=null;lifecycleAction=null;blueprintLifecycle=null;deploymentSettingsTask=null;personalizing=null;personalizationState=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
     form.reset();togglePersonalizationFields();
@@ -186,7 +186,7 @@ async function loadPersonalization(item,offeringIds=[],initialState=null){
   }
 }
 function openLifecycle(task,action){
-  lifecycleTask=task;lifecycleAction=action;
+  blueprintLifecycle=null;lifecycleTask=task;lifecycleAction=action;
   const dialog=el("tl-lifecycle-dialog"),form=el("tl-lifecycle-form"),
     deadlineField=el("tl-lifecycle-deadline-field");
   form.reset();deadlineField.hidden=action!=="reopen";
@@ -205,6 +205,21 @@ function openLifecycle(task,action){
     form.elements.newDueAt.value=localDateInput(next);
     form.elements.newDueAt.required=true;
   }else form.elements.newDueAt.required=false;
+  dialog.showModal();
+}
+function openBlueprintLifecycle(item,action){
+  if(pendingWrite||!item?.canShare||
+     !(action==="restore"&&item.status==="archived"||
+       action==="archive"&&item.status==="draft"))return;
+  lifecycleTask=null;lifecycleAction=null;blueprintLifecycle={item,action};
+  const dialog=el("tl-lifecycle-dialog"),form=el("tl-lifecycle-form");
+  form.reset();form.elements.newDueAt.required=false;
+  el("tl-lifecycle-deadline-field").hidden=true;
+  el("tl-lifecycle-heading").textContent=action==="restore"?"Restore archived blueprint":"Archive blueprint";
+  el("tl-lifecycle-task").textContent=item.title+" · revision "+item.contentRevision;
+  el("tl-lifecycle-help").textContent=action==="restore"?
+    "Restore this reusable assessment as your private draft. Its rubric, variant pool, independent deployments and academic evidence stay unchanged. Sharing must be deliberate.":
+    "Archive this reusable blueprint without deleting its original deployments, submitted evidence, rubric or grade history. Explain the reason for the audit record.";
   dialog.showModal();
 }
 function openDeploymentSettings(task){
@@ -625,14 +640,16 @@ function render(){
     renderDeployedTasks();
     return;
   }
-  const visible=items.filter(item=>{
+  const visible=(filter==="archived"?archivedItems:items).filter(item=>{
+    if(filter==="archived")return item.ownerUid===uid&&item.status==="archived";
     if(filter==="mine")return item.ownerUid===uid;
     if(filter==="shared")return item.ownerUid!==uid&&item.visibility==="selected_teachers";
     return item.ownerUid!==uid&&item.visibility==="school_teachers";
   });
   if(!visible.length){
     const empty=document.createElement("p");empty.className="tl-muted";
-    empty.textContent=filter==="mine"?"You have no private assessments yet.":
+    empty.textContent=filter==="archived"?"No archived blueprints. Archived tasks are available separately under Deployed Tasks.":
+       filter==="mine"?"You have no private assessments yet.":
       filter==="shared"?"No assessments have been shared specifically with you.":
       "No school-wide shared assessments are available.";
     list.append(empty);
@@ -664,20 +681,44 @@ function render(){
       }).toString();
       legacy.textContent="View original deployments";controls.append(legacy);
     }
-    if(item.canShare){
+    if(filter==="archived"){
+      controls.append(actionButton("Restore private draft",()=>openBlueprintLifecycle(item,"restore")));
+    }else if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
       controls.append(actionButton("Share",()=>void share(item)));
       if(personalized(item))controls.append(actionButton(item.legacyImport?.assessmentId?"New school pool":"Personalization",()=>void loadPersonalization(item)));
       controls.append(actionButton(item.legacyImport?.assessmentId?"Deploy new":"Deploy",()=>void prepareDeployment(item),true));
-      controls.append(actionButton("Archive",()=>{
-        if(!confirm("Archive this draft? Existing independent copies will remain available."))return;
-        void write("archive",{resourceId:item.id,expectedRevision:item.contentRevision},"Assessment archived without deleting student records.").catch(()=>{});
-      },true));
+      controls.append(actionButton("Archive",()=>openBlueprintLifecycle(item,"archive"),true));
     }else{
       controls.append(actionButton("Make a copy",()=>void write("copy",{resourceId:item.id},
         "Independent private copy created. The source remains unchanged.").catch(()=>{})));
     }
     row.append(info,controls);list.append(row);
+  }
+  if(filter==="archived"&&archivedNextCursor){
+    const more=document.createElement("div");more.className="col-span-full flex justify-center p-3";
+    const control=actionButton(archivedLoading?"Loading archived records…":"Load more archived blueprints",
+      ()=>void loadMoreArchived());
+    control.disabled=archivedLoading||pendingWrite;
+    more.append(control);list.append(more);
+  }
+}
+async function loadMoreArchived(){
+  if(archivedLoading||pendingWrite||filter!=="archived"||!archivedNextCursor)return;
+  const epoch=archivedEpoch,cursor=archivedNextCursor;
+  archivedLoading=true;render();
+  try{
+    const result=await perform("list_archived",{cursor});
+    if(epoch!==archivedEpoch||filter!=="archived"||archivedNextCursor!==cursor)return;
+    const existing=new Set(archivedItems.map(row=>row.id));
+    archivedItems.push(...(result.items||[]).filter(row=>!existing.has(row.id)));
+    archivedNextCursor=result.nextCursor||null;
+    say("Showing "+archivedItems.length+" archived blueprint"+(archivedItems.length===1?"":"s")+
+      (archivedNextCursor?" · more available.":"."));
+  }catch(error){
+    if(epoch===archivedEpoch)say(error?.message||"Archived history could not be loaded.");
+  }finally{
+    if(epoch===archivedEpoch){archivedLoading=false;render();}
   }
 }
 function edit(item){
@@ -754,10 +795,17 @@ async function refresh(){
       }
     }
   })();
-  const [result,deployed,historical]=await Promise.all([
-    perform("list"),performScoped(scopedAssessmentApi,"list_teacher"),legacyRead
+  const archiveFetchEpoch=++archivedEpoch;
+  const [result,deployed,historical,archived]=await Promise.all([
+    perform("list"),performScoped(scopedAssessmentApi,"list_teacher"),legacyRead,
+    filter==="archived"?perform("list_archived"):Promise.resolve(null)
   ]);
   items=result.items||[];
+  if(archiveFetchEpoch===archivedEpoch){
+    archivedItems=archived?.items||[];
+    archivedNextCursor=archived?.nextCursor||null;
+    archivedLoading=false;
+  }
   deployments=deployed.assessments||[];
   legacyDeploymentHistory=historical.items||[];
   legacyDeploymentWarning=historical.error||"";
@@ -772,14 +820,14 @@ async function refresh(){
     }
   }
   render();
-  if(result.truncated)say("Only the first assessment records are shown. Pagination is required for more.");
+  if(result.truncated||archived?.truncated)say("Only the first assessment records are shown. Pagination is required for more.");
   if(filter==="deployed"&&legacyDeploymentWarning)
     say("School deployments loaded, but historical deployments could not be checked. The original records are unchanged.");
 }
 document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListener("click",()=>{
   filter=button.dataset.filter;
   const url=new URL(location.href);url.searchParams.set("view",filter);history.replaceState(null,"",url);
-  if(filter==="deployed"&&!deploymentOfferingNames.size)
+  if(filter==="archived"||(filter==="deployed"&&!deploymentOfferingNames.size))
     void refresh().catch(error=>say(error.message));
   else render();
 }));
@@ -1405,11 +1453,34 @@ el("tl-deployment-settings-form").addEventListener("submit",event=>{
   })();
 });
 el("tl-lifecycle-cancel").addEventListener("click",()=>{
-  lifecycleTask=null;lifecycleAction=null;el("tl-lifecycle-dialog").close();
+  lifecycleTask=null;lifecycleAction=null;blueprintLifecycle=null;el("tl-lifecycle-dialog").close();
+});
+el("tl-lifecycle-dialog").addEventListener("close",()=>{
+  lifecycleTask=null;lifecycleAction=null;blueprintLifecycle=null;
 });
 el("tl-lifecycle-form").addEventListener("submit",event=>{
-  event.preventDefault();if(!lifecycleTask||!lifecycleAction||pendingWrite)return;
+  event.preventDefault();
+  if(pendingWrite||(!blueprintLifecycle&&(!lifecycleTask||!lifecycleAction)))return;
   const form=event.currentTarget;if(!form.reportValidity())return;
+  if(blueprintLifecycle){
+    const {item,action}=blueprintLifecycle,
+      reason=String(new FormData(form).get("reason")||"").trim();
+    if(reason.length>500){say("Lifecycle reason must be 500 characters or fewer.");return;}
+    void (async()=>{
+      pendingWrite=true;
+      [...form.elements].forEach(control=>control.disabled=true);
+      try{
+        say((action==="restore"?"Restoring private blueprint":"Archiving blueprint")+" with an audit record…");
+        await perform(action,{resourceId:item.id,expectedRevision:item.contentRevision,reason});
+        el("tl-lifecycle-dialog").close();blueprintLifecycle=null;
+        await refreshAfterWrite(action==="restore"?
+          "Blueprint restored as a private draft. Review it before deploying or sharing.":
+          "Blueprint archived. Independent deployments, submitted evidence and grades remain unchanged.");
+      }catch(error){say(error?.message||"Blueprint lifecycle change was not saved.");}
+      finally{pendingWrite=false;[...form.elements].forEach(control=>control.disabled=false);}
+    })();
+    return;
+  }
   const values=new FormData(form),details={
     taskId:lifecycleTask.taskId,expectedRevision:lifecycleTask.revision||1,
     reason:String(values.get("reason")||"")

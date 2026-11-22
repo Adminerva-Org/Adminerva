@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Bounded System Administrator account directory for Adminerva platform identities and school memberships.">
+  <meta name="description" content="System Administrator account directory and audited global login lifecycle for Adminerva.">
   <title>Users · System Admin · Adminerva</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
@@ -14,11 +14,14 @@
     .pu-hero{border-radius:1.2rem;padding:1.25rem;background:#0f172a;color:white}
     .pu-panel{border:1px solid #dbe3ef;border-radius:1rem;background:white;padding:1rem}
     .pu-input{width:100%;min-height:44px;border:1px solid #cbd5e1;border-radius:.7rem;padding:.6rem .75rem;background:white}
+    textarea.pu-input{min-height:88px;resize:vertical}
     .pu-btn{min-height:42px;border:1px solid #cbd5e1;border-radius:.7rem;padding:.6rem .9rem;background:white;font-weight:750}
     .pu-btn.primary{background:#1d4ed8;color:white;border-color:#1d4ed8}
+    .pu-btn.warn{background:#fff7ed;color:#9a3412;border-color:#fdba74}
+    .pu-btn.success{background:#ecfdf5;color:#047857;border-color:#6ee7b7}
     .pu-btn:disabled{opacity:.5;cursor:not-allowed}
     .pu-chip{display:inline-flex;border:1px solid #dbe3ef;border-radius:999px;padding:.25rem .55rem;font-size:.72rem;font-weight:750;background:#f8fafc}
-    .pu-dialog{border:0;border-radius:1rem;padding:0;width:min(94vw,760px);max-height:90dvh;box-shadow:0 24px 80px #0f172a55}
+    .pu-dialog{border:0;border-radius:1rem;padding:0;width:min(94vw,820px);max-height:92dvh;box-shadow:0 24px 80px #0f172a55}
     .pu-dialog::backdrop{background:#020617aa}
     [hidden]{display:none!important}
     @media(max-width:640px){.pu-shell{padding:.7rem}}
@@ -28,17 +31,16 @@
 <div id="adminerva-nav" data-module="admin" data-page="system-users"></div>
 <main class="pu-shell space-y-4">
   <header class="pu-hero">
-    <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">System Administration · Directory</p>
+    <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">System Administration · Global accounts</p>
     <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Users</h1>
-    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Review bounded platform account identity and school-membership metadata. This directory is read-only and does not expose grades, submissions, source code, prompts or private school records.</p>
+    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Review the complete Firebase login directory and perform audited account-level administration. School person, enrollment, academic history and evidence remain in their school-scoped canonical workflows.</p>
   </header>
 
   <section class="pu-panel">
-    <div class="grid md:grid-cols-[minmax(0,1fr)_auto_190px_190px] gap-3 items-end">
-      <label class="text-sm font-bold">Filter loaded page or enter exact account
-        <input id="pu-search" class="pu-input mt-1" type="search" autocomplete="off" placeholder="Name, exact email or account ID">
+    <div class="grid md:grid-cols-[minmax(0,1fr)_190px_190px_auto] gap-3 items-end">
+      <label class="text-sm font-bold">Search all loaded accounts
+        <input id="pu-search" class="pu-input mt-1" type="search" autocomplete="off" placeholder="Name, email or account ID">
       </label>
-      <button id="pu-find-exact" class="pu-btn primary" type="button">Find exact account</button>
       <label class="text-sm font-bold">Account
         <select id="pu-account-filter" class="pu-input mt-1">
           <option value="">All accounts</option>
@@ -55,10 +57,11 @@
           <option value="standard">Standard users</option>
         </select>
       </label>
+      <button id="pu-create" class="pu-btn primary" type="button">Create account</button>
     </div>
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
       <p id="pu-status" class="text-sm text-slate-600" role="status" aria-live="polite">Checking System Administrator access…</p>
-      <button id="pu-refresh" class="pu-btn" type="button" disabled>Refresh page</button>
+      <button id="pu-refresh" class="pu-btn" type="button" disabled>Reload all accounts</button>
     </div>
   </section>
 
@@ -66,29 +69,55 @@
     <div class="flex items-center justify-between gap-3 mb-3">
       <div>
         <h2 class="font-extrabold text-lg">Account directory</h2>
-        <p class="text-xs text-slate-500">Up to 25 Firebase Auth accounts per page. Filters apply to the loaded page only.</p>
+        <p class="text-xs text-slate-500">The full Firebase Auth directory is loaded into this System Admin workspace, then searched and filtered locally.</p>
       </div>
       <span id="pu-count" class="pu-chip">—</span>
     </div>
     <div id="pu-list" class="divide-y divide-slate-100" aria-live="polite"></div>
-    <div class="flex flex-wrap justify-between gap-2 pt-4 border-t border-slate-100 mt-3">
-      <button id="pu-prev" class="pu-btn" type="button" disabled>Previous page</button>
-      <button id="pu-next" class="pu-btn" type="button" disabled>Next page</button>
-    </div>
   </section>
 </main>
 
 <dialog id="pu-detail" class="pu-dialog" aria-labelledby="pu-detail-title">
-  <div class="p-4 sm:p-5 bg-white max-h-[90dvh] overflow-auto">
+  <div class="p-4 sm:p-5 bg-white max-h-[92dvh] overflow-auto">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
-        <p class="text-xs font-extrabold uppercase tracking-widest text-blue-700">System Admin · read-only account detail</p>
+        <p class="text-xs font-extrabold uppercase tracking-widest text-blue-700">System Admin · account operations</p>
         <h2 id="pu-detail-title" class="text-xl font-extrabold mt-1 break-words">User account</h2>
         <p id="pu-detail-meta" class="text-sm text-slate-600 mt-1 break-words"></p>
       </div>
       <button id="pu-detail-close" class="pu-btn shrink-0" type="button">Close</button>
     </div>
+
     <div id="pu-detail-account" class="grid sm:grid-cols-2 gap-3 mt-4"></div>
+
+    <section class="mt-5 rounded-xl border border-slate-200 p-4">
+      <h3 class="font-extrabold">Login account lifecycle</h3>
+      <p class="text-xs text-slate-500 mt-1">These controls affect the global login identity only. Student account replacement/reconciliation stays in the canonical school People &amp; Access recovery workflow.</p>
+      <div class="grid sm:grid-cols-2 gap-3 mt-3">
+        <label class="text-sm font-bold">Display name
+          <input id="pu-profile-name" class="pu-input mt-1" maxlength="140">
+        </label>
+        <div class="sm:row-span-2">
+          <label class="text-sm font-bold">Administrative reason
+            <textarea id="pu-reason" class="pu-input mt-1" maxlength="500" placeholder="Required for account changes and recovery actions"></textarea>
+          </label>
+          <p class="text-[11px] text-slate-500 mt-1">Minimum 12 characters. Stored in the platform audit trail.</p>
+        </div>
+        <div class="flex flex-wrap gap-2 self-end">
+          <button id="pu-save-profile" class="pu-btn" type="button">Save profile</button>
+          <button id="pu-reset-password" class="pu-btn" type="button">Generate reset link</button>
+          <button id="pu-lifecycle" class="pu-btn warn" type="button">Disable account</button>
+        </div>
+      </div>
+      <div id="pu-reset-output" class="mt-3" hidden>
+        <label class="text-xs font-bold">Password reset link
+          <input id="pu-reset-link" class="pu-input mt-1 text-xs" readonly>
+        </label>
+        <div class="flex justify-end mt-2"><button id="pu-copy-reset" class="pu-btn" type="button">Copy reset link</button></div>
+      </div>
+      <p id="pu-action-status" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite"></p>
+    </section>
+
     <section class="mt-5">
       <h3 class="font-extrabold">School memberships</h3>
       <p class="text-xs text-slate-500 mt-1">Membership metadata only. Open the School Registry for institution-level administration.</p>
@@ -98,10 +127,44 @@
   </div>
 </dialog>
 
+<dialog id="pu-create-dialog" class="pu-dialog" aria-labelledby="pu-create-title">
+  <form id="pu-create-form" class="p-4 sm:p-5 bg-white max-h-[92dvh] overflow-auto">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <p class="text-xs font-extrabold uppercase tracking-widest text-blue-700">System Admin · create global login</p>
+        <h2 id="pu-create-title" class="text-xl font-extrabold mt-1">Create account</h2>
+        <p class="text-sm text-slate-600 mt-1">Creates a Firebase login only. It does not grant a school membership or create a school person record.</p>
+      </div>
+      <button id="pu-create-close" class="pu-btn shrink-0" type="button">Close</button>
+    </div>
+    <div class="grid sm:grid-cols-2 gap-3 mt-4">
+      <label class="text-sm font-bold">Display name
+        <input id="pu-create-name" class="pu-input mt-1" maxlength="140" required>
+      </label>
+      <label class="text-sm font-bold">Email
+        <input id="pu-create-email" class="pu-input mt-1" type="email" maxlength="254" autocomplete="off" required>
+      </label>
+    </div>
+    <label class="text-sm font-bold block mt-3">Administrative reason
+      <textarea id="pu-create-reason" class="pu-input mt-1" maxlength="500" required placeholder="Why this standalone login account is being created"></textarea>
+    </label>
+    <div id="pu-create-output" class="mt-3" hidden>
+      <label class="text-xs font-bold">Initial password setup/reset link
+        <input id="pu-create-link" class="pu-input mt-1 text-xs" readonly>
+      </label>
+      <div class="flex justify-end mt-2"><button id="pu-copy-create-link" class="pu-btn" type="button">Copy setup link</button></div>
+    </div>
+    <p id="pu-create-status" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite"></p>
+    <div class="flex justify-end gap-2 mt-4">
+      <button id="pu-create-submit" class="pu-btn primary" type="submit">Create login account</button>
+    </div>
+  </form>
+</dialog>
+
 <script defer src="js/core/release-footer.js?v=e44dd05d2bec"></script>
 <script src="js/core/adminerva-loader.js?v=e44dd05d2bec"></script>
 <script defer src="js/core/adminerva-nav.js?v=e44dd05d2bec"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=e44dd05d2bec"></script>
-<script type="module" src="js/core/platform-users.mjs?v=20261120-system-users2"></script>
+<script type="module" src="js/core/platform-users.mjs?v=20261123-platform-users-crud1"></script>
 <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261121-platform-flow1"></script></body>
 </html>
