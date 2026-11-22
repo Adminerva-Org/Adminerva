@@ -1,6 +1,6 @@
 import {ADMINERVA_RUNTIME_ORIGIN} from './runtime-config.mjs?v=1';
 import {AdminervaRuntimeClient} from './studio-runtime-client.mjs?v=3';
-import {analyzeJavaWorkspace,clearJavaDiagnostics} from './studio-diagnostics.mjs?v=1';
+import {analyzeJavaWorkspace,clearJavaDiagnostics} from './studio-diagnostics.mjs?v=20261123-java-diagnostics-1';
 
 /** Adds local Java problems and, once deployed, the optional server-backed queue. */
 export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFiles,getEntry,getProjectId,save,switchFile,showRecoveredSnapshot,leaveRecoveredSnapshot,recordRun}){
