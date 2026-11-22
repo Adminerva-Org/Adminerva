@@ -942,7 +942,7 @@ bindControl("labNextMission","click",()=>{
 bindControl("labGlobalTab","click",()=>{boardMode="global";renderBoard();});
 bindControl("labClassTab","click",()=>{boardMode="class";renderBoard();});
 bindControl("practiceClass","change",()=>void refreshHub());
-bindControl("labPreferences","submit",async event=>{event.preventDefault();if(busy||!eligible)return;const uid=user?.uid;field("labPreferencesSave").disabled=true;const end=window.beginLoading?.("Saving leaderboard choices…")||(()=>{});field("labPreferencesStatus").textContent="Saving choice…";try{const result=await call("practicePreferences",{alias:field("labAlias").value.trim(),optIn:field("labOptIn").checked});if(uid!==user?.uid)return;hub={...hub,...result};field("labPreferencesStatus").textContent=result.optIn?"Saved. Your alias is on the public leaderboard.":"Saved. Your alias is hidden from the public leaderboard.";await refreshHub();}catch(error){if(uid===user?.uid)field("labPreferencesStatus").textContent=error.message||"Choice could not save. Try again.";}finally{field("labPreferencesSave").disabled=false;end();}});
+bindControl("labPreferences","submit",async event=>{event.preventDefault();if(busy||!eligible)return;const uid=user?.uid;field("labPreferencesSave").disabled=true;const end=window.beginLoading?.("Saving leaderboard alias…")||(()=>{});field("labPreferencesStatus").textContent="Saving alias…";try{const result=await call("practicePreferences",{alias:field("labAlias").value.trim(),optIn:true});if(uid!==user?.uid)return;hub={...hub,...result};field("labPreferencesStatus").textContent="Saved. Your leaderboard alias is updated.";await Promise.all([refreshHub(),connectBoard()]);}catch(error){if(uid===user?.uid)field("labPreferencesStatus").textContent=error.message||"Alias could not save. Try again.";}finally{field("labPreferencesSave").disabled=false;end();}});
 
 /* Render a usable mission browser before auth/network work completes. */
 renderSummary();
@@ -967,26 +967,27 @@ if(!guestPage){
   }
 }
 
-let stopBoard=()=>{};
-function connectBoard(){
+async function connectBoard(){
+  const sequence=++boardSequence;
+  publicBoardError=false;
+  if(!publicBoardReady)renderBoard();
   try{
-    stopBoard();stopBoard=()=>{};publicBoardError=false;
-    if(user){publicBoardReady=true;renderBoard();return;}
-    stopBoard=onSnapshot(query(collection(db,"practice_public_rankings"),orderBy("points","desc"),limit(30)),snapshot=>{
-      globalRows=snapshot.docs.map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON);
-      publicBoardReady=true;publicBoardError=false;renderBoard();
-    },()=>{publicBoardError=true;renderBoard();});
+    const result=await practicePlatformLeaderboard();
+    if(sequence!==boardSequence)return;
+    globalRows=Array.isArray(result.rows)?result.rows:[];
+    publicBoardReady=true;publicBoardError=false;renderBoard();
   }catch(error){
-    publicBoardError=true;renderBoard();console.warn("[Adminerva Games] Rankings unavailable.",error);
-    stopBoard=()=>{};
+    if(sequence!==boardSequence)return;
+    publicBoardReady=true;publicBoardError=true;renderBoard();
+    console.warn("[Adminerva Games] Global rankings unavailable.",error);
   }
 }
-connectBoard();
+void connectBoard();
 
 onAuthStateChanged(auth,async current=>{
   arcadeController?.setOwner(current?.uid||null);
   const version=++epoch;loadSequence++;hubSequence++;user=current;eligible=false;accountPreview=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());
-  connectBoard();
+  void connectBoard();
   try{
     field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;field("practiceTransferBtn").hidden=true;
     renderSummary();renderCourses();renderBoard();
@@ -1004,6 +1005,6 @@ onAuthStateChanged(auth,async current=>{
     notice("Your saved progress could not reconnect, but the games and mission previews are still available. Refresh progress to retry.","warning");
   }
 });
-window.addEventListener("pagehide",()=>stopBoard());
+window.addEventListener("pagehide",()=>{boardSequence++;});
 
 
