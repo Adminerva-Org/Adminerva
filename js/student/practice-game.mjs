@@ -18,7 +18,7 @@ const STAGE_SCORING=[
   {...DIFFICULTIES[2],name:"Challenge"}
 ];
 let arcadeController=null;
-let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external||guestPage&&initialGame.id==="challenge-arena"?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,hubSequence=0,boardSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
+let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external||guestPage&&initialGame.id==="challenge-arena"?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,hubSequence=0,boardSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],assignedPacksLoading=false,assignedPacksError=false,hintLevel=0,builderSelection=null,bugLineFound=false;
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
 function localSet(key,value){try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
@@ -185,7 +185,18 @@ function formatChallengeDue(value){
 }
 function renderChallenges(){
   const list=field("gamesChallengeList"),count=field("gamesChallengeCount");if(!list||!count)return;
-  list.replaceChildren();count.textContent=assignedPacks.length?assignedPacks.length+" active":"None assigned";const nav=field("gamesChallengesNav");if(nav){nav.dataset.count=assignedPacks.length?String(Math.min(99,assignedPacks.length)):"";nav.classList.toggle("has-count",assignedPacks.length>0);}
+  list.replaceChildren();
+  const nav=field("gamesChallengesNav");
+  if(nav){nav.dataset.count=!assignedPacksLoading&&!assignedPacksError&&assignedPacks.length?String(Math.min(99,assignedPacks.length)):"";nav.classList.toggle("has-count",!assignedPacksLoading&&!assignedPacksError&&assignedPacks.length>0);}
+  if(assignedPacksLoading){
+    count.textContent="Checking…";
+    const state=node("div",undefined,"games-challenge-empty");state.append(node("span","…","games-challenge-empty-icon"),node("span","Checking teacher challenges…"));list.append(state);return;
+  }
+  if(assignedPacksError){
+    count.textContent="Unavailable";
+    const state=node("div",undefined,"games-challenge-empty");state.append(node("span","!","games-challenge-empty-icon"),node("span","Teacher challenges could not load. Use Refresh progress to retry."));list.append(state);return;
+  }
+  count.textContent=assignedPacks.length?assignedPacks.length+" active":"None assigned";
   if(!assignedPacks.length){
     const empty=node("div",undefined,"games-challenge-empty");empty.append(node("span","✓","games-challenge-empty-icon"),node("span","No teacher challenges right now."));list.append(empty);return;
   }
@@ -200,6 +211,8 @@ function renderChallenges(){
 }
 window.addEventListener("adminerva:practice-packs",event=>{
   assignedPacks=Array.isArray(event.detail?.packs)?event.detail.packs:[];
+  assignedPacksLoading=event.detail?.loading===true;
+  assignedPacksError=event.detail?.error===true;
   renderChallenges();
   renderCourses();
   renderHubHero();
@@ -269,7 +282,7 @@ function enhanceGamesHub(){
   const preferences=sidebar.querySelector(".lab-public-preferences");if(preferences?.querySelector("summary"))preferences.querySelector("summary").textContent="Leaderboard profile";
   const legacyBoard=sidebar.querySelector(".lab-board"),rankings=document.createElement("details");rankings.className="lab-board games-ranking-card";rankings.open=true;const rankSummary=node("summary",undefined,"games-ranking-summary");rankSummary.append(node("span","Rankings"),node("span","🏆"));if(legacyBoard){rankings.append(rankSummary,...legacyBoard.children);legacyBoard.replaceWith(rankings);}sidebar.querySelector(".lab-tip-card")?.remove();
   sidebar.prepend(progressCard);sidebar.prepend(achievementCard);sidebar.prepend(levelCard);sidebar.prepend(dailyCard);
-  assignedPacks=Array.isArray(window.__adminervaPracticePacks)?window.__adminervaPracticePacks:[];renderChallenges();
+  assignedPacks=Array.isArray(window.__adminervaPracticePacks)?window.__adminervaPracticePacks:[];assignedPacksLoading=window.__adminervaPracticePacksState?.loading===true;assignedPacksError=window.__adminervaPracticePacksState?.error===true;renderChallenges();
   watchGamesHeader();
   if("IntersectionObserver" in window){
     const links=[...rail.querySelectorAll(".games-rail-link")],targets=links.filter(link=>link.getAttribute("href")!=="#gamesProgress").map(link=>document.querySelector(link.getAttribute("href"))).filter(Boolean);
@@ -896,7 +909,7 @@ const bindControl=(id,event,handler)=>{
 window.__adminervaGamesReady={base:true,enhanced:false,backend:false,version:"3.13.0"};
 
 bindControl("practiceSyncBtn","click",()=>{
-  const action=async()=>{if(busy)return;await Promise.all([connectBoard(),refreshHub()]);if(mission&&!attempt?.attemptId&&eligible)await openMission(course,mission);else setBusy(false);};
+  const action=async()=>{if(busy)return;window.dispatchEvent(new CustomEvent("adminerva:practice-refresh"));await Promise.all([connectBoard(),refreshHub()]);if(mission&&!attempt?.attemptId&&eligible)await openMission(course,mission);else setBusy(false);};
   if(typeof window.withLoading==="function")void window.withLoading("Refreshing practice progress…",action,{button:field("practiceSyncBtn")});
   else void action();
 });
