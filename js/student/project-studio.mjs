@@ -704,7 +704,7 @@ export function createProjectStudio({
           return;
         }
         if(!confirm('Recover "'+project.title+'" as a NEW personal Studio project?'+
-          '\\n\\nThe older device/cloud copy and any graded assessment submission will remain unchanged. This personal copy is not a submission.'))return;
+          '\n\nThe older device/cloud copy and any graded assessment submission will remain unchanged. This personal copy is not a submission.'))return;
         let recovered=null;
         try{
           validateProject(project,{creating:true});
@@ -752,7 +752,7 @@ export function createProjectStudio({
         card.className="code-project-card";
         const size=Math.max(1,Math.ceil(projectSize(project)/1024));
         card.innerHTML='<div class="code-project-icon">'+escapeHtml(meta.template.icon)+'</div><div class="code-project-card-body"><div class="code-project-card-top"><h3>'+escapeHtml(project.title)+'</h3><span>'+escapeHtml(prettyDate(project.lastOpenedAt))+'</span></div><p>'+escapeHtml(meta.detail)+' · '+Object.keys(project.state?.files||{}).length+' files · '+size+' KB</p><div class="code-project-card-actions"><button type="button" data-open>Open project</button><button type="button" data-copy>Duplicate</button><button type="button" data-delete class="danger-subtle">Delete</button></div></div>';
-        if(project.assessment?.provisionedBy==="assessment-launch"&&project.assessment.offeringId){
+        if(project.assessment?.provisionedBy==="assessment-launch"){
           // Do not offer destructive local/cloud deletion or an editable
           // duplicate of a teacher-assigned examination project.
           card.querySelector("[data-copy]")?.remove();
