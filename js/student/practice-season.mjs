@@ -182,70 +182,228 @@ function genericOrderingActivity(course,mission,language,seed,a,b){
   return {code:"",prompt,items:items.map(item=>item.text),solution:ordered.map((text,id)=>items.findIndex(item=>item.id===id)),why,workspace:workspace(language,full)};
 }
 function numericDebuggingActivity(course,mission,language,seed,a,b){
-  const moduleId=missionModule(course,mission)?.id||"",java=language==="java",semi=java?";":"",
-   out=value=>java?"System.out.println("+value+");":"print("+value+")";
-  let code=[],choices=[],prompt="",why="",fixed=[],focusLine=2,caseHint="";
-  if(/values/.test(moduleId)){
-    code=[java?"int points = "+a+";":"points = "+a,"points -= "+b+semi,out("points")];
+  const topic=String(mission.practiceTopic||""),java=language==="java",semi=java?";":"",
+   out=value=>java?"System.out.println("+value+");":"print("+value+")",
+   declare=(name,value)=>java?"int "+name+" = "+value+";":name+" = "+value,
+   c=2+Math.abs(seed>>>5)%4;
+  let code=[],choices=[],goal="",why="",fixed=[],focusLine=2,caseHint="";
+  const finish=(line=focusLine)=>{focusLine=line;const shuffled=rotate(choices,seed);return {
+    code:code.join("\n"),prompt:goal+" Which replacement fixes line "+focusLine+"?",debugGoal:goal,
+    choices:shuffled,solution:shuffled.indexOf(choices[0]),why,
+    workspace:workspace(language,fixed.join("\n")),focusLine,caseHint
+  };};
+  if(topic==="update"){
+    code=[declare("points",a),"points -= "+b+semi,out("points")];
     choices=["points += "+b+semi,"points -= "+b+semi,"points *= "+b+semi,"points = "+b+semi];
-    prompt="points should increase by "+b+". Which replacement fixes line 2?";
+    goal="Starting at "+a+" points, applying a +"+b+" bonus should print "+(a+b)+".";
     why="Compound addition updates the existing value by adding the bonus.";
-    fixed=[code[0],choices[0],code[2]];caseHint="The update currently moves points in the opposite direction.";
-  }else if(/branches/.test(moduleId)){
-    code=java?["int score = "+b+";","if (score > "+b+") {",'  System.out.println("PASS");',"} else {",'  System.out.println("RETRY");',"}"]:
-      ["score = "+b,"if score > "+b+":",'    print("PASS")',"else:",'    print("RETRY")'];
+    fixed=[code[0],choices[0],code[2]];caseHint="The update currently moves points in the opposite direction.";return finish(2);
+  }
+  if(topic==="precedence"){
+    const expected=a+b*c;
+    code=[declare("result","("+a+" + "+b+") * "+c),out("result")];
+    choices=[declare("result",a+" + "+b+" * "+c),declare("result","("+a+" + "+b+") * "+c),declare("result",a+" * "+b+" + "+c),declare("result",a+" + "+b+" + "+c)];
+    goal="Use normal operator precedence: multiply "+b+" by "+c+" before adding "+a+", so the program should print "+expected+".";
+    why="Multiplication is evaluated before addition unless parentheses deliberately change the grouping.";
+    fixed=[choices[0],code[1]];caseHint="Compare the current grouping with multiplication-before-addition precedence.";return finish(1);
+  }
+  if(topic==="division"){
+    const expected=Math.trunc(a/b);
+    code=[declare("result",a+" * "+b),out("result")];
+    choices=[declare("result",a+" / "+b),declare("result",a+" * "+b),declare("result",a+" % "+b),declare("result",a+" + "+b)];
+    goal="Use integer division on "+a+" and "+b+", so the program should print "+expected+".";
+    why="Integer division uses / here and discards any fractional remainder for these positive integers.";
+    fixed=[choices[0],code[1]];caseHint="The current arithmetic operator performs a different operation.";return finish(1);
+  }
+  if(topic==="remainder"){
+    const expected=a%b;
+    code=[declare("result",a+" / "+b),out("result")];
+    choices=[declare("result",a+" % "+b),declare("result",a+" / "+b),declare("result",a+" * "+b),declare("result",a+" - "+b)];
+    goal="Compute the remainder when "+a+" is divided by "+b+", so the program should print "+expected+".";
+    why="The modulo operator % returns the remainder after division.";
+    fixed=[choices[0],code[1]];caseHint="The current operator returns a quotient rather than a remainder.";return finish(1);
+  }
+  if(topic==="parentheses"){
+    const expected=(a+b)*c;
+    code=[declare("result",a+" + "+b+" * "+c),out("result")];
+    choices=[declare("result","("+a+" + "+b+") * "+c),declare("result",a+" + "+b+" * "+c),declare("result",a+" * ("+b+" + "+c+")"),declare("result",a+" + "+b+" + "+c)];
+    goal="Add "+a+" and "+b+" first, then multiply the sum by "+c+", so the program should print "+expected+".";
+    why="Parentheses force the addition to happen before multiplication.";
+    fixed=[choices[0],code[1]];caseHint="The intended grouping is not represented by the current expression.";return finish(1);
+  }
+  if(topic==="branch"||topic==="comparison"){
+    code=java?[declare("score",b),"if (score > "+b+") {",'  System.out.println("PASS");',"} else {",'  System.out.println("RETRY");',"}"]:
+      [declare("score",b),"if score > "+b+":",'    print("PASS")',"else:",'    print("RETRY")'];
     choices=java?["if (score >= "+b+") {","if (score > "+b+") {","if (score < "+b+") {","if (score != "+b+") {"]:
       ["if score >= "+b+":","if score > "+b+":","if score < "+b+":","if score != "+b+":"];
-    prompt="A score equal to the minimum "+b+" should PASS. Which replacement fixes line 2?";
+    goal="A score exactly equal to the minimum "+b+" should print PASS.";
     why="An inclusive minimum uses >= so the exact boundary is accepted.";
-    fixed=[code[0],choices[0],...code.slice(2)];caseHint="Test the condition exactly at the required boundary.";
-  }else if(/loops/.test(moduleId)){
-    code=java?["int total = 0;","for (int i = 0; i <= "+b+"; i++) {","  total += i;","}",out("total")]:
-      ["total = 0","for i in range(0, "+(b+1)+"):", "    total += i",out("total")];
-    choices=java?["for (int i = 0; i < "+b+"; i++) {","for (int i = 0; i <= "+b+"; i++) {","for (int i = 1; i < "+b+"; i++) {","for (int i = 0; i > "+b+"; i++) {"]:
-      ["for i in range(0, "+b+"):","for i in range(0, "+(b+1)+"):","for i in range(1, "+b+"):","for i in range("+b+", 0):"];
-    prompt="The loop should process indexes 0 through "+(b-1)+" exactly once. Which replacement fixes line 2?";
-    why="The upper bound must be excluded so iteration stops before "+b+".";
-    fixed=[code[0],choices[0],...code.slice(2)];caseHint="The current loop includes one value beyond the intended final index.";
-  }else if(/collections/.test(moduleId)){
-    const values=a+", "+b+", "+(a+b);
+    fixed=[code[0],choices[0],...code.slice(2)];caseHint="Test the condition exactly at the required boundary.";return finish(2);
+  }
+  if(topic==="equality"){
+    code=java?[declare("value",a),"if (value != "+a+") {",'  System.out.println("MATCH");',"} else {",'  System.out.println("NO MATCH");',"}"]:
+      [declare("value",a),"if value != "+a+":",'    print("MATCH")',"else:",'    print("NO MATCH")'];
+    choices=java?["if (value == "+a+") {","if (value != "+a+") {","if (value > "+a+") {","if (value < "+a+") {"]:
+      ["if value == "+a+":","if value != "+a+":","if value > "+a+":","if value < "+a+":"];
+    goal="Because value is "+a+", the equality check against "+a+" should print MATCH.";
+    why="Equality uses ==; != tests whether the values are different.";
+    fixed=[code[0],choices[0],...code.slice(2)];caseHint="The condition currently asks whether equal values are different.";return finish(2);
+  }
+  if(topic==="and"){
+    code=java?["boolean oldEnough = true;","boolean hasId = false;","if (oldEnough || hasId) {",'  System.out.println("ALLOW");',"} else {",'  System.out.println("DENY");',"}"]:
+      ["oldEnough = True","hasId = False","if oldEnough or hasId:",'    print("ALLOW")',"else:",'    print("DENY")'];
+    choices=java?["if (oldEnough && hasId) {","if (oldEnough || hasId) {","if (!oldEnough && hasId) {","if (oldEnough == hasId) {"]:
+      ["if oldEnough and hasId:","if oldEnough or hasId:","if not oldEnough and hasId:","if oldEnough == hasId:"];
+    goal="Access should print ALLOW only when both oldEnough and hasId are true; with hasId false it should print DENY.";
+    why="Logical AND requires both conditions to be true.";
+    fixed=[code[0],code[1],choices[0],...code.slice(3)];caseHint="The current operator accepts either condition instead of requiring both.";return finish(3);
+  }
+  if(topic==="or"){
+    code=java?["boolean member = true;","boolean guestPass = false;","if (member && guestPass) {",'  System.out.println("ENTER");',"} else {",'  System.out.println("WAIT");',"}"]:
+      ["member = True","guestPass = False","if member and guestPass:",'    print("ENTER")',"else:",'    print("WAIT")'];
+    choices=java?["if (member || guestPass) {","if (member && guestPass) {","if (!member || guestPass) {","if (member == guestPass) {"]:
+      ["if member or guestPass:","if member and guestPass:","if not member or guestPass:","if member == guestPass:"];
+    goal="Entry should print ENTER when either member or guestPass is true; member is already true.";
+    why="Logical OR accepts either true condition.";
+    fixed=[code[0],code[1],choices[0],...code.slice(3)];caseHint="The current operator unnecessarily requires both conditions.";return finish(3);
+  }
+  if(topic==="sum-loop"){
+    const expected=b*(b+1)/2;
+    code=java?[declare("total",0),"for (int i = 1; i < "+b+"; i++) {","  total += i;","}",out("total")]:
+      [declare("total",0),"for i in range(1, "+b+"):","    total += i",out("total")];
+    choices=java?["for (int i = 1; i <= "+b+"; i++) {","for (int i = 1; i < "+b+"; i++) {","for (int i = 0; i < "+b+"; i++) {","for (int i = 1; i > "+b+"; i++) {"]:
+      ["for i in range(1, "+(b+1)+"):","for i in range(1, "+b+"):","for i in range(0, "+b+"):","for i in range("+b+", 1):"];
+    goal="Add every integer from 1 through "+b+" exactly once, so the program should print "+expected+".";
+    why="The loop must include the upper value "+b+".";
+    fixed=[code[0],choices[0],...code.slice(2)];caseHint="The current upper bound stops one iteration too early.";return finish(2);
+  }
+  if(topic==="count-loop"){
+    code=java?[declare("count",0),"for (int i = 1; i < "+b+"; i++) {","  count++;","}",out("count")]:
+      [declare("count",0),"for i in range(1, "+b+"):","    count += 1",out("count")];
+    choices=java?["for (int i = 0; i < "+b+"; i++) {","for (int i = 1; i < "+b+"; i++) {","for (int i = 0; i <= "+b+"; i++) {","for (int i = "+b+"; i > 0; i++) {"]:
+      ["for i in range(0, "+b+"):","for i in range(1, "+b+"):","for i in range(0, "+(b+1)+"):","for i in range("+b+", 0):"];
+    goal="Run the loop exactly "+b+" times using indexes 0 through "+(b-1)+", so the program should print "+b+".";
+    why="Starting at zero and stopping before "+b+" produces exactly "+b+" iterations.";
+    fixed=[code[0],choices[0],...code.slice(2)];caseHint="The current start value skips the first required iteration.";return finish(2);
+  }
+  if(topic==="step-loop"){
+    const end=b*2+1;
+    code=java?[declare("count",0),"for (int i = 1; i < "+end+"; i++) {","  count++;","}",out("count")]:
+      [declare("count",0),"for i in range(1, "+end+"):","    count += 1",out("count")];
+    choices=java?["for (int i = 1; i < "+end+"; i += 2) {","for (int i = 1; i < "+end+"; i++) {","for (int i = 0; i < "+end+"; i += 2) {","for (int i = 1; i <= "+end+"; i += 3) {"]:
+      ["for i in range(1, "+end+", 2):","for i in range(1, "+end+"):","for i in range(0, "+end+", 2):","for i in range(1, "+(end+1)+", 3):"];
+    goal="Visit only the odd values from 1 through "+(end-2)+" by stepping 2 each time.";
+    why="A step of 2 advances from one odd value to the next.";
+    fixed=[code[0],choices[0],...code.slice(2)];caseHint="The current loop advances by one, so it visits values that should be skipped.";return finish(2);
+  }
+  if(topic==="skip-loop"){
+    const end=b+3;
+    code=java?[declare("total",0),"for (int i = 0; i < "+end+"; i++) {","  if (i == "+b+") total += i;","  else total += i;","}",out("total")]:
+      [declare("total",0),"for i in range(0, "+end+"):","    if i == "+b+": total += i","    else: total += i",out("total")];
+    choices=java?["  if (i == "+b+") continue;","  if (i == "+b+") total += i;","  if (i != "+b+") continue;","  if (i == "+b+") break;"]:
+      ["    if i == "+b+": continue","    if i == "+b+": total += i","    if i != "+b+": continue","    if i == "+b+": break"];
+    goal="Skip value "+b+" completely while continuing with the later loop values.";
+    why="continue skips the current iteration without ending the loop.";
+    fixed=[code[0],code[1],choices[0],code[3],...code.slice(4)];caseHint="The current branch still adds the value that should be skipped.";return finish(3);
+  }
+  if(topic==="break-loop"){
+    const end=b+4;
+    code=java?[declare("count",0),"for (int i = 0; i < "+end+"; i++) {","  if (i == "+b+") continue;","  count++;","}",out("count")]:
+      [declare("count",0),"for i in range(0, "+end+"):","    if i == "+b+": continue","    count += 1",out("count")];
+    choices=java?["  if (i == "+b+") break;","  if (i == "+b+") continue;","  if (i != "+b+") break;","  if (i == "+b+") count++;"]:
+      ["    if i == "+b+": break","    if i == "+b+": continue","    if i != "+b+": break","    if i == "+b+": count += 1"];
+    goal="Stop the loop as soon as i reaches "+b+"; values after that point must not be processed.";
+    why="break ends the loop immediately, while continue only skips one iteration.";
+    fixed=[code[0],code[1],choices[0],...code.slice(3)];caseHint="The current control statement skips one value but then keeps looping.";return finish(3);
+  }
+  if(topic==="array-index"){
+    const values=a+", "+b+", "+c;
+    code=java?["int[] values = {"+values+"};","System.out.println(values[0]);"]:
+      ["values = ["+values+"]","print(values[0])"];
+    choices=java?["System.out.println(values[1]);","System.out.println(values[0]);","System.out.println(values[2]);","System.out.println(values.length);"]:
+      ["print(values[1])","print(values[0])","print(values[2])","print(len(values))"];
+    goal="Print the second element, "+b+", from the collection.";
+    why="Index 1 selects the second element in a zero-based collection.";
+    fixed=[code[0],choices[0]];caseHint="The current index selects the first element.";return finish(2);
+  }
+  if(topic==="array-last"){
+    const values=a+", "+b+", "+c;
     code=java?["int[] values = {"+values+"};","System.out.println(values[values.length]);"]:
       ["values = ["+values+"]","print(values[len(values)])"];
-    choices=java?[
-      "System.out.println(values[values.length - 1]);",
-      "System.out.println(values[values.length]);",
-      "System.out.println(values[0]);",
-      "System.out.println(values[1]);"
-    ]:[
-      "print(values[len(values) - 1])",
-      "print(values[len(values)])",
-      "print(values[0])",
-      "print(values[1])"
-    ];
-    prompt="The program should print the last element without going out of bounds. Which replacement fixes line 2?";
+    choices=java?["System.out.println(values[values.length - 1]);","System.out.println(values[values.length]);","System.out.println(values[0]);","System.out.println(values[1]);"]:
+      ["print(values[len(values) - 1])","print(values[len(values)])","print(values[0])","print(values[1])"];
+    goal="Print the last element, "+c+", without accessing beyond the collection.";
     why="The last valid index is one less than the collection length.";
-    fixed=[code[0],choices[0]];caseHint="A collection with length 3 has valid indexes 0, 1, and 2.";
-  }else{
-    code=java?["int first = "+a+";","int second = "+b+";","int result = Math.min(first, second);",out("result")]:
-      ["first = "+a,"second = "+b,"result = min(first, second)",out("result")];
-    choices=java?[
-      "int result = Math.max(first, second);",
-      "int result = Math.min(first, second);",
-      "int result = first + second;",
-      "int result = Math.abs(first - second);"
-    ]:[
-      "result = max(first, second)",
-      "result = min(first, second)",
-      "result = first + second",
-      "result = abs(first - second)"
-    ];
-    prompt="The reusable operation should keep the larger value. Which replacement fixes line 3?";
-    why="max returns the larger of the two arguments.";
-    fixed=[code[0],code[1],choices[0],code[3]];focusLine=3;caseHint="The selected helper currently returns the smaller value.";
+    fixed=[code[0],choices[0]];caseHint="The current index is one position beyond the final valid element.";return finish(2);
   }
-  const shuffled=rotate(choices,seed);
-  return {code:code.join("\n"),prompt,choices:shuffled,solution:shuffled.indexOf(choices[0]),why,
-    workspace:workspace(language,fixed.join("\n")),focusLine,caseHint};
+  if(topic==="array-update"){
+    const values=a+", "+b+", "+c;
+    code=java?["int[] values = {"+values+"};","values[0] += "+c+";","System.out.println(values[1]);"]:
+      ["values = ["+values+"]","values[0] += "+c,"print(values[1])"];
+    choices=java?["values[1] += "+c+";","values[0] += "+c+";","values[2] += "+c+";","values[1] = "+c+";"]:
+      ["values[1] += "+c,"values[0] += "+c,"values[2] += "+c,"values[1] = "+c];
+    goal="Add "+c+" to only the second element, so the final printed value should be "+(b+c)+".";
+    why="Index 1 targets the second element.";
+    fixed=[code[0],choices[0],code[2]];caseHint="The update currently changes the wrong collection position.";return finish(2);
+  }
+  if(topic==="array-length"){
+    const values=a+", "+b+", "+c;
+    code=java?["int[] values = {"+values+"};","System.out.println(values.length - 1);"]:
+      ["values = ["+values+"]","print(len(values) - 1)"];
+    choices=java?["System.out.println(values.length);","System.out.println(values.length - 1);","System.out.println(values[0]);","System.out.println(values[2]);"]:
+      ["print(len(values))","print(len(values) - 1)","print(values[0])","print(values[2])"];
+    goal="Print the number of elements in the collection, which is 3.";
+    why="Length counts elements; subtracting one gives the last index instead.";
+    fixed=[code[0],choices[0]];caseHint="The current expression computes an index, not the element count.";return finish(2);
+  }
+  if(topic==="array-sum"){
+    const values=a+", "+b+", "+c,expected=a+b+c;
+    code=java?["int[] values = {"+values+"};","int result = values[0] + values[1];",out("result")]:
+      ["values = ["+values+"]","result = values[0] + values[1]",out("result")];
+    choices=java?["int result = values[0] + values[1] + values[2];","int result = values[0] + values[1];","int result = values[0] + values[2];","int result = values[2];"]:
+      ["result = values[0] + values[1] + values[2]","result = values[0] + values[1]","result = values[0] + values[2]","result = values[2]"];
+    goal="Add all three collection values exactly once, so the program should print "+expected+".";
+    why="The total must include indexes 0, 1, and 2.";
+    fixed=[code[0],choices[0],code[2]];caseHint="One collection element is currently omitted from the sum.";return finish(2);
+  }
+  if(topic==="minimum"||topic==="maximum"){
+    const wantsMax=topic==="maximum",expected=wantsMax?Math.max(a,b):Math.min(a,b);
+    code=java?[declare("first",a),declare("second",b),declare("result",(wantsMax?"Math.min":"Math.max")+"(first, second)"),out("result")]:
+      [declare("first",a),declare("second",b),declare("result",(wantsMax?"min":"max")+"(first, second)"),out("result")];
+    choices=java?[declare("result",(wantsMax?"Math.max":"Math.min")+"(first, second)"),code[2],declare("result","first + second"),declare("result","Math.abs(first - second)")]:
+      [declare("result",(wantsMax?"max":"min")+"(first, second)"),code[2],declare("result","first + second"),declare("result","abs(first - second)")];
+    goal="Keep the "+(wantsMax?"larger":"smaller")+" of "+a+" and "+b+", so the program should print "+expected+".";
+    why=(wantsMax?"max":"min")+" returns the "+(wantsMax?"larger":"smaller")+" argument.";
+    fixed=[code[0],code[1],choices[0],code[3]];caseHint="The current helper selects the opposite extreme.";return finish(3);
+  }
+  if(topic==="absolute"){
+    code=[declare("value",-a),declare("result","value"),out("result")];
+    choices=java?[declare("result","Math.abs(value)"),declare("result","value"),declare("result","-Math.abs(value)"),declare("result","value * 0")]:
+      [declare("result","abs(value)"),declare("result","value"),declare("result","-abs(value)"),declare("result","value * 0")];
+    goal="Print the absolute magnitude of -"+a+", which should be "+a+".";
+    why="Absolute value measures distance from zero and is non-negative.";
+    fixed=[code[0],choices[0],code[2]];caseHint="The current assignment preserves the negative sign.";return finish(2);
+  }
+  if(topic==="subtract"){
+    code=[declare("first",a),declare("second",b),declare("result","second - first"),out("result")];
+    choices=[declare("result","first - second"),declare("result","second - first"),declare("result","first + second"),declare("result","first * second")];
+    goal="Subtract second from first in that order, so the program should print "+(a-b)+".";
+    why="Subtraction is order-sensitive: first - second differs from second - first.";
+    fixed=[code[0],code[1],choices[0],code[3]];caseHint="The operands are currently reversed.";return finish(3);
+  }
+  if(topic==="multiply"){
+    code=[declare("first",a),declare("second",b),declare("result","first + second"),out("result")];
+    choices=[declare("result","first * second"),declare("result","first + second"),declare("result","first - second"),declare("result","second / first")];
+    goal="Multiply "+a+" by "+b+", so the program should print "+(a*b)+".";
+    why="Multiplication uses * rather than addition.";
+    fixed=[code[0],code[1],choices[0],code[3]];caseHint="The current arithmetic operator combines the values in the wrong way.";return finish(3);
+  }
+  // Compatibility fallback for any older mission that has not yet been tagged.
+  code=[declare("points",a),"points -= "+b+semi,out("points")];
+  choices=["points += "+b+semi,"points -= "+b+semi,"points *= "+b+semi,"points = "+b+semi];
+  goal="Starting at "+a+" points, applying a +"+b+" bonus should print "+(a+b)+".";
+  why="Compound addition updates the existing value by adding the bonus.";
+  fixed=[code[0],choices[0],code[2]];caseHint="The update currently moves points in the opposite direction.";return finish(2);
 }
 function webDebuggingActivity(course,mission,seed){
   const moduleId=missionModule(course,mission)?.id||"",cases={
@@ -309,6 +467,8 @@ export function seasonActivity(course,mission,seed){
     if(mission.oop===true)activity={...activity,...oopDebuggingActivity(mission,seed)};
     else if(language==="web")activity={...activity,...webDebuggingActivity(course,mission,seed)};
     else activity={...activity,...numericDebuggingActivity(course,mission,language,seed,a,b)};
+    if(!activity.debugGoal)activity.debugGoal=String(activity.prompt||"")
+      .replace(/\s*Which replacement fixes line \d+\?\s*$/,"").trim();
   }
   return {...activity,difficulty:meta};
 }

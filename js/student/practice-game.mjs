@@ -2,9 +2,9 @@
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.0";
+import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.1";
 import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches,gameDeviceLabel} from "./practice-games.mjs?v=1.4.0";
-import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.7.0";
+import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.7.1";
 import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest,resolvePracticeContext} from "./practice-session.mjs?v=1.5.1";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
 const field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
@@ -764,7 +764,10 @@ function renderMechanicAid(question){
   if(question.type==="debugging"&&Number.isInteger(question.focusLine)&&question.code){
     panel.hidden=false;panel.dataset.kind="debug";field("practiceCode").hidden=true;
     if(!guestPage&&(attempt?.completed||answer!==null))bugLineFound=true;
-    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong",guestPage?"Case file":bugLineFound?"Defect located":"Find the defect"));const visual=!guestPage&&gameId==="bug-detective"?gameVisualHeader("bug","Bug Hunt","Scan → isolate → repair"):null;
+    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong",guestPage?"Case file":bugLineFound?"Defect located":"Find the defect"));const visual=!guestPage&&gameId==="bug-detective"?gameVisualHeader("bug","Bug Hunt","Goal → scan → isolate → repair"):null;
+    const goalText=String(question.debugGoal||question.prompt||"").replace(/\s*Which replacement fixes line \d+\?\s*$/,"").trim(),
+      goal=node("div",undefined,"games-bug-goal"),goalLabel=node("strong","Expected behavior"),goalCopy=node("p",goalText||"Use the stated requirement to decide which line violates the intended behavior.");
+    goal.append(goalLabel,goalCopy);
     const hint=node("p",question.caseHint||"Inspect the highlighted line and compare it with the stated goal.","lab-case-hint");
     const viewer=node("div",undefined,"lab-code-case"),status=node("p",guestPage?"":bugLineFound?"Defect located. Install a repair patch.":"Select the line you think contains the defect. No points are lost while hunting.","games-bug-status");
     question.code.split("\n").forEach((text,index)=>{
@@ -783,7 +786,7 @@ function renderMechanicAid(question){
       }
       viewer.append(row);
     });
-    if(guestPage)panel.append(head,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Find the defective line, then install a repair patch.";if(visual&&bugLineFound)setGameStatus(visual,"Defect isolated","success","✓");panel.append(...(visual?[visual]:[]),head,viewer,status);}
+    if(guestPage)panel.append(head,goal,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Use the expected behavior to find the defective line, then install a repair patch.";if(visual&&bugLineFound)setGameStatus(visual,"Defect isolated","success","✓");panel.append(...(visual?[visual]:[]),head,goal,viewer,status);}
   }
   if(!guestPage&&question.type==="ordering"){
     panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const visual=gameId==="algorithm-maze"?gameVisualHeader("builder","Code Builder","Assemble the execution path"):null,track=node("div",undefined,"games-builder-track"),head=node("div",undefined,"lab-mechanic-head");if(visual){for(let index=0;index<question.items.length;index++)track.append(node("span",String(index+1)));visual.append(track);setGameStatus(visual,question.items.length+" blocks","info","▦");}head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(...(visual?[visual]:[]),head,node("p","Snap blocks from the assembly tray into execution-order sockets.","games-mechanic-note"));
