@@ -319,4 +319,18 @@ export function validSeasonAnswer(question,answer){
   if(!Array.isArray(answer)||answer.length!==question.solution.length||answer.some(value=>!Number.isInteger(value)||value<0||value>=question.solution.length))return false;
   return new Set(answer).size===answer.length;
 }
-export function gradeSeasonAnswer(question,answer){return question.type==="output"?String(answer).trim().replace(/\r\n/g,"\n")===question.solution:Array.isArray(question.solution)?JSON.stringify(answer)===JSON.stringify(question.solution):answer===question.solution;}
+function indexedVisibleAnswerMatches(question,answer){
+  if(!Array.isArray(question.solution)||!Array.isArray(answer)||answer.length!==question.solution.length)return false;
+  const values=question.type==="matching"?question.right:question.type==="ordering"?question.items:null;
+  if(!Array.isArray(values))return JSON.stringify(answer)===JSON.stringify(question.solution);
+  return answer.every((valueIndex,position)=>{
+    const expectedIndex=question.solution[position];
+    return Number.isInteger(valueIndex)&&Number.isInteger(expectedIndex)&&
+      values[valueIndex]===values[expectedIndex];
+  });
+}
+export function gradeSeasonAnswer(question,answer){
+  if(question.type==="output")return String(answer).trim().replace(/\r\n/g,"\n")===question.solution;
+  if(Array.isArray(question.solution))return indexedVisibleAnswerMatches(question,answer);
+  return answer===question.solution;
+}
