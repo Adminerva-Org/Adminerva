@@ -459,7 +459,7 @@ function createSchoolPracticeSeasonService({
     const progress=progressRecord.data()||{},
      completed=[...new Set([...(progress.completed||[]),attempt.missionId])],
      missionScores={...(progress.missionScores||{}),[attempt.missionId]:availablePoints},
-     next={...score,schoolId:a.schoolId,personId:a.personId,
+     next={...score,schoolId:a.schoolId,personId:a.personId,optIn:true,
       points:(score.points||0)+availablePoints,
       completedCount:(score.completedCount||0)+1,updatedAt:stamp(time)};
     tx.create(awardRef,{schoolId:a.schoolId,ownerUid:a.uid,personId:a.personId,
@@ -468,7 +468,6 @@ function createSchoolPracticeSeasonService({
     tx.set(progressRef,{schoolId:a.schoolId,ownerUid:a.uid,personId:a.personId,
      season:attempt.season,courseId:attempt.courseId,completed,missionScores,updatedAt:stamp(time)});
     tx.set(scoreRef,next);
-    next.optIn=true;
     const publicRef=ref(a,"practice_public_rankings/"+next.publicId);
     tx.set(publicRef,boardData(a,next,time));
     const sections=[...new Set(enrollments.map(item=>item.sectionId).filter(Boolean))];
