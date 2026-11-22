@@ -27,7 +27,7 @@ export function bulkBatchLimit(sourceOrTask){
 }
 // Large code/repository projects can exceed an external model's context budget.
 // Refuse oversized packages explicitly rather than silently discard evidence.
-export const BULK_MAX_PACKAGE_CHARACTERS=1000000;
+export const BULK_MAX_PACKAGE_CHARACTERS=800000;
 
 export function assertBulkEvidence(source,evidence,{personalized=false}={}){
   if(!BULK_SOURCE_TYPES.includes(source))throw Error("No V4 evidence adapter exists for "+source+".");
@@ -154,6 +154,39 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
       BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+
       "). Select fewer learners or inspect smaller source sets; no frozen evidence was dropped.");
   return packageData;
+}
+
+
+/**
+ * Greedy, evidence-complete export packing. Verify the *formatted* JSON that
+ * teachers actually copy, including whitespace and the shared-once guidance.
+ * A learner either contributes every frozen evidence field or is deferred.
+ * No anonymous mapping is committed until an importable package exists.
+ */
+export function fitCompactBulkExternalEvaluationPackage({batchId,entries,task}={}){
+  const included=[],deferred=[],oversized=[];
+  let packageData=null,serialized="";
+  for(const entry of entries||[]){
+    const trial=[...included,entry];
+    try{
+      const candidate=buildCompactBulkExternalEvaluationPackage({batchId,entries:trial,task});
+      const candidateText=JSON.stringify(candidate,null,2);
+      if(candidateText.length>BULK_MAX_PACKAGE_CHARACTERS){
+        (included.length?deferred:oversized).push(entry);
+        continue;
+      }
+      included.push(entry);
+      packageData=candidate;
+      serialized=candidateText;
+    }catch(error){
+      // A genuine malformed or mixed assessment must fail, not be disguised
+      // as a size-related omission.
+      if(!String(error?.message||"").includes("above the safe external AI context budget"))
+        throw error;
+      (included.length?deferred:oversized).push(entry);
+    }
+  }
+  return {included,deferred,oversized,packageData,serialized};
 }
 
 
@@ -644,40 +677,61 @@ export function createV4BulkEvaluationController({
     const work=candidates().slice(0,batchLimit());
     if(!work.length){appendStatus("No ungraded submissions selected.");return;}
     await execute("External package",async()=>{
-      const refs=new Map(),items=[];
+      const nextBatchId=crypto.randomUUID();
+      const refs=new Map(),included=[],deferred=[],oversized=[];
+      let nextPayload="";
       for(const row of work){
         if(stopped)break;
         const id=key(row);
         try{
           const frozen=await inspect(row,{forExternal:true});
           if(session!==scopeGeneration)break;
-          const ref=crypto.randomUUID();
-          refs.set(ref,frozen);
-          items.push({ref,evaluationData:frozen.evaluationData});
-          exceptions.delete(id);
+          const ref=crypto.randomUUID(),entry={ref,evaluationData:frozen.evaluationData};
+          const fitted=fitCompactBulkExternalEvaluationPackage({
+            batchId:nextBatchId,entries:[...included,entry],task
+          });
+          if(fitted.included.length===included.length){
+            if(included.length)deferred.push(id);
+            else{
+              oversized.push(id);
+              exceptions.set(id,"This learner's complete frozen evidence exceeds the "+
+                BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+
+                "-character External AI budget even alone. Review individually.");
+            }
+          }else{
+            included.push(entry);
+            refs.set(ref,frozen);
+            nextPayload=fitted.serialized;
+            exceptions.delete(id);
+          }
         }catch(error){
           if(session!==scopeGeneration)break;
           exceptions.set(id,error?.message||"Could not export frozen source");
         }
         if(session!==scopeGeneration)break;
-        appendStatus(items.length+" verified anonymous package item(s) prepared.");
+        appendStatus(included.length+" learner(s) fit within "+
+          BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+" characters · "+
+          deferred.length+" deferred · "+oversized.length+" too large individually.");
       }
       if(session!==scopeGeneration)return;
-      if(!items.length)throw Error("No frozen submissions passed the package checks.");
-      const nextBatchId=crypto.randomUUID();
-      const nextPayload=JSON.stringify(
-        buildCompactBulkExternalEvaluationPackage({
-          batchId:nextBatchId,entries:items,task
-        }),null,2
-      );
-      // Commit the anonymous ref binding only after all items validate.
-      // Failed exports must not leave an invalid importable batch behind.
+      if(!included.length)throw Error("No complete frozen submissions fit the "+
+        BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+
+        "-character budget. Individually oversized learners need separate review.");
+      // Only included refs are valid for import; deferred students retain their
+      // original submissions and grades and remain available for later batches.
       batchId=nextBatchId;referenceMap=refs;payload.value=nextPayload;
+      selection=new Set(included.map(item=>refs.get(item.ref).key));
+      autoSelectNext=false;
       const exchange=payload.closest("details");
       if(exchange)exchange.open=true;
       payload.scrollIntoView({block:"nearest"});
-      appendStatus(items.length+" anonymous external evaluation package(s) ready. "+
-        "Copy the JSON and paste the evaluator's response in Import. No grades saved.");
+      appendStatus(included.length+" of "+work.length+" selected learners packaged ("+
+        nextPayload.length.toLocaleString()+"/"+
+        BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+" characters); "+
+        deferred.length+" deferred to a later batch; "+oversized.length+
+        " require individual review. Only packaged learners remain selected. "+
+        "Copy this JSON and keep its batch references unchanged. No grades saved.");
+      render();
     });
   }
   async function importBatch(){
