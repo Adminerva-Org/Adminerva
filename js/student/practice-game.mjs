@@ -382,18 +382,35 @@ function renderCourses(){
   }
 }
 function renderBoard(){
-  field("labGlobalTab").setAttribute("aria-pressed",String(boardMode==="global"));field("labClassTab").setAttribute("aria-pressed",String(boardMode==="class"));field("labClassControls").hidden=boardMode!=="class";
-  field("labBoardFootnote").textContent=boardMode==="global"?"Current season · top 30 public aliases. Equal points share a rank.":"Current season · private class aliases. Equal points share a rank.";
-  const rows=boardMode==="global"?globalRows:hub.classRows||[],list=field("practiceStandings");list.replaceChildren();
+  const globalTab=field("labGlobalTab"),classTab=field("labClassTab"),list=field("practiceStandings"),footnote=field("labBoardFootnote");
+  globalTab.setAttribute("aria-pressed",String(boardMode==="global"));classTab.setAttribute("aria-pressed",String(boardMode==="class"));
+  globalTab.setAttribute("aria-selected",String(boardMode==="global"));classTab.setAttribute("aria-selected",String(boardMode==="class"));
+  field("labClassControls").hidden=boardMode!=="class";
+  list.setAttribute("aria-label",boardMode==="global"?"Global Games rankings":"My class Games rankings");
+  const rows=boardMode==="global"?globalRows:hub.classRows||[];list.replaceChildren();
   if(!rows.length){
-    const message=hub.migrationPending===true
-      ?(boardMode==="global"?"Public rankings resume after Practice migration completes.":"Class rankings resume after Practice migration completes.")
+    const message=hub.migrationPending===true&&boardMode==="class"
+      ?"Class rankings resume after Practice migration completes."
       :boardMode==="global"
-        ?(publicBoardError?"Rankings could not connect. Refresh to try again.":publicBoardReady?"A new season is starting. Opt in and set the pace.":"Connecting to public rankings…")
-        :(eligible?"No class scores yet. Finish a mission to begin.":"Sign in with a linked student account to see your class.");
-    list.append(node("li",message,"lab-board-empty"));return;
+        ?(publicBoardError?"Global rankings could not connect. Refresh to try again.":publicBoardReady?"No active student accounts are available for this season yet.":"Connecting to global rankings…")
+        :(eligible?"No active classmates are linked to this section yet.":"Sign in with a linked student account to see your class.");
+    list.append(node("li",message,"lab-board-empty"));
+    footnote.textContent=boardMode==="global"
+      ?"Current season · all active platform student accounts · privacy-safe aliases."
+      :"Current season · active classmates · privacy-safe aliases.";
+    return;
   }
-  let rank=0,prior=null;rows.forEach((row,index)=>{if(row.points!==prior)rank=index+1;prior=row.points;const item=node("li",undefined,"lab-rank-row"+(row.isCurrent?" is-you":""));item.append(node("span",rank<=3?["🥇","🥈","🥉"][rank-1]:String(rank),"lab-rank-number"),node("span",row.alias+(row.isCurrent?" · You":"")),node("strong",row.points.toLocaleString()+" points"));list.append(item);});
+  let rank=0,prior=null,currentRank=null;
+  rows.forEach((row,index)=>{
+    if(row.points!==prior)rank=index+1;prior=row.points;
+    if(row.isCurrent)currentRank=rank;
+    const item=node("li",undefined,"lab-rank-row"+(row.isCurrent?" is-you":""));
+    item.append(node("span",rank<=3?["🥇","🥈","🥉"][rank-1]:String(rank),"lab-rank-number"),node("span",row.alias+(row.isCurrent?" · You":"")),node("strong",row.points.toLocaleString()+" points"));
+    list.append(item);
+  });
+  footnote.textContent=boardMode==="global"
+    ?"Current season · "+rows.length+" platform learner"+(rows.length===1?"":"s")+(currentRank?" · your rank #"+currentRank:"")+" · equal points share a rank."
+    :"Current season · "+rows.length+" classmate"+(rows.length===1?"":"s")+(currentRank?" · your rank #"+currentRank:"")+" · equal points share a rank.";
 }
 async function call(name,payload={}){return practiceSchoolRequest(name,payload);}
 function renderConnectedHub(){
@@ -419,7 +436,6 @@ async function refreshHub(classId=field("practiceClass").value){
     if(context.mode==="preview"){
       eligible=false;accountPreview=true;
       hub={season:PRACTICE_SEASON,eligible:false,classes:[],courses:[],legacyCount:0,points:0,completedCount:0};
-      globalRows=[];publicBoardReady=true;publicBoardError=false;
       renderConnectedHub();
       sync("Staff preview");
       notice("Preview mode · Games are interactive, but XP and scored submissions are disabled for staff/admin accounts.","info");
