@@ -190,19 +190,34 @@ export function fitCompactBulkExternalEvaluationPackage({batchId,entries,task}={
 }
 
 
+function summarizeBulkReview({criteria,feedback,teacherConfirmationCriteria=[],teacherResolvedCriteria=[]}){
+  const awarded=criteria.reduce((sum,row)=>sum+Number(row.awardedPoints||0),0);
+  const pending=criteria.reduce((sum,row)=>sum+Number(row.pendingPoints||0),0);
+  const confirmations=[...new Set((teacherConfirmationCriteria||[])
+    .filter(index=>Number.isInteger(index)&&index>=0&&index<criteria.length))];
+  const resolved=[...new Set((teacherResolvedCriteria||[])
+    .filter(index=>Number.isInteger(index)&&index>=0&&index<criteria.length))];
+  const teacherConfirmation=confirmations.length>0;
+  return {criteria,feedback,awarded,pending,teacherConfirmation,
+    teacherConfirmationCriteria:confirmations,teacherResolvedCriteria:resolved,
+    saveEligible:awarded>0&&pending===0&&!teacherConfirmation,
+    reason:awarded<=0?"Zero-score result; needs individual attention":
+      pending>0?"Unresolved points; enter final criterion scores":
+      teacherConfirmation?"Evaluator requires teacher confirmation":""};
+}
+
 export function bulkSuggestionState(suggestion,task){
   const rubric=Array.isArray(task?.rubric)?task.rubric:[];
   if(!rubric.length||!Array.isArray(suggestion?.criteria)||suggestion.criteria.length!==rubric.length)
     throw Error("The evaluation does not match this assessment's rubric.");
-  let awarded=0,pending=0,teacherConfirmation=false;
+  const teacherConfirmationCriteria=[];
   const criteria=suggestion.criteria.map((row,i)=>{
     const max=Number(rubric[i]?.points);
     const score=Number(row?.awardedPoints),hold=Number(row?.pendingPoints||0);
     if(!Number.isFinite(max)||max<=0||!Number.isFinite(score)||!Number.isFinite(hold)||
       score<0||hold<0||score+hold>max+0.000001)
       throw Error("Invalid evaluation score for rubric criterion "+(i+1)+".");
-    awarded+=score;pending+=hold;
-    if(row.confidence==="teacher_confirmation")teacherConfirmation=true;
+    if(row.confidence==="teacher_confirmation")teacherConfirmationCriteria.push(i);
     const comment=String(row.comment||"").trim();
     const rationale=String(row.rationale||"").trim();
     return {awardedPoints:score,pendingPoints:hold,
@@ -210,11 +225,32 @@ export function bulkSuggestionState(suggestion,task){
   });
   const feedback=String(suggestion.feedback||"").trim().slice(0,5000);
   if(feedback.length<20)throw Error("Evaluation feedback must contain at least 20 characters.");
-  return {criteria,feedback,awarded,pending,teacherConfirmation,
-    saveEligible:awarded>0&&pending===0&&!teacherConfirmation,
-    reason:awarded<=0?"Zero-score result; needs individual attention":
-      pending>0?"Unresolved points; individual review required":
-      teacherConfirmation?"Evaluator requires teacher confirmation":""};
+  return summarizeBulkReview({criteria,feedback,teacherConfirmationCriteria});
+}
+
+export function resolveBulkPendingCriterion(review,task,criterionIndex,finalPoints){
+  const rubric=Array.isArray(task?.rubric)?task.rubric:[];
+  const index=Number(criterionIndex),raw=String(finalPoints??"").trim();
+  if(!Number.isInteger(index)||index<0||index>=rubric.length||!Array.isArray(review?.criteria)||
+     review.criteria.length!==rubric.length)
+    throw Error("The pending criterion is no longer available.");
+  const maximum=Number(rubric[index]?.points),score=raw===""?NaN:Number(raw);
+  if(!Number.isFinite(maximum)||maximum<=0||!Number.isFinite(score)||score<0||score>maximum)
+    throw Error("Enter final points from 0 to "+maximum+".");
+  const criteria=review.criteria.map(row=>({...row}));
+  const resolved=new Set(Array.isArray(review.teacherResolvedCriteria)?review.teacherResolvedCriteria:[]);
+  const target=criteria[index];
+  if(!(Number(target.pendingPoints)>0||resolved.has(index)))
+    throw Error("This criterion has no pending points to resolve.");
+  target.awardedPoints=score;target.pendingPoints=0;resolved.add(index);
+  const confirmations=new Set(Array.isArray(review.teacherConfirmationCriteria)?
+    review.teacherConfirmationCriteria:[]);
+  confirmations.delete(index);
+  return summarizeBulkReview({
+    criteria,feedback:String(review.feedback||""),
+    teacherConfirmationCriteria:[...confirmations],
+    teacherResolvedCriteria:[...resolved]
+  });
 }
 
 export function readBulkExternalResponse(raw,{batchId,allowedRefs,task,parseResponse}){
@@ -471,13 +507,46 @@ export function createV4BulkEvaluationController({
       feedback.textContent=data.review.feedback;
       line.append(feedback);
       (data.review.criteria||[]).forEach((row,index)=>{
-        const rubric=task?.rubric?.[index]||{};
-        const entry=document.createElement("p");
+        const rubric=task?.rubric?.[index]||{},maximum=Number(rubric.points||0);
+        const entry=document.createElement("div");
         entry.className="mt-2 whitespace-pre-wrap border-t border-slate-100 pt-2 text-slate-700";
-        entry.textContent=String(rubric.name||"Criterion "+(index+1))+
-          " · "+row.awardedPoints+" / "+Number(rubric.points||0)+
+        const text=document.createElement("p");
+        text.textContent=String(rubric.name||"Criterion "+(index+1))+
+          " · "+row.awardedPoints+" / "+maximum+
           (row.pendingPoints?" · "+row.pendingPoints+" pending":"")+
           "\n"+row.comment;
+        entry.append(text);
+        const resolved=new Set(data.review.teacherResolvedCriteria||[]);
+        if(Number(row.pendingPoints)>0||resolved.has(index)){
+          const resolution=document.createElement("label");
+          resolution.className="mt-2 flex flex-wrap items-center gap-2 font-bold text-indigo-950";
+          resolution.append(document.createTextNode("Final points"));
+          const input=document.createElement("input");
+          input.type="number";input.min="0";input.max=String(maximum);
+          input.step="0.01";input.inputMode="decimal";
+          input.className="w-28 rounded-md border border-indigo-300 bg-white px-2 py-1 text-sm";
+          input.setAttribute("aria-label","Final points for "+String(rubric.name||"criterion "+(index+1)));
+          if(resolved.has(index)&&Number(row.pendingPoints)===0)input.value=String(row.awardedPoints);
+          else input.placeholder="0–"+maximum;
+          input.disabled=!stillGradeable||running||isBusy();
+          input.addEventListener("change",()=>{
+            try{
+              data.review=resolveBulkPendingCriterion(data.review,task,index,input.value);
+              if(data.review.saveEligible&&stillGradeable)saveSelection.add(data.key);
+              else saveSelection.delete(data.key);
+              appendStatus((student?.studentName||"Learner")+" · "+
+                String(rubric.name||"criterion "+(index+1))+" resolved. "+
+                data.review.pending+" pending point"+(data.review.pending===1?"":"s")+" remain.");
+              render();
+            }catch(error){
+              const message=error?.message||"Enter a valid final criterion score.";
+              input.setCustomValidity(message);input.reportValidity();appendStatus(message);
+            }
+          });
+          input.addEventListener("input",()=>input.setCustomValidity(""));
+          resolution.append(input,document.createTextNode("/ "+maximum));
+          entry.append(resolution);
+        }
         line.append(entry);
       });
       stagedList.append(line);
