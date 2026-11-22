@@ -162,6 +162,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         provisioningMode:doc.data().provisioningMode||
           ((doc.data().compatibilityMode||"legacy_allowed")==="v4_only"?"standard":"legacy_migration"),
         productionAuthorized:doc.data().productionAuthorized===true,
+        archivedFromState:doc.data().archivedFromState||null,
         pilot:doc.data().pilot?{
           status:doc.data().pilot.status||null,
           scopeReference:doc.data().pilot.scopeReference||null
@@ -483,6 +484,76 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         tx.create(auditRef,{actorUid:uid,action:"school_draft_created",schoolId,createdAt:FieldValue.serverTimestamp()});
       });
       return {schoolId,state:"draft"};
+    }
+    if(action==="update_registry"){
+      const displayName=phrase(input.displayName,3,120,"Registry display name"),
+        reason=phrase(input.reason,12,500,"Registry update reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before updating its registry entry.");
+      let result;
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef);
+        if(!school.exists)fail("not-found","The school does not exist.");
+        const data=school.data(),revision=Number(data.revision)||1;
+        if(revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you opened it. Refresh before saving.");
+        if(data.state==="archived")
+          fail("failed-precondition","Restore this school before editing its platform registry label.");
+        const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+        tx.update(schoolRef,{displayName,revision:nextRevision,updatedByUid:uid,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"school_registry_updated",
+          previousDisplayName:String(data.displayName||"").slice(0,120),displayName,reason,createdAt:now});
+        result={schoolId,displayName,state:data.state,revision:nextRevision};
+      });
+      return result;
+    }
+    if(action==="archive_school"){
+      const reason=phrase(input.reason,12,500,"School retirement reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the school before retiring it.");
+      let result;
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef);
+        if(!school.exists)fail("not-found","The school does not exist.");
+        const data=school.data(),revision=Number(data.revision)||1;
+        if(revision!==expectedRevision)
+          fail("failed-precondition","The school changed after you reviewed it. Refresh before retiring it.");
+        if(!["draft","suspended"].includes(data.state))
+          fail("failed-precondition","Only a draft or suspended school can be retired. End pilot activity or suspend an active school first.");
+        const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+        tx.update(schoolRef,{state:"archived",archivedFromState:data.state,archiveReason:reason,
+          archivedByUid:uid,archivedAt:now,revision:nextRevision,updatedByUid:uid,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"school_archived",
+          beforeState:data.state,afterState:"archived",reason,createdAt:now});
+        result={schoolId,state:"archived",revision:nextRevision};
+      });
+      return result;
+    }
+    if(action==="restore_archived_school"){
+      const reason=phrase(input.reason,12,500,"School restore reason"),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        fail("invalid-argument","Refresh the archived school before restoring it.");
+      let result;
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef);
+        if(!school.exists)fail("not-found","The school does not exist.");
+        const data=school.data(),revision=Number(data.revision)||1;
+        if(revision!==expectedRevision)
+          fail("failed-precondition","The archived school changed after you reviewed it. Refresh before restoring.");
+        if(data.state!=="archived")
+          fail("failed-precondition","Only an archived school can be restored by this action.");
+        const restoredState=["draft","suspended"].includes(data.archivedFromState)?data.archivedFromState:"draft",
+          now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+        tx.update(schoolRef,{state:restoredState,restoreReason:reason,restoredByUid:uid,restoredAt:now,
+          revision:nextRevision,updatedByUid:uid,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"school_archived_restored",
+          beforeState:"archived",afterState:restoredState,reason,createdAt:now});
+        result={schoolId,state:restoredState,revision:nextRevision};
+      });
+      return result;
     }
     if(action==="list_school_admins"){
       const [school,snap]=await Promise.all([
