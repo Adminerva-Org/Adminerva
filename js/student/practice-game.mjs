@@ -1,11 +1,10 @@
 /** One public mission map. Authenticated submissions and every point are checked by the server. */
-import {auth,db} from "../core/firebase-core.js?v=1.3.0";
+import {auth} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.1";
 import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches,gameDeviceLabel} from "./practice-games.mjs?v=1.4.0";
 import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.7.1";
-import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest,resolvePracticeContext} from "./practice-session.mjs?v=1.5.1";
+import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest,practicePlatformLeaderboard,resolvePracticeContext} from "./practice-session.mjs?v=1.5.2";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
 const field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
 const typeNames=guestPage?{choice:"Choose the answer",output:"Write the output",ordering:"Build the sequence",matching:"Match the pairs",debugging:"Fix the bug"}:{choice:"Quick Pick",output:"Code Trace",ordering:"Code Builder",matching:"Logic Match",debugging:"Bug Hunt"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
@@ -19,7 +18,7 @@ const STAGE_SCORING=[
   {...DIFFICULTIES[2],name:"Challenge"}
 ];
 let arcadeController=null;
-let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external||guestPage&&initialGame.id==="challenge-arena"?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,hubSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
+let user=null,eligible=false,accountPreview=false,hub={},course=COURSES[0],activeGame=initialGame.external||guestPage&&initialGame.id==="challenge-arena"?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,hubSequence=0,boardSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
 function localSet(key,value){try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
@@ -80,8 +79,7 @@ function renderSummary(){
   field("labIdentity").textContent=user?user.displayName||hub.alias||"Signed-in learner":"Public visitor";
   field("labAccountLink").textContent=user?"My workspace":"Sign in";field("labAccountLink").href=user?(guestPage?"guest-home.html":"student-home.html"):"login.html";
   field("labPreferences").hidden=!eligible;field("labPreferencesSignin").hidden=eligible||accountPreview||hub.migrationPending===true;
-  if(document.activeElement!==field("labAlias"))field("labAlias").value=hub.alias||"";
-  field("labOptIn").checked=hub.optIn===true;
+  if(field("labAlias")&&document.activeElement!==field("labAlias"))field("labAlias").value=hub.alias||"";
   const select=field("practiceClass"),selected=hub.classId||"";select.replaceChildren();
   for(const profile of hub.classes||[])select.add(new Option(profile.section,profile.id));select.disabled=!(hub.classes||[]).length;select.hidden=!(hub.classes||[]).length;select.value=selected;
   field("labClassHint").textContent=(hub.classes||[]).length?"Only your class sees this private class board.":"Your class board appears when your school links a student section.";
