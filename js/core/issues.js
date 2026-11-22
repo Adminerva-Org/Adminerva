@@ -238,7 +238,7 @@ async function createLegacyReport(values){
     title:values.title,description:values.description,category:values.category,
     priority:"Medium",images:[],urlContext:location.href,
     reporterEmail:(user.email||"").toLowerCase(),reporterUid:user.uid,reporterRole:"reporter",
-    status:"Open",upvotes:[],locked:false,createdAt:serverTimestamp(),
+    status:"Open",priority:"Medium",revision:1,upvotes:[],locked:false,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),
     module:values.module||"",expectedBehavior:"",actualBehavior:"",reproductionSteps:"",
     clientContext:{page:location.pathname,userAgent:navigator.userAgent.slice(0,300)},
     audience,studentId:legacyStudent?.studentId||"",section:legacyStudent?.section||""
