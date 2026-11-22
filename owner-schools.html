@@ -111,6 +111,25 @@
       <button type="button" class="own-button" data-owner-assist-target="people-access.html#overview" style="background:#0f766e">Assist People &amp; Access</button>
       <button type="button" class="own-button" data-owner-assist-target="school-admin.html" style="background:#475569">Assist School Administration</button>
     </div>
+    <form id="owner-registry-update" style="margin-top:1rem;border-top:1px solid #bae6fd;padding-top:1rem">
+      <h4 style="font-weight:800">Platform registry label</h4>
+      <p class="own-muted">This is the System Admin tenant label. It does not replace the school's official profile name or academic records.</p>
+      <label>Registry display name<input class="own-field" name="displayName" minlength="3" maxlength="120" required></label>
+      <label>Change reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Save registry label</button>
+    </form>
+    <form id="owner-archive-school" hidden style="margin-top:1rem;border-top:1px solid #fed7aa;padding-top:1rem">
+      <h4 style="font-weight:800">Retire institution tenant</h4>
+      <p class="own-muted">Retirement preserves the tenant, memberships, school data and audit history while removing the school from normal verified school selection. Active schools must be suspended first; pilot schools must exit pilot first.</p>
+      <label>Retirement reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button warn">Retire school</button>
+    </form>
+    <form id="owner-restore-school" hidden style="margin-top:1rem;border-top:1px solid #bbf7d0;padding-top:1rem">
+      <h4 style="font-weight:800">Restore retired institution</h4>
+      <p class="own-muted">Restores the preserved tenant to its prior safe state (draft or suspended). It never restores an archived school directly to active production access.</p>
+      <label>Restore reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Restore retired school</button>
+    </form>
    </section>
    <section id="owner-standard-setup" hidden style="margin-top:1rem;padding:1rem;border:1px solid #bfdbfe;border-radius:12px;background:#f8fbff">
     <div style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
