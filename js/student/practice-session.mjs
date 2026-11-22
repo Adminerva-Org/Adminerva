@@ -15,6 +15,7 @@ const SCHOOL_ENDPOINTS=Object.freeze({
   practicePreferences:"schoolPracticePreferences"
 });
 const tenantSchools=httpsCallable(functions,"tenantSchools");
+const platformLeaderboard=httpsCallable(functions,"practicePlatformLeaderboard");
 const schoolKey=uid=>"Adminerva_last_verified_school_"+uid;
 let current=null,schoolCache=null;
 
@@ -32,6 +33,11 @@ async function legacyCall(name,payload){
   const result=await httpsCallable(functions,name)(payload);
   if(auth.currentUser?.uid!==uid)throw Error("Account changed. Reload practice before continuing.");
   return result.data;
+}
+
+export async function practicePlatformLeaderboard(){
+  const result=await platformLeaderboard({});
+  return result.data||{};
 }
 
 export async function resolvePracticeContext({refresh=false}={}){
