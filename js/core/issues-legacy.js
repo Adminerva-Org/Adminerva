@@ -529,39 +529,62 @@ window.deleteComment = async function (commentId) {
 function canTriage(issue){
   return isSuperAdmin || (isTeacher && issue?.audience==="teacher");
 }
-async function updateIssueField(field,value,{button}={}){
+async function updateIssueFields(changes,{button,action="triage"}={}){
   const id=currentOpenIssueId,issue=allIssues.find(item=>item.id===id);
   if(!id||!issue||!canTriage(issue))return;
-  const previous=issue[field];
+  const reason=String(document.getElementById("adminDecisionReason")?.value||"").trim();
+  if(reason.length<12||reason.length>600){
+    alert("Enter a reason for this support change (12–600 characters).");
+    document.getElementById("adminDecisionReason")?.focus();return;
+  }
+  const previous=Object.fromEntries(Object.keys(changes).map(key=>[key,issue[key]])),
+    expectedRevision=Number(issue.revision)||1;
   if(button)button.disabled=true;
-  const end=window.beginLoading?.("Updating report "+field+"…")||(()=>{});
-  issue[field]=value;
-  renderIssues();
+  const end=window.beginLoading?.("Updating support report…")||(()=>{});
+  Object.assign(issue,changes);renderIssues();
   try{
-    await updateDoc(doc(db,"issues",id),{
-      [field]:value,updatedAt:serverTimestamp()
+    const ref=doc(db,"issues",id);
+    const nextRevision=await runTransaction(db,async transaction=>{
+      const current=await transaction.get(ref);
+      if(!current.exists())throw Error("This support report no longer exists.");
+      const data=current.data(),revision=Number(data.revision)||1;
+      if(revision!==expectedRevision)throw Error("This report changed. Reopen it before saving another decision.");
+      const next=revision+1,now=serverTimestamp();
+      transaction.update(ref,{...changes,revision:next,updatedAt:now,updatedByUid:auth.currentUser?.uid||null,lastDecisionReason:reason});
+      transaction.set(doc(ref,"revisions",String(next)),{
+        action,reason,actorUid:auth.currentUser?.uid||null,
+        before:{...Object.fromEntries(Object.keys(changes).map(key=>[key,data[key]])),revision},
+        after:{...changes,revision:next},createdAt:now
+      });
+      return next;
     });
+    issue.revision=nextRevision;
+    const reasonInput=document.getElementById("adminDecisionReason");if(reasonInput)reasonInput.value="";
     if(currentOpenIssueId===id)window.openIssueModal(id);
   }catch(error){
-    console.warn("Report update failed:",error);
-    issue[field]=previous;
-    renderIssues();
+    console.warn("Support report update failed:",error);
+    Object.assign(issue,previous);renderIssues();
     if(currentOpenIssueId===id)window.openIssueModal(id);
-    alert("Report change could not be saved. Your previous value has been restored.");
+    alert(error?.message||"Report change could not be saved. Your previous values have been restored.");
   }finally{
     if(button)button.disabled=false;end();
   }
 }
-document.getElementById("adminStatusSelect")?.addEventListener("change",e=>{
-  void updateIssueField("status",e.target.value,{button:e.target});
-});
-document.getElementById("adminPrioritySelect")?.addEventListener("change",e=>{
-  void updateIssueField("priority",e.target.value,{button:e.target});
+async function updateIssueField(field,value,options={}){
+  return updateIssueFields({[field]:value},options);
+}
+document.getElementById("adminSaveTriage")?.addEventListener("click",e=>{
+  const issue=allIssues.find(item=>item.id===currentOpenIssueId);
+  if(!issue||!canTriage(issue))return;
+  void updateIssueFields({
+    status:document.getElementById("adminStatusSelect")?.value||issue.status||"Open",
+    priority:document.getElementById("adminPrioritySelect")?.value||issue.priority||"Medium"
+  },{button:e.currentTarget,action:"triage"});
 });
 document.getElementById("adminTestBtn")?.addEventListener("click",e=>{
   if(!isSuperAdmin)return;
   const issue=allIssues.find(item=>item.id===currentOpenIssueId);
-  if(issue)void updateIssueField("internalTest",!Boolean(issue.internalTest),{button:e.currentTarget});
+  if(issue)void updateIssueField("internalTest",!Boolean(issue.internalTest),{button:e.currentTarget,action:"classification"});
 });
 function issuePacket(issue,comments=[]){
   const at=value=>value?.toDate?.()?.toISOString?.()||"";
@@ -583,16 +606,11 @@ document.getElementById("downloadReportsCsv")?.addEventListener("click",()=>{con
 document.getElementById("filterReportType")?.addEventListener("change",window.renderIssuesFilter);
 document.getElementById("adminLockBtn")?.addEventListener("click",e=>{
   const issue=allIssues.find(item=>item.id===currentOpenIssueId);
-  if(issue)void updateIssueField("locked",!Boolean(issue.locked),{button:e.currentTarget});
+  if(issue)void updateIssueField("locked",!Boolean(issue.locked),{button:e.currentTarget,action:"discussion_lock"});
 });
-document.getElementById("adminDeleteBtn")?.addEventListener("click",async event=>{
+document.getElementById("adminDeleteBtn")?.addEventListener("click",event=>{
   if(!isSuperAdmin||!currentOpenIssueId)return;
   const issue=allIssues.find(item=>item.id===currentOpenIssueId);if(!issue)return;
-  if(!confirm("Close this report and lock further comments? The report and discussion will be preserved for history and support export."))return;
-  const button=event.currentTarget;button.disabled=true;const end=window.beginLoading?.("Closing report…")||(()=>{});
-  try{
-    await updateDoc(doc(db,"issues",currentOpenIssueId),{status:"Closed (Won't Fix)",locked:true,updatedAt:serverTimestamp()});
-    issue.status="Closed (Won't Fix)";issue.locked=true;renderIssues();window.openIssueModal(issue.id);
-  }catch(error){console.warn("Unable to close report:",error);alert("Report could not be closed. No change was made.");}
-  finally{button.disabled=false;end();}
+  if(!confirm("Close this report and lock further comments? The report and discussion will be preserved for history and can be reopened through triage."))return;
+  void updateIssueFields({status:"Closed (Won't Fix)",locked:true},{button:event.currentTarget,action:"close"});
 });
