@@ -203,6 +203,8 @@ function createSchoolPracticeSeasonService({
   return rows.map(row=>({...row}));
  }
  const invalidatePlatformBoard=()=>{platformBoardCache.expiresAt=0;};
+ const hasDuplicateMatchingTerminals=question=>question?.type==="matching"&&
+  Array.isArray(question.right)&&new Set(question.right).size<question.right.length;
 
  async function acquireSeason(request){
   const a=await actor(request),time=now(),browserId=request.data?.browserId;
@@ -340,7 +342,11 @@ function createSchoolPracticeSeasonService({
    }
    tx.set(resumeRef,{schoolId:a.schoolId,ownerUid:a.uid,personId:a.personId,season,
     courseId:course.id,missionId:mission.id,openedAt:stamp(time)},{merge:true});
-   const wrong=state.data()?.wrongSubmissions||0,completed=state.data()?.completed===true;
+   const stateData=state.data()||{},completed=stateData.completed===true,
+    repairDuplicateMisses=!completed&&hasDuplicateMatchingTerminals(question)&&stateData.duplicateIdentityRepairVersion!==1,
+    wrong=repairDuplicateMisses?0:stateData.wrongSubmissions||0;
+   if(repairDuplicateMisses)tx.set(stateRef,{wrongSubmissions:0,duplicateIdentityRepairVersion:1,
+    duplicateIdentityRepairedAt:stamp(time)},{merge:true});
    return {attemptId,courseId:course.id,missionId:mission.id,season,
     question:rules.publicActivity(question),wrongSubmissions:wrong,
     availablePoints:Math.max(question.difficulty.floor,
@@ -388,8 +394,11 @@ function createSchoolPracticeSeasonService({
    const state=stateRecord.data()||{},score=scoreSeed(a,attempt.season,scoreRecord.data());
    if(time-millis(state.lastSubmittedAt)<900)
     reject("resource-exhausted","Wait a moment before another graded submission.","practice-rate-limit");
-   const correct=rules.gradeSeasonAnswer(question,answer),
-    wrong=(state.wrongSubmissions||0)+(correct?0:1),
+   const repairDuplicateMisses=state.completed!==true&&hasDuplicateMatchingTerminals(question)&&
+     state.duplicateIdentityRepairVersion!==1,
+    priorWrong=repairDuplicateMisses?0:state.wrongSubmissions||0,
+    correct=rules.gradeSeasonAnswer(question,answer),
+    wrong=priorWrong+(correct?0:1),
     availablePoints=Math.max(question.difficulty.floor,
      question.difficulty.maximum-wrong*question.difficulty.deduction),
     result={correct,awarded:correct,earnedPoints:correct?availablePoints:0,
@@ -401,7 +410,9 @@ function createSchoolPracticeSeasonService({
    tx.set(stateRef,{schoolId:a.schoolId,ownerUid:a.uid,personId:a.personId,
     season:attempt.season,courseId:attempt.courseId,missionId:attempt.missionId,
     wrongSubmissions:wrong,completed:correct,earnedPoints:correct?availablePoints:0,
-    lastSubmittedAt:stamp(time),...(correct?{completedAt:stamp(time)}:{})});
+    lastSubmittedAt:stamp(time),
+    ...(repairDuplicateMisses?{duplicateIdentityRepairVersion:1,duplicateIdentityRepairedAt:stamp(time)}:{}),
+    ...(correct?{completedAt:stamp(time)}:{})});
    if(correct){
     result.explanation=question.why;result.workspace=question.workspace;
     const progress=progressRecord.data()||{},
