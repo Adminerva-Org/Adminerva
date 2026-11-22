@@ -182,6 +182,27 @@ function createSchoolPracticeSeasonService({
   schoolId:a.schoolId,ownerUid:a.uid,alias:score.alias,points:score.points,
   completedCount:score.completedCount,season:score.season,updatedAt:stamp(time)
  });
+ let platformBoardCache={season:"",expiresAt:0,rows:[]};
+ async function platformPublicRows(season,time){
+  if(platformBoardCache.season===season&&platformBoardCache.expiresAt>time)
+   return platformBoardCache.rows.map(row=>({...row}));
+  const schools=await db.collection("platform_schools").get(),
+   activeSchools=schools.docs.filter(school=>["active","pilot"].includes(school.data().state)),
+   boards=await Promise.all(activeSchools.map(school=>
+    db.collection(prefix(school.id)+"practice_public_rankings").get()));
+  const rows=boards.flatMap((board,index)=>board.docs.map(record=>({
+    ...record.data(),schoolId:activeSchools[index].id
+   }))).filter(row=>row.season===season&&typeof row.alias==="string"&&
+      Number.isFinite(row.points)&&row.points>=0)
+   .sort((x,y)=>y.points-x.points||
+      (Number(y.completedCount||0)-Number(x.completedCount||0))||
+      x.alias.localeCompare(y.alias)||
+      String(x.schoolId).localeCompare(String(y.schoolId)))
+   .slice(0,30);
+  platformBoardCache={season,expiresAt:time+15000,rows};
+  return rows.map(row=>({...row}));
+ }
+ const invalidatePlatformBoard=()=>{platformBoardCache.expiresAt=0;};
 
  async function acquireSeason(request){
   const a=await actor(request),time=now(),browserId=request.data?.browserId;
@@ -246,11 +267,11 @@ function createSchoolPracticeSeasonService({
  async function hub(request){
   const a=await actor(request,{allowMigrationPending:true}),rules=await seasonRules(),season=rules.PRACTICE_SEASON,time=now();
   if(a.migrationPending)return legacyMigrationHub(a,request,rules,time);
-  const [saved,progress,legacy,publicBoard,resumeRecord,missionStates]=await Promise.all([
+  const [saved,progress,legacy,platformBoard,resumeRecord,missionStates]=await Promise.all([
    ref(a,"practice_season_scores/"+a.uid).get(),
    col(a,"practice_season_progress/"+a.uid+"/courses").get(),
    col(a,"practice_verified_progress/"+a.uid+"/courses").get(),
-   col(a,"practice_public_rankings").orderBy("points","desc").limit(30).get(),
+   platformPublicRows(season,time),
    ref(a,"practice_resume/"+a.uid).get(),
    col(a,"practice_season_scores/"+a.uid+"/mission_state").limit(501).get()
   ]);
@@ -267,9 +288,10 @@ function createSchoolPracticeSeasonService({
       isCurrent:row.ownerUid===a.uid}))
     .sort((x,y)=>y.points-x.points);
   }
-  const publicRows=publicBoard.docs.map(row=>row.data()).filter(row=>row.season===season)
-   .map(row=>({alias:row.alias,points:row.points,completedCount:row.completedCount,
-     isCurrent:row.ownerUid===a.uid}));
+  const publicRows=platformBoard.map(row=>({
+   alias:row.alias,points:row.points,completedCount:row.completedCount,
+   isCurrent:row.ownerUid===a.uid&&row.schoolId===a.schoolId
+  }));
   const resume=resumeRecord.exists&&resumeRecord.data().season===season?
    {courseId:resumeRecord.data().courseId,missionId:resumeRecord.data().missionId,
     openedAt:millis(resumeRecord.data().openedAt)}:null;
@@ -336,7 +358,7 @@ function createSchoolPracticeSeasonService({
    reject("invalid-argument","Open a mission and submit a complete answer.","submission");
   const sessionRef=ref(a,"practice_sessions/"+a.uid),
    attemptRef=ref(a,"practice_season_attempts/"+attemptId);
-  return db.runTransaction(async tx=>{
+  const result=await db.runTransaction(async tx=>{
    const [sessionRecord,attemptRecord]=await Promise.all([
     tx.get(sessionRef),tx.get(attemptRef)
    ]);
@@ -407,17 +429,19 @@ function createSchoolPracticeSeasonService({
    tx.set(responseRef,{schoolId:a.schoolId,ownerUid:a.uid,result,createdAt:stamp(time)});
    return result;
   });
+  invalidatePlatformBoard();
+  return result;
  }
 
  async function preferences(request){
   const a=await actor(request),time=now(),rules=await seasonRules();
   if(typeof request.data?.optIn!=="boolean")
-   reject("invalid-argument","Choose whether to join this school's public leaderboard.","preferences");
+   reject("invalid-argument","Choose whether to join the platform-wide public leaderboard.","preferences");
   const alias=String(request.data?.alias||"").trim();
   if(!/^[A-Za-z0-9 _-]{3,24}$/.test(alias))
    reject("invalid-argument","Use a nickname of 3–24 letters, numbers, spaces, dashes or underscores. Do not use your real name.","alias");
   const scoreRef=ref(a,"practice_season_scores/"+a.uid);
-  return db.runTransaction(async tx=>{
+  const result=await db.runTransaction(async tx=>{
    const record=await tx.get(scoreRef),enrollments=await eligibility(tx,a),
     before=scoreSeed(a,rules.PRACTICE_SEASON,record.data()),
     score={...before,schoolId:a.schoolId,personId:a.personId,alias,
@@ -433,6 +457,8 @@ function createSchoolPracticeSeasonService({
      season:rules.PRACTICE_SEASON,updatedAt:stamp(time)});
    return {schoolId:a.schoolId,alias:score.alias,optIn:score.optIn};
   });
+  invalidatePlatformBoard();
+  return result;
  }
 
  return {acquireSeason,hub,startSeason,submitSeason,preferences};
