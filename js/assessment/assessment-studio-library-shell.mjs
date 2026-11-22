@@ -375,5 +375,5 @@ if(host){
 
   `;
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=20261122-deployed-bulk1");
+  await import("../repo-review/teacher-assessment-library.mjs?v=20261123-crud-restore1");
 }

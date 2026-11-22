@@ -3,19 +3,14 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 
 const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"platformUsers");
-const list=el("pu-list"),status=el("pu-status"),dialog=el("pu-detail");
-let items=[],currentToken=null,nextToken=null,history=[],busy=false,listRun=0,detailRun=0;
+const list=el("pu-list"),status=el("pu-status"),dialog=el("pu-detail"),createDialog=el("pu-create-dialog");
+let items=[],busy=false,listRun=0,detailRun=0,currentAccount=null;
 
 function node(tag,className="",text=""){
-  const out=document.createElement(tag);if(className)out.className=className;if(text!==undefined)out.textContent=text;return out;
-}
-function setBusy(value,message=""){
-  busy=value;
-  el("pu-refresh").disabled=value;
-  el("pu-find-exact").disabled=value;
-  el("pu-prev").disabled=value||history.length===0;
-  el("pu-next").disabled=value||!nextToken;
-  if(message)status.textContent=message;
+  const out=document.createElement(tag);
+  if(className)out.className=className;
+  if(text!==undefined)out.textContent=text;
+  return out;
 }
 function accountState(item){
   if(item.disabled)return "Disabled";
@@ -23,7 +18,23 @@ function accountState(item){
 }
 function when(value){
   if(!value)return "Never / unavailable";
-  const date=new Date(value);return Number.isNaN(date.getTime())?String(value):date.toLocaleString();
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?String(value):date.toLocaleString();
+}
+function setBusy(value,message=""){
+  busy=value;
+  for(const id of ["pu-refresh","pu-create","pu-save-profile","pu-reset-password","pu-lifecycle","pu-create-submit"]){
+    const target=el(id);if(target)target.disabled=value;
+  }
+  if(message)status.textContent=message;
+}
+function sortItems(){
+  items.sort((a,b)=>(a.displayName||a.email||a.uid).localeCompare(b.displayName||b.email||b.uid));
+}
+function replaceItem(account){
+  const index=items.findIndex(item=>item.uid===account.uid);
+  if(index>=0)items[index]=account;else items.push(account);
+  sortItems();
 }
 function visible(item){
   const query=el("pu-search").value.trim().toLocaleLowerCase("en");
@@ -40,55 +51,91 @@ function visible(item){
 function render(){
   list.replaceChildren();
   const rows=items.filter(visible);
-  el("pu-count").textContent=rows.length+" shown · "+items.length+" loaded";
+  el("pu-count").textContent=rows.length+" shown · "+items.length+" total";
   if(!rows.length){
-    list.append(node("p","text-sm text-slate-600 py-8 text-center",items.length?"No accounts match the loaded-page filters.":"No accounts were returned for this page."));
-  }else for(const item of rows){
+    list.append(node("p","text-sm text-slate-600 py-8 text-center",items.length?
+      "No accounts match the current search and filters.":"No Firebase Auth accounts were returned."));
+    return;
+  }
+  for(const item of rows){
     const row=node("article","py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
-    const info=node("div","min-w-0"),title=node("strong","block break-words",item.displayName||item.email||"Unnamed account");
-    const meta=node("p","text-xs text-slate-600 mt-1 break-words",
-      [item.email||"No email",accountState(item),item.platformAdmin?"Platform Admin":"Standard user"].join(" · "));
-    const uid=node("p","text-[11px] text-slate-400 mt-1 break-all","Account ID: "+item.uid);
-    info.append(title,meta,uid);
+    const info=node("div","min-w-0");
+    info.append(
+      node("strong","block break-words",item.displayName||item.email||"Unnamed account"),
+      node("p","text-xs text-slate-600 mt-1 break-words",
+        [item.email||"No email",accountState(item),item.platformAdmin?"Platform Admin":"Standard user"].join(" · ")),
+      node("p","text-[11px] text-slate-400 mt-1 break-all","Account ID: "+item.uid)
+    );
     const actions=node("div","flex items-center gap-2 shrink-0");
     if(item.platformAdmin)actions.append(node("span","pu-chip border-blue-200 bg-blue-50 text-blue-800","Platform Admin"));
-    const open=node("button","pu-btn primary","View memberships");open.type="button";
-    open.addEventListener("click",()=>void openDetail(item));actions.append(open);
-    row.append(info,actions);list.append(row);
+    const open=node("button","pu-btn primary","View & manage");open.type="button";
+    open.addEventListener("click",()=>void openDetail(item));
+    actions.append(open);row.append(info,actions);list.append(row);
   }
-  el("pu-prev").disabled=busy||history.length===0;el("pu-next").disabled=busy||!nextToken;
 }
-async function loadPage(token=currentToken){
-  const run=++listRun;setBusy(true,"Loading platform accounts…");
+async function loadAll(){
+  const run=++listRun;setBusy(true,"Loading the complete platform account directory…");
   try{
-    const result=(await api({action:"list",pageSize:25,...(token?{pageToken:token}:{})})).data;
+    const result=(await api({action:"list_all"})).data;
     if(run!==listRun)return;
-    items=result.items||[];currentToken=token||null;nextToken=result.nextPageToken||null;render();
-    status.textContent=items.length+" account"+(items.length===1?"":"s")+" loaded for this page.";
+    items=Array.isArray(result.items)?result.items:[];
+    sortItems();render();
+    status.textContent=items.length+" platform account"+(items.length===1?"":"s")+" loaded. Search and filters apply to the complete directory.";
   }catch(error){
     if(run!==listRun)return;
-    items=[];nextToken=null;render();status.textContent=error?.message||"User directory could not be loaded.";
+    items=[];render();status.textContent=error?.message||"The complete user directory could not be loaded.";
   }finally{if(run===listRun)setBusy(false);}
 }
 function detailTile(label,value){
   const box=node("div","rounded-xl border border-slate-200 bg-slate-50 p-3");
-  box.append(node("span","text-xs text-slate-500",label),node("strong","block mt-1 break-words",value));return box;
+  box.append(node("span","text-xs text-slate-500",label),node("strong","block mt-1 break-words",value));
+  return box;
 }
-async function findExact(){
+function populateDetail(result){
+  const account=result.account;currentAccount=account;
+  el("pu-detail-title").textContent=account.displayName||account.email||"User account";
+  el("pu-detail-meta").textContent=(account.email||"No email")+" · "+account.uid;
+  el("pu-detail-account").replaceChildren(
+    detailTile("Account state",accountState(account)),
+    detailTile("Platform role",account.platformAdmin?"Platform Administrator":"Standard user"),
+    detailTile("Created",when(account.createdAt)),
+    detailTile("Last sign-in",when(account.lastSignInAt)),
+    detailTile("Providers",(account.providers||[]).join(", ")||"Unavailable")
+  );
+  el("pu-profile-name").value=account.displayName||"";
+  el("pu-reason").value="";
+  el("pu-reset-output").hidden=true;
+  el("pu-reset-link").value="";
+  el("pu-action-status").textContent="";
+  const lifecycle=el("pu-lifecycle");
+  lifecycle.textContent=account.disabled?"Restore account":"Disable account";
+  lifecycle.className="pu-btn "+(account.disabled?"success":"warn");
+  lifecycle.disabled=busy||(!account.disabled&&account.platformAdmin);
+
+  const host=el("pu-memberships");host.replaceChildren();
+  for(const membership of result.memberships||[]){
+    const card=node("article","rounded-xl border border-slate-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
+    const info=node("div","min-w-0");
+    info.append(
+      node("strong","block break-words",membership.schoolName),
+      node("p","text-xs text-slate-600 mt-1 break-words",
+        membership.schoolId+" · "+membership.schoolState+" · "+membership.status+" · "+((membership.roles||[]).join(", ")||"no active school role"))
+    );
+    const link=node("a","pu-btn","Open School Registry");link.href="owner-schools.html?schoolId="+encodeURIComponent(membership.schoolId);
+    card.append(info,link);host.append(card);
+  }
+  if(!host.children.length)host.append(node("p","text-sm text-slate-600 py-4","No indexed school memberships are attached to this account."));
+  el("pu-detail-status").textContent=(result.memberships||[]).length+" school membership"+((result.memberships||[]).length===1?"":"s")+" loaded.";
+}
+async function fetchDetail(uid){
+  const result=(await api({action:"get",uid})).data;
+  populateDetail(result);replaceItem(result.account);render();
+  return result;
+}
+async function openDetail(item){
   if(busy)return;
-  const query=el("pu-search").value.trim();
-  if(!query){status.textContent="Enter an exact verified email or account ID first.";el("pu-search").focus();return;}
-  setBusy(true,"Looking up exact platform account…");
-  try{
-    const result=(await api({action:"lookup",query})).data;
-    status.textContent="Exact account found.";
-    await openDetail(result.account,{allowBusy:true});
-  }catch(error){status.textContent=error?.message||"Exact account lookup failed.";}
-  finally{setBusy(false);}
-}
-async function openDetail(item,{allowBusy=false}={}){
-  if(busy&&!allowBusy)return;
   const run=++detailRun;
+  currentAccount=null;
   el("pu-detail-title").textContent=item.displayName||item.email||"User account";
   el("pu-detail-meta").textContent=item.email||item.uid;
   el("pu-detail-account").replaceChildren(detailTile("Account","Loading…"));
@@ -98,44 +145,98 @@ async function openDetail(item,{allowBusy=false}={}){
   try{
     const result=(await api({action:"get",uid:item.uid})).data;
     if(run!==detailRun||!dialog.open)return;
-    const account=result.account;
-    el("pu-detail-title").textContent=account.displayName||account.email||"User account";
-    el("pu-detail-meta").textContent=(account.email||"No email")+" · "+account.uid;
-    el("pu-detail-account").replaceChildren(
-      detailTile("Account state",accountState(account)),
-      detailTile("Platform role",account.platformAdmin?"Platform Administrator":"Standard user"),
-      detailTile("Created",when(account.createdAt)),
-      detailTile("Last sign-in",when(account.lastSignInAt)),
-      detailTile("Providers",(account.providers||[]).join(", ")||"Unavailable")
-    );
-    const host=el("pu-memberships");host.replaceChildren();
-    for(const membership of result.memberships||[]){
-      const card=node("article","rounded-xl border border-slate-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
-      const info=node("div","min-w-0");
-      info.append(node("strong","block break-words",membership.schoolName),
-        node("p","text-xs text-slate-600 mt-1 break-words",
-          membership.schoolId+" · "+membership.schoolState+" · "+membership.status+" · "+((membership.roles||[]).join(", ")||"no active school role")));
-      const link=node("a","pu-btn","Open School Registry");link.href="owner-schools.html?schoolId="+encodeURIComponent(membership.schoolId);
-      card.append(info,link);host.append(card);
-    }
-    if(!host.children.length)host.append(node("p","text-sm text-slate-600 py-4","No indexed school memberships are attached to this account."));
-    el("pu-detail-status").textContent=(result.memberships||[]).length+" school membership"+((result.memberships||[]).length===1?"":"s")+" loaded.";
+    populateDetail(result);replaceItem(result.account);render();
   }catch(error){
     if(run!==detailRun||!dialog.open)return;
     el("pu-detail-status").textContent=error?.message||"User details could not be loaded.";
   }
 }
+function administrativeReason(){
+  const value=el("pu-reason").value.trim();
+  if(value.length<12){
+    el("pu-action-status").textContent="Enter an administrative reason of at least 12 characters.";
+    el("pu-reason").focus();return null;
+  }
+  return value;
+}
+async function runDetailAction(action,payload,message){
+  if(busy||!currentAccount)return;
+  const reason=administrativeReason();if(!reason)return;
+  const uid=currentAccount.uid;
+  setBusy(true,message);
+  el("pu-action-status").textContent=message;
+  try{
+    const result=(await api({action,uid,reason,...payload})).data;
+    if(result.account){replaceItem(result.account);render();}
+    if(result.resetLink){
+      el("pu-reset-link").value=result.resetLink;el("pu-reset-output").hidden=false;
+    }
+    if(action!=="reset_password")await fetchDetail(uid);
+    el("pu-action-status").textContent=
+      action==="update_profile"?"Account profile updated.":
+      action==="disable"?"Account disabled. Historical school records were not deleted.":
+      action==="restore"?"Account restored and may sign in again.":
+      "Password reset link generated. Share it only through a trusted channel.";
+  }catch(error){
+    el("pu-action-status").textContent=error?.message||"The account operation could not be completed.";
+  }finally{setBusy(false);if(currentAccount)el("pu-lifecycle").disabled=busy||(!currentAccount.disabled&&currentAccount.platformAdmin);}
+}
+async function copyInput(input,statusTarget){
+  const value=input.value;if(!value)return;
+  try{await navigator.clipboard.writeText(value);statusTarget.textContent="Link copied to clipboard.";}
+  catch{
+    input.focus();input.select();document.execCommand("copy");
+    statusTarget.textContent="Link copied to clipboard.";
+  }
+}
+
 for(const id of ["pu-search","pu-account-filter","pu-role-filter"])el(id).addEventListener(id==="pu-search"?"input":"change",render);
-el("pu-refresh").addEventListener("click",()=>void loadPage(currentToken));
-el("pu-find-exact").addEventListener("click",()=>void findExact());
-el("pu-search").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();void findExact();}});
-el("pu-next").addEventListener("click",()=>{if(!busy&&nextToken){history.push(currentToken);void loadPage(nextToken);}});
-el("pu-prev").addEventListener("click",()=>{if(!busy&&history.length){const token=history.pop();void loadPage(token);}});
-el("pu-detail-close").addEventListener("click",()=>{++detailRun;dialog.close();});
-dialog.addEventListener("cancel",()=>{++detailRun;});
+el("pu-refresh").addEventListener("click",()=>void loadAll());
+el("pu-create").addEventListener("click",()=>{
+  if(busy)return;
+  el("pu-create-form").reset();el("pu-create-output").hidden=true;el("pu-create-link").value="";el("pu-create-status").textContent="";
+  createDialog.showModal();
+});
+el("pu-detail-close").addEventListener("click",()=>{++detailRun;currentAccount=null;dialog.close();});
+dialog.addEventListener("cancel",()=>{++detailRun;currentAccount=null;});
+el("pu-create-close").addEventListener("click",()=>createDialog.close());
+el("pu-save-profile").addEventListener("click",()=>{
+  const displayName=el("pu-profile-name").value.trim();
+  if(displayName.length<2){el("pu-action-status").textContent="Enter a display name of at least 2 characters.";return;}
+  void runDetailAction("update_profile",{displayName},"Saving account profile…");
+});
+el("pu-reset-password").addEventListener("click",()=>void runDetailAction("reset_password",{},"Generating password reset link…"));
+el("pu-lifecycle").addEventListener("click",()=>{
+  if(!currentAccount)return;
+  const action=currentAccount.disabled?"restore":"disable";
+  void runDetailAction(action,{},currentAccount.disabled?"Restoring account…":"Disabling account…");
+});
+el("pu-copy-reset").addEventListener("click",()=>void copyInput(el("pu-reset-link"),el("pu-action-status")));
+el("pu-copy-create-link").addEventListener("click",()=>void copyInput(el("pu-create-link"),el("pu-create-status")));
+el("pu-create-form").addEventListener("submit",async event=>{
+  event.preventDefault();if(busy)return;
+  const displayName=el("pu-create-name").value.trim(),email=el("pu-create-email").value.trim(),
+    reason=el("pu-create-reason").value.trim();
+  if(displayName.length<2||!email||reason.length<12){
+    el("pu-create-status").textContent="Enter a display name, valid email, and administrative reason of at least 12 characters.";return;
+  }
+  setBusy(true,"Creating login account…");el("pu-create-status").textContent="Creating login account…";
+  try{
+    const result=(await api({action:"create",displayName,email,reason})).data;
+    replaceItem(result.account);render();
+    if(result.setupLink){
+      el("pu-create-link").value=result.setupLink;el("pu-create-output").hidden=false;
+      el("pu-create-status").textContent="Account created. Copy the setup link and share it only through a trusted channel.";
+    }else{
+      el("pu-create-status").textContent="Account created. A setup link could not be generated; use the account detail reset action.";
+    }
+    status.textContent=items.length+" platform accounts loaded, including the newly created account.";
+  }catch(error){el("pu-create-status").textContent=error?.message||"The login account could not be created.";}
+  finally{setBusy(false);}
+});
 
 try{
   await auth.authStateReady();
   if(!auth.currentUser?.emailVerified)status.textContent="Sign in with a verified System Administrator account.";
-  else await loadPage(null);
+  else await loadAll();
 }catch(error){status.textContent=error?.message||"System Admin user directory could not be initialized.";}
