@@ -207,7 +207,7 @@ function createSchoolPracticeSeasonService({
       canonicalCurrent=canonical?.season===season&&canonical?.schoolId===school.id&&canonical?.ownerUid===uid,
       legacyCurrent=!canonicalCurrent&&legacy?.season===season,
       score=canonicalCurrent?canonical:legacyCurrent?legacy:null,
-      alias=score&&typeof score.alias==="string"&&score.alias.trim()?score.alias.trim():generatedAlias(school.id,uid),
+      alias=score?.optIn===true&&typeof score.alias==="string"&&score.alias.trim()?score.alias.trim():generatedAlias(school.id,uid),
       points=score&&Number.isFinite(score.points)&&score.points>=0?score.points:0,
       completedCount=score&&Number.isInteger(score.completedCount)&&score.completedCount>=0?score.completedCount:0;
      return [{schoolId:school.id,ownerUid:uid,alias,points,completedCount,season}];
