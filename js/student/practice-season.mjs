@@ -187,9 +187,10 @@ function numericDebuggingActivity(course,mission,language,seed,a,b){
    declare=(name,value)=>java?"int "+name+" = "+value+";":name+" = "+value,
    c=2+Math.abs(seed>>>5)%4;
   let code=[],choices=[],goal="",why="",fixed=[],focusLine=2,caseHint="";
-  const finish=(line=focusLine)=>{focusLine=line;return {
+  const finish=(line=focusLine)=>{focusLine=line;const shuffled=rotate(choices,seed);return {
     code:code.join("\n"),prompt:goal+" Which replacement fixes line "+focusLine+"?",debugGoal:goal,
-    choices,solution:0,why,workspace:workspace(language,fixed.join("\n")),focusLine,caseHint
+    choices:shuffled,solution:shuffled.indexOf(choices[0]),why,
+    workspace:workspace(language,fixed.join("\n")),focusLine,caseHint
   };};
   if(topic==="update"){
     code=[declare("points",a),"points -= "+b+semi,out("points")];
