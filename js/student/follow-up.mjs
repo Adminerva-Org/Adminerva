@@ -13,11 +13,15 @@ function packCard(pack){
  const missions=document.createElement("div");missions.className="flex flex-wrap gap-2 mt-2";
  for(const ref of (pack.missionRefs||[]).slice(0,8)){const [course,mission]=String(ref).split(":");const a=document.createElement("a");a.href="student-practice.html?course="+encodeURIComponent(course)+"&mission="+encodeURIComponent(mission);a.className="text-xs font-bold text-blue-700 underline";a.textContent=missionLabels.get(String(ref))||course.toUpperCase()+" · "+mission;a.addEventListener("click",e=>e.stopPropagation());missions.append(a);}box.append(missions);return box;
 }
-function clearFollowup(){
+function publishPackState(packs,{loading=false,error=false}={}){
+ window.__adminervaPracticePacks=Array.isArray(packs)?packs:[];
+ window.__adminervaPracticePacksState={loading,error};
+ window.dispatchEvent(new CustomEvent("adminerva:practice-packs",{detail:{packs:window.__adminervaPracticePacks,loading,error}}));
+}
+function clearFollowup({loading=false}={}){
  if(dash)dash.replaceChildren();
  if(packsMount){packsMount.hidden=true;packsMount.replaceChildren();}
- window.__adminervaPracticePacks=[];
- window.dispatchEvent(new CustomEvent("adminerva:practice-packs",{detail:{packs:[]}}));
+ publishPackState([],{loading,error:false});
 }
 async function schoolPacks(user){
  const context=await resolvePracticeContext();
@@ -28,15 +32,15 @@ async function schoolPacks(user){
 }
 async function load(user){
  if(!user?.email)return;const uid=user.uid;
- let packs=[];
+ let packs=[],packsError=false;
  try{packs=await schoolPacks(user);}
  catch(error){
   if(auth.currentUser?.uid!==uid)return;
+  packsError=true;
   console.warn("School Practice Packs unavailable",error);
  }
  if(auth.currentUser?.uid!==uid)return;
- window.__adminervaPracticePacks=packs;
- window.dispatchEvent(new CustomEvent("adminerva:practice-packs",{detail:{packs}}));
+ publishPackState(packs,{loading:false,error:packsError});
 
  let profile=null,projects=[],plans=[];
  try{
@@ -75,4 +79,10 @@ async function load(user){
   }
  }
 }
-onAuthStateChanged(auth,current=>{clearFollowup();if(current?.email)void load(current);});
+onAuthStateChanged(auth,current=>{clearFollowup({loading:Boolean(current?.email)});if(current?.email)void load(current);});
+window.addEventListener("adminerva:practice-refresh",()=>{
+ const current=auth.currentUser;
+ if(!current?.email)return;
+ clearFollowup({loading:true});
+ void load(current);
+});
