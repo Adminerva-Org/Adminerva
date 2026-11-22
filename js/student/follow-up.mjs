@@ -6,6 +6,7 @@ import {COURSES} from "./practice-courses.mjs?v=1.5.1";
 import {resolvePracticeContext} from "./practice-session.mjs?v=1.5.2";
 const missionLabels=new Map(COURSES.flatMap(course=>course.missions.map(mission=>[course.id+":"+mission.id,course.name+" · "+mission.title])));
 const schoolPackApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolPracticePacks");
+let followupSequence=0;
 const dash=document.getElementById("studentFollowupContainer"),packsMount=document.getElementById("practiceAssignedPacks");
 function card(title,meta,body="",href=""){const box=document.createElement(href?"a":"article");if(href)box.href=href;box.className="block rounded-lg border border-slate-200 bg-slate-50 p-3";const h=document.createElement("strong");h.textContent=title;const m=document.createElement("p");m.className="text-xs text-slate-500 mt-1";m.textContent=meta;box.append(h,m);if(body){const p=document.createElement("p");p.className="text-sm text-slate-700 mt-2 whitespace-pre-wrap";p.textContent=body;box.append(p);}return box;}
 function packCard(pack){
@@ -30,16 +31,16 @@ async function schoolPacks(user){
  if(auth.currentUser?.uid!==user.uid)return [];
  return Array.isArray(response.data?.packs)?response.data.packs:[];
 }
-async function load(user){
+async function load(user,sequence){
  if(!user?.email)return;const uid=user.uid;
  let packs=[],packsError=false;
  try{packs=await schoolPacks(user);}
  catch(error){
-  if(auth.currentUser?.uid!==uid)return;
+  if(sequence!==followupSequence||auth.currentUser?.uid!==uid)return;
   packsError=true;
   console.warn("School Practice Packs unavailable",error);
  }
- if(auth.currentUser?.uid!==uid)return;
+ if(sequence!==followupSequence||auth.currentUser?.uid!==uid)return;
  publishPackState(packs,{loading:false,error:packsError});
 
  let profile=null,projects=[],plans=[];
@@ -53,13 +54,13 @@ async function load(user){
     getDocs(query(collection(db,"student_projects"),where("studentIds","array-contains",profile.id))),
     getDocs(collection(db,"improvement_plans",profile.id,"items"))
    ]);
-   if(auth.currentUser?.uid!==uid)return;
+   if(sequence!==followupSequence||auth.currentUser?.uid!==uid)return;
    const projectDocs=new Map([...wholeProjectSnap.docs,...personalProjectSnap.docs].map(record=>[record.id,record]));
    projects=[...projectDocs.values()].map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
    plans=planSnap.docs.map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
   }
  }catch(error){
-  if(auth.currentUser?.uid!==uid)return;
+  if(sequence!==followupSequence||auth.currentUser?.uid!==uid)return;
   console.warn("Legacy learning follow-up unavailable",error);
  }
  if(dash){
@@ -79,10 +80,15 @@ async function load(user){
   }
  }
 }
-onAuthStateChanged(auth,current=>{clearFollowup({loading:Boolean(current?.email)});if(current?.email)void load(current);});
+onAuthStateChanged(auth,current=>{
+ const sequence=++followupSequence;
+ clearFollowup({loading:Boolean(current?.email)});
+ if(current?.email)void load(current,sequence);
+});
 window.addEventListener("adminerva:practice-refresh",()=>{
  const current=auth.currentUser;
  if(!current?.email)return;
+ const sequence=++followupSequence;
  clearFollowup({loading:true});
- void load(current);
+ void load(current,sequence);
 });
