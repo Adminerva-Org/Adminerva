@@ -28,7 +28,7 @@ jobs:
 
       - name: Test grading evidence and feedback regressions
         run: |
-          node --test tests/assessment-draft-recovery.test.mjs
+          node --test tests/assessment-draft-recovery.test.mjs tests/studio-device-storage-resilience.test.mjs
           node --test tests/google-docs-export.test.mjs
           node --test tests/staff-workspaces.test.mjs
           node --test tests/admissions.test.mjs

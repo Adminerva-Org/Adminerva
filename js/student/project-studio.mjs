@@ -173,6 +173,9 @@ export function createProjectStudio({
   const undoKey=projectId=>"Adminerva_Code_Project_Undo_v1_"+uid+"_"+(scopeToken?scopeToken+"_":"")+projectId;
   let activeProject=null,selectedTemplate="java-information",initialized=false,openEpoch=0;
   const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set(),cloudPending=new Map(),markerCache=new Map();
+  // A quota-full browser can still upload an in-memory project. Do not let
+  // the student leave the workspace until that exact snapshot is confirmed.
+  const unbackedProjectIds=new Set();
   let merging=null,cloudStatus="Checking cloud storage…",designTimer=null,designPending=null,diagramEpoch=0;
   let dbSelectedTable="",dbView="browse";
 
@@ -247,15 +250,41 @@ export function createProjectStudio({
   function cacheProject(project){
     const items=readCodeProjects(projectStorage,uid).filter(item=>item.id!==project.id);
     const normalized=normalizeProject(project);if(!normalized)throw Error("Invalid cloud project.");
-    writeCodeProjects(projectStorage,uid,[normalized,...items]);return normalized;
+    try{
+      writeCodeProjects(projectStorage,uid,[normalized,...items]);
+    }catch(error){
+      if(!cloudEnabled)throw error;
+      // Already-cloud-saved projects may still be opened from another device
+      // when browser storage is blocked. Their school copy is unchanged.
+      console.warn("Device project cache unavailable; preserving cloud project in memory",error);
+    }
+    return normalized;
   }
   function store(project,cloud=cloudEnabled){
     validateProject(project);
-    const previous=findCodeProject(projectStorage,uid,project.id);
+    const previous=activeProject?.id===project.id?activeProject:
+      findCodeProject(projectStorage,uid,project.id);
     const changed=!previous||contentKey(previous)!==contentKey(project);
-    activeProject=changed?saveCodeProject(projectStorage,uid,project):{...previous,lastOpenedAt:project.lastOpenedAt||previous.lastOpenedAt};
+    let deviceSaved=true;
+    try{
+      activeProject=changed?saveCodeProject(projectStorage,uid,project):
+        {...previous,lastOpenedAt:project.lastOpenedAt||previous.lastOpenedAt};
+    }catch(error){
+      if(!cloudEnabled)throw error;
+      // Retain the current Monaco/editor state for a school-cloud save rather
+      // than losing the latest code just because localStorage is unavailable.
+      console.warn("Studio device backup unavailable; retaining live project in memory",error);
+      const fallback=normalizeProject({...project,updatedAt:new Date().toISOString()});
+      if(!fallback)throw error;
+      activeProject=fallback;
+      unbackedProjectIds.add(project.id);
+      deviceSaved=false;
+    }
     updateProjectHeading();updateQuotaUI();
-    if(cloudEnabled&&cloud&&(changed||readMarker(project.id).pending||!readMarker(project.id).kind))scheduleCloudSave(activeProject);
+    if(cloudEnabled&&cloud&&(changed||readMarker(project.id).pending||
+       !readMarker(project.id).kind||unbackedProjectIds.has(project.id)))
+      scheduleCloudSave(activeProject);
+    if(!deviceSaved)setCloudStatus("Device storage unavailable · cloud save pending · keep this tab open","error",project.id);
     window.dispatchEvent(new CustomEvent("adminerva:studio-project-saved",{detail:{
       projectId:activeProject.id,updatedAt:activeProject.updatedAt
     }}));
@@ -279,6 +308,7 @@ export function createProjectStudio({
       // editor snapshot. Do not claim a device backup was made.
       console.warn("Exam closing device draft unavailable; using memory-only cloud checkpoint",error);
       activeProject=draft;
+      unbackedProjectIds.add(draft.id);
     }
     if(cloudEnabled)scheduleCloudSave(activeProject);
     return {queued:cloudEnabled,deviceSaved};
@@ -288,7 +318,11 @@ export function createProjectStudio({
     const snapshot=clone(project),id=snapshot.id;
     cloudPending.set(id,snapshot);
     writeMarker(id,{...readMarker(id),pending:true});
-    setCloudStatus(navigator.onLine===false?"Offline · saved on device":"Syncing to cloud…","info",id);
+    const deviceUnavailable=unbackedProjectIds.has(id);
+    setCloudStatus(deviceUnavailable?
+      "Device backup unavailable · cloud save pending · keep this tab open":
+      navigator.onLine===false?"Offline · saved on device":"Syncing to cloud…",
+      deviceUnavailable?"error":"info",id);
     clearTimeout(cloudTimers.get(id));
     cloudTimers.set(id,setTimeout(()=>{void flushOne(id);},900));
   }
@@ -345,14 +379,18 @@ export function createProjectStudio({
           marker={kind:"legacy",updatedAt:confirmedAt};
         }
         const same=cloudPending.get(id)===snapshot;
-        if(same)cloudPending.delete(id);
+        if(same){cloudPending.delete(id);unbackedProjectIds.delete(id);}
         writeMarker(id,{...marker,pending:!same});
         if(same){setCloudStatus("Saved to cloud","success",id);if(!activeProject)setCloudStatus(cloudPending.size?"Cloud sync pending":"Cloud projects up to date",cloudPending.size?"info":"success");}
         return true;
       }catch(error){
         console.warn("Studio cloud save failed:",error);
-        setCloudStatus("Device copy saved · cloud not synced","error",id);
-        if(!activeProject)setCloudStatus("Device drafts retained · cloud not synced","error");
+        setCloudStatus(unbackedProjectIds.has(id)?
+          "No device backup or cloud confirmation · keep this tab open":
+          "Device copy saved · cloud not synced","error",id);
+        if(!activeProject)setCloudStatus(unbackedProjectIds.has(id)?
+          "Unsaved in-memory draft · keep this tab open":
+          "Device drafts retained · cloud not synced","error");
         const indicator=el("autoSaveIndicator");if(indicator&&activeProject?.id===id)indicator.title=String(error?.message||error)+" · Save again to retry.";
         return false;
       }
@@ -702,9 +740,17 @@ export function createProjectStudio({
   }
 
   function showHome(){
-    ++openEpoch;++diagramEpoch;
     initialize();
-    if(activeProject){try{flushDesignDraft();saveState(captureState());}catch(error){alert("Device draft could not be saved: "+error.message);return false;}}
+    if(activeProject){
+      try{flushDesignDraft();saveState(captureState());}
+      catch(error){alert("Device draft could not be saved: "+error.message);return false;}
+      if(unbackedProjectIds.has(activeProject.id)){
+        void flushCloudSaves();
+        alert("This browser could not store your project on this device. Keep the Studio editor open until the school cloud confirms the latest revision, then try leaving again.");
+        return false;
+      }
+    }
+    ++openEpoch;++diagramEpoch;
     activeProject=null;void flushCloudSaves();
     window.dispatchEvent(new CustomEvent("adminerva:studio-home"));
     renderProjectHome();
@@ -959,7 +1005,15 @@ export function createProjectStudio({
         syncAssessmentCapabilities();updateProjectHeading();
         return {project:activeProject,created:false,projectId:activeProject.id};
       }
-      if(changed){project=saveCodeProject(projectStorage,uid,next);if(cloudEnabled)writeMarker(project.id,{...readMarker(project.id),pending:true});}
+      if(changed){
+        try{project=saveCodeProject(projectStorage,uid,next);}
+        catch(error){
+          if(!cloudEnabled)throw error;
+          console.warn("Device cache unavailable during assessment resume",error);
+          project=next;unbackedProjectIds.add(project.id);
+        }
+        if(cloudEnabled)writeMarker(project.id,{...readMarker(project.id),pending:true});
+      }
       activateProject(project);
       if(recoveredSubmittedVersion){
         setCloudStatus("Recovered from submitted version "+recoveredSubmittedVersion+
@@ -972,16 +1026,30 @@ export function createProjectStudio({
     if(context.allowCreate===false)return {project:null,created:false,projectId};
     validateProject({state:{files:{}},database:{tables:{}},design:{},evidence:{}},{creating:true});
     const projectTitle=String(context.projectTitle||context.title||"Studio Assessment").trim().slice(0,120)||"Studio Assessment";
-    project=createCodeProject(projectStorage,uid,{
-      id:projectId,title:projectTitle,templateId:template.id,
-      config:desiredConfig,assessment:ownership
-    });
+    try{
+      project=createCodeProject(projectStorage,uid,{
+        id:projectId,title:projectTitle,templateId:template.id,
+        config:desiredConfig,assessment:ownership
+      });
+    }catch(error){
+      if(!cloudEnabled)throw error;
+      // Use the canonical project constructor with an in-memory storage shim.
+      // The same project ID can be synchronized to the verified school cloud.
+      console.warn("Assessment project device creation unavailable; using school cloud",error);
+      const memoryStorage={getItem:()=>null,setItem:()=>{},removeItem:()=>{}};
+      project=createCodeProject(memoryStorage,uid,{
+        id:projectId,title:projectTitle,templateId:template.id,
+        config:desiredConfig,assessment:ownership
+      });
+      unbackedProjectIds.add(project.id);
+      writeMarker(project.id,{...readMarker(project.id),pending:true});
+    }
     try{
       validateProject(project);
       activateProject(project);
       return {project:activeProject,created:true,projectId:activeProject.id};
     }catch(error){
-      deleteCodeProject(projectStorage,uid,project.id);
+      try{deleteCodeProject(projectStorage,uid,project.id);}catch{}
       throw error;
     }
   }
@@ -1231,8 +1299,10 @@ export function createProjectStudio({
       const control=el(id);if(control)control.classList.add("hidden");
     }
     const undo=el("undoRestoreBtn");
-    if(undo)undo.classList.toggle("hidden",
-      !localStorage.getItem(undoKey(activeProject.id)));
+    let hasUndo=false;
+    try{hasUndo=Boolean(localStorage.getItem(undoKey(activeProject.id)));}
+    catch(error){console.warn("Studio undo cache unavailable",error);}
+    if(undo)undo.classList.toggle("hidden",!hasUndo);
     updateQuotaUI();
     if(cloudEnabled){
       const marker=readMarker(activeProject.id);

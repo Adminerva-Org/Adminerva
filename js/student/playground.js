@@ -3,7 +3,7 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=20261121-studio-reopen-hotfix2";
+import {createProjectStudio} from "./project-studio.mjs?v=20261122-studio-storage-resilience";
 import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
 import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261121-recovery-guard";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
@@ -1408,7 +1408,10 @@ function persistWorkspace(){
     }
     if(typeof projectStudio!=="undefined"&&projectStudio?.getActiveProject()){
       projectStudio.saveState(state);
-      localStorage.setItem(playgroundLanguageKey(uid),currentLang);
+      // The language preference is optional. A quota-full browser must not
+      // mask an already queued school-cloud project snapshot.
+      try{localStorage.setItem(playgroundLanguageKey(uid),currentLang);}
+      catch(error){console.warn("Studio language preference unavailable",error);}
     }else{
       localStorage.setItem(playgroundWorkspaceKey(uid,currentLang),JSON.stringify(state));
       localStorage.setItem(playgroundLanguageKey(uid),currentLang);
