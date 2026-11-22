@@ -96,6 +96,34 @@ async function settle(until=()=>true){
   assert.fail("directory action did not settle");
 }
 
+test("teacher option population cannot replace the shared navigation root",()=>{
+  const state=fixture();
+  state.run(`
+    globalThis.__navCollision={
+      tagName:"DIV",
+      children:["navigation"],
+      value:"",
+      replaceChildren(){this.children=[];},
+      append(child){this.children.push(child);}
+    };
+    globalThis.__teacherSelect={
+      tagName:"SELECT",
+      children:[],
+      value:"",
+      replaceChildren(...children){this.children=[...children];},
+      append(child){this.children.push(child);}
+    };
+    document.querySelectorAll=selector=>selector==="[data-school-teacher]"
+      ? [globalThis.__navCollision,globalThis.__teacherSelect]
+      : [];
+    populateOptions("[data-school-teacher]",[{uid:"teacher-1",name:"Teacher One"}],"uid");
+  `);
+  assert.equal(state.run("JSON.stringify(__navCollision.children)"),JSON.stringify(["navigation"]));
+  assert.equal(state.run("__teacherSelect.children.length"),2);
+  assert.equal(state.run("__teacherSelect.children[0].textContent"),"Choose an option");
+  assert.equal(state.run("__teacherSelect.children[1].textContent"),"Teacher One");
+});
+
 test("CSV selected in one school cannot preview against a school selected during file reading",async()=>{
   const read=deferred(),state=fixture();
   state.chooseFile("Alice",read.promise);state.fire("pa-import-preview");
