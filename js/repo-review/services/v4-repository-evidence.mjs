@@ -107,6 +107,10 @@ export async function buildV4RepositoryEvaluationSnapshot({snapshot,client}={}){
 
   return {
     version:Number(snapshot.version||0),
+    // Preserve the authoritative evidence revision separately from the display
+    // version. Historical revisionless records intentionally expose version 1
+    // to the UI while their canonical evidence revision remains 0.
+    evidenceRevision:Number(snapshot.evidenceRevision??snapshot.version??0),
     personalizedTask:snapshot.personalizedTask||null,
     evidenceDigest:String(snapshot.evidenceDigest||""),
     repository,checkpointSha,selectedCommitShas:selected,commits,

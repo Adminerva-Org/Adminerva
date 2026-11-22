@@ -853,6 +853,7 @@ export function createV4BulkEvaluationController({
               legacyAssessmentId:task.legacyAssessmentId,
               legacyEvidenceId:item.key,
               expectedEvidenceRevision:item.evidenceRevision,
+              expectedEvidenceRevisionMode:"canonical",
               expectedCheckpointSha:item.checkpointSha,
               expectedGradeRevision:0,
               reviewNote:"Teacher bulk-reviewed this student-submitted checkpoint and rubric suggestions; Git commit metadata is not independent authorship proof.",

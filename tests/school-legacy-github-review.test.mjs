@@ -24,7 +24,7 @@ function install(){
  return module.exports;
 }
 function fixture({published=false,grade=null,approval=true,discovery=false,
-  studentResubmitted=false,zeroCommits=false}={}){
+  studentResubmitted=false,zeroCommits=false,revision=7,omitRevision=false}={}){
  const map=new Map(),writes=[];
  const put=(path,value)=>map.set(path,value);
  put("assessments/"+taskId,{ownerUid:ctx.uid,title:"Java OOP",
@@ -39,7 +39,8 @@ function fixture({published=false,grade=null,approval=true,discovery=false,
  put("assessment_evidence/"+evidenceId,{
    studentId,assessmentId:taskId,section:"Grade 12 ICT",
    repository:"https://github.com/learner/java-classes",
-   status:approval?"approved":studentResubmitted?"submitted":discovery?"needs_review":"submitted",revision:7,
+   status:approval?"approved":studentResubmitted?"submitted":discovery?"needs_review":"submitted",
+   ...(!omitRevision?{revision}:{}),
    source:discovery?"teacher_discovered":"student_submitted",
    checkpointSha:checkpoint,approvedCheckpointSha:approval?checkpoint:null,
    selectedCommits:zeroCommits?[]:[commit],
@@ -84,7 +85,7 @@ function fixture({published=false,grade=null,approval=true,discovery=false,
  const service=install().createSchoolLegacyGithubReview({db,
    parseLegacyRubric:()=>[{name:"Code quality",points:20},{name:"Program behavior",points:20}]});
  const request=(action,extra={})=>({ctx,input:{action,legacyAssessmentId:taskId,...extra}});
- const gradeArgs={legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
+ const gradeArgs={legacyEvidenceId:evidenceId,expectedEvidenceRevision:revision,
    expectedCheckpointSha:checkpoint,expectedGradeRevision:0,
    criteria:[{awardedPoints:18,pendingPoints:0,comment:"Relevant code"},
      {awardedPoints:17,pendingPoints:0,comment:"Output checked"}],
@@ -175,6 +176,28 @@ test("stale evidence, duplicate source identity and existing published grade blo
  await assert.rejects(g.service(g.request("legacy_github_save_draft",{
    ...g.gradeArgs,expectedGradeRevision:2})),error=>error.code==="failed-precondition");
  assert.equal(f.writes.length,0);assert.equal(g.writes.length,0);
+});
+test("revisionless historical bulk saves recover safely without weakening real revision 1",async()=>{
+ const old=fixture({omitRevision:true,revision:0});
+ const inspect=await old.service(old.request("legacy_github_inspect",{legacyEvidenceId:evidenceId}));
+ assert.equal(inspect.snapshot.version,1);
+ assert.equal(inspect.snapshot.evidenceRevision,0);
+ const saved=await old.service(old.request("legacy_github_save_draft",{
+   ...old.gradeArgs,expectedEvidenceRevision:1,onlyIfUngraded:true
+ }));
+ assert.equal(saved.status,"draft");
+ assert.equal(old.map.get("student_grades/"+evidenceId).evidenceRevision,0);
+
+ const current=fixture({revision:1});
+ await assert.rejects(current.service(current.request("legacy_github_save_draft",{
+   ...current.gradeArgs,expectedEvidenceRevision:1,onlyIfUngraded:true
+ })),error=>error.code==="failed-precondition"&&/evidence changed/i.test(error.message));
+ const canonical=await current.service(current.request("legacy_github_save_draft",{
+   ...current.gradeArgs,expectedEvidenceRevision:1,expectedEvidenceRevisionMode:"canonical",
+   onlyIfUngraded:true
+ }));
+ assert.equal(canonical.status,"draft");
+ assert.equal(current.map.get("student_grades/"+evidenceId).evidenceRevision,1);
 });
 test("bulk GitHub save cannot overwrite an existing original grade draft",async()=>{
  const f=fixture({grade:{studentId,taskId,score:33,maxScore:40,gradeVersion:2},published:false});
