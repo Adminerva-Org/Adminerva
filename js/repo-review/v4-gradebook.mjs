@@ -8,7 +8,7 @@ import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResp
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
-import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261122-github-bulk10-1";
+import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261122-fit-bulk800k-1";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
