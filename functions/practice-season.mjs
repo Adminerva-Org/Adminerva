@@ -467,6 +467,8 @@ export function seasonActivity(course,mission,seed){
     if(mission.oop===true)activity={...activity,...oopDebuggingActivity(mission,seed)};
     else if(language==="web")activity={...activity,...webDebuggingActivity(course,mission,seed)};
     else activity={...activity,...numericDebuggingActivity(course,mission,language,seed,a,b)};
+    if(!activity.debugGoal)activity.debugGoal=String(activity.prompt||"")
+      .replace(/\s*Which replacement fixes line \d+\?\s*$/,"").trim();
   }
   return {...activity,difficulty:meta};
 }
