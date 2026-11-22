@@ -301,8 +301,8 @@ function createSchoolPracticeSeasonService({
    current=a.classes.find(item=>item.id===request.data?.classId)||a.classes[0];
   let classRows=[];
   if(current?.id){
-   const [rankingRows,enrollmentRows]=await Promise.all([
-    col(a,"practice_class_season_rankings").where("sectionId","==",current.id).limit(500).get(),
+   const [schoolScores,enrollmentRows]=await Promise.all([
+    col(a,"practice_season_scores").get(),
     col(a,"enrollments").where("sectionId","==",current.id).limit(501).get()
    ]);
    if(enrollmentRows.size===501)
@@ -314,10 +314,12 @@ function createSchoolPracticeSeasonService({
     rosterUids=people.filter(person=>person.exists&&person.data().schoolId===a.schoolId&&
       person.data().kind==="student"&&person.data().status==="active"&&
       typeof person.data().authUid==="string").map(person=>person.data().authUid),
-    rankingByUid=new Map(rankingRows.docs.map(row=>[row.data().ownerUid,row.data()]));
+    scoreByUid=new Map(schoolScores.docs.map(row=>[row.id,row.data()]));
    classRows=[...new Set(rosterUids)].map(uid=>{
-    const row=rankingByUid.get(uid),currentRow=row?.season===season;
+    const row=scoreByUid.get(uid),
+     currentRow=row?.season===season&&row?.schoolId===a.schoolId&&row?.ownerUid===uid;
     return {
+     schoolId:a.schoolId,
      alias:currentRow&&typeof row.alias==="string"&&row.alias.trim()?row.alias.trim():generatedAlias(a.schoolId,uid),
      points:currentRow&&Number.isFinite(row.points)&&row.points>=0?row.points:0,
      completedCount:currentRow&&Number.isInteger(row.completedCount)&&row.completedCount>=0?row.completedCount:0,
