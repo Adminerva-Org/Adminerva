@@ -148,10 +148,10 @@ export function expandPracticeCourses(courses){
     course.modules=modules.map(([moduleId,title,topics],moduleIndex)=>{
       const missions=topics.flatMap((topic,topicIndex)=>levels.map((levelName,levelIndex)=>{
         const oldId=levelIndex===0?legacyPlacement[course.id][moduleIndex+":"+topicIndex]:null;
-        if(oldId)return legacy.get(oldId);
+        if(oldId)return {...legacy.get(oldId),practiceTopic:course.id==="web"?topic[0]:topic[0]};
         const id=course.id+"-m"+(moduleIndex+1)+"-"+String(topicIndex*3+levelIndex+1).padStart(2,"0");
         const missionTitle=course.id==="web"?topic[0]:topic[1];
-        return {id,title:missionTitle+" · "+levelName,concept:missionTitle+". "+["Identify the rule before running.","Trace the example, then change one input.","Predict a boundary case, test it and explain the result."][levelIndex],build(seed){const question=course.id==="web"?webQuestion(topic,seed,levelIndex):numericQuestion(topic[0],course.id==="java"?"java":"python",seed,levelIndex);question.prompt+=" "+["Explain the rule in your prediction.","After predicting, try changing one input in the sandbox.","After predicting, run a boundary example and compare it with this result."][levelIndex];return question;}};
+        return {id,title:missionTitle+" · "+levelName,practiceTopic:topic[0],concept:missionTitle+". "+["Identify the rule before running.","Trace the example, then change one input.","Predict a boundary case, test it and explain the result."][levelIndex],build(seed){const question=course.id==="web"?webQuestion(topic,seed,levelIndex):numericQuestion(topic[0],course.id==="java"?"java":"python",seed,levelIndex);question.prompt+=" "+["Explain the rule in your prediction.","After predicting, try changing one input in the sandbox.","After predicting, run a boundary example and compare it with this result."][levelIndex];return question;}};
       }));
       return {id:course.id+"-"+moduleId,title:course.id==="logic"?["Trace state changes","Reason about decisions","Investigate loop behavior","Inspect indexed data","Design result checks"][moduleIndex]:title,missions};
     });
