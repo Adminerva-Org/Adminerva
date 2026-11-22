@@ -193,19 +193,23 @@ function createSchoolPracticeSeasonService({
   const schools=await db.collection("platform_schools").get(),
    activeSchools=schools.docs.filter(school=>["active","pilot"].includes(school.data().state)),
    schoolRows=await Promise.all(activeSchools.map(async school=>{
-    const [members,scores]=await Promise.all([
+    const [members,scores,legacyScores]=await Promise.all([
      db.collection(prefix(school.id)+"memberships").get(),
-     db.collection(prefix(school.id)+"practice_season_scores").get()
-    ]),scoreByUid=new Map(scores.docs.map(record=>[record.id,record.data()]));
+     db.collection(prefix(school.id)+"practice_season_scores").get(),
+     db.collection(prefix(school.id)+"legacy_roots/practice_season_scores/documents").get()
+    ]),scoreByUid=new Map(scores.docs.map(record=>[record.id,record.data()])),
+     legacyByUid=new Map(legacyScores.docs.map(record=>[record.id,record.data()]));
     return members.docs.flatMap(member=>{
      const membership=member.data(),uid=member.id;
      if(membership?.schoolId!==school.id||membership?.status!=="active"||
         !Array.isArray(membership.roles)||!membership.roles.includes("student"))return [];
-     const score=scoreByUid.get(uid),
-      current=score?.season===season&&score?.schoolId===school.id&&score?.ownerUid===uid,
-      alias=current&&typeof score.alias==="string"&&score.alias.trim()?score.alias.trim():generatedAlias(school.id,uid),
-      points=current&&Number.isFinite(score.points)&&score.points>=0?score.points:0,
-      completedCount=current&&Number.isInteger(score.completedCount)&&score.completedCount>=0?score.completedCount:0;
+     const canonical=scoreByUid.get(uid),legacy=legacyByUid.get(uid),
+      canonicalCurrent=canonical?.season===season&&canonical?.schoolId===school.id&&canonical?.ownerUid===uid,
+      legacyCurrent=!canonicalCurrent&&legacy?.season===season,
+      score=canonicalCurrent?canonical:legacyCurrent?legacy:null,
+      alias=score&&typeof score.alias==="string"&&score.alias.trim()?score.alias.trim():generatedAlias(school.id,uid),
+      points=score&&Number.isFinite(score.points)&&score.points>=0?score.points:0,
+      completedCount=score&&Number.isInteger(score.completedCount)&&score.completedCount>=0?score.completedCount:0;
      return [{schoolId:school.id,ownerUid:uid,alias,points,completedCount,season}];
     });
    })),
