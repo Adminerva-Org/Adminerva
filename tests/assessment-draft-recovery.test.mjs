@@ -80,3 +80,11 @@ test("recovered student cloud drafts use canonical person identity and preserve 
   assert.match(backend,/studentRecordUidAllowed\(person\.data\(\),ctx\.uid,submission\.data\(\)\.studentUid\)/);
   assert.match(backend,/tx\.delete\(draftRef\)/);
 });
+
+test("memory-only draft cannot be discarded by Close or Escape before cloud confirmation",()=>{
+  const client=readFileSync("js/student/v4-assessments.mjs","utf8");
+  assert.match(client,/function mayCloseGeneralSubmission\(\)/);
+  assert.match(client,/session\.memoryDraft\?\.pending/);
+  assert.match(client,/if\(generalBusy\|\|!mayCloseGeneralSubmission\(\)\)return/);
+  assert.match(client,/if\(generalBusy\|\|!mayCloseGeneralSubmission\(\)\)\{event\.preventDefault\(\);return;\}/);
+});

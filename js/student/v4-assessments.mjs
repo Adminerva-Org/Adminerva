@@ -603,16 +603,29 @@ if(panel&&list&&status&&schoolHost){
     generalStatus.textContent="Checking school cloud for an unfinished response draft…";
     void restoreGeneralCloudDraft(session,current?.payload||{});
   }
+  function mayCloseGeneralSubmission(){
+    const session=generalDraft;
+    if(!session||session.submitted||!session.memoryDraft?.pending)return true;
+    // With storage blocked, the only unfinished copy exists in this tab.
+    // Closing (including Escape) must not erase it before a verified cloud save.
+    showDraftStatus(session,
+      "This browser cannot retain an unfinished device copy. Keep this editor open until the school cloud confirms the latest draft.");
+    if(session.remoteVerified&&!session.conflict){
+      clearTimeout(session.timer);session.timer=null;
+      void syncGeneralCloudDraft(session);
+    }
+    return false;
+  }
   function closeGeneralSubmission(){
-    if(generalBusy)return;
+    if(generalBusy||!mayCloseGeneralSubmission())return;
     detachGeneralDraft();
     generalDialog.close();generalTask=null;generalTaskStatus=null;
   }
   document.getElementById("v4GeneralSubmissionClose").addEventListener("click",closeGeneralSubmission);
   document.getElementById("v4GeneralSubmissionCancel").addEventListener("click",closeGeneralSubmission);
   generalDialog.addEventListener("cancel",event=>{
-    if(generalBusy)event.preventDefault();
-    else detachGeneralDraft();
+    if(generalBusy||!mayCloseGeneralSubmission()){event.preventDefault();return;}
+    detachGeneralDraft();
   });
   generalForm.addEventListener("submit",event=>void (async()=>{
     event.preventDefault();
