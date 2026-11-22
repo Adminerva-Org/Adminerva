@@ -465,6 +465,9 @@ test("external packer skips one individually oversized submission but retains fo
    task:assessment,snapshot:{version:1,payload:{response:"y".repeat(size)}}
  })});
  const huge=entry("too-large",810000),small=entry("small",1500);
+ // The canonical text adapter bounds raw written responses. Exercise the
+ // package-level guard with an explicitly oversized frozen evidence fixture.
+ huge.evaluationData.evidence.response="y".repeat(810000);
  const result=fitCompactBulkExternalEvaluationPackage({
    batchId:"batch-large-first",entries:[huge,small],task:assessment
  });
