@@ -2,9 +2,9 @@
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.0";
+import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.1";
 import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches,gameDeviceLabel} from "./practice-games.mjs?v=1.4.0";
-import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.7.0";
+import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.7.1";
 import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest,resolvePracticeContext} from "./practice-session.mjs?v=1.5.1";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
 const field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
