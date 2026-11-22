@@ -1548,6 +1548,27 @@ body.lab-page::after{
 }
 .games-trace-variable input::placeholder{color:#486c78}
 .lab-case-hint{color:#d2bc83}
+.games-bug-goal{
+  display:grid;
+  gap:.28rem;
+  margin:.65rem 0 .8rem;
+  padding:.72rem .8rem;
+  border:1px solid rgba(241,199,91,.26);
+  border-radius:.7rem;
+  background:rgba(241,199,91,.055);
+}
+.games-bug-goal strong{
+  color:#f6d36f;
+  font-size:.62rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.games-bug-goal p{
+  margin:0;
+  color:#edf8fa;
+  font-size:.72rem;
+  line-height:1.55;
+}
 .lab-code-line[role=button]{
   cursor:pointer;
   transition:background .14s ease,box-shadow .14s ease,transform .14s ease;
