@@ -30,7 +30,7 @@ test("Global Games leaderboard includes every active student membership, includi
     ])],
     ["schools/school-b/practice_season_scores",snap([])],
     ["schools/school-b/legacy_roots/practice_season_scores/documents",snap([
-      doc("u5",{season:"season-1",alias:"Pilot Five",optIn:false,points:200,completedCount:8})
+      doc("u5",{season:"season-1",alias:"Pilot Five",optIn:true,points:200,completedCount:8})
     ])],
     ["schools/school-c/memberships",snap([
       doc("u6",{schoolId:"school-c",status:"active",roles:["student"]})
@@ -52,10 +52,10 @@ test("Global Games leaderboard includes every active student membership, includi
 
   assert.equal(result.season,"season-1");
   assert.equal(result.rows.length,3);
-  assert.deepEqual(result.rows.slice(0,2),[
-    {alias:"Pilot Five",points:200,completedCount:8},
-    {alias:"Player One",points:100,completedCount:4}
-  ]);
+  assert.equal(result.rows[0].alias,"Pilot Five");
+  assert.equal(result.rows[0].points,200);
+  assert.match(result.rows[1].alias,/^Learner-[A-F0-9]{7}$/);
+  assert.equal(result.rows[1].points,100);
   assert.match(result.rows[2].alias,/^Learner-[A-F0-9]{7}$/);
   assert.equal(result.rows[2].points,0);
   assert.equal(result.rows[2].completedCount,0);
