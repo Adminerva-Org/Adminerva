@@ -9,18 +9,25 @@ import {
  * submission and grade services. Source-specific adapters load frozen evidence,
  * while one shared grading contract stages private suggestions.
  *
- * One run is bounded to 20 records. Invalid/zero/pending responses are surfaced
- * as exceptions and never auto-published.
+ * One run is bounded by evidence source: GitHub/repository evidence uses at most
+ * 10 learners because its frozen commit/source evidence is substantially larger;
+ * the other supported sources retain the 20-learner cap. Invalid/zero/pending
+ * responses are surfaced as exceptions and never auto-published.
  */
 // The request package is now V2; evaluated replies intentionally remain V1.
 export const BULK_PACKAGE_FORMAT="adminerva-v4-bulk-evaluation-package-v2";
 export const BULK_RESPONSE_FORMAT="adminerva-v4-bulk-evaluation-response-v1";
 export const BULK_MAX_BATCH=20;
+export const BULK_GITHUB_MAX_BATCH=10;
 export const BULK_COMPACT_PACKAGE_FORMAT=BULK_PACKAGE_FORMAT;
 export const BULK_SOURCE_TYPES=Object.freeze(["studio","github","text","link"]);
-// 20 long code projects can exceed an external model's context budget.
+export function bulkBatchLimit(sourceOrTask){
+  const source=typeof sourceOrTask==="string"?sourceOrTask:sourceOrTask?.submissionSource;
+  return source==="github"?BULK_GITHUB_MAX_BATCH:BULK_MAX_BATCH;
+}
+// Large code/repository projects can exceed an external model's context budget.
 // Refuse oversized packages explicitly rather than silently discard evidence.
-export const BULK_MAX_PACKAGE_CHARACTERS=650000;
+export const BULK_MAX_PACKAGE_CHARACTERS=800000;
 
 export function assertBulkEvidence(source,evidence,{personalized=false}={}){
   if(!BULK_SOURCE_TYPES.includes(source))throw Error("No V4 evidence adapter exists for "+source+".");
@@ -70,6 +77,10 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
      !BULK_SOURCE_TYPES.includes(first.assessment?.submissionSource)||
      !Array.isArray(first.assessment?.rubric)||!first.assessment.rubric.length)
     throw Error("The canonical shared assessment and rubric are unavailable.");
+  const packageLimit=bulkBatchLimit(first.assessment.submissionSource);
+  if(entries.length>packageLimit)
+    throw Error("Expected 1–"+packageLimit+" verified submissions for "+
+      first.assessment.submissionSource+" evidence.");
   const originalAssessment=JSON.stringify(first.assessment);
   const originalRules=JSON.stringify(first.gradingRules);
   const checking=entries.every(entry=>
@@ -143,6 +154,39 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
       BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+
       "). Select fewer learners or inspect smaller source sets; no frozen evidence was dropped.");
   return packageData;
+}
+
+
+/**
+ * Greedy, evidence-complete export packing. Verify the *formatted* JSON that
+ * teachers actually copy, including whitespace and the shared-once guidance.
+ * A learner either contributes every frozen evidence field or is deferred.
+ * No anonymous mapping is committed until an importable package exists.
+ */
+export function fitCompactBulkExternalEvaluationPackage({batchId,entries,task}={}){
+  const included=[],deferred=[],oversized=[];
+  let packageData=null,serialized="";
+  for(const entry of entries||[]){
+    const trial=[...included,entry];
+    try{
+      const candidate=buildCompactBulkExternalEvaluationPackage({batchId,entries:trial,task});
+      const candidateText=JSON.stringify(candidate,null,2);
+      if(candidateText.length>BULK_MAX_PACKAGE_CHARACTERS){
+        (included.length?deferred:oversized).push(entry);
+        continue;
+      }
+      included.push(entry);
+      packageData=candidate;
+      serialized=candidateText;
+    }catch(error){
+      // A genuine malformed or mixed assessment must fail, not be disguised
+      // as a size-related omission.
+      if(!String(error?.message||"").includes("above the safe external AI context budget"))
+        throw error;
+      (included.length?deferred:oversized).push(entry);
+    }
+  }
+  return {included,deferred,oversized,packageData,serialized};
 }
 
 
@@ -250,6 +294,7 @@ export function createV4BulkEvaluationController({
     running=false,schoolSignature="",scopeGeneration=0,autoSelectNext=true,
     verifiedEvidence=new Set(),evidenceNotes=new Map();
   const supported=t=>BULK_SOURCE_TYPES.includes(t?.submissionSource);
+  const batchLimit=()=>bulkBatchLimit(task);
   const historicalGithub=()=>Boolean(task?.legacyCompatibility&&task.submissionSource==="github");
   // Submission eligibility is a frozen student receipt, not an approval toggle.
   // Only external links still need a separate human artifact inspection.
@@ -270,7 +315,8 @@ export function createV4BulkEvaluationController({
     const ready=selectedEligible(),remaining=candidates(),saveReady=saveable();
     root.hidden=!supported(task);
     if(root.hidden)return;
-    el("gbV4BulkCounts").textContent=selection.size+"/"+BULK_MAX_BATCH+
+    const maximum=batchLimit();
+    el("gbV4BulkCounts").textContent=selection.size+"/"+maximum+
       " selected for this batch · "+ready.length+" ungraded · "+
       staged.size+" suggestions staged · "+saveReady.length+
       " ready to save · "+exceptions.size+" exceptions";
@@ -281,6 +327,9 @@ export function createV4BulkEvaluationController({
     btn("gbV4BulkSave").textContent="Save "+saveReady.length+" eligible private draft"+
       (saveReady.length===1?"":"s");
     btn("gbV4BulkSelect").disabled=running||isBusy();
+    btn("gbV4BulkSelect").textContent="Select next "+maximum+" ungraded";
+    btn("gbV4BulkRun").textContent="Run Internal AI (up to "+maximum+")";
+    btn("gbV4BulkExport").textContent="Prepare External AI batch (up to "+maximum+")";
     btn("gbV4BulkClear").disabled=running||isBusy();
     btn("gbV4BulkRetry").disabled=running||isBusy()||exceptions.size===0;
     btn("gbV4BulkStop").hidden=!running;
@@ -293,11 +342,11 @@ export function createV4BulkEvaluationController({
       input.className="mt-1";input.checked=selection.has(id);
       input.disabled=running||isBusy()||Boolean(row.gradeStatus)||row.bulkReady===false||
         ["reopened","revision_requested"].includes(row.status)||
-        (!selection.has(id)&&selection.size>=BULK_MAX_BATCH);
+        (!selection.has(id)&&selection.size>=maximum);
       input.addEventListener("change",()=>{
         if(input.checked){
-          if(selection.size>=BULK_MAX_BATCH){
-            appendStatus("A batch can contain at most "+BULK_MAX_BATCH+
+          if(selection.size>=maximum){
+            appendStatus("A batch can contain at most "+maximum+
               " learners. Deselect one before adding another.");
             input.checked=false;
             return;
@@ -476,12 +525,13 @@ export function createV4BulkEvaluationController({
     }
     if(autoSelectNext){
       selection=new Set(nextBulkSelection(rows,{
-        excluded:new Set([...staged.keys(),...exceptions.keys()])
+        excluded:new Set([...staged.keys(),...exceptions.keys()]),
+        limit:batchLimit()
       }));
       autoSelectNext=false;
     }
-    if(selection.size>BULK_MAX_BATCH)
-      selection=new Set([...selection].slice(0,BULK_MAX_BATCH));
+    if(selection.size>batchLimit())
+      selection=new Set([...selection].slice(0,batchLimit()));
     render();
   }
   /**
@@ -584,7 +634,7 @@ export function createV4BulkEvaluationController({
   }
   async function processBatch(){
     const session=scopeGeneration;
-    const work=candidates().slice(0,BULK_MAX_BATCH);
+    const work=candidates().slice(0,batchLimit());
     if(!work.length){appendStatus("No selected ungraded submissions remain.");return;}
     await execute("Bulk evaluation",async()=>{
       let done=0;
@@ -624,43 +674,64 @@ export function createV4BulkEvaluationController({
   }
   async function exportBatch(){
     const session=scopeGeneration;
-    const work=candidates().slice(0,BULK_MAX_BATCH);
+    const work=candidates().slice(0,batchLimit());
     if(!work.length){appendStatus("No ungraded submissions selected.");return;}
     await execute("External package",async()=>{
-      const refs=new Map(),items=[];
+      const nextBatchId=crypto.randomUUID();
+      const refs=new Map(),included=[],deferred=[],oversized=[];
+      let nextPayload="";
       for(const row of work){
         if(stopped)break;
         const id=key(row);
         try{
           const frozen=await inspect(row,{forExternal:true});
           if(session!==scopeGeneration)break;
-          const ref=crypto.randomUUID();
-          refs.set(ref,frozen);
-          items.push({ref,evaluationData:frozen.evaluationData});
-          exceptions.delete(id);
+          const ref=crypto.randomUUID(),entry={ref,evaluationData:frozen.evaluationData};
+          const fitted=fitCompactBulkExternalEvaluationPackage({
+            batchId:nextBatchId,entries:[...included,entry],task
+          });
+          if(fitted.included.length===included.length){
+            if(included.length)deferred.push(id);
+            else{
+              oversized.push(id);
+              exceptions.set(id,"This learner's complete frozen evidence exceeds the "+
+                BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+
+                "-character External AI budget even alone. Review individually.");
+            }
+          }else{
+            included.push(entry);
+            refs.set(ref,frozen);
+            nextPayload=fitted.serialized;
+            exceptions.delete(id);
+          }
         }catch(error){
           if(session!==scopeGeneration)break;
           exceptions.set(id,error?.message||"Could not export frozen source");
         }
         if(session!==scopeGeneration)break;
-        appendStatus(items.length+" verified anonymous package item(s) prepared.");
+        appendStatus(included.length+" learner(s) fit within "+
+          BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+" characters · "+
+          deferred.length+" deferred · "+oversized.length+" too large individually.");
       }
       if(session!==scopeGeneration)return;
-      if(!items.length)throw Error("No frozen submissions passed the package checks.");
-      const nextBatchId=crypto.randomUUID();
-      const nextPayload=JSON.stringify(
-        buildCompactBulkExternalEvaluationPackage({
-          batchId:nextBatchId,entries:items,task
-        }),null,2
-      );
-      // Commit the anonymous ref binding only after all items validate.
-      // Failed exports must not leave an invalid importable batch behind.
+      if(!included.length)throw Error("No complete frozen submissions fit the "+
+        BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+
+        "-character budget. Individually oversized learners need separate review.");
+      // Only included refs are valid for import; deferred students retain their
+      // original submissions and grades and remain available for later batches.
       batchId=nextBatchId;referenceMap=refs;payload.value=nextPayload;
+      selection=new Set(included.map(item=>refs.get(item.ref).key));
+      autoSelectNext=false;
       const exchange=payload.closest("details");
       if(exchange)exchange.open=true;
       payload.scrollIntoView({block:"nearest"});
-      appendStatus(items.length+" anonymous external evaluation package(s) ready. "+
-        "Copy the JSON and paste the evaluator's response in Import. No grades saved.");
+      appendStatus(included.length+" of "+work.length+" selected learners packaged ("+
+        nextPayload.length.toLocaleString()+"/"+
+        BULK_MAX_PACKAGE_CHARACTERS.toLocaleString()+" characters); "+
+        deferred.length+" deferred to a later batch; "+oversized.length+
+        " require individual review. Only packaged learners remain selected. "+
+        "Copy this JSON and keep its batch references unchanged. No grades saved.");
+      render();
     });
   }
   async function importBatch(){
@@ -786,11 +857,12 @@ export function createV4BulkEvaluationController({
   });
   btn("gbV4BulkSelect").addEventListener("click",()=>{
     selection=new Set(nextBulkSelection(rows,{
-      excluded:new Set([...staged.keys(),...exceptions.keys()])
+      excluded:new Set([...staged.keys(),...exceptions.keys()]),
+      limit:batchLimit()
     }));
     autoSelectNext=false;
     appendStatus(selection.size?selection.size+" ungraded learners selected (maximum "+
-      BULK_MAX_BATCH+").":"No additional ungraded learners are available.");
+      batchLimit()+").":"No additional ungraded learners are available.");
     render();
   });
   btn("gbV4BulkClear").addEventListener("click",()=>{

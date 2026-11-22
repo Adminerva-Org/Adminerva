@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  BULK_PACKAGE_FORMAT,BULK_RESPONSE_FORMAT,BULK_MAX_BATCH,
+  BULK_PACKAGE_FORMAT,BULK_RESPONSE_FORMAT,BULK_MAX_BATCH,BULK_GITHUB_MAX_BATCH,bulkBatchLimit,
   bulkSuggestionState,readBulkExternalResponse,bulkSaveableStages,
   nextBulkSelection,canClearCompletedBulkExchange,
   BULK_COMPACT_PACKAGE_FORMAT,buildCompactBulkExternalEvaluationPackage,
+  fitCompactBulkExternalEvaluationPackage,
   BULK_SOURCE_TYPES,BULK_MAX_PACKAGE_CHARACTERS,assertBulkEvidence
 } from "../js/repo-review/v4-bulk-evaluation.mjs";
 import {
@@ -36,6 +37,10 @@ test("bulk response validates exact anonymous batch identity and rubric order",(
  assert.equal(rows[0].review.saveEligible,true);
  assert.match(rows[0].review.criteria[0].comment,/Evidence: Source contains derived class/);
  assert.equal(BULK_MAX_BATCH,20);
+ assert.equal(BULK_MAX_PACKAGE_CHARACTERS,800000);
+ assert.equal(BULK_GITHUB_MAX_BATCH,10);
+ assert.equal(bulkBatchLimit("github"),10);
+ assert.equal(bulkBatchLimit("studio"),20);
  assert.match(BULK_PACKAGE_FORMAT,/bulk-evaluation-package-v2/);
 });
 test("zero scores and unresolved rubric points are not eligible for saving",()=>{
@@ -337,14 +342,14 @@ test("bulk selection and stage lookup support GitHub evidence IDs without changi
    staged:new Map(),rows,savedIds:new Set(["github-1"])}),true);
 });
 
-test("all native V4 evidence sources share one 20-learner compact evaluation contract",()=>{
+test("source-aware compact evaluation keeps 20 learners for ordinary evidence and 10 for GitHub",()=>{
  assert.deepEqual([...BULK_SOURCE_TYPES],["studio","github","text","link"]);
  const ordinary={...compactAssessment,personalizedTask:{enabled:false}};
  const configs=[
    {source:"studio",task:compactAssessment,entries:Array.from({length:20},(_,i)=>compactExample(i))},
    ...["text","link","github"].map(source=>({
      source,task:{...ordinary,submissionSource:source},
-     entries:Array.from({length:20},(_,i)=>{
+     entries:Array.from({length:source==="github"?10:20},(_,i)=>{
        const snapshot=source==="text"?{version:1,payload:{
          response:"Essay submission #"+i+" with detailed evidence."}}:
          source==="link"?{version:1,payload:{
@@ -366,7 +371,7 @@ test("all native V4 evidence sources share one 20-learner compact evaluation con
    const pack=buildCompactBulkExternalEvaluationPackage({
      batchId:"batch-"+source,task,entries
    });
-   assert.equal(pack.items.length,20,source);
+   assert.equal(pack.items.length,bulkBatchLimit(source),source);
    assert.equal(pack.shared.assessment.submissionSource,source);
    assert.equal(pack.shared.assessment.rubric.length,2);
    assert.ok(JSON.stringify(pack).length<BULK_MAX_PACKAGE_CHARACTERS);
@@ -375,6 +380,11 @@ test("all native V4 evidence sources share one 20-learner compact evaluation con
    if(source==="text")assert.match(pack.items.at(-1).frozenEvidence.response,/Essay submission #19/);
    if(source==="link")assert.equal(pack.items[0].frozenEvidence.type,"submission_link");
  }
+ const github=configs.find(config=>config.source==="github");
+ assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
+   batchId:"github-too-large",task:github.task,
+   entries:[...github.entries,github.entries[0]]
+ }),/1–10 verified submissions for github evidence/);
 });
 test("unverified GitHub, empty essays, missing links and unsupported MCQ are excluded",()=>{
  assert.throws(()=>assertBulkEvidence("github",{type:"github_frozen_commit_evidence",
@@ -410,14 +420,71 @@ test("person-specific task instructions remain bound to frozen essays and never 
    version:1,payload:{response:"No personalized prompt"}
  }}),/missing its exact assigned scenario/);
 });
-test("oversized 20-learner external packages report context limit instead of truncating evidence",()=>{
+test("external batches larger than 800k characters fail without truncating evidence",()=>{
  const textTask={...compactAssessment,submissionSource:"text",personalizedTask:{enabled:false}};
  const entries=Array.from({length:20},(_,i)=>({
    ref:"essay-"+i,evaluationData:buildGeneralExternalEvaluationData({
-     task:textTask,snapshot:{version:1,payload:{response:"S"+i+" "+("a".repeat(49900))}}
+     task:textTask,snapshot:{version:1,payload:{response:"S"+i+" "+("a".repeat(60000))}}
    })
  }));
  assert.throws(()=>buildCompactBulkExternalEvaluationPackage({
    batchId:"large",task:textTask,entries
  }),/safe external AI context budget/);
+});
+
+test("external packer includes complete evidence up to formatted 800k and defers overflow",()=>{
+ const assessment={...compactAssessment,submissionSource:"text",personalizedTask:{enabled:false}};
+ const entries=Array.from({length:20},(_,i)=>({
+   ref:"ref-"+i,
+   evaluationData:buildGeneralExternalEvaluationData({
+     task:assessment,snapshot:{version:1,payload:{
+       response:"Learner "+i+" "+("x".repeat(49000))
+     }}
+   })
+ }));
+ const fitted=fitCompactBulkExternalEvaluationPackage({
+   batchId:"bounded-batch",entries,task:assessment
+ });
+ assert.ok(fitted.included.length>0);
+ assert.ok(fitted.included.length<entries.length);
+ assert.equal(fitted.included.length+fitted.deferred.length,entries.length);
+ assert.equal(fitted.oversized.length,0);
+ assert.ok(fitted.serialized.length<=800000);
+ assert.deepEqual(fitted.packageData.items.map(item=>item.ref),
+   fitted.included.map(entry=>entry.ref));
+ for(const item of fitted.packageData.items){
+   assert.match(item.frozenEvidence.response,/^Learner /);
+   assert.ok(item.frozenEvidence.response.endsWith("x".repeat(49000)));
+ }
+ assert.ok(fitted.deferred.length>=1);
+});
+
+test("external packer skips one individually oversized submission but retains following learners",()=>{
+ const assessment={...compactAssessment,submissionSource:"text",personalizedTask:{enabled:false}};
+ const entry=(ref,size)=>({ref,evaluationData:buildGeneralExternalEvaluationData({
+   task:assessment,snapshot:{version:1,payload:{response:"y".repeat(size)}}
+ })});
+ const huge=entry("too-large",810000),small=entry("small",1500);
+ // The canonical text adapter bounds raw written responses. Exercise the
+ // package-level guard with an explicitly oversized frozen evidence fixture.
+ huge.evaluationData.evidence.response="y".repeat(810000);
+ const result=fitCompactBulkExternalEvaluationPackage({
+   batchId:"batch-large-first",entries:[huge,small],task:assessment
+ });
+ assert.deepEqual(result.included.map(item=>item.ref),["small"]);
+ assert.deepEqual(result.oversized.map(item=>item.ref),["too-large"]);
+ assert.deepEqual(result.deferred,[]);
+ assert.equal(result.packageData.items[0].frozenEvidence.response.length,1500);
+ assert.ok(result.serialized.length<=800000);
+});
+
+test("external packer never treats invalid student evidence as a size exclusion",()=>{
+ const assessment={...compactAssessment,submissionSource:"text",personalizedTask:{enabled:false}};
+ const invalid={ref:"invalid",evaluationData:buildGeneralExternalEvaluationData({
+   task:assessment,snapshot:{version:1,payload:{response:"A complete written response."}}
+ })};
+ invalid.evaluationData.evidence.response="";
+ assert.throws(()=>fitCompactBulkExternalEvaluationPackage({
+   batchId:"invalid-evidence",entries:[invalid],task:assessment
+ }),/essay/);
 });
