@@ -23,7 +23,7 @@ function when(value){
 }
 function setBusy(value,message=""){
   busy=value;
-  for(const id of ["pu-refresh","pu-create","pu-save-profile","pu-reset-password","pu-lifecycle","pu-create-submit"]){
+  for(const id of ["pu-refresh","pu-create","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-create-submit"]){
     const target=el(id);if(target)target.disabled=value;
   }
   if(message)status.textContent=message;
@@ -45,7 +45,8 @@ function visible(item){
   if(account==="verified"&&!item.emailVerified)return false;
   if(account==="unverified"&&item.emailVerified)return false;
   if(role==="platform_admin"&&!item.platformAdmin)return false;
-  if(role==="standard"&&item.platformAdmin)return false;
+  if(role==="platform_admin_archived"&&item.platformAdminStatus!=="archived")return false;
+  if(role==="standard"&&item.platformAdminStatus!=="none")return false;
   return true;
 }
 function render(){
@@ -63,7 +64,9 @@ function render(){
     info.append(
       node("strong","block break-words",item.displayName||item.email||"Unnamed account"),
       node("p","text-xs text-slate-600 mt-1 break-words",
-        [item.email||"No email",accountState(item),item.platformAdmin?"Platform Admin":"Standard user"].join(" · ")),
+        [item.email||"No email",accountState(item),
+          item.platformAdminStatus==="active"?"Platform Admin":
+          item.platformAdminStatus==="archived"?"Platform Admin retired":"Standard user"].join(" · ")),
       node("p","text-[11px] text-slate-400 mt-1 break-all","Account ID: "+item.uid)
     );
     const actions=node("div","flex items-center gap-2 shrink-0");
@@ -97,7 +100,8 @@ function populateDetail(result){
   el("pu-detail-meta").textContent=(account.email||"No email")+" · "+account.uid;
   el("pu-detail-account").replaceChildren(
     detailTile("Account state",accountState(account)),
-    detailTile("Platform role",account.platformAdmin?"Platform Administrator":"Standard user"),
+    detailTile("Platform role",account.platformAdminStatus==="active"?"Platform Administrator":
+      account.platformAdminStatus==="archived"?"Platform Administrator · retired":"Standard user"),
     detailTile("Created",when(account.createdAt)),
     detailTile("Last sign-in",when(account.lastSignInAt)),
     detailTile("Providers",(account.providers||[]).join(", ")||"Unavailable")
@@ -107,6 +111,12 @@ function populateDetail(result){
   el("pu-reset-output").hidden=true;
   el("pu-reset-link").value="";
   el("pu-action-status").textContent="";
+  const authority=el("pu-platform-authority");
+  authority.textContent=account.platformAdminStatus==="active"?"Retire Platform Admin":
+    account.platformAdminStatus==="archived"?"Restore Platform Admin":"Grant Platform Admin";
+  authority.className="pu-btn "+(account.platformAdminStatus==="active"?"warn":"");
+  authority.disabled=busy||account.disabled;
+
   const lifecycle=el("pu-lifecycle");
   lifecycle.textContent=account.disabled?"Restore account":"Disable account";
   lifecycle.className="pu-btn "+(account.disabled?"success":"warn");
@@ -176,10 +186,19 @@ async function runDetailAction(action,payload,message){
       action==="update_profile"?"Account profile updated.":
       action==="disable"?"Account disabled. Historical school records were not deleted.":
       action==="restore"?"Account restored and may sign in again.":
+      action==="grant_platform_admin"?"Platform Administrator authority granted.":
+      action==="archive_platform_admin"?"Platform Administrator authority retired. The login account was not deleted.":
+      action==="restore_platform_admin"?"Platform Administrator authority restored.":
       "Password reset link generated. Share it only through a trusted channel.";
   }catch(error){
     el("pu-action-status").textContent=error?.message||"The account operation could not be completed.";
-  }finally{setBusy(false);if(currentAccount)el("pu-lifecycle").disabled=busy||(!currentAccount.disabled&&currentAccount.platformAdmin);}
+  }finally{
+    setBusy(false);
+    if(currentAccount){
+      el("pu-lifecycle").disabled=busy||(!currentAccount.disabled&&currentAccount.platformAdmin);
+      el("pu-platform-authority").disabled=busy||currentAccount.disabled;
+    }
+  }
 }
 async function copyInput(input,statusTarget){
   const value=input.value;if(!value)return;
@@ -206,6 +225,16 @@ el("pu-save-profile").addEventListener("click",()=>{
   void runDetailAction("update_profile",{displayName},"Saving account profile…");
 });
 el("pu-reset-password").addEventListener("click",()=>void runDetailAction("reset_password",{},"Generating password reset link…"));
+el("pu-platform-authority").addEventListener("click",()=>{
+  if(!currentAccount)return;
+  const action=currentAccount.platformAdminStatus==="active"?"archive_platform_admin":
+    currentAccount.platformAdminStatus==="archived"?"restore_platform_admin":"grant_platform_admin";
+  void runDetailAction(action,{},action==="archive_platform_admin"?
+    "Retiring Platform Administrator authority…":
+    action==="restore_platform_admin"?"Restoring Platform Administrator authority…":
+    "Granting Platform Administrator authority…");
+});
+
 el("pu-lifecycle").addEventListener("click",()=>{
   if(!currentAccount)return;
   const action=currentAccount.disabled?"restore":"disable";

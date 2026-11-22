@@ -32,7 +32,7 @@ test("global account lifecycle is audited and preserves school-owned history",()
 
 test("dangerous platform-account lifecycle cases fail closed",()=>{
   assert.match(backend,/uid===authority\.uid&&disabling/);
-  assert.match(backend,/Active Platform Administrator accounts must be removed from platform governance before they can be disabled/);
+  assert.match(backend,/Active Platform Administrator accounts must be retired from platform governance before they can be disabled/);
   assert.match(backend,/Restore this account before generating a password reset link/);
   assert.match(backend,/reason\(input\.reason\)/);
   assert.match(backend,/requiredText\(value,label,12,500\)/);
@@ -42,9 +42,23 @@ test("System Admin UI exposes account create, recovery, restore and profile corr
   assert.match(page,/id="pu-create"/);
   assert.match(page,/id="pu-save-profile"/);
   assert.match(page,/id="pu-reset-password"/);
+  assert.match(page,/id="pu-platform-authority"/);
   assert.match(page,/id="pu-lifecycle"/);
   assert.match(page,/Student account replacement\/reconciliation stays in the canonical school People &amp; Access recovery workflow/);
   assert.match(client,/runDetailAction\("reset_password"/);
   assert.match(client,/currentAccount\.disabled\?"restore":"disable"/);
   assert.match(client,/action:"create",displayName,email,reason/);
+});
+
+
+test("Platform Administrator authority has an audited archive and restore lifecycle",()=>{
+  for(const action of ["grant_platform_admin","archive_platform_admin","restore_platform_admin"])
+    assert.match(backend,new RegExp(action));
+  assert.match(backend,/You cannot retire your own Platform Administrator authority/);
+  assert.match(backend,/Designate another active Platform Administrator before retiring this authority/);
+  assert.match(backend,/platform_admin_granted/);
+  assert.match(backend,/platform_admin_archived/);
+  assert.match(backend,/platform_admin_restored/);
+  assert.match(client,/platformAdminStatus==="active"\?"archive_platform_admin"/);
+  assert.match(page,/Retired Platform admins/);
 });

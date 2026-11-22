@@ -53,7 +53,8 @@
       <label class="text-sm font-bold">Platform role
         <select id="pu-role-filter" class="pu-input mt-1">
           <option value="">All roles</option>
-          <option value="platform_admin">Platform admins</option>
+          <option value="platform_admin">Active Platform admins</option>
+          <option value="platform_admin_archived">Retired Platform admins</option>
           <option value="standard">Standard users</option>
         </select>
       </label>
@@ -106,6 +107,7 @@
         <div class="flex flex-wrap gap-2 self-end">
           <button id="pu-save-profile" class="pu-btn" type="button">Save profile</button>
           <button id="pu-reset-password" class="pu-btn" type="button">Generate reset link</button>
+          <button id="pu-platform-authority" class="pu-btn" type="button">Grant Platform Admin</button>
           <button id="pu-lifecycle" class="pu-btn warn" type="button">Disable account</button>
         </div>
       </div>
