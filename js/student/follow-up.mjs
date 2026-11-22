@@ -2,8 +2,8 @@ import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,getDocs,query,where} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {COURSES} from "./practice-courses.mjs?v=1.5.0";
-import {resolvePracticeContext} from "./practice-session.mjs?v=1.5.0";
+import {COURSES} from "./practice-courses.mjs?v=1.5.1";
+import {resolvePracticeContext} from "./practice-session.mjs?v=1.5.2";
 const missionLabels=new Map(COURSES.flatMap(course=>course.missions.map(mission=>[course.id+":"+mission.id,course.name+" · "+mission.title])));
 const schoolPackApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolPracticePacks");
 const dash=document.getElementById("studentFollowupContainer"),packsMount=document.getElementById("practiceAssignedPacks");
@@ -66,7 +66,7 @@ async function load(user){
   if(!dash.children.length)dash.append(card("No follow-up assigned","Your teacher has not assigned an additional pack, project or improvement plan."));
  }
  if(packsMount){
-  const integratedGamesHub=document.body.dataset.gamesBuild==="20261118-games-platform-preview";
+  const integratedGamesHub=Boolean(document.body.dataset.gamesBuild&&document.getElementById("practiceApp"));
   packsMount.hidden=true;packsMount.replaceChildren();
   if(!integratedGamesHub&&packs.length){
    packsMount.hidden=false;const panel=document.createElement("div");panel.className="rounded-xl border border-blue-200 bg-blue-50 p-4";
