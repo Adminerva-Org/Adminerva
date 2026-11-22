@@ -406,7 +406,7 @@ function renderBoard(){
       ?"Class rankings resume after Practice migration completes."
       :boardMode==="global"
         ?(publicBoardError?"Global rankings could not connect. Refresh to try again.":publicBoardReady?"No active student accounts are available for this season yet.":"Connecting to global rankings…")
-        :(eligible?"No active classmates are linked to this section yet.":"Sign in with a linked student account to see your class.");
+        :(accountPreview?"My class rankings are available to enrolled student accounts.":eligible?"No active classmates are linked to this section yet.":"Sign in with a linked student account to see your class.");
     list.append(node("li",message,"lab-board-empty"));
     footnote.textContent=boardMode==="global"
       ?"Current season · all active platform student accounts · privacy-safe aliases."
