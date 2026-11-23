@@ -156,7 +156,7 @@ function createPlatformUserService({db,auth}){
       const schools=await db.collection("platform_schools").orderBy("displayName").limit(101).get();
       if(schools.size===101)
         deny("resource-exhausted","Test-student school selection requires paginated school registry support.");
-      return {schools:schools.docs.filter(doc=>doc.data().state!=="archived").map(doc=>{
+      return {schools:schools.docs.filter(doc=>["active","pilot"].includes(doc.data().state)).map(doc=>{
         const data=doc.data()||{};
         return {
           schoolId:doc.id,
