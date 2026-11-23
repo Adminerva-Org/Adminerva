@@ -360,14 +360,13 @@ html[data-adminerva-experience="quick"] .avx-expedition-body,html[data-adminerva
 .avx-tool-motifs{position:absolute;inset:0;pointer-events:none;z-index:2}
 .avx-tool-sprite{
   position:absolute;display:block;width:150px;height:100px;
-  background-image:url("../assets/immersive/world-tools.webp");
-  background-repeat:no-repeat;background-size:200% 200%;
+  background-repeat:no-repeat;background-position:center;background-size:contain;
   opacity:.48;filter:drop-shadow(0 12px 26px rgba(16,214,228,.17));
 }
-.avx-tool-portal{left:4%;bottom:8%;background-position:0 0}
-.avx-tool-beacons{right:3%;top:10%;background-position:100% 0}
-.avx-tool-path{left:34%;bottom:1%;background-position:0 100%;width:180px}
-.avx-tool-shards{right:24%;bottom:5%;background-position:100% 100%;width:125px}
+.avx-tool-portal{left:4%;bottom:8%;background-image:url("../assets/immersive/portal.svg")}
+.avx-tool-beacons{right:3%;top:10%;background-image:url("../assets/immersive/beacons.svg")}
+.avx-tool-path{left:34%;bottom:1%;width:180px;background-image:url("../assets/immersive/path-light.svg")}
+.avx-tool-shards{right:24%;bottom:5%;width:125px;background-image:url("../assets/immersive/shards.svg")}
 .avx-gate .avx-tool-sprite{opacity:.35}
 .avx-route-intro,.avx-current-intro,.avx-crossing-copy{position:relative;z-index:3}
 
