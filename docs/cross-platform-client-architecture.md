@@ -10,7 +10,7 @@ The existing hosted Adminerva frontend, tenant-verified Firebase APIs, identity/
 | --- | --- | --- | --- |
 | Web/PWA | Hosted from canonical site | Not applicable | Operational web; PWA install depends on browser support |
 | Windows/macOS | Approved HTTPS web content in sandboxed Electron renderer, after auth integration | Signed installer + independently versioned native bridge | Public-only preview scaffold; no installer, no native auth |
-| Android/iOS | Reviewed web assets bundled with Capacitor native app, with allowed shared web/API content | Signed store-delivered native application | No Android/iOS native projects or store builds |
+| Android/iOS | Reviewed web assets bundled with Capacitor native app, with allowed shared web/API content | Signed store-delivered native application | Public-only asset staging in `apps/mobile`; native Android/iOS projects and store builds absent |
 
 **Website updates are not universally native updates.** Hosted desktop public pages load current site changes on normal navigation or relaunch; never force refresh a Studio editor during a practical exam. Bundled mobile UI requires an app-store release to update bundled code, unless a narrowly reviewed category of remote content is allowed. Native bridge changes, new OS privileges and security-sensitive flows require signed native updates. All clients share the same live authorized backend changes only when their API contracts remain compatible.
 
@@ -37,4 +37,4 @@ Use native Android and iOS shells with reviewed bundled web assets and one autho
 
 ## This foundation's scope
 
-Implementation in this branch: a secure **public-only** Electron preview shell; a shared browser/native compatibility model; focused tests; technical documentation; status and future work consolidated into the master plan. Not implemented: native authenticated workflows, installer signing, desktop auto-update service, desktop companion, full mobile projects, mobile packaging or release.
+Implementation in this branch: a secure **public-only** Electron preview shell; a shared browser/native compatibility model; public-only Capacitor mobile web-asset staging from canonical site files (no remote server URL); focused tests; technical documentation; status and future work consolidated into the master plan. Not implemented: native authenticated workflows, installer signing, desktop auto-update service, desktop Companion, Android/iOS native projects, signing, store packaging or release.

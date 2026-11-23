@@ -53,3 +53,18 @@ test("native capabilities are conservative UI hints, not exam or OS authorizatio
  assert.deepEqual(advertised,{supported:true,reason:"advertised-only"});
  assert.equal(assessNativeCapability({...preview,channel:"release"},"foreground-applications").supported,false);
 });
+
+test("mobile preview packages canonical public assets, not remote native web permissions",()=>{
+ const cfg=JSON.parse(readFileSync(new URL("../apps/mobile/capacitor.config.json",import.meta.url),"utf8"));
+ const mobilePackage=JSON.parse(readFileSync(new URL("../apps/mobile/package.json",import.meta.url),"utf8"));
+ const script=readFileSync(new URL("../apps/mobile/prepare-preview.mjs",import.meta.url),"utf8");
+ const entry=readFileSync(new URL("../apps/mobile/preview-index.html",import.meta.url),"utf8");
+ assert.equal(cfg.appId,"io.adminerva.preview");
+ assert.equal(cfg.webDir,"www");
+ assert.equal(cfg.server?.url,undefined);
+ assert.equal(mobilePackage.private,true);
+ assert.match(script,/guest-home\.html/);
+ assert.match(script,/copyFileSync\(path\.join\(here,"preview-index\.html"\)/);
+ assert.match(entry,/public-only test bundle/);
+ assert.doesNotMatch(entry,/firebase-auth|signInWithPopup|desktopCapturer/);
+});
