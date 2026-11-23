@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {
-  checkedEvent,createPilotStudioResearchService,platformPilotResearchOverview,RETENTION_DAYS
+  checkedEvent,summarizePilotEvents,createPilotStudioResearchService,platformPilotResearchOverview,RETENTION_DAYS
 }=require("../functions/pilot-studio-research.js");
 
 const UID="test_user_001",SCHOOL="pilot-school";
@@ -43,9 +43,18 @@ function database(){
         const category=path.split("/").at(-1);
         return {
           count:()=>({get:async()=>({data:()=>({count:counts.get(category)||0})})}),
-          orderBy:()=>({limit:n=>({get:async()=>({size:1,docs:[{
-            data:()=>({type:"run_finished",ownerUid:UID,createdAt:ts(FIXED-1000)})
-          }]})})})
+          where:()=>({
+            where:()=>({
+              count:()=>({get:async()=>({data:()=>({count:2})})}),
+              orderBy:()=>({limit:n=>({get:async()=>({size:2,docs:[{
+                data:()=>({type:"run_finished",mode:"console",outcome:"success",
+                  ownerUid:UID,sessionId:SESSION_ID,projectId:"demo_1",createdAt:ts(FIXED-1000)})
+              },{
+                data:()=>({type:"editor_activity",editCount:7,ownerUid:UID,
+                  sessionId:SESSION_ID,projectId:"demo_1",createdAt:ts(FIXED-2000)})
+              }]})})})
+            })
+          })
         };
       }
       if(["students","assessments","student_grades","student_submissions","assessment_evidence","activity_events"].includes(path))
@@ -96,6 +105,28 @@ test("active school membership is mandatory even for test-designated identities"
   await assert.rejects(api(request(UID,{action:"status",schoolId:SCHOOL})),/access to this school is not active/);
 });
 
+test("pilot process summary excludes identities while preserving run outcomes and daily coverage",()=>{
+  const rows=[
+    {createdAt:ts(FIXED-1000),ownerUid:UID,sessionId:SESSION_ID,projectId:"demo_1",
+      type:"run_finished",mode:"console",outcome:"compile_error"},
+    {createdAt:ts(FIXED-2000),ownerUid:UID,sessionId:SESSION_ID,projectId:"demo_1",
+      type:"editor_activity",editCount:12},
+    {createdAt:ts(FIXED-3000),ownerUid:UID,sessionId:SESSION_ID,projectId:"demo_1",
+      type:"cloud_saved"},
+    {createdAt:ts(FIXED-31*86400000),ownerUid:"other",sessionId:"old",
+      projectId:"old",type:"project_open"}
+  ];
+  const summary=summarizePilotEvents(rows,{now:FIXED,since:FIXED-30*86400000});
+  assert.equal(summary.events,3);
+  assert.equal(summary.observedAccounts,1);
+  assert.equal(summary.observedSessions,1);
+  assert.equal(summary.observedProjects,1);
+  assert.equal(summary.editorChanges,12);
+  assert.equal(summary.runsByOutcome.compile_error,1);
+  assert.equal(summary.dailyEvents[0].count,3);
+  assert.equal(JSON.stringify(summary).includes(UID),false);
+});
+
 test("platform overview returns only cross-school aggregates to platform authority",async()=>{
   const db=database();
   await assert.rejects(platformPilotResearchOverview({db,request:request(UID),now:()=>FIXED}),
@@ -105,6 +136,9 @@ test("platform overview returns only cross-school aggregates to platform authori
   assert.equal(result.scope,"aggregate_only");
   assert.equal(result.schools[0].counts.studio_submissions,12);
   assert.equal(result.schools[0].pilotSample.observedAccounts,1);
+  assert.equal(result.schools[0].pilotSample.totalEvents,2);
+  assert.equal(result.schools[0].pilotSample.coveragePercent,100);
+  assert.equal(result.schools[0].pilotSample.editorChanges,7);
   assert.equal(result.schools[0].pilotSample.eventsByType.run_finished,1);
   const encoded=JSON.stringify(result);
   assert.equal(encoded.includes(UID),false);
