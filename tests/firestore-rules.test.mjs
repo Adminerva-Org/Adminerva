@@ -75,6 +75,20 @@ function client(uid,email){return env.authenticatedContext(uid,{email,email_veri
 function activityEvent() { return {ownerUid:'alice',studentId:'alice',sessionId:'a'.repeat(36),page:'playground',action:'active-time',activeSeconds:30,createdAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(Date.now()+30*86400000)}; }
 function activityPreference(enabled=true) { return {ownerUid:'alice',studentId:'alice',enabled,updatedAt:serverTimestamp()}; }
 
+
+test('platform test-student designations are backend-only even for legacy browser admins',async()=>{
+  const admin=client('admin',ADMIN),teacher=client('staff',TEACHER),student=client('alice',EMAIL_A);
+  await env.withSecurityRulesDisabled(async context=>setDoc(doc(context.firestore(),'platform_test_accounts','alice'),{
+    uid:'alice',kind:'student',status:'active',revision:1
+  }));
+  for(const database of [admin,teacher,student]){
+    await assertFails(getDoc(doc(database,'platform_test_accounts','alice')));
+    await assertFails(setDoc(doc(database,'platform_test_accounts','forged'),{uid:'forged',kind:'student',status:'active',revision:1}));
+    await assertFails(updateDoc(doc(database,'platform_test_accounts','alice'),{status:'retired'}));
+    await assertFails(deleteDoc(doc(database,'platform_test_accounts','alice')));
+  }
+});
+
 test('home reminder suppression is private, typed and independent of activity consent',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
   await assertSucceeds(setDoc(doc(alice,'activity_preferences','alice'),{...activityPreference(false),promptDismissed:true}));

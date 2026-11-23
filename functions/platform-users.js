@@ -6,7 +6,7 @@
  * records remain in their canonical school-scoped services.
  */
 const {FieldValue}=require("firebase-admin/firestore");
-const {platformAuthority,TenantAccessError}=require("./tenant-access.js");
+const {platformAuthority,TenantAccessError,schoolEnrollmentMode}=require("./tenant-access.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function checkedUid(value){
@@ -42,7 +42,8 @@ function checkedEmail(value){
 function reason(value,label="Administrative reason"){
   return requiredText(value,label,12,500);
 }
-function accountSummary(user,platformAdmin=false){
+function accountSummary(user,platformAdminStatus="none"){
+  const platformAdmin=platformAdminStatus==="active";
   return {
     uid:user.uid,
     email:user.email||"",
@@ -50,6 +51,7 @@ function accountSummary(user,platformAdmin=false){
     emailVerified:user.emailVerified===true,
     disabled:user.disabled===true,
     platformAdmin,
+    platformAdminStatus,
     createdAt:user.metadata?.creationTime||null,
     lastSignInAt:user.metadata?.lastSignInTime||null,
     providers:[...new Set((user.providerData||[]).map(row=>String(row.providerId||"")).filter(Boolean))]
@@ -60,7 +62,8 @@ async function platformFlags({db,users}){
   for(let offset=0;offset<users.length;offset+=400){
     const chunk=users.slice(offset,offset+400);
     const docs=chunk.length?await db.getAll(...chunk.map(user=>db.doc("platform_admins/"+user.uid))):[];
-    docs.forEach(doc=>flags.set(doc.id,doc.exists&&doc.data()?.status==="active"&&doc.data()?.role==="platform_admin"));
+    docs.forEach(doc=>flags.set(doc.id,
+      doc.exists&&doc.data()?.role==="platform_admin"?String(doc.data()?.status||"archived"):"none"));
   }
   return flags;
 }
@@ -82,9 +85,23 @@ async function getUserOrDeny(auth,uid){
     deny("unavailable","The user account could not be loaded.");
   }
 }
-async function platformGrant({db,uid}){
-  const doc=await db.doc("platform_admins/"+uid).get();
-  return doc.exists&&doc.data()?.status==="active"&&doc.data()?.role==="platform_admin";
+async function platformGrantRecord({db,uid}){
+  const doc=await db.doc("platform_admins/"+uid).get(),data=doc.exists?doc.data():null;
+  return {
+    exists:doc.exists&&data?.role==="platform_admin",
+    active:doc.exists&&data?.role==="platform_admin"&&data?.status==="active",
+    status:doc.exists&&data?.role==="platform_admin"?String(data.status||"archived"):"none",
+    revision:Number(data?.revision)||0
+  };
+}
+
+function testStudentSummary(snapshot){
+  const data=snapshot?.exists?snapshot.data():null;
+  return {
+    active:Boolean(snapshot?.exists&&data?.kind==="student"&&data?.status==="active"),
+    status:snapshot?.exists&&data?.kind==="student"?String(data.status||"retired"):"none",
+    revision:Number(data?.revision)||0
+  };
 }
 
 function createPlatformUserService({db,auth}){
@@ -104,7 +121,7 @@ function createPlatformUserService({db,auth}){
       }
       const flags=await platformFlags({db,users:page.users});
       return {
-        items:page.users.map(user=>accountSummary(user,flags.get(user.uid)===true)),
+        items:page.users.map(user=>accountSummary(user,flags.get(user.uid)||"none")),
         nextPageToken:page.pageToken||null
       };
     }
@@ -126,10 +143,75 @@ function createPlatformUserService({db,auth}){
         deny("unavailable","The complete user directory could not be loaded. Retry the directory.");
       }
       const flags=await platformFlags({db,users});
-      const items=users.map(user=>accountSummary(user,flags.get(user.uid)===true))
+      const items=users.map(user=>accountSummary(user,flags.get(user.uid)||"none"))
         .sort((a,b)=>(a.displayName||a.email||a.uid).localeCompare(b.displayName||b.email||b.uid));
       return {items,total:items.length};
     }
+
+    if(action==="list_test_school_targets"){
+      const schools=await db.collection("platform_schools").orderBy("displayName").limit(101).get();
+      if(schools.size===101)
+        deny("resource-exhausted","Test-student school selection requires paginated school registry support.");
+      return {schools:schools.docs.filter(doc=>["active","pilot"].includes(doc.data().state)).map(doc=>{
+        const data=doc.data()||{};
+        return {
+          schoolId:doc.id,
+          name:String(data.displayName||doc.id).slice(0,120),
+          state:String(data.state||"unknown").slice(0,30),
+          compatibilityMode:data.compatibilityMode||"legacy_allowed",
+          enrollmentMode:schoolEnrollmentMode(data),
+          productionAuthorized:data.productionAuthorized===true
+        };
+      }).sort((a,b)=>a.name.localeCompare(b.name)||a.schoolId.localeCompare(b.schoolId))};
+    }
+
+    if(["mark_test_student","retire_test_student"].includes(action)){
+      const uid=checkedUid(input.uid),auditReason=reason(input.reason),
+        user=await getUserOrDeny(auth,uid),ref=db.doc("platform_test_accounts/"+uid),
+        retiring=action==="retire_test_student";
+      if((await platformGrantRecord({db,uid})).active)
+        deny("failed-precondition","Platform Administrator accounts cannot be designated as test students.");
+      if(!retiring&&(user.disabled||!user.emailVerified))
+        deny("failed-precondition","Test-student controls require a verified, enabled login account.");
+      if(retiring){
+        const memberships=await db.collection("platform_users/"+uid+"/memberships").limit(51).get();
+        if(memberships.size===51)
+          deny("resource-exhausted","Review this account's school memberships before retiring its test designation.");
+        if(memberships.docs.some(doc=>doc.data()?.status==="active"&&doc.data()?.testStudentAccess===true))
+          deny("failed-precondition","Suspend the active test-student school memberships in People & Access before retiring the test designation.");
+      }
+      let nextRevision=1,nextStatus=retiring?"retired":"active";
+      await db.runTransaction(async tx=>{
+        const current=await tx.get(ref),data=current.exists?current.data():null,
+          currentStatus=current.exists&&data?.kind==="student"?String(data.status||"retired"):"none",
+          revision=Number(data?.revision)||0,now=FieldValue.serverTimestamp();
+        if(retiring){
+          if(currentStatus!=="active")deny("failed-precondition","Only an active test-student designation can be retired.");
+          nextRevision=revision+1;
+          tx.update(ref,{status:"retired",revision:nextRevision,retiredByUid:authority.uid,
+            retiredAt:now,retireReason:auditReason,updatedByUid:authority.uid,updatedAt:now});
+        }else if(currentStatus==="active"){
+          deny("failed-precondition","This account is already designated as a test student.");
+        }else if(current.exists){
+          nextRevision=revision+1;
+          tx.update(ref,{kind:"student",status:"active",revision:nextRevision,
+            restoredByUid:authority.uid,restoredAt:now,restoreReason:auditReason,
+            updatedByUid:authority.uid,updatedAt:now});
+        }else{
+          tx.create(ref,{uid,kind:"student",status:"active",revision:1,
+            createdByUid:authority.uid,createdAt:now,updatedByUid:authority.uid,updatedAt:now});
+        }
+        tx.create(db.collection("platform_audit").doc(),{
+          actorUid:authority.uid,authoritySource:authority.authoritySource||null,targetUid:uid,
+          action:retiring?"platform_test_student_retired":"platform_test_student_designated",
+          reason:auditReason,revision:nextRevision,createdAt:now
+        });
+      });
+      return {account:accountSummary(user,(await platformGrantRecord({db,uid})).status),
+        testAccount:{active:!retiring,status:nextStatus,revision:nextRevision}};
+    }
+
+
 
     if(action==="lookup"){
       const query=String(input.query||"").trim();
@@ -142,7 +224,8 @@ function createPlatformUserService({db,auth}){
         console.warn("Platform user exact lookup failed",{code:error?.code||"unknown"});
         deny("unavailable","The account lookup could not finish. Retry the exact search.");
       }
-      return {account:accountSummary(user,await platformGrant({db,uid:user.uid}))};
+      const platform=await platformGrantRecord({db,uid:user.uid});
+      return {account:accountSummary(user,platform.status)};
     }
 
     if(action==="create"){
@@ -163,7 +246,7 @@ function createPlatformUserService({db,auth}){
       catch(error){console.warn("Platform account setup-link generation failed",{uid:user.uid,code:error?.code||"unknown"});}
       await writeAudit({db,authority,action:"platform_account_created",targetUid:user.uid,
         details:{email,displayName,reason:auditReason}});
-      return {account:accountSummary(user,false),setupLink};
+      return {account:accountSummary(user,"none"),setupLink};
     }
 
     if(action==="update_profile"){
@@ -179,7 +262,8 @@ function createPlatformUserService({db,auth}){
       }
       await writeAudit({db,authority,action:"platform_account_profile_updated",targetUid:uid,
         details:{previousDisplayName:before.displayName||"",displayName,reason:auditReason}});
-      return {account:accountSummary(user,await platformGrant({db,uid}))};
+      const platform=await platformGrantRecord({db,uid});
+      return {account:accountSummary(user,platform.status)};
     }
 
     if(action==="disable"||action==="restore"){
@@ -187,8 +271,8 @@ function createPlatformUserService({db,auth}){
         disabling=action==="disable";
       if(uid===authority.uid&&disabling)
         deny("failed-precondition","You cannot disable the System Administrator account currently performing this action.");
-      if(disabling&&await platformGrant({db,uid}))
-        deny("failed-precondition","Active Platform Administrator accounts must be removed from platform governance before they can be disabled.");
+      if(disabling&&(await platformGrantRecord({db,uid})).active)
+        deny("failed-precondition","Active Platform Administrator accounts must be retired from platform governance before they can be disabled.");
       const before=await getUserOrDeny(auth,uid);
       if(disabling&&before.disabled)deny("failed-precondition","This account is already disabled.");
       if(!disabling&&!before.disabled)deny("failed-precondition","This account is already enabled.");
@@ -201,7 +285,8 @@ function createPlatformUserService({db,auth}){
       await writeAudit({db,authority,
         action:disabling?"platform_account_disabled":"platform_account_restored",targetUid:uid,
         details:{reason:auditReason}});
-      return {account:accountSummary(user,await platformGrant({db,uid}))};
+      const platform=await platformGrantRecord({db,uid});
+      return {account:accountSummary(user,platform.status)};
     }
 
     if(action==="reset_password"){
@@ -217,32 +302,94 @@ function createPlatformUserService({db,auth}){
       }
       await writeAudit({db,authority,action:"platform_account_password_reset_link_generated",targetUid:uid,
         details:{reason:auditReason}});
-      return {account:accountSummary(user,await platformGrant({db,uid})),resetLink};
+      const platform=await platformGrantRecord({db,uid});
+      return {account:accountSummary(user,platform.status),resetLink};
+    }
+
+    if(["grant_platform_admin","archive_platform_admin","restore_platform_admin"].includes(action)){
+      const uid=checkedUid(input.uid),auditReason=reason(input.reason),
+        target=await getUserOrDeny(auth,uid),ref=db.doc("platform_admins/"+uid),
+        archiving=action==="archive_platform_admin",restoring=action==="restore_platform_admin";
+      if(target.disabled||!target.emailVerified)
+        deny("failed-precondition","Platform Administrator authority requires a verified, enabled login account.");
+      if(archiving&&uid===authority.uid)
+        deny("failed-precondition","You cannot retire your own Platform Administrator authority from the account you are currently using.");
+      if(archiving){
+        const grants=await db.collection("platform_admins").limit(101).get();
+        if(grants.size===101)
+          deny("resource-exhausted","Platform Administrator retirement requires paginated authority review.");
+        const otherActive=grants.docs.filter(doc=>doc.id!==uid&&doc.data()?.role==="platform_admin"&&doc.data()?.status==="active");
+        if(!otherActive.length)
+          deny("failed-precondition","Designate another active Platform Administrator before retiring this authority.");
+      }
+      let nextStatus,nextRevision;
+      await db.runTransaction(async tx=>{
+        const current=await tx.get(ref),data=current.exists?current.data():null,
+          isPlatform=current.exists&&data?.role==="platform_admin",
+          status=isPlatform?String(data.status||"archived"):"none",
+          revision=Number(data?.revision)||0,now=FieldValue.serverTimestamp();
+        if(action==="grant_platform_admin"){
+          if(isPlatform)deny("failed-precondition",status==="active"?
+            "This account is already an active Platform Administrator.":"Use Restore Platform Administrator for this retired authority.");
+          nextStatus="active";nextRevision=1;
+          tx.set(ref,{role:"platform_admin",status:"active",revision:1,createdByUid:authority.uid,createdAt:now,
+            updatedByUid:authority.uid,updatedAt:now});
+        }else if(archiving){
+          if(status!=="active")deny("failed-precondition","Only active Platform Administrator authority can be retired.");
+          nextStatus="archived";nextRevision=revision+1;
+          tx.update(ref,{status:"archived",archiveReason:auditReason,archivedByUid:authority.uid,archivedAt:now,
+            revision:nextRevision,updatedByUid:authority.uid,updatedAt:now});
+        }else{
+          if(status!=="archived")deny("failed-precondition","Only retired Platform Administrator authority can be restored.");
+          nextStatus="active";nextRevision=revision+1;
+          tx.update(ref,{status:"active",restoreReason:auditReason,restoredByUid:authority.uid,restoredAt:now,
+            revision:nextRevision,updatedByUid:authority.uid,updatedAt:now});
+        }
+        tx.create(db.collection("platform_audit").doc(),{actorUid:authority.uid,targetUid:uid,
+          action:action==="grant_platform_admin"?"platform_admin_granted":archiving?
+            "platform_admin_archived":"platform_admin_restored",
+          reason:auditReason,revision:nextRevision,createdAt:now});
+      });
+      return {account:accountSummary(await auth.getUser(uid),nextStatus),revision:nextRevision};
     }
 
     if(action==="get"){
       const uid=checkedUid(input.uid),user=await getUserOrDeny(auth,uid);
-      const [platform,memberships]=await Promise.all([
+      const [platform,memberships,testAccount]=await Promise.all([
         db.doc("platform_admins/"+uid).get(),
-        db.collection("platform_users/"+uid+"/memberships").limit(51).get()
+        db.collection("platform_users/"+uid+"/memberships").limit(51).get(),
+        db.doc("platform_test_accounts/"+uid).get()
       ]);
       if(memberships.size===51)
         deny("resource-exhausted","This account has more than 50 school memberships. Paginated membership review is required.");
       const rows=memberships.docs.map(doc=>({schoolId:doc.id,...doc.data()}))
         .filter(row=>/^[a-z][a-z0-9-]{1,63}$/.test(row.schoolId));
-      const schoolDocs=rows.length?await db.getAll(...rows.map(row=>db.doc("platform_schools/"+row.schoolId))):[];
-      const schools=new Map(schoolDocs.filter(doc=>doc.exists).map(doc=>[doc.id,doc.data()]));
-      const membershipsOut=rows.map(row=>({
-        schoolId:row.schoolId,
-        schoolName:String(schools.get(row.schoolId)?.displayName||row.schoolId).slice(0,120),
-        schoolState:schools.get(row.schoolId)?.state||"unknown",
-        status:String(row.status||"unknown").slice(0,40),
-        roles:cleanRoles(row.roles),
-        revision:Number(row.revision)||1
-      })).sort((a,b)=>a.schoolName.localeCompare(b.schoolName)||a.schoolId.localeCompare(b.schoolId));
+      const [schoolDocs,memberDocs]=await Promise.all([
+        rows.length?db.getAll(...rows.map(row=>db.doc("platform_schools/"+row.schoolId))):[],
+        rows.length?db.getAll(...rows.map(row=>db.doc("schools/"+row.schoolId+"/memberships/"+uid))):[]
+      ]);
+      const schools=new Map(schoolDocs.filter(doc=>doc.exists).map(doc=>[doc.id,doc.data()])),
+        members=new Map(memberDocs.filter(doc=>doc.exists).map(doc=>[doc.ref.parent.parent.id,doc.data()]));
+      const membershipsOut=rows.map(row=>{
+        const school=schools.get(row.schoolId)||{},member=members.get(row.schoolId)||{};
+        return {
+          schoolId:row.schoolId,
+          schoolName:String(school.displayName||row.schoolId).slice(0,120),
+          schoolState:school.state||"unknown",
+          status:String(row.status||"unknown").slice(0,40),
+          roles:cleanRoles(row.roles),
+          revision:Number(row.revision)||1,
+          personId:String(member.personId||"").slice(0,128),
+          testStudentAccess:row.testStudentAccess===true||member.testStudentAccess===true,
+          compatibilityMode:school.compatibilityMode||"legacy_allowed",
+          enrollmentMode:schoolEnrollmentMode(school),
+          productionAuthorized:school.productionAuthorized===true
+        };
+      }).sort((a,b)=>a.schoolName.localeCompare(b.schoolName)||a.schoolId.localeCompare(b.schoolId));
       return {
         account:accountSummary(user,
-          platform.exists&&platform.data()?.status==="active"&&platform.data()?.role==="platform_admin"),
+          platform.exists&&platform.data()?.role==="platform_admin"?String(platform.data()?.status||"archived"):"none"),
+        testAccount:testStudentSummary(testAccount),
         memberships:membershipsOut
       };
     }

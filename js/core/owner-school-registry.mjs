@@ -98,8 +98,16 @@ function choose(id,afterWrite=false){
     }
   }
 
+  const registryForm=byId("owner-registry-update");
+  if(registryForm){
+    registryForm.hidden=selected.state==="archived";
+    registryForm.elements.displayName.value=selected.displayName||"";
+  }
+  byId("owner-archive-school").hidden=!["draft","suspended"].includes(selected.state);
+  byId("owner-restore-school").hidden=selected.state!=="archived";
+
   const standard=byId("owner-standard-setup");
-  if(standard)standard.hidden=legacy;
+  if(standard)standard.hidden=legacy||selected.state==="archived";
   for(const node of document.querySelectorAll("[data-legacy-provisioning]"))node.hidden=!legacy;
 
   byId("owner-start-pilot").hidden=!legacy||selected.state!=="draft";
@@ -118,11 +126,11 @@ function choose(id,afterWrite=false){
   const packageSection=byId("owner-cutover-package-section");
   if(packageSection)packageSection.hidden=selected.schoolId!=="mcs-manila";
 
-  if(legacy){
+  if(selected.state!=="archived"&&legacy){
     void loadReadiness(selected.schoolId);
     void loadCutoverPackage(selected.schoolId);
     void loadCutoverDecisions(selected.schoolId);
-  }else{
+  }else if(selected.state!=="archived"){
     void loadStandardSetup(selected.schoolId);
   }
   if(selected.state==="suspended")void loadRecoveryStatus(selected.schoolId);
@@ -736,6 +744,27 @@ byId("owner-governance-lifecycle-form").addEventListener("submit",event=>{
     const response=await submit(form,action,details);
     if(response){governanceLifecycleChange=null;byId("owner-governance-lifecycle-dialog").close();}
   })();
+});
+byId("owner-registry-update")?.addEventListener("submit",event=>{
+  event.preventDefault();if(!selected||selected.state==="archived")return;
+  const f=event.currentTarget,d=new FormData(f);
+  void submit(f,"update_registry",{schoolId:selected.schoolId,expectedRevision:selected.revision,
+    displayName:String(d.get("displayName")||"").trim(),
+    reason:String(d.get("reason")||"").trim()});
+});
+byId("owner-archive-school")?.addEventListener("submit",event=>{
+  event.preventDefault();if(!selected||!["draft","suspended"].includes(selected.state))return;
+  const f=event.currentTarget,d=new FormData(f);
+  if(!confirm("Retire "+selected.displayName+"? The tenant and all historical data will be preserved, but normal school access will remain unavailable until reviewed restoration."))return;
+  void submit(f,"archive_school",{schoolId:selected.schoolId,expectedRevision:selected.revision,
+    reason:String(d.get("reason")||"").trim()});
+});
+byId("owner-restore-school")?.addEventListener("submit",event=>{
+  event.preventDefault();if(!selected||selected.state!=="archived")return;
+  const f=event.currentTarget,d=new FormData(f);
+  if(!confirm("Restore the retired tenant "+selected.displayName+" to its prior safe state? This will not activate production access."))return;
+  void submit(f,"restore_archived_school",{schoolId:selected.schoolId,expectedRevision:selected.revision,
+    reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-grant").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
