@@ -8,14 +8,6 @@
     <p class="av-eyebrow">System Administration · Monitoring</p><h1 class="text-3xl font-extrabold">Monitoring &amp; Maintenance</h1>
     <p>Optional legacy activity telemetry, support aggregates and maintenance controls. School identity, staffing and academic configuration are managed in School Administration; this page does not grant school access or change grades.</p>
     <p class="av-status-card" id="admin-analytics-status" role="status">Checking administrator access…</p>
-    <div id="operations" hidden class="space-y-6 av-operations-dashboard">
-      <button id="refresh-analytics" class="bg-cyan-800 text-white p-3 rounded">Refresh monitoring</button>
-      <section class="grid sm:grid-cols-4 gap-4" aria-label="Observed activity in the last seven days">
-        <div class="p-4 bg-white border rounded">Observed students <strong id="usage-count" class="block text-2xl">—</strong></div>
-        <div class="p-4 bg-white border rounded">Returning on 2+ UTC days <strong id="return-count" class="block text-2xl">—</strong></div>
-        <div class="p-4 bg-white border rounded">Approximate active time <strong id="active-time" class="block text-2xl">—</strong></div>
-        <div class="p-4 bg-white border rounded">Unresolved bugs in sample <strong id="bug-count" class="block text-2xl">—</strong><a href="issues.html" class="underline">Open reports</a></div>
-      </section>
       <section id="pilot-research" class="p-5 bg-white border rounded space-y-3">
         <h2 class="font-bold text-xl">Pilot Studio research · platform overview</h2>
         <p>School record totals are authoritative counts from their own source collections. Activity observations are restricted to explicitly designated test-student accounts and do not contain code, typed text, filenames or grades. Production student telemetry is not automatically enabled.</p>
@@ -28,6 +20,14 @@
           <th class="text-left p-2">Assessments</th><th class="text-left p-2">Studio submissions</th><th class="text-left p-2">GitHub evidence</th><th class="text-left p-2">Grades</th>
           <th class="text-left p-2">Observed test accounts</th><th class="text-left p-2">Pilot events</th><th class="text-left p-2">Editor bursts</th><th class="text-left p-2">Runs</th><th class="text-left p-2">Cloud saves</th>
         </tr></thead><tbody id="pilot-research-rows"></tbody></table></div>
+      </section>
+    <div id="operations" hidden class="space-y-6 av-operations-dashboard">
+      <button id="refresh-analytics" class="bg-cyan-800 text-white p-3 rounded">Refresh monitoring</button>
+      <section class="grid sm:grid-cols-4 gap-4" aria-label="Observed activity in the last seven days">
+        <div class="p-4 bg-white border rounded">Observed students <strong id="usage-count" class="block text-2xl">—</strong></div>
+        <div class="p-4 bg-white border rounded">Returning on 2+ UTC days <strong id="return-count" class="block text-2xl">—</strong></div>
+        <div class="p-4 bg-white border rounded">Approximate active time <strong id="active-time" class="block text-2xl">—</strong></div>
+        <div class="p-4 bg-white border rounded">Unresolved bugs in sample <strong id="bug-count" class="block text-2xl">—</strong><a href="issues.html" class="underline">Open reports</a></div>
       </section>
       <section class="p-5 bg-white border rounded"><h2 class="font-bold text-xl">Module activity</h2><p>Optional, client-reported foreground use, not attendance, productivity or learning mastery. Idle time, hidden tabs and missing consent are not counted. Unsent final intervals can be lost.</p><table class="w-full mt-3"><thead><tr><th scope="col" class="text-left">Module</th><th scope="col" class="text-left">Active time</th></tr></thead><tbody id="module-usage"></tbody></table></section>
       <details class="p-5 bg-white border rounded"><summary class="font-bold cursor-pointer">Advanced: diagnostic activity sample</summary><p>Latest 100 of up to 500 records. Account IDs are private operational data. This is an allowlisted action timeline, not a session recording; no text, code or clicked labels are collected.</p><div class="overflow-x-auto"><table class="w-full"><thead><tr><th>Time</th><th>Account ID</th><th>Module</th><th>Action</th><th>Seconds</th></tr></thead><tbody id="raw-events"></tbody></table></div></details>
