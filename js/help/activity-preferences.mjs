@@ -42,12 +42,10 @@ export function mountActivityPreferences() {
     }
     for (const [id, checked] of [["activity-share",value.enabled],["activity-diagnostics",value.diagnostics],["activity-never-show",value.promptDismissed]]) field(id).checked = checked;
     field("activity-status").textContent = "Your saved choices are loaded. Nothing changes until you save.";
-    maybePrompt();
+    // The pilot suppresses unsolicited activity-consent dialogs; Settings remains available.
   });
-  function maybePrompt() {
-    if (home && snapshot?.ready && !snapshot.promptDismissed && !dismissed && promptedUid !== snapshot.uid && open()) promptedUid = snapshot.uid;
-  }
-  document.addEventListener("close", maybePrompt, true);
+  // Reintroduce an explicit choice for real-school production rollout; do not
+  // automatically solicit students while controlled pilot evaluation is active.
   async function persist(dismissOnly = false) {
     if (busy || !snapshot?.ready) return;
     busy = true;
