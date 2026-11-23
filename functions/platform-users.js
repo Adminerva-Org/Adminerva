@@ -6,7 +6,8 @@
  * records remain in their canonical school-scoped services.
  */
 const {FieldValue}=require("firebase-admin/firestore");
-const {platformAuthority,TenantAccessError}=require("./tenant-access.js");
+const {createHash}=require("node:crypto");
+const {platformAuthority,TenantAccessError,checkedSchoolId,schoolEnrollmentMode}=require("./tenant-access.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function checkedUid(value){
@@ -95,6 +96,18 @@ async function platformGrantRecord({db,uid}){
   };
 }
 
+function testStudentPersonId(uid){
+  return "test-"+createHash("sha256").update("platform-test-student\0"+checkedUid(uid)).digest("hex").slice(0,28);
+}
+function testStudentSummary(snapshot){
+  const data=snapshot?.exists?snapshot.data():null;
+  return {
+    active:Boolean(snapshot?.exists&&data?.kind==="student"&&data?.status==="active"),
+    status:snapshot?.exists&&data?.kind==="student"?String(data.status||"retired"):"none",
+    revision:Number(data?.revision)||0
+  };
+}
+
 function createPlatformUserService({db,auth}){
   return async request=>{
     const authority=await platformAuthority({db,request});
@@ -137,6 +150,162 @@ function createPlatformUserService({db,auth}){
       const items=users.map(user=>accountSummary(user,flags.get(user.uid)||"none"))
         .sort((a,b)=>(a.displayName||a.email||a.uid).localeCompare(b.displayName||b.email||b.uid));
       return {items,total:items.length};
+    }
+
+    if(action==="list_test_school_targets"){
+      const schools=await db.collection("platform_schools").orderBy("displayName").limit(101).get();
+      if(schools.size===101)
+        deny("resource-exhausted","Test-student school selection requires paginated school registry support.");
+      return {schools:schools.docs.filter(doc=>doc.data().state!=="archived").map(doc=>{
+        const data=doc.data()||{};
+        return {
+          schoolId:doc.id,
+          name:String(data.displayName||doc.id).slice(0,120),
+          state:String(data.state||"unknown").slice(0,30),
+          compatibilityMode:data.compatibilityMode||"legacy_allowed",
+          enrollmentMode:schoolEnrollmentMode(data),
+          productionAuthorized:data.productionAuthorized===true
+        };
+      }).sort((a,b)=>a.name.localeCompare(b.name)||a.schoolId.localeCompare(b.schoolId))};
+    }
+
+    if(["mark_test_student","retire_test_student"].includes(action)){
+      const uid=checkedUid(input.uid),auditReason=reason(input.reason),
+        user=await getUserOrDeny(auth,uid),ref=db.doc("platform_test_accounts/"+uid),
+        retiring=action==="retire_test_student";
+      if((await platformGrantRecord({db,uid})).active)
+        deny("failed-precondition","Platform Administrator accounts cannot be designated as test students.");
+      if(!retiring&&(user.disabled||!user.emailVerified))
+        deny("failed-precondition","Test-student controls require a verified, enabled login account.");
+      if(retiring){
+        const memberships=await db.collection("platform_users/"+uid+"/memberships").limit(51).get();
+        if(memberships.size===51)
+          deny("resource-exhausted","Review this account's school memberships before retiring its test designation.");
+        if(memberships.docs.some(doc=>doc.data()?.status==="active"&&doc.data()?.testStudentAccess===true))
+          deny("failed-precondition","Suspend the active test-student school memberships in People & Access before retiring the test designation.");
+      }
+      let nextRevision=1,nextStatus=retiring?"retired":"active";
+      await db.runTransaction(async tx=>{
+        const current=await tx.get(ref),data=current.exists?current.data():null,
+          currentStatus=current.exists&&data?.kind==="student"?String(data.status||"retired"):"none",
+          revision=Number(data?.revision)||0,now=FieldValue.serverTimestamp();
+        if(retiring){
+          if(currentStatus!=="active")deny("failed-precondition","Only an active test-student designation can be retired.");
+          nextRevision=revision+1;
+          tx.update(ref,{status:"retired",revision:nextRevision,retiredByUid:authority.uid,
+            retiredAt:now,retireReason:auditReason,updatedByUid:authority.uid,updatedAt:now});
+        }else if(currentStatus==="active"){
+          deny("failed-precondition","This account is already designated as a test student.");
+        }else if(current.exists){
+          nextRevision=revision+1;
+          tx.update(ref,{kind:"student",status:"active",revision:nextRevision,
+            restoredByUid:authority.uid,restoredAt:now,restoreReason:auditReason,
+            updatedByUid:authority.uid,updatedAt:now});
+        }else{
+          tx.create(ref,{uid,kind:"student",status:"active",revision:1,
+            createdByUid:authority.uid,createdAt:now,updatedByUid:authority.uid,updatedAt:now});
+        }
+        tx.create(db.collection("platform_audit").doc(),{
+          actorUid:authority.uid,authoritySource:authority.authoritySource||null,targetUid:uid,
+          action:retiring?"platform_test_student_retired":"platform_test_student_designated",
+          reason:auditReason,revision:nextRevision,createdAt:now
+        });
+      });
+      return {account:accountSummary(user,(await platformGrantRecord({db,uid})).status),
+        testAccount:{active:!retiring,status:nextStatus,revision:nextRevision}};
+    }
+
+    if(action==="grant_test_student_school_access"){
+      const uid=checkedUid(input.uid),targetSchoolId=checkedSchoolId(input.targetSchoolId),
+        auditReason=reason(input.reason),user=await getUserOrDeny(auth,uid);
+      if(user.disabled||!user.emailVerified)
+        deny("failed-precondition","The test student login must be verified and enabled before school access is granted.");
+      if((await platformGrantRecord({db,uid})).active)
+        deny("failed-precondition","Platform Administrator accounts cannot receive test-student school access.");
+      const [testAccount,school,existingPeople]=await Promise.all([
+        db.doc("platform_test_accounts/"+uid).get(),
+        db.doc("platform_schools/"+targetSchoolId).get(),
+        db.collection("schools/"+targetSchoolId+"/people").where("authUid","==",uid).limit(3).get()
+      ]);
+      if(!testAccount.exists||testAccount.data()?.kind!=="student"||testAccount.data()?.status!=="active")
+        deny("failed-precondition","Designate this login as a test student before granting cross-school test access.");
+      if(!school.exists||!["active","pilot"].includes(school.data()?.state))
+        deny("failed-precondition","Test students can be added only to an active or pilot school.");
+      if(existingPeople.size>1)
+        deny("failed-precondition","This account is linked to multiple people in the target school. Reconcile the directory before granting test access.");
+
+      const memberRef=db.doc("schools/"+targetSchoolId+"/memberships/"+uid),
+        indexRef=db.doc("platform_users/"+uid+"/memberships/"+targetSchoolId),
+        currentMember=await memberRef.get();
+      let personRef=null;
+      if(currentMember.exists&&currentMember.data()?.personId)
+        personRef=db.doc("schools/"+targetSchoolId+"/people/"+String(currentMember.data().personId));
+      else if(existingPeople.size===1)personRef=existingPeople.docs[0].ref;
+      else personRef=db.doc("schools/"+targetSchoolId+"/people/"+testStudentPersonId(uid));
+
+      let result;
+      await db.runTransaction(async tx=>{
+        const [liveTest,liveSchool,member,person]=await Promise.all([
+          tx.get(db.doc("platform_test_accounts/"+uid)),
+          tx.get(db.doc("platform_schools/"+targetSchoolId)),
+          tx.get(memberRef),tx.get(personRef)
+        ]);
+        if(!liveTest.exists||liveTest.data()?.kind!=="student"||liveTest.data()?.status!=="active")
+          deny("failed-precondition","The test-student designation changed. Refresh the account before granting access.");
+        if(!liveSchool.exists||!["active","pilot"].includes(liveSchool.data()?.state))
+          deny("failed-precondition","The target school's lifecycle changed. Refresh the school list.");
+        const now=FieldValue.serverTimestamp();
+        let createdPerson=false;
+        if(person.exists){
+          const data=person.data()||{};
+          if(data.schoolId!==targetSchoolId||data.kind!=="student"||data.status!=="active"||data.authUid!==uid)
+            deny("failed-precondition","The target school person link conflicts with another identity or inactive record.");
+        }else{
+          if(currentMember.exists&&currentMember.data()?.personId)
+            deny("failed-precondition","The target membership references a missing school person. Repair that school directory before continuing.");
+          tx.create(personRef,{
+            schoolId:targetSchoolId,displayName:String(user.displayName||user.email||"Test student").slice(0,140),
+            searchKey:String(user.displayName||user.email||"Test student").toLocaleLowerCase("en")+"#"+personRef.id,
+            kind:"student",status:"active",authUid:uid,email:String(user.email||"").toLowerCase(),
+            source:"platform_test_student",testAccount:true,revision:1,
+            createdByUid:authority.uid,createdAt:now,updatedByUid:authority.uid,updatedAt:now
+          });
+          createdPerson=true;
+        }
+        const prior=member.exists?member.data():null,priorRoles=cleanRoles(prior?.roles);
+        if(prior&&prior.schoolId!==targetSchoolId)
+          deny("failed-precondition","The target membership belongs to another school context.");
+        if(priorRoles.some(role=>role!=="student"))
+          deny("failed-precondition","This account already has a non-student role in the target school. Use the normal school access workflow.");
+        if(prior?.personId&&prior.personId!==personRef.id)
+          deny("failed-precondition","The target school membership is linked to another person record.");
+        const revision=(Number(prior?.revision)||0)+1;
+        tx.set(memberRef,{
+          schoolId:targetSchoolId,personId:personRef.id,status:"active",roles:["student"],
+          displayName:String(user.displayName||user.email||"Test student").slice(0,140),
+          testStudentAccess:true,revision,updatedByUid:authority.uid,updatedAt:now,
+          ...(member.exists?{}:{createdByUid:authority.uid,createdAt:now})
+        },{merge:true});
+        tx.set(indexRef,{schoolId:targetSchoolId,status:"active",roles:["student"],
+          testStudentAccess:true,revision,updatedAt:now},{merge:true});
+        tx.create(db.collection("schools/"+targetSchoolId+"/directory_audit").doc(),{
+          schoolId:targetSchoolId,actorUid:authority.uid,targetUid:uid,personId:personRef.id,
+          action:member.exists&&prior?.status==="suspended"?
+            "platform_test_student_school_access_restored":"platform_test_student_school_access_granted",
+          reason:auditReason,source:"system_admin_test_mobility",createdAt:now
+        });
+        tx.create(db.collection("platform_audit").doc(),{
+          actorUid:authority.uid,authoritySource:authority.authoritySource||null,targetUid:uid,
+          schoolId:targetSchoolId,personId:personRef.id,
+          action:"platform_test_student_school_access_granted",reason:auditReason,
+          createdPerson,revision,createdAt:now
+        });
+        result={schoolId:targetSchoolId,personId:personRef.id,status:"active",revision,
+          createdPerson,compatibilityMode:liveSchool.data()?.compatibilityMode||"legacy_allowed",
+          enrollmentMode:schoolEnrollmentMode(liveSchool.data()),
+          productionAuthorized:liveSchool.data()?.productionAuthorized===true};
+      });
+      return result;
     }
 
     if(action==="lookup"){
@@ -281,27 +450,41 @@ function createPlatformUserService({db,auth}){
 
     if(action==="get"){
       const uid=checkedUid(input.uid),user=await getUserOrDeny(auth,uid);
-      const [platform,memberships]=await Promise.all([
+      const [platform,memberships,testAccount]=await Promise.all([
         db.doc("platform_admins/"+uid).get(),
-        db.collection("platform_users/"+uid+"/memberships").limit(51).get()
+        db.collection("platform_users/"+uid+"/memberships").limit(51).get(),
+        db.doc("platform_test_accounts/"+uid).get()
       ]);
       if(memberships.size===51)
         deny("resource-exhausted","This account has more than 50 school memberships. Paginated membership review is required.");
       const rows=memberships.docs.map(doc=>({schoolId:doc.id,...doc.data()}))
         .filter(row=>/^[a-z][a-z0-9-]{1,63}$/.test(row.schoolId));
-      const schoolDocs=rows.length?await db.getAll(...rows.map(row=>db.doc("platform_schools/"+row.schoolId))):[];
-      const schools=new Map(schoolDocs.filter(doc=>doc.exists).map(doc=>[doc.id,doc.data()]));
-      const membershipsOut=rows.map(row=>({
-        schoolId:row.schoolId,
-        schoolName:String(schools.get(row.schoolId)?.displayName||row.schoolId).slice(0,120),
-        schoolState:schools.get(row.schoolId)?.state||"unknown",
-        status:String(row.status||"unknown").slice(0,40),
-        roles:cleanRoles(row.roles),
-        revision:Number(row.revision)||1
-      })).sort((a,b)=>a.schoolName.localeCompare(b.schoolName)||a.schoolId.localeCompare(b.schoolId));
+      const [schoolDocs,memberDocs]=await Promise.all([
+        rows.length?db.getAll(...rows.map(row=>db.doc("platform_schools/"+row.schoolId))):[],
+        rows.length?db.getAll(...rows.map(row=>db.doc("schools/"+row.schoolId+"/memberships/"+uid))):[]
+      ]);
+      const schools=new Map(schoolDocs.filter(doc=>doc.exists).map(doc=>[doc.id,doc.data()])),
+        members=new Map(memberDocs.filter(doc=>doc.exists).map(doc=>[doc.ref.parent.parent.id,doc.data()]));
+      const membershipsOut=rows.map(row=>{
+        const school=schools.get(row.schoolId)||{},member=members.get(row.schoolId)||{};
+        return {
+          schoolId:row.schoolId,
+          schoolName:String(school.displayName||row.schoolId).slice(0,120),
+          schoolState:school.state||"unknown",
+          status:String(row.status||"unknown").slice(0,40),
+          roles:cleanRoles(row.roles),
+          revision:Number(row.revision)||1,
+          personId:String(member.personId||"").slice(0,128),
+          testStudentAccess:row.testStudentAccess===true||member.testStudentAccess===true,
+          compatibilityMode:school.compatibilityMode||"legacy_allowed",
+          enrollmentMode:schoolEnrollmentMode(school),
+          productionAuthorized:school.productionAuthorized===true
+        };
+      }).sort((a,b)=>a.schoolName.localeCompare(b.schoolName)||a.schoolId.localeCompare(b.schoolId));
       return {
         account:accountSummary(user,
           platform.exists&&platform.data()?.role==="platform_admin"?String(platform.data()?.status||"archived"):"none"),
+        testAccount:testStudentSummary(testAccount),
         memberships:membershipsOut
       };
     }
