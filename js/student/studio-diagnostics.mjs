@@ -11,6 +11,11 @@ function loadParser(){
   return parserPromise;
 }
 const limit=25;
+export function isJavaSourceModel(filename,model){
+  const name=String(filename||""),leaf=name.split("/").at(-1)||"";
+  return name.toLowerCase().endsWith(".java")||
+    (!leaf.includes(".")&&model?.getLanguageId?.()==="java");
+}
 function textRange(model,start,end){
   const len=model.getValueLength();
   const from=Math.min(Math.max(0,start),Math.max(0,len-1));
@@ -19,7 +24,7 @@ function textRange(model,start,end){
   return {startLineNumber:a.lineNumber,startColumn:a.column,endLineNumber:b.lineNumber,endColumn:b.column};
 }
 export async function analyzeJavaWorkspace({files,entry,monaco,update}){
-  const javaFiles=Object.entries(files).filter(([name])=>name.endsWith('.java'));
+  const javaFiles=Object.entries(files).filter(([name,model])=>isJavaSourceModel(name,model));
   const result={errors:0,warnings:0,issues:[],available:false,checking:false};
   if(!javaFiles.length){
     result.warnings++;
@@ -33,6 +38,13 @@ export async function analyzeJavaWorkspace({files,entry,monaco,update}){
     if(result.issues.length>=limit)break;
     const code=model.getValue();
     const markers=[];
+    if(!filename.toLowerCase().endsWith(".java")){
+      const range=textRange(model,0,1),suggested=filename+".java";
+      const message="This Java source file is missing the .java extension. Rename it to "+suggested+" so Run/Compile includes it.";
+      result.warnings++;
+      result.issues.push({filename,line:1,column:1,severity:"warning",message});
+      markers.push({...range,severity:monaco.MarkerSeverity.Warning,message,source:"Adminerva Java structure"});
+    }
     if(code.length>150000){
       result.warnings++;
       result.issues.push({filename,line:1,column:1,severity:'warning',message:'This file is too large for the lightweight browser syntax check.'});
