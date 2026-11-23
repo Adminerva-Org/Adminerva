@@ -14,8 +14,9 @@ import {analyzeProjectEvidence,evidenceSnippet} from "./project-competency-evide
 import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,listV4StudioAssignments,loadV4StudioProject,
   getV4StudioSubmissionStatus,getV4StudioSubmittedRecovery,
-  syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject
-} from "./v4-studio-service.mjs?v=20261121-recovery-guard";
+  syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject,retryV4StudioSchool
+} from "./v4-studio-service.mjs?v=20261123-cloud-recovery-1";
+import {describeStudioCloudSaveError,studioCloudRetryDelay} from "./studio-cloud-save-recovery.mjs?v=20261123-cloud-recovery-1";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -173,6 +174,7 @@ export function createProjectStudio({
   const undoKey=projectId=>"Adminerva_Code_Project_Undo_v1_"+uid+"_"+(scopeToken?scopeToken+"_":"")+projectId;
   let activeProject=null,selectedTemplate="java-information",initialized=false,openEpoch=0;
   const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set(),cloudPending=new Map(),markerCache=new Map();
+  const cloudRetryTimers=new Map(),cloudRetryAttempts=new Map();
   // If browser storage is full or blocked, the live assessment project can
   // still save to school cloud. Do not let the student leave that only copy
   // until the exact snapshot has a confirmed cloud revision.
@@ -314,6 +316,7 @@ export function createProjectStudio({
   }
   function scheduleCloudSave(project){
     if(!cloudEnabled||deletedProjects.has(project.id))return;
+    clearTimeout(cloudRetryTimers.get(project.id));cloudRetryTimers.delete(project.id);
     const snapshot=clone(project),id=snapshot.id;
     cloudPending.set(id,snapshot);
     writeMarker(id,{...readMarker(id),pending:true});
@@ -324,6 +327,23 @@ export function createProjectStudio({
       deviceUnavailable?"error":"info",id);
     clearTimeout(cloudTimers.get(id));
     cloudTimers.set(id,setTimeout(()=>{void flushOne(id);},900));
+  }
+  function scheduleCloudRetry(id,error,closingSessionEpoch){
+    // The closing overlay owns its own final-checkpoint retry/receipt state.
+    // Never silently convert a closing checkpoint into an ordinary cloud save.
+    if(closingSessionEpoch)return false;
+    const failure=describeStudioCloudSaveError(error,{online:navigator.onLine!==false});
+    if(!failure.retryable||navigator.onLine===false||!cloudPending.has(id)||deletedProjects.has(id))return false;
+    const attempt=cloudRetryAttempts.get(id)||0;
+    if(attempt>=4)return false;
+    cloudRetryAttempts.set(id,attempt+1);
+    clearTimeout(cloudRetryTimers.get(id));
+    cloudRetryTimers.set(id,setTimeout(()=>{
+      cloudRetryTimers.delete(id);
+      if(cloudPending.has(id)&&!deletedProjects.has(id)&&auth.currentUser?.uid===uid)
+        void flushOne(id);
+    },studioCloudRetryDelay(attempt)));
+    return true;
   }
   async function flushOne(id,closingSessionEpoch=0){
     clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
@@ -348,7 +368,8 @@ export function createProjectStudio({
     const work=(async()=>{
       try{
         if(auth.currentUser?.uid!==uid)throw Error("Sign in with the original project account.");
-        const school=await currentV4StudioSchool();
+        let school=await currentV4StudioSchool();
+        if(!school&&scopeToken)school=await retryV4StudioSchool();
         if(auth.currentUser?.uid!==uid)throw Error("Account changed before saving.");
         let marker;
         if(school){
@@ -379,18 +400,25 @@ export function createProjectStudio({
         }
         const same=cloudPending.get(id)===snapshot;
         if(same){cloudPending.delete(id);unbackedProjectIds.delete(id);}
+        if(same){clearTimeout(cloudRetryTimers.get(id));cloudRetryTimers.delete(id);cloudRetryAttempts.delete(id);}
         writeMarker(id,{...marker,pending:!same});
         if(same){setCloudStatus("Saved to cloud","success",id);if(!activeProject)setCloudStatus(cloudPending.size?"Cloud sync pending":"Cloud projects up to date",cloudPending.size?"info":"success");}
         return true;
       }catch(error){
         console.warn("Studio cloud save failed:",error);
-        setCloudStatus(unbackedProjectIds.has(id)?
-          "No device backup or cloud confirmation · keep this tab open":
-          "Device copy saved · cloud not synced","error",id);
-        if(!activeProject)setCloudStatus(unbackedProjectIds.has(id)?
+        const failure=describeStudioCloudSaveError(error,{online:navigator.onLine!==false});
+        const retrying=scheduleCloudRetry(id,error,closingSessionEpoch);
+        const unbacked=unbackedProjectIds.has(id);
+        const suffix=retrying?" · retry scheduled":" · select Save to retry";
+        setCloudStatus(unbacked?
+          "No device backup · "+failure.label+" · keep this tab open":
+          "Device copy saved · "+failure.label+suffix,"error",id);
+        if(!activeProject)setCloudStatus(unbacked?
           "Unsaved in-memory draft · keep this tab open":
-          "Device drafts retained · cloud not synced","error");
-        const indicator=el("autoSaveIndicator");if(indicator&&activeProject?.id===id)indicator.title=String(error?.message||error)+" · Save again to retry.";
+          "Device drafts retained · "+failure.label,"error");
+        const explanation=failure.detail+" · "+(retrying?"Automatic retry scheduled.":"Save again after resolving the problem.");
+        const indicator=el("autoSaveIndicator");if(indicator&&activeProject?.id===id)indicator.title=explanation;
+        const badge=el("activeProjectStorageBadge");if(badge&&activeProject?.id===id)badge.title=explanation;
         return false;
       }
     })();
@@ -654,7 +682,11 @@ export function createProjectStudio({
     });
     el("enableProjectDbBtn")?.addEventListener("click",()=>updateConfig({database:true}));
     document.querySelectorAll("[data-studio-view]").forEach(button=>button.addEventListener("click",()=>switchStudioView(button.dataset.studioView)));
-    window.addEventListener("online",()=>{void flushCloudSaves();});
+    window.addEventListener("online",()=>{
+      for(const timer of cloudRetryTimers.values())clearTimeout(timer);
+      cloudRetryTimers.clear();cloudRetryAttempts.clear();
+      void flushCloudSaves();
+    });
     document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"){if(activeProject)try{flushDesignDraft();saveState(captureState());}catch{}void flushCloudSaves();}});
     document.addEventListener("keydown",event=>{
       if(event.key!=="Escape")return;
