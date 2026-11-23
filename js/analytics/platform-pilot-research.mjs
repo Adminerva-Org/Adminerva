@@ -6,6 +6,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 const endpoint=httpsCallable(getFunctions(app,"asia-southeast1"),"platformPilotResearchOverview");
 const status=document.getElementById("pilot-research-status");
 const rows=document.getElementById("pilot-research-rows");
+const legacy=document.getElementById("pilot-research-legacy");
 const button=document.getElementById("pilot-research-refresh");
 let generation=0,loading=false;
 function tableCell(row,value){
@@ -23,6 +24,10 @@ async function refresh(){
     const overview=(await endpoint({action:"overview"})).data;
     if(epoch!==generation||auth.currentUser?.uid!==actor)return;
     const schools=Array.isArray(overview?.schools)?overview.schools:[];
+    const old=overview?.legacySourceCounts||{};
+    legacy.textContent="Legacy pre-V4 source totals (may overlap with current school records): "+
+      ["students","assessments","student_grades","student_submissions","assessment_evidence","activity_events"]
+        .map(key=>key.replaceAll("_"," ")+": "+(Number.isInteger(old[key])?old[key]:"—")).join(" · ");
     for(const school of schools){
       const record=school.counts||{},pilot=school.pilotSample||{},types=pilot.eventsByType||{};
       const row=document.createElement("tr");
@@ -53,5 +58,6 @@ async function refresh(){
 button?.addEventListener("click",()=>void refresh());
 onAuthStateChanged(auth,()=>{
   generation++;loading=false;if(button)button.disabled=false;
-  rows?.replaceChildren();if(auth.currentUser)void refresh();
+  rows?.replaceChildren();if(legacy)legacy.textContent="Legacy source counts have not been loaded.";
+  if(auth.currentUser)void refresh();
 });
