@@ -11,15 +11,16 @@
       <section id="pilot-research" class="p-5 bg-white border rounded space-y-3">
         <h2 class="font-bold text-xl">Pilot Studio research · platform overview</h2>
         <p>School record totals are authoritative counts from their own source collections. Activity observations are restricted to explicitly designated test-student accounts and do not contain code, typed text, filenames or grades. Production student telemetry is not automatically enabled.</p>
-        <button id="pilot-research-refresh" type="button" class="border rounded p-3">Refresh research aggregates</button>
+        <div class="flex flex-wrap gap-2"><button id="pilot-research-refresh" type="button" class="border rounded p-3">Refresh research aggregates</button><button id="pilot-research-export" type="button" disabled class="border rounded p-3 disabled:opacity-50">Export aggregate CSV</button></div>
         <p id="pilot-research-status" role="status">Checking authorized platform access…</p>
         <p id="pilot-research-legacy" class="text-sm">Legacy pre-V4 source counts have not been loaded.</p>
         <div class="overflow-x-auto"><table class="w-full text-sm min-w-[1100px]"><thead><tr>
           <th class="text-left p-2">School</th><th class="text-left p-2">State</th>
           <th class="text-left p-2">People</th><th class="text-left p-2">Memberships</th><th class="text-left p-2">Enrollments</th>
           <th class="text-left p-2">Assessments</th><th class="text-left p-2">Studio submissions</th><th class="text-left p-2">GitHub evidence</th><th class="text-left p-2">Grades</th>
-          <th class="text-left p-2">Observed test accounts</th><th class="text-left p-2">Pilot events</th><th class="text-left p-2">Editor bursts</th><th class="text-left p-2">Runs</th><th class="text-left p-2">Cloud saves</th>
+          <th class="text-left p-2">All 30-day events</th><th class="text-left p-2">Sample coverage</th><th class="text-left p-2">Sampled accounts</th><th class="text-left p-2">Sampled sessions</th><th class="text-left p-2">Sampled projects</th><th class="text-left p-2">Editor bursts</th><th class="text-left p-2">Editor changes</th><th class="text-left p-2">Runs</th><th class="text-left p-2">Cloud saves</th>
         </tr></thead><tbody id="pilot-research-rows"></tbody></table></div>
+        <div id="pilot-research-breakdowns" class="space-y-2" aria-label="Detailed sampled Studio research breakdowns"></div>
       </section>
     <div id="operations" hidden class="space-y-6 av-operations-dashboard">
       <button id="refresh-analytics" class="bg-cyan-800 text-white p-3 rounded">Refresh monitoring</button>
@@ -38,4 +39,4 @@
   </main>
   <script defer src="js/core/release-footer.js?v=72f4544d581a"></script>
 <script src="js/core/adminerva-loader.js?v=72f4544d581a"></script><script src="js/core/adminerva-nav.js?v=72f4544d581a"></script><script type="module" src="js/analytics/admin-analytics.mjs?v=e9b95b055852"></script>
-<script type="module" src="js/analytics/platform-pilot-research.mjs?v=20261123-pilot-research-1"></script><script type="module" src="js/core/auth-guard-v4-pilot.js?v=72f4544d581a"></script><script type="module" src="js/core/platform-admin-workflow.mjs?v=20261121-platform-flow1"></script></body></html>
+<script type="module" src="js/analytics/platform-pilot-research.mjs?v=20261124-pilot-health-1"></script><script type="module" src="js/core/auth-guard-v4-pilot.js?v=72f4544d581a"></script><script type="module" src="js/core/platform-admin-workflow.mjs?v=20261121-platform-flow1"></script></body></html>

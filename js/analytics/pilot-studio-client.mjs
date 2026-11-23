@@ -9,6 +9,8 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {currentV4StudioSchool} from "../student/v4-studio-service.mjs?v=20261123-cloud-recovery-1";
 
 const endpoint=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolPilotResearch");
+const status=document.getElementById("studioPilotResearchStatus");
+const setStatus=text=>{if(status)status.textContent=text;};
 const sessionId=crypto.randomUUID();
 const PROJECT_ID=/^[A-Za-z0-9_-]{1,160}$/;
 let schoolId="",ownerUid="",enabled=false,ready=false,generation=0;
@@ -18,21 +20,23 @@ let ongoing=null, sent=0,paused=false;
 async function loadPilotScope(){
   if(ongoing)return ongoing;
   const epoch=++generation,user=auth.currentUser;
-  if(!user){schoolId="";ownerUid="";ready=true;enabled=false;pending=[];return;}
+  if(!user){schoolId="";ownerUid="";ready=true;enabled=false;pending=[];setStatus("Pilot research: sign in to a designated test account.");return;}
   ongoing=(async()=>{
     try{
       const school=await currentV4StudioSchool();
       if(epoch!==generation||auth.currentUser?.uid!==user.uid)return;
-      if(!school?.schoolId){enabled=false;ready=true;pending=[];return;}
+      if(!school?.schoolId){enabled=false;ready=true;pending=[];setStatus("Pilot research inactive: select a verified school.");return;}
       const response=(await endpoint({action:"status",schoolId:school.schoolId})).data;
       if(epoch!==generation||auth.currentUser?.uid!==user.uid)return;
       schoolId=school.schoolId;ownerUid=user.uid;
       enabled=response?.enabled===true;ready=true;
-      if(!enabled){pending=[];return;}
+      if(!enabled){pending=[];setStatus("Pilot research inactive for this account. Studio work is unaffected.");return;}
+      setStatus("Pilot research active: collecting limited Studio process statistics.");
       const queued=pending.splice(0);
       for(const event of queued)void send(event);
     }catch{
-      if(epoch===generation){enabled=false;ready=true;pending=[];}
+      if(epoch===generation){enabled=false;ready=true;pending=[];
+        setStatus("Pilot research unavailable: collection not confirmed; Studio work is unaffected.");}
     }finally{
       if(epoch===generation)ongoing=null;
     }
@@ -52,11 +56,28 @@ async function send(event){
   if(!enabled||!schoolId||paused||sent>=600||auth.currentUser?.uid!==ownerUid)return;
   const target=schoolId,uid=ownerUid;
   sent++;
-  try{await endpoint({action:"record",schoolId:target,event});}
-  catch(error){
-    if(auth.currentUser?.uid!==uid)return;
-    if(/permission-denied|resource-exhausted/.test(String(error?.code||"")))paused=true;
-    // Research collection is best-effort. Never delay or mutate student work.
+  const epoch=generation;
+  for(let attempt=0;attempt<3;attempt++){
+    if(epoch!==generation||auth.currentUser?.uid!==uid||schoolId!==target||paused)return;
+    try{
+      const response=(await endpoint({action:"record",schoolId:target,event})).data;
+      if(epoch===generation&&schoolId===target&&auth.currentUser?.uid===uid&&response?.recorded===true)
+        setStatus("Pilot research active: last event confirmed at "+new Date().toLocaleTimeString()+".");
+      return;
+    }catch(error){
+      if(epoch!==generation||auth.currentUser?.uid!==uid||schoolId!==target)return;
+      const code=String(error?.code||"");
+      if(/permission-denied|resource-exhausted|unauthenticated|invalid-argument/.test(code)){
+        paused=true;
+        setStatus("Pilot research paused: test-account access or collection limit must be checked. Studio work is unaffected.");
+        return;
+      }
+      if(attempt===2){
+        setStatus("Pilot research connection unavailable: recent activity was not confirmed. Studio work is unaffected.");
+        return;
+      }
+      await new Promise(resolve=>setTimeout(resolve,attempt===0?400:1600));
+    }
   }
 }
 function flushEdits(){
@@ -78,10 +99,12 @@ function runMode(value){
 onAuthStateChanged(auth,user=>{
   generation++;ongoing=null;ready=false;enabled=false;paused=false;sent=0;
   ownerUid=user?.uid||"";schoolId="";currentProjectId="";changeCount=0;pending=[];
+  setStatus("Pilot research: checking test-account eligibility…");
   if(user)void loadPilotScope();
 });
 window.addEventListener("adminerva:school-ready",()=>{
   flushEdits();generation++;ongoing=null;ready=false;enabled=false;schoolId="";pending=[];
+  sent=0;paused=false;setStatus("Pilot research: checking selected school…");
   void loadPilotScope();
 });
 window.addEventListener("adminerva:studio-ready",event=>{
