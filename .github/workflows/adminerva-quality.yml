@@ -51,8 +51,9 @@ jobs:
           node --test tests/v4-repository-evaluation.test.mjs
           node --test tests/studio-student-recovery-guard.test.mjs tests/studio-legacy-reopen.test.mjs
           node --test tests/studio-project-visibility.test.mjs
-          node --test tests/studio-device-storage-resilience.test.mjs tests/assessment-draft-recovery.test.mjs tests/studio-java-diagnostics.test.mjs
+          node --test tests/studio-device-storage-resilience.test.mjs tests/studio-cloud-save-recovery.test.mjs tests/assessment-draft-recovery.test.mjs tests/studio-java-diagnostics.test.mjs
           node --check js/student/project-studio.mjs
+          node --check js/student/v4-studio-service.mjs
           node --input-type=module --check < js/student/playground.js
           node --test js/school-admin/enrollment.test.mjs tests/platform-school-setup-readiness.test.mjs tests/grading-policy-overlap.test.mjs tests/school-enrollment-ownership.test.mjs tests/school-enrollment-progression.test.mjs tests/school-student-records.test.mjs tests/registrar-role-access.test.mjs tests/school-enrollment-capability.test.mjs tests/verified-school-enrollment-mode.test.mjs tests/academic-crud-lifecycle.test.mjs tests/school-crud-completion.test.mjs tests/platform-user-lifecycle.test.mjs tests/system-admin-crud-coverage.test.mjs tests/people-header-safety.test.mjs tests/people-invitation-lifecycle.test.mjs tests/people-lifecycle-dependencies.test.mjs tests/student-account-recovery.test.mjs
           node --test js/analytics/academic-model.test.mjs

@@ -3,9 +3,9 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=20261123-pilot-research-1";
+import {createProjectStudio} from "./project-studio.mjs?v=20261123-cloud-recovery-1";
 import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
-import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261121-recovery-guard";
+import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261123-cloud-recovery-1";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=20261123-java-diagnostics-1";
@@ -3065,7 +3065,7 @@ function bindUIEvents() {
       if(button)button.disabled=true;
       try{
         const saved=await projectStudio.flushCloudSaves();
-        if(!saved)showSaveStatus("Device copy saved · cloud pending",true);
+        if(!saved) return; // The project controller keeps the actual cloud failure detail.
       }finally{if(button)button.disabled=false;}
     }
   }

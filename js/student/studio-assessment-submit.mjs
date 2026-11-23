@@ -4,7 +4,7 @@ import {collection,doc,getDocs,query,where,runTransaction,serverTimestamp} from 
 import {snapshotStudioProject,studioDigest,studioEvidenceId,studioSourceDigest,studioSubmissionAllowed} from "./studio-assessment-model.mjs?v=20261121-legacy-recovery";
 import {
   currentV4StudioSchool,getV4StudioSubmissionStatus,listV4StudioAssignments,submitV4StudioProject
-} from "./v4-studio-service.mjs?v=20261121-recovery-guard";
+} from "./v4-studio-service.mjs?v=20261123-cloud-recovery-1";
 
 const button=document.getElementById("studioSubmitAssessment");
 if(button){
