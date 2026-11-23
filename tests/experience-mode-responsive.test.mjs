@@ -71,7 +71,7 @@ test('full experience escapes legacy centered shells and integrates public navig
   assert.match(css,/\.avx-world-shell\{[^}]*width:100vw/);
   assert.match(css,/margin-left:calc\(50% - 50vw\)/);
   assert.match(css,/data-adminerva-experience="full"\] \.av-public-shell/);
-  assert.match(experience,/const journey=el\('div','avx-world-shell'\)/);
+  assert.match(experience,/const journey=el\('div','avx-world-shell avx-world-shell--illustrated'\)/);
   assert.doesNotMatch(experience,/el\('section','avx-(?:world-shell|threshold|route-section|current-section|crossing)'/);
 });
 
