@@ -159,6 +159,11 @@
       "collectionGroup": "studio_exam_final_checkpoints",
       "fieldPath": "artifacts",
       "indexes": []
+    },
+    {
+      "collectionGroup": "assessment_response_drafts",
+      "fieldPath": "payload",
+      "indexes": []
     }
   ]
 }
