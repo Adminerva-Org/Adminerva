@@ -115,6 +115,24 @@ function enterSchoolAssist({schoolId,personId,enrollmentMode}){
 function selectedTestSchool(){
   return testSchoolTargets?.find(item=>item.schoolId===el("pu-test-school")?.value)||null;
 }
+async function suspendTestSchoolAccess(membership){
+  if(busy||!currentAccount||!membership?.testStudentAccess||membership.status!=="active")return;
+  const reason=administrativeReason();if(!reason)return;
+  if(!confirm("Suspend this test student's access to “"+membership.schoolName+"”? Historical school records and the test person will be preserved."))return;
+  const uid=currentAccount.uid;
+  setBusy(true,"Suspending test student school access…");
+  el("pu-test-status").textContent="Suspending the reviewed school membership through System Admin Assist…";
+  try{
+    await schoolAccessApi({
+      schoolId:membership.schoolId,action:"suspend_access",
+      targetUid:uid,expectedRevision:membership.revision,reason,platformMode:"assist"
+    });
+    await fetchDetail(uid);
+    el("pu-test-status").textContent="Test student access suspended for "+membership.schoolName+
+      ". Historical school records were preserved.";
+  }catch(error){el("pu-test-status").textContent=error?.message||"Test student school access could not be suspended.";}
+  finally{setBusy(false);renderTestControls();}
+}
 function renderTestControls(){
   const active=currentTestAccount?.active===true,account=currentAccount;
   const state=el("pu-test-state"),toggle=el("pu-test-toggle"),grant=el("pu-test-grant"),
@@ -207,10 +225,15 @@ function populateDetail(result){
     const actions=node("div","flex flex-wrap gap-2 shrink-0");
     const link=node("a","pu-btn","Open School Registry");link.href="owner-schools.html?schoolId="+encodeURIComponent(membership.schoolId);
     actions.append(link);
-    if(currentTestAccount.active&&(membership.roles||[]).includes("student")&&membership.personId){
+    if(currentTestAccount.active&&membership.status==="active"&&(membership.roles||[]).includes("student")&&membership.personId){
       const placement=node("button","pu-btn primary","Manage placement");placement.type="button";
       placement.addEventListener("click",()=>enterSchoolAssist(membership));
       actions.append(placement);
+    }
+    if(currentTestAccount.active&&membership.testStudentAccess===true&&membership.status==="active"){
+      const suspend=node("button","pu-btn warn","Suspend test access");suspend.type="button";
+      suspend.addEventListener("click",()=>void suspendTestSchoolAccess(membership));
+      actions.append(suspend);
     }
     card.append(info,actions);host.append(card);
   }
