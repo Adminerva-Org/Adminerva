@@ -208,6 +208,8 @@ function createSchoolProfileService({db}){
         await requireCurrentAdmin(tx);
         const current=await tx.get(ref);
         if(!current.exists||current.data().schoolId!==ctx.schoolId)deny("not-found","Campus was not found.");
+        if(current.data().status!=="active")
+          deny("failed-precondition","Restore this campus before editing its details.");
         if(payload.code){
           const sameCode=await tx.get(db.collection(root+"campuses").where("code","==",payload.code).limit(2));
           if(sameCode.docs.some(doc=>doc.id!==id&&doc.data().schoolId===ctx.schoolId))

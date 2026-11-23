@@ -173,10 +173,8 @@ export function createProjectStudio({
   const undoKey=projectId=>"Adminerva_Code_Project_Undo_v1_"+uid+"_"+(scopeToken?scopeToken+"_":"")+projectId;
   let activeProject=null,selectedTemplate="java-information",initialized=false,openEpoch=0;
   const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set(),cloudPending=new Map(),markerCache=new Map();
-  // A quota-full browser can still upload an in-memory project. Do not let
-  // the student leave the workspace until that exact snapshot is confirmed.
-  const unbackedProjectIds=new Set();
   let merging=null,cloudStatus="Checking cloud storage…",designTimer=null,designPending=null,diagramEpoch=0;
+  let earlierProjectsRequest=0;
   let dbSelectedTable="",dbView="browse";
 
   function projectSize(project){return enc(project);}
@@ -250,41 +248,15 @@ export function createProjectStudio({
   function cacheProject(project){
     const items=readCodeProjects(projectStorage,uid).filter(item=>item.id!==project.id);
     const normalized=normalizeProject(project);if(!normalized)throw Error("Invalid cloud project.");
-    try{
-      writeCodeProjects(projectStorage,uid,[normalized,...items]);
-    }catch(error){
-      if(!cloudEnabled)throw error;
-      // Already-cloud-saved projects may still be opened from another device
-      // when browser storage is blocked. Their school copy is unchanged.
-      console.warn("Device project cache unavailable; preserving cloud project in memory",error);
-    }
-    return normalized;
+    writeCodeProjects(projectStorage,uid,[normalized,...items]);return normalized;
   }
   function store(project,cloud=cloudEnabled){
     validateProject(project);
-    const previous=activeProject?.id===project.id?activeProject:
-      findCodeProject(projectStorage,uid,project.id);
+    const previous=findCodeProject(projectStorage,uid,project.id);
     const changed=!previous||contentKey(previous)!==contentKey(project);
-    let deviceSaved=true;
-    try{
-      activeProject=changed?saveCodeProject(projectStorage,uid,project):
-        {...previous,lastOpenedAt:project.lastOpenedAt||previous.lastOpenedAt};
-    }catch(error){
-      if(!cloudEnabled)throw error;
-      // Retain the current Monaco/editor state for a school-cloud save rather
-      // than losing the latest code just because localStorage is unavailable.
-      console.warn("Studio device backup unavailable; retaining live project in memory",error);
-      const fallback=normalizeProject({...project,updatedAt:new Date().toISOString()});
-      if(!fallback)throw error;
-      activeProject=fallback;
-      unbackedProjectIds.add(project.id);
-      deviceSaved=false;
-    }
+    activeProject=changed?saveCodeProject(projectStorage,uid,project):{...previous,lastOpenedAt:project.lastOpenedAt||previous.lastOpenedAt};
     updateProjectHeading();updateQuotaUI();
-    if(cloudEnabled&&cloud&&(changed||readMarker(project.id).pending||
-       !readMarker(project.id).kind||unbackedProjectIds.has(project.id)))
-      scheduleCloudSave(activeProject);
-    if(!deviceSaved)setCloudStatus("Device storage unavailable · cloud save pending · keep this tab open","error",project.id);
+    if(cloudEnabled&&cloud&&(changed||readMarker(project.id).pending||!readMarker(project.id).kind))scheduleCloudSave(activeProject);
     window.dispatchEvent(new CustomEvent("adminerva:studio-project-saved",{detail:{
       projectId:activeProject.id,updatedAt:activeProject.updatedAt
     }}));
@@ -308,7 +280,6 @@ export function createProjectStudio({
       // editor snapshot. Do not claim a device backup was made.
       console.warn("Exam closing device draft unavailable; using memory-only cloud checkpoint",error);
       activeProject=draft;
-      unbackedProjectIds.add(draft.id);
     }
     if(cloudEnabled)scheduleCloudSave(activeProject);
     return {queued:cloudEnabled,deviceSaved};
@@ -318,11 +289,7 @@ export function createProjectStudio({
     const snapshot=clone(project),id=snapshot.id;
     cloudPending.set(id,snapshot);
     writeMarker(id,{...readMarker(id),pending:true});
-    const deviceUnavailable=unbackedProjectIds.has(id);
-    setCloudStatus(deviceUnavailable?
-      "Device backup unavailable · cloud save pending · keep this tab open":
-      navigator.onLine===false?"Offline · saved on device":"Syncing to cloud…",
-      deviceUnavailable?"error":"info",id);
+    setCloudStatus(navigator.onLine===false?"Offline · saved on device":"Syncing to cloud…","info",id);
     clearTimeout(cloudTimers.get(id));
     cloudTimers.set(id,setTimeout(()=>{void flushOne(id);},900));
   }
@@ -379,18 +346,14 @@ export function createProjectStudio({
           marker={kind:"legacy",updatedAt:confirmedAt};
         }
         const same=cloudPending.get(id)===snapshot;
-        if(same){cloudPending.delete(id);unbackedProjectIds.delete(id);}
+        if(same)cloudPending.delete(id);
         writeMarker(id,{...marker,pending:!same});
         if(same){setCloudStatus("Saved to cloud","success",id);if(!activeProject)setCloudStatus(cloudPending.size?"Cloud sync pending":"Cloud projects up to date",cloudPending.size?"info":"success");}
         return true;
       }catch(error){
         console.warn("Studio cloud save failed:",error);
-        setCloudStatus(unbackedProjectIds.has(id)?
-          "No device backup or cloud confirmation · keep this tab open":
-          "Device copy saved · cloud not synced","error",id);
-        if(!activeProject)setCloudStatus(unbackedProjectIds.has(id)?
-          "Unsaved in-memory draft · keep this tab open":
-          "Device drafts retained · cloud not synced","error");
+        setCloudStatus("Device copy saved · cloud not synced","error",id);
+        if(!activeProject)setCloudStatus("Device drafts retained · cloud not synced","error");
         const indicator=el("autoSaveIndicator");if(indicator&&activeProject?.id===id)indicator.title=String(error?.message||error)+" · Save again to retry.";
         return false;
       }
@@ -576,6 +539,7 @@ export function createProjectStudio({
     initialized=true;
     el("newCodeProjectBtn")?.addEventListener("click",()=>openWizard());
     el("archivedCodeProjectsBtn")?.addEventListener("click",()=>void showArchivedSchoolProjects());
+    el("refreshEarlierProjectsBtn")?.addEventListener("click",()=>void loadEarlierProjects());
     el("importCodeProjectBtn")?.addEventListener("click",()=>el("projectZipInput")?.click());
     el("backToProjectsBtn")?.addEventListener("click",()=>{
       showHome();
@@ -670,6 +634,111 @@ export function createProjectStudio({
     const create=el("newCodeProjectBtn"),count=readCodeProjects(projectStorage,uid).filter(item=>item.status!=="archived").length;
     if(create&&Number.isFinite(policy.maxProjects)){create.disabled=count>=policy.maxProjects;create.title=create.disabled?"Guest project limit reached. Export or delete a project to create another.":"";}
   }
+
+  // V4-only schools store new Studio projects in a school-prefixed device
+  // namespace. Older projects were saved under the unsuffixed UID key and
+  // global student_code_projects/{uid}/projects. Those copies must remain
+  // discoverable without importing them as graded school submissions.
+  async function loadEarlierProjects(){
+    const section=el("studioEarlierProjects"),list=el("studioEarlierProjectList"),
+      status=el("studioEarlierProjectsStatus"),refresh=el("refreshEarlierProjectsBtn");
+    if(!section||!list||!status)return;
+    if(!scopeToken||guest||!cloudEnabled){
+      section.classList.add("hidden");return;
+    }
+    const generation=++earlierProjectsRequest;
+    const isCurrent=()=>generation===earlierProjectsRequest&&
+      auth.currentUser?.uid===uid&&!activeProject;
+    section.classList.remove("hidden");
+    status.textContent="Checking earlier device and account-cloud copies…";
+    if(refresh)refresh.disabled=true;
+    const existing=readCodeProjects(projectStorage,uid);
+    const activeById=new Map(existing.map(project=>[project.id,project]));
+    const rows=[];
+    const add=(project,source)=>{
+      if(!project||project.ownerUid!==uid)return;
+      const current=activeById.get(project.id);
+      if(current&&contentKey(current)===contentKey(project))return;
+      rows.push({project,source});
+    };
+    for(const project of readCodeProjects(localStorage,uid))add(project,"Earlier device");
+    let cloudReadable=true;
+    try{
+      // Firestore rules restrict this legacy collection to the same signed-in
+      // UID. Never query another UID or infer school ownership from a title.
+      const snapshot=await getDocsFromServer(collection(db,"student_code_projects",uid,"projects"));
+      if(!isCurrent())return;
+      for(const record of snapshot.docs){
+        const data=record.data();
+        if(data?.ownerUid!==uid||data?.id!==record.id)continue;
+        const project=normalizeProject(data);
+        if(project)add(project,"Earlier account cloud");
+      }
+    }catch(error){
+      cloudReadable=false;
+      console.warn("Earlier account cloud projects unavailable; device copies retained",error);
+    }
+    if(!isCurrent())return;
+    list.replaceChildren();
+    rows.sort((a,b)=>String(b.project.updatedAt||"").localeCompare(String(a.project.updatedAt||"")));
+    for(const {project,source} of rows){
+      const isExam=project.assessment?.provisionedBy==="assessment-launch"&&
+        Boolean(project.assessment.offeringId);
+      const isAssessment=Boolean(project.assessment?.assessmentId||project.assessment?.taskId);
+      const meta=projectTypeMeta(project),card=document.createElement("article");
+      card.className="code-project-card";
+      card.innerHTML='<div class="code-project-icon">'+escapeHtml(meta.template.icon)+'</div>'+
+        '<div class="code-project-card-body"><div class="code-project-card-top"><h3>'+
+        escapeHtml(project.title)+'</h3><span>'+escapeHtml(prettyDate(project.updatedAt))+
+        '</span></div><p>'+escapeHtml(source)+' · '+
+        (isAssessment?'Assessment-linked history':'Personal project history')+
+        (project.status==="archived"?' · Archived':'')+' · '+
+        Object.keys(project.state?.files||{}).length+' files</p>'+
+        '<div class="code-project-card-actions"><button type="button" data-recover>'+
+        (isExam?'Open in My Assessments':'Recover personal copy')+
+        '</button></div></div>';
+      card.querySelector("[data-recover]")?.addEventListener("click",()=>{
+        if(isExam){
+          location.assign("student-assessments.html#"+
+            encodeURIComponent(project.assessment.taskId||project.assessment.assessmentId));
+          return;
+        }
+        if(!confirm('Recover "'+project.title+'" as a NEW personal Studio project?'+
+          '\n\nThe older device/cloud copy and any graded assessment submission will remain unchanged. This personal copy is not a submission.'))return;
+        let recovered=null;
+        try{
+          validateProject(project,{creating:true});
+          recovered=createCodeProject(projectStorage,uid,{
+            title:(project.title.slice(0,94)+" · Recovered"),templateId:project.template,
+            config:clone(project.config)
+          });
+          const copy=normalizeProject({...recovered,lang:project.lang,
+            state:clone(project.state),database:clone(project.database),
+            design:clone(project.design),evidence:{events:[],runs:[]},assessment:null});
+          validateProject(copy);
+          const saved=saveCodeProject(projectStorage,uid,copy);
+          if(cloudEnabled)scheduleCloudSave(saved);
+          renderProjectHome();
+          status.textContent='Recovered "'+project.title+
+            '" as a separate personal copy. Your original historical project was not modified.';
+        }catch(error){
+          if(recovered)deleteCodeProject(projectStorage,uid,recovered.id);
+          alert("Project could not be recovered: "+String(error?.message||error)+
+            ". The older source has not been altered.");
+        }
+      });
+      list.append(card);
+    }
+    status.textContent=rows.length
+      ?rows.length+" earlier project cop"+(rows.length===1?"y":"ies")+
+        " found. Recover only the copy you recognize; originals remain unchanged."+
+        (cloudReadable?"":" Earlier cloud storage could not be checked; refresh when connected.")
+      :cloudReadable
+        ?"No earlier projects are saved under this account on this device or in its legacy cloud collection. Work under a previous login requires verified identity recovery."
+        :"Earlier cloud storage could not be checked. No device copies were found; retry after reconnecting.";
+    if(refresh)refresh.disabled=false;
+  }
+
   function renderProjectHome(){
     const list=el("codeProjectList");if(!list)return;
     const projects=readCodeProjects(projectStorage,uid).filter(project=>project.status!=="archived");
@@ -683,7 +752,7 @@ export function createProjectStudio({
         card.className="code-project-card";
         const size=Math.max(1,Math.ceil(projectSize(project)/1024));
         card.innerHTML='<div class="code-project-icon">'+escapeHtml(meta.template.icon)+'</div><div class="code-project-card-body"><div class="code-project-card-top"><h3>'+escapeHtml(project.title)+'</h3><span>'+escapeHtml(prettyDate(project.lastOpenedAt))+'</span></div><p>'+escapeHtml(meta.detail)+' · '+Object.keys(project.state?.files||{}).length+' files · '+size+' KB</p><div class="code-project-card-actions"><button type="button" data-open>Open project</button><button type="button" data-copy>Duplicate</button><button type="button" data-delete class="danger-subtle">Delete</button></div></div>';
-        if(project.assessment?.provisionedBy==="assessment-launch"&&project.assessment.offeringId){
+        if(project.assessment?.provisionedBy==="assessment-launch"){
           // Do not offer destructive local/cloud deletion or an editable
           // duplicate of a teacher-assigned examination project.
           card.querySelector("[data-copy]")?.remove();
@@ -740,17 +809,9 @@ export function createProjectStudio({
   }
 
   function showHome(){
-    initialize();
-    if(activeProject){
-      try{flushDesignDraft();saveState(captureState());}
-      catch(error){alert("Device draft could not be saved: "+error.message);return false;}
-      if(unbackedProjectIds.has(activeProject.id)){
-        void flushCloudSaves();
-        alert("This browser could not store your project on this device. Keep the Studio editor open until the school cloud confirms the latest revision, then try leaving again.");
-        return false;
-      }
-    }
     ++openEpoch;++diagramEpoch;
+    initialize();
+    if(activeProject){try{flushDesignDraft();saveState(captureState());}catch(error){alert("Device draft could not be saved: "+error.message);return false;}}
     activeProject=null;void flushCloudSaves();
     window.dispatchEvent(new CustomEvent("adminerva:studio-home"));
     renderProjectHome();
@@ -758,7 +819,7 @@ export function createProjectStudio({
     el("studioShell")?.classList.add("hidden");
     document.title=(guest?"Adminerva Studio · Guest":"Adminerva Studio")+" · Adminerva";
     const guestNotice=el("guestProjectNotice");if(guestNotice)guestNotice.classList.toggle("hidden",!guest);
-    if(cloudEnabled)void mergeCloudProjects();
+    if(cloudEnabled)void mergeCloudProjects().then(()=>loadEarlierProjects());
   }
 
   function assessmentProjectId(assessmentId){
@@ -1005,15 +1066,7 @@ export function createProjectStudio({
         syncAssessmentCapabilities();updateProjectHeading();
         return {project:activeProject,created:false,projectId:activeProject.id};
       }
-      if(changed){
-        try{project=saveCodeProject(projectStorage,uid,next);}
-        catch(error){
-          if(!cloudEnabled)throw error;
-          console.warn("Device cache unavailable during assessment resume",error);
-          project=next;unbackedProjectIds.add(project.id);
-        }
-        if(cloudEnabled)writeMarker(project.id,{...readMarker(project.id),pending:true});
-      }
+      if(changed){project=saveCodeProject(projectStorage,uid,next);if(cloudEnabled)writeMarker(project.id,{...readMarker(project.id),pending:true});}
       activateProject(project);
       if(recoveredSubmittedVersion){
         setCloudStatus("Recovered from submitted version "+recoveredSubmittedVersion+
@@ -1026,30 +1079,16 @@ export function createProjectStudio({
     if(context.allowCreate===false)return {project:null,created:false,projectId};
     validateProject({state:{files:{}},database:{tables:{}},design:{},evidence:{}},{creating:true});
     const projectTitle=String(context.projectTitle||context.title||"Studio Assessment").trim().slice(0,120)||"Studio Assessment";
-    try{
-      project=createCodeProject(projectStorage,uid,{
-        id:projectId,title:projectTitle,templateId:template.id,
-        config:desiredConfig,assessment:ownership
-      });
-    }catch(error){
-      if(!cloudEnabled)throw error;
-      // Use the canonical project constructor with an in-memory storage shim.
-      // The same project ID can be synchronized to the verified school cloud.
-      console.warn("Assessment project device creation unavailable; using school cloud",error);
-      const memoryStorage={getItem:()=>null,setItem:()=>{},removeItem:()=>{}};
-      project=createCodeProject(memoryStorage,uid,{
-        id:projectId,title:projectTitle,templateId:template.id,
-        config:desiredConfig,assessment:ownership
-      });
-      unbackedProjectIds.add(project.id);
-      writeMarker(project.id,{...readMarker(project.id),pending:true});
-    }
+    project=createCodeProject(projectStorage,uid,{
+      id:projectId,title:projectTitle,templateId:template.id,
+      config:desiredConfig,assessment:ownership
+    });
     try{
       validateProject(project);
       activateProject(project);
       return {project:activeProject,created:true,projectId:activeProject.id};
     }catch(error){
-      try{deleteCodeProject(projectStorage,uid,project.id);}catch{}
+      deleteCodeProject(projectStorage,uid,project.id);
       throw error;
     }
   }
@@ -1299,10 +1338,8 @@ export function createProjectStudio({
       const control=el(id);if(control)control.classList.add("hidden");
     }
     const undo=el("undoRestoreBtn");
-    let hasUndo=false;
-    try{hasUndo=Boolean(localStorage.getItem(undoKey(activeProject.id)));}
-    catch(error){console.warn("Studio undo cache unavailable",error);}
-    if(undo)undo.classList.toggle("hidden",!hasUndo);
+    if(undo)undo.classList.toggle("hidden",
+      !localStorage.getItem(undoKey(activeProject.id)));
     updateQuotaUI();
     if(cloudEnabled){
       const marker=readMarker(activeProject.id);

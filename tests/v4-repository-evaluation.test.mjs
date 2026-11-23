@@ -6,7 +6,7 @@ import {buildGeneralExternalEvaluationData} from "../js/assessment/general-exter
 
 const checkpoint="c".repeat(40),changed="a".repeat(40);
 const frozen=()=>({
-  status:"approved",version:2,checkpointSha:checkpoint,
+  status:"approved",version:2,evidenceRevision:0,checkpointSha:checkpoint,
   evidenceDigest:"frozen-digest",
   repository:{fullName:"student/example"},
   selectedCommitShas:[changed]
@@ -32,6 +32,7 @@ function mockClient(){
 }
 test("V4 repository evaluation reuses substantive-diff analysis and pins source",async()=>{
   const evidence=await buildV4RepositoryEvaluationSnapshot({snapshot:frozen(),client:mockClient()});
+  assert.equal(evidence.evidenceRevision,0);
   assert.equal(evidence.analysis.selectedCount,1);
   assert.equal(evidence.analysis.substantiveChanges,1);
   assert.equal(evidence.analysis.complete,true);

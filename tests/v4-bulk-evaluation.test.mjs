@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   BULK_PACKAGE_FORMAT,BULK_RESPONSE_FORMAT,BULK_MAX_BATCH,BULK_GITHUB_MAX_BATCH,bulkBatchLimit,
-  bulkSuggestionState,readBulkExternalResponse,bulkSaveableStages,
+  bulkSuggestionState,resolveBulkPendingCriterion,readBulkExternalResponse,bulkSaveableStages,
   nextBulkSelection,canClearCompletedBulkExchange,
   BULK_COMPACT_PACKAGE_FORMAT,buildCompactBulkExternalEvaluationPackage,
   fitCompactBulkExternalEvaluationPackage,
@@ -53,6 +53,31 @@ test("zero scores and unresolved rubric points are not eligible for saving",()=>
  const held=bulkSuggestionState(parseGeneralExternalEvaluationResponse(JSON.stringify(pending),{task}),task);
  assert.equal(held.saveEligible,false);
  assert.match(held.reason,/Unresolved/);
+});
+test("teacher resolves pending rubric points with a direct final score and can revise it",()=>{
+ const pending={...suggestion,criteria:[
+  {...suggestion.criteria[0],awardedPoints:18,pendingPoints:2,confidence:"teacher_confirmation"},
+  suggestion.criteria[1]
+ ]};
+ const held=bulkSuggestionState(parseGeneralExternalEvaluationResponse(JSON.stringify(pending),{task}),task);
+ assert.equal(held.pending,2);
+ assert.equal(held.teacherConfirmation,true);
+ assert.equal(held.saveEligible,false);
+ const resolved=resolveBulkPendingCriterion(held,task,0,19.5);
+ assert.equal(resolved.criteria[0].awardedPoints,19.5);
+ assert.equal(resolved.criteria[0].pendingPoints,0);
+ assert.equal(resolved.awarded,36.5);
+ assert.equal(resolved.pending,0);
+ assert.equal(resolved.teacherConfirmation,false);
+ assert.equal(resolved.saveEligible,true);
+ assert.deepEqual(resolved.teacherResolvedCriteria,[0]);
+ const revised=resolveBulkPendingCriterion(resolved,task,0,20);
+ assert.equal(revised.criteria[0].awardedPoints,20);
+ assert.equal(revised.awarded,37);
+ assert.equal(revised.saveEligible,true);
+ assert.throws(()=>resolveBulkPendingCriterion(held,task,0,21),/0 to 20/);
+ assert.throws(()=>resolveBulkPendingCriterion(held,task,0,""),/0 to 20/);
+ assert.throws(()=>resolveBulkPendingCriterion(held,task,1,17),/no pending points/i);
 });
 test("rejects wrong batch, duplicate refs, unknown refs and rubric changes",()=>{
  const allowedRefs=new Map([["t1",{}],["t2",{}]]);

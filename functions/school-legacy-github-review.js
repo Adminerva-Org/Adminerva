@@ -225,9 +225,23 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    approvedEvidence(record.data,id,recordId,{requireSubmitted:true});
    const expectedRevision=Number(input.expectedEvidenceRevision);
    const expectedSha=String(input.expectedCheckpointSha||"").toLowerCase();
-   if(!Number.isInteger(expectedRevision)||expectedRevision!==meta.revision||
+   const bulkSave=input.action==="legacy_github_save_draft"&&input.onlyIfUngraded===true;
+   const revisionField=record.data.revision;
+   const revisionlessRecord=meta.revision===0&&
+     (revisionField===undefined||revisionField===null||Number(revisionField)===0);
+   // Older bulk clients accidentally replaced evidenceRevision=0 with the
+   // synthetic display version 1 after repository preparation. Accept that
+   // exact compatibility case only while the stored record is still truly
+   // revisionless. A real revision-1 bulk save must identify itself as
+   // canonical so a stale revisionless batch cannot silently cross 0 -> 1.
+   const revisionlessBulkCompat=bulkSave&&revisionlessRecord&&expectedRevision===1&&
+     input.expectedEvidenceRevisionMode!=="canonical";
+   const canonicalRevisionMatch=expectedRevision===meta.revision&&
+     (!bulkSave||expectedRevision!==1||input.expectedEvidenceRevisionMode==="canonical");
+   if(!Number.isInteger(expectedRevision)||(!revisionlessBulkCompat&&!canonicalRevisionMatch)||
       expectedSha!==meta.checkpointSha)
      deny("failed-precondition","The frozen historical evidence changed. Refresh before grading.");
+   const expectedCanonicalRevision=revisionlessBulkCompat?0:expectedRevision;
    const gradeDocument=gradeRef(recordId);
    const expectedGradeVersion=Number(input.expectedGradeRevision);
    if(!Number.isInteger(expectedGradeVersion)||expectedGradeVersion<0)
@@ -247,7 +261,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        deny("permission-denied","Historical assessment ownership or school access changed.");
      const latest=approvedEvidence(freshEvidence.exists?freshEvidence.data():null,id,recordId,
        {requireSubmitted:true});
-     if(latest.revision!==expectedRevision||latest.checkpointSha!==expectedSha||
+     if(latest.revision!==expectedCanonicalRevision||latest.checkpointSha!==expectedSha||
         latest.repository.fullName.toLowerCase()!==meta.repository.fullName.toLowerCase()||
         latest.contributionScope!==meta.contributionScope||
         JSON.stringify(latest.selected)!==JSON.stringify(meta.selected)||

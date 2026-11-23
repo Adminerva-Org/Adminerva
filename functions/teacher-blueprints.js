@@ -1,7 +1,7 @@
 "use strict";
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
-const {FieldValue}=require("firebase-admin/firestore");
+const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {planPersonalizationForOfferings}=require("./assessment-personalization-planning.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message)};
 function documentId(value) {
@@ -110,7 +110,7 @@ function serialize(doc,access) {
     studioProjectProfile:studioProjectProfile(data.studioProjectProfile||"auto"),
     rubric:data.rubric,personalization:personalizationContent(data.personalization),
     checkingInstructions:(access.uid===data.ownerUid||access.platformOverride===true)?String(data.checkingInstructions||""):"",
-    contentRevision:data.contentRevision,aclRevision:data.aclRevision,
+    status:data.status||"draft",contentRevision:data.contentRevision,aclRevision:data.aclRevision,
     copiedFrom:data.copiedFrom||null,
     legacyImport:data.legacyImport||null,
     sharedWithUids:(access.uid===data.ownerUid||access.platformOverride===true)?
@@ -262,6 +262,26 @@ function createTeacherBlueprintService({db}) {
       });
       return {id:ref.id,visibility:"private",contentRevision:1};
     }
+    if(action==="list_archived") {
+      // Archived resources are owner-private regardless of prior sharing.
+      // Use stable document-ID pagination, not an unbounded owner history.
+      const cursor=input.cursor?documentId(input.cursor):null;
+      let query=collection.where("ownerUid","==",ctx.uid)
+        .where("status","==","archived").orderBy(FieldPath.documentId()).limit(26);
+      if(cursor){
+        const after=await collection.doc(cursor).get();
+        if(!after.exists||after.data().schoolId!==ctx.schoolId||
+           after.data().ownerUid!==ctx.uid||after.data().status!=="archived")
+          deny("failed-precondition","Archived history changed. Refresh before loading more.");
+        query=query.startAfter(after);
+      }
+      const archived=await query.get(),page=archived.docs.slice(0,25);
+      if(page.some(doc=>doc.data().schoolId!==ctx.schoolId||
+         doc.data().ownerUid!==ctx.uid||doc.data().status!=="archived"))
+        deny("data-loss","Archived blueprint ownership could not be verified.");
+      return {items:page.map(doc=>serialize(doc,ctx)),
+        nextCursor:archived.size>25?page[page.length-1].id:null};
+    }
     if(action==="list") {
       if(ctx.platformOverride){
         const all=await collection.limit(151).get();
@@ -288,6 +308,15 @@ function createTeacherBlueprintService({db}) {
         deny("invalid-argument","The current assessment revision is required.");
       const fields=action==="update"?reusableContent(input.blueprint):null;
       const checkingInstructions=action==="update"?privateCheckingContent(input.blueprint):null;
+      // Backend-first rollout: old released clients still archive without a
+      // reason field. Audit that compatibility path distinctly until every
+      // supported client has the reviewed reason form.
+      const legacyArchive=action==="archive"&&input.reason===undefined;
+      const reason=action==="archive"?(legacyArchive?
+        "Archive requested by an earlier assessment client.":
+        cleanText(input.reason,500,"Archive reason",{required:true})):null;
+      if(action==="archive"&&reason.length<12)
+        deny("invalid-argument","Explain this blueprint archive in at least 12 characters.");
       const auditRef=db.collection("schools/"+ctx.schoolId+"/resource_audit").doc();
       await db.runTransaction(async tx=>{
         const original=await tx.get(ref);
@@ -302,11 +331,49 @@ function createTeacherBlueprintService({db}) {
           deny("failed-precondition","This assessment has changed. Reload it before saving.");
         const now=FieldValue.serverTimestamp();
         tx.update(ref,fields?{...fields,checkingInstructions,contentRevision:expectedRevision+1,updatedAt:now}
-          :{status:"archived",contentRevision:expectedRevision+1,updatedAt:now});
+          :{status:"archived",contentRevision:expectedRevision+1,
+            archivedByUid:ctx.uid,archivedAt:now,archiveReason:reason,updatedAt:now});
         tx.create(auditRef,{schoolId:ctx.schoolId,resourceId:id,actorUid:ctx.uid,
-          action,contentRevision:expectedRevision+1,createdAt:now});
+          action,contentRevision:expectedRevision+1,...(reason?{reason,
+            reasonSource:legacyArchive?"legacy_client":"teacher_supplied"}:{}),createdAt:now});
       });
       return {id,status:action==="archive"?"archived":"draft",contentRevision:expectedRevision+1};
+    }
+    if(action==="restore") {
+      const id=documentId(input.resourceId),ref=collection.doc(id),
+        expectedRevision=Number(input.expectedRevision),
+        reason=cleanText(input.reason,500,"Restore reason",{required:true});
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        deny("invalid-argument","Refresh the archived blueprint before restoring it.");
+      if(reason.length<12)
+        deny("invalid-argument","Explain this blueprint restoration in at least 12 characters.");
+      const auditRef=db.collection("schools/"+ctx.schoolId+"/resource_audit").doc();
+      let nextRevision;
+      await db.runTransaction(async tx=>{
+        const [original,member,school]=await Promise.all([
+          tx.get(ref),tx.get(selfMemberRef),tx.get(schoolRef)
+        ]);
+        assertCurrentTeacher(member);assertCurrentSchool(school);
+        if(!original.exists||original.data().schoolId!==ctx.schoolId||
+           original.data().ownerUid!==ctx.uid)
+          deny("permission-denied","Only the blueprint's school owner may restore it.");
+        const data=original.data();
+        if(data.status!=="archived")
+          deny("failed-precondition","Only an archived blueprint can be restored.");
+        if((Number(data.contentRevision)||1)!==expectedRevision)
+          deny("failed-precondition","The archived blueprint changed. Refresh before restoring it.");
+        const now=FieldValue.serverTimestamp();
+        nextRevision=expectedRevision+1;
+        // Restore as private; former sharing must never revive silently.
+        tx.update(ref,{status:"draft",visibility:"private",sharedWithUids:[],
+          contentRevision:nextRevision,aclRevision:(Number(data.aclRevision)||1)+1,
+          restoredByUid:ctx.uid,restoredAt:now,restoreReason:reason,
+          updatedByUid:ctx.uid,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,resourceId:id,actorUid:ctx.uid,
+          action:"restore",reason,previousVisibility:data.visibility||"private",
+          contentRevision:nextRevision,createdAt:now});
+      });
+      return {id,status:"draft",visibility:"private",contentRevision:nextRevision};
     }
     if(action==="share") {
       const id=documentId(input.resourceId),ref=collection.doc(id);

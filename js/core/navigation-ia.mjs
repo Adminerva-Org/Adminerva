@@ -305,18 +305,19 @@ export function buildNavigationIA(ctx){
     ws("platform-admin","Platform Administration","owner-schools.html","Institution registry, platform users, operational monitoring and releases",[
       group("Institutions & Access",[
         live("system-schools","School Registry","owner-schools.html","Provision, activate, suspend, recover and assist verified school tenants."),
-        live("system-users","Platform Users","system-users.html","Read-only account directory with on-demand school membership metadata.")
+        live("system-users","Platform Users","system-users.html","Complete global login directory with audited account and Platform Administrator lifecycle controls.")
       ]),
       group("Platform Operations",[
-        needs("platform-monitoring","Monitoring & Maintenance","admin-analytics.html","Legacy-compatible operational telemetry and maintenance controls; not a school academic administration surface."),
-        live("updates","Updates & Releases","patch-notes.html"),
+        needs("platform-monitoring","Monitoring & Maintenance","admin-analytics.html","Operational telemetry plus revisioned legacy monitoring-assignment and maintenance-policy lifecycle controls; not a school academic administration surface."),
+        live("updates","Updates & Releases","patch-notes.html","Published source-controlled release history. Release entries are reviewed through repository release authority rather than edited as CRUD records."),
         future("operations-center","Operations Center","Incidents, service health, observability, background jobs and controlled platform operations · In development separately.")
       ])
     ]),
     ws("platform-governance","Governance & Security","future-workspace.html?workspace=platform-governance","Platform roles, permissions, privacy, audit and compliance",[
       group("Access & Security",[
-        future("platform-roles","Roles & Permissions"),future("security-events","Security Events"),
-        future("sessions","Sessions / Access Review"),future("audit-log","Platform Audit Log")
+        live("platform-admin-access","Platform Administrator Access","system-users.html?workspace=platform-governance","Grant, retire and restore Platform Administrator authority without deleting login identity."),
+        live("governance-roles","School Governance Roles","owner-schools.html?workspace=platform-governance#owner-audit-section","Create, edit, archive, restore and assign platform-defined school governance roles."),
+        future("security-events","Security Events"),future("sessions","Sessions / Access Review"),future("audit-log","Platform Audit Log")
       ]),
       group("Governance",[
         future("privacy-governance","Privacy & Data Governance"),future("retention-governance","Retention Policies"),

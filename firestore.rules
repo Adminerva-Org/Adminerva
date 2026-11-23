@@ -84,7 +84,7 @@ service cloud.firestore {
         isAdmin();
     }
     function serverOwned(name) {
-      return name in ["academic_access_preparations","teaching_roster","student_access","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events","system_private","school_ai_results","school_ai_usage","practice_public_rankings","practice_season_scores","practice_season_progress","practice_season_awards","practice_season_attempts","practice_class_season_rankings","studio_assessment_variants","studio_assessment_variant_registry"];
+      return name in ["academic_access_preparations","teaching_roster","student_access","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events","system_private","school_ai_results","school_ai_usage","practice_public_rankings","practice_season_scores","practice_season_progress","practice_season_awards","practice_season_attempts","practice_class_season_rankings","studio_assessment_variants","studio_assessment_variant_registry","platform_test_accounts"];
     }
     function monitoringCollection(name) {
       return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views", "monitoring_control", "monitoring_status"];
@@ -267,6 +267,7 @@ service cloud.firestore {
     match /platform_schools/{schoolId} { allow read, write: if false; }
     match /platform_users/{userId}/{record=**} { allow read, write: if false; }
     match /platform_admins/{uid} { allow read, write: if false; }
+    match /platform_test_accounts/{uid} { allow read, write: if false; }
     match /platform_governance_roles/{record=**} { allow read, write: if false; }
     match /platform_audit/{record=**} { allow read, write: if false; }
     match /provisioning_jobs/{record=**} { allow read, write: if false; }

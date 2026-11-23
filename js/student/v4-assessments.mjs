@@ -4,10 +4,6 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient,parseGithubRepository} from "../repo-review/services/github-evidence-client.mjs?v=1.3.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
-import {
-  draftPayload,sameDraftPayload,readDeviceAssessmentDraft,writeDeviceAssessmentDraft,
-  preserveRecoveryAssessmentDraft,readRecoveryAssessmentDraft,clearDeviceAssessmentDraft
-} from "./assessment-draft-recovery.mjs?v=20261121-draft-resilience";
 
 const panel=document.getElementById("v4AssignmentsPanel");
 const list=document.getElementById("v4AssignmentsList");
@@ -298,276 +294,6 @@ if(panel&&list&&status&&schoolHost){
   const generalStatus=document.getElementById("v4GeneralSubmissionStatus");
   let generalTask=null,generalTaskStatus=null,generalBusy=false;
 
-  const deviceDraftStorage=(()=>{
-    try{return window.localStorage;}
-    catch{
-      return {getItem:()=>null,setItem:()=>{throw Error("Device storage blocked");},removeItem:()=>{}};
-    }
-  })();
-  let generalDraft=null;
-  const responseInput=document.getElementById("v4TextResponse");
-  const linkInput=document.getElementById("v4LinkResponseUrl");
-  const noteInput=document.getElementById("v4LinkResponseNote");
-  const responseFields=[responseInput,linkInput,noteInput];
-  const generalSubmitButton=document.getElementById("v4GeneralSubmissionSubmit");
-  const recoveryChoices=node("div","mt-3 flex flex-wrap gap-2");
-  recoveryChoices.setAttribute("role","group");
-  recoveryChoices.setAttribute("aria-label","Choose the assessment draft to recover");
-  generalStatus.after(recoveryChoices);
-  function currentGeneralPayload(source){
-    return draftPayload(source,source==="text"?
-      {response:responseInput.value}:{url:linkInput.value,note:noteInput.value});
-  }
-  function applyGeneralPayload(source,payload){
-    const row=draftPayload(source,payload);
-    if(source==="text")responseInput.value=row.response;
-    else{linkInput.value=row.url;noteInput.value=row.note;}
-  }
-  function showDraftStatus(session,message){
-    if(generalDraft===session&&generalDialog.open)generalStatus.textContent=message;
-  }
-  function draftContext(task){
-    const scope=picker?.scope;
-    if(!auth.currentUser?.uid||!scope?.current)return null;
-    return {uid:auth.currentUser.uid,schoolId:scope.lease().schoolId,
-      taskId:task.taskId,source:task.submissionSource};
-  }
-  function setDraftInputsEnabled(enabled){
-    responseFields.forEach(field=>{field.disabled=!enabled;});
-    generalSubmitButton.disabled=!enabled;
-  }
-  function scheduleGeneralCloudDraft(session,delay=1200){
-    if(!session||session.submitted||session.conflict||!session.remoteVerified)return;
-    clearTimeout(session.timer);
-    session.timer=setTimeout(()=>{session.timer=null;void syncGeneralCloudDraft(session);},delay);
-  }
-  async function syncGeneralCloudDraft(session){
-    if(session.submitted||session.conflict||!session.remoteVerified)return false;
-    if(session.inFlight)return session.inFlight;
-    const local=readDeviceAssessmentDraft(deviceDraftStorage,session.context)||session.memoryDraft;
-    if(!local?.pending)return true;
-    if(navigator.onLine===false){
-      showDraftStatus(session,"Saved on this device · waiting for a connection to school cloud.");
-      return false;
-    }
-    const submittedSnapshot=local;
-    const work=(async()=>{
-      try{
-        const receipt=await scoped(picker.scope,generalSubmissionsApi,"save_draft",{
-          taskId:session.context.taskId,...submittedSnapshot.payload,
-          expectedRevision:session.revision,submissionVersion:session.submissionVersion
-        });
-        if(session.submitted){clearDeviceAssessmentDraft(deviceDraftStorage,session.context);return true;}
-        session.revision=receipt.revision;
-        const current=readDeviceAssessmentDraft(deviceDraftStorage,session.context)||session.memoryDraft;
-        if(current){
-          const unchanged=sameDraftPayload(session.context.source,current.payload,submittedSnapshot.payload);
-          const updated={
-            payload:current.payload,pending:!unchanged,revision:session.revision,
-            submissionVersion:session.submissionVersion
-          };
-          const stored=writeDeviceAssessmentDraft(deviceDraftStorage,session.context,updated);
-          session.memoryDraft=stored?null:{...updated};
-          if(!unchanged)scheduleGeneralCloudDraft(session,100);
-          else showDraftStatus(session,"Draft saved to school cloud · revision "+session.revision+
-            ". Not submitted for grading.");
-        }
-        return true;
-      }catch(error){
-        const message=String(error?.message||error||"");
-        if(/newer cloud draft|newer submission version|different revision/i.test(message))
-          session.conflict=true;
-        showDraftStatus(session,session.conflict?
-          "Another device saved a different draft. Your work is preserved on this device. Close and reopen to compare versions.":
-          "Draft saved on this device, but school cloud has not confirmed it. "+
-            (message||"Reconnect and retry."));
-        return false;
-      }
-    })();
-    session.inFlight=work;
-    try{return await work;}finally{if(session.inFlight===work)session.inFlight=null;}
-  }
-  function storeGeneralDraftFromInputs(session){
-    if(generalDraft!==session||session.loading||session.submitted)return;
-    const draft={
-      payload:currentGeneralPayload(session.context.source),pending:true,
-      revision:session.revision,submissionVersion:session.submissionVersion
-    };
-    const saved=writeDeviceAssessmentDraft(deviceDraftStorage,session.context,draft);
-    session.memoryDraft=saved?null:draft;
-    showDraftStatus(session,saved?
-      "Draft saved on this device · syncing to school cloud (not submitted).":
-      "Device storage is unavailable. Keep this tab open; do not assume the response was saved.");
-    scheduleGeneralCloudDraft(session);
-  }
-  for(const field of responseFields){
-    field.addEventListener("input",()=>{if(generalDraft)storeGeneralDraftFromInputs(generalDraft);});
-  }
-  function detachGeneralDraft(){
-    const session=generalDraft;
-    if(session){
-      clearTimeout(session.timer);
-      session.timer=null;
-      if(!session.submitted&&!session.conflict&&session.remoteVerified)
-        void syncGeneralCloudDraft(session);
-    }
-    generalDraft=null;
-    recoveryChoices.replaceChildren();
-  }
-  function offerArchivedDraftRecovery(session){
-    const old=readRecoveryAssessmentDraft(deviceDraftStorage,session.context);
-    if(!old||!generalDialog.open||generalDraft!==session)return;
-    const button=node("button","rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-800",
-      "Restore an older device draft");
-    button.type="button";
-    button.addEventListener("click",()=>{
-      if(!confirm("Restore the older device draft into this editor? The current school copy will be kept in device recovery storage before any cloud save."))return;
-      const current={schemaVersion:1,...session.context,
-        payload:currentGeneralPayload(session.context.source),
-        pending:false,revision:session.revision,
-        submissionVersion:session.submissionVersion};
-      if(!preserveRecoveryAssessmentDraft(deviceDraftStorage,session.context,current)){
-        showDraftStatus(session,"Device recovery storage is full. Keep a separate copy before changing drafts.");
-        return;
-      }
-      applyGeneralPayload(session.context.source,old.payload);
-      storeGeneralDraftFromInputs(session);
-      recoveryChoices.replaceChildren();
-    });
-    recoveryChoices.replaceChildren(button);
-  }
-  function offerDraftConflict(session,deviceDraft,cloudPayload){
-    setDraftInputsEnabled(false);
-    showDraftStatus(session,"Different unfinished drafts exist on this device and in school cloud. Choose which to continue. Neither copy will be discarded silently.");
-    const localButton=node("button","rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950",
-      "Continue device draft");
-    const cloudButton=node("button","rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-950",
-      "Continue school draft");
-    for(const button of [localButton,cloudButton])button.type="button";
-    localButton.addEventListener("click",()=>{
-      if(!preserveRecoveryAssessmentDraft(deviceDraftStorage,session.context,{
-        schemaVersion:1,...session.context,payload:cloudPayload,pending:false,
-        revision:session.revision,submissionVersion:session.submissionVersion
-      })){
-        showDraftStatus(session,"The device cannot hold a recovery backup. Free space or copy both drafts before choosing.");
-        return;
-      }
-      session.conflict=false;
-      applyGeneralPayload(session.context.source,deviceDraft.payload);
-      setDraftInputsEnabled(true);
-      writeDeviceAssessmentDraft(deviceDraftStorage,session.context,{
-        payload:deviceDraft.payload,pending:true,
-        revision:session.revision,submissionVersion:session.submissionVersion
-      });
-      recoveryChoices.replaceChildren();
-      showDraftStatus(session,"Device draft restored. School copy retained in device recovery history; syncing selected changes.");
-      scheduleGeneralCloudDraft(session,100);
-    });
-    cloudButton.addEventListener("click",()=>{
-      if(!preserveRecoveryAssessmentDraft(deviceDraftStorage,session.context,deviceDraft)){
-        showDraftStatus(session,"The device cannot hold a recovery backup. Free space or copy both drafts before choosing.");
-        return;
-      }
-      session.conflict=false;
-      applyGeneralPayload(session.context.source,cloudPayload);
-      setDraftInputsEnabled(true);
-      writeDeviceAssessmentDraft(deviceDraftStorage,session.context,{
-        payload:cloudPayload,pending:false,revision:session.revision,
-        submissionVersion:session.submissionVersion
-      });
-      recoveryChoices.replaceChildren();
-      showDraftStatus(session,"School draft restored. The previous device copy is retained in local recovery history.");
-    });
-    recoveryChoices.replaceChildren(localButton,cloudButton);
-  }
-  async function restoreGeneralCloudDraft(session,submittedResponse){
-    const local=readDeviceAssessmentDraft(deviceDraftStorage,session.context)||session.memoryDraft;
-    let cloud;
-    try{
-      cloud=await scoped(picker.scope,generalSubmissionsApi,"get_draft",{taskId:session.context.taskId});
-      if(!cloud||cloud.taskId!==session.context.taskId||
-         !Number.isSafeInteger(Number(cloud.revision))||
-         !Number.isSafeInteger(Number(cloud.submissionVersion)))
-        throw Error("The school cloud did not confirm this assessment draft.");
-    }catch(error){
-      if(generalDraft!==session)return;
-      session.loading=false;
-      const fallback=local?.payload||submittedResponse;
-      applyGeneralPayload(session.context.source,fallback);
-      // Preserve edits locally; never claim an unverified cloud revision.
-      session.revision=local?.revision||0;
-      session.submissionVersion=local?.submissionVersion||session.submissionVersion;
-      session.remoteVerified=false;
-      setDraftInputsEnabled(true);
-      showDraftStatus(session,"School cloud could not be reached. Device draft restored if available; editing is local-only until cloud verification succeeds.");
-      return;
-    }
-    if(generalDraft!==session)return;
-    if(cloud?.submitted){
-      session.loading=false;session.submitted=true;
-      setDraftInputsEnabled(false);
-      showDraftStatus(session,"This response was already submitted on another device. Refresh your assignments to view its official status.");
-      return;
-    }
-    session.revision=Number(cloud?.revision||0);
-    session.submissionVersion=Number(cloud?.submissionVersion||0);
-    session.remoteVerified=true;session.loading=false;
-    const cloudPayload=cloud?.payload||submittedResponse;
-    if(local?.pending&&!sameDraftPayload(session.context.source,local.payload,cloudPayload)){
-      // If there is no cloud draft, the unsubmitted device copy can be
-      // restored without overwriting someone else's newer revision.
-      if(!cloud?.payload&&local.submissionVersion===session.submissionVersion){
-        applyGeneralPayload(session.context.source,local.payload);
-        setDraftInputsEnabled(true);
-        writeDeviceAssessmentDraft(deviceDraftStorage,session.context,{
-          payload:local.payload,pending:true,revision:session.revision,
-          submissionVersion:session.submissionVersion
-        });
-        showDraftStatus(session,"Unsynced device draft restored · saving it to school cloud.");
-        scheduleGeneralCloudDraft(session,100);
-      }else offerDraftConflict(session,local,cloudPayload);
-      return;
-    }
-    applyGeneralPayload(session.context.source,cloudPayload);
-    setDraftInputsEnabled(true);
-    writeDeviceAssessmentDraft(deviceDraftStorage,session.context,{
-      payload:cloudPayload,pending:false,revision:session.revision,
-      submissionVersion:session.submissionVersion
-    });
-    showDraftStatus(session,cloud?.payload?
-      "Unsubmitted school draft restored · revision "+session.revision+".":
-      "No unfinished school draft yet. Your response will save as you type.");
-    offerArchivedDraftRecovery(session);
-  }
-  // Try to synchronize when students move away from the form. If the
-  // browser's storage is blocked and the only copy lives in memory, warn
-  // before navigating away; an asynchronous network request is not a backup.
-  document.addEventListener("visibilitychange",()=>{
-    const session=generalDraft;
-    if(document.visibilityState!=="hidden"||!session||session.loading||
-       session.submitted||!generalDialog.open)return;
-    clearTimeout(session.timer);session.timer=null;
-    void syncGeneralCloudDraft(session);
-  });
-  window.addEventListener("beforeunload",event=>{
-    const session=generalDraft;
-    if(!session||session.submitted||!session.memoryDraft?.pending)return;
-    event.preventDefault();
-    event.returnValue="";
-  });
-  window.addEventListener("online",()=>{
-    const session=generalDraft;
-    if(!session||session.loading||session.submitted||!generalDialog.open)return;
-    if(session.remoteVerified)scheduleGeneralCloudDraft(session,100);
-    else{
-      session.loading=true;
-      setDraftInputsEnabled(false);
-      void restoreGeneralCloudDraft(session,
-        currentGeneralPayload(session.context.source));
-    }
-  });
-
-
   function openGeneralSubmission(task,current){
     generalTask=task;generalTaskStatus=current||null;
     const isLink=task.submissionSource==="link";
@@ -588,49 +314,18 @@ if(panel&&list&&status&&schoolHost){
     generalStatus.textContent=current?.status==="reopened"?
       "Edit the prior frozen response and submit a new immutable version.":
       "Your response becomes read-only after submission unless your teacher requests a revision.";
-    detachGeneralDraft();
-    const context=draftContext(task);
-    if(!context){
-      generalStatus.textContent="Choose a verified school before editing this response.";
-      return;
-    }
-    const session={context,loading:true,remoteVerified:false,revision:0,
-      submissionVersion:Number(current?.version||0),timer:null,inFlight:null,
-      conflict:false,submitted:false,memoryDraft:null};
-    generalDraft=session;
-    setDraftInputsEnabled(false);
     generalDialog.showModal();
-    generalStatus.textContent="Checking school cloud for an unfinished response draft…";
-    void restoreGeneralCloudDraft(session,current?.payload||{});
-  }
-  function mayCloseGeneralSubmission(){
-    const session=generalDraft;
-    if(!session||session.submitted||!session.memoryDraft?.pending)return true;
-    // With storage blocked, the only unfinished copy exists in this tab.
-    // Closing (including Escape) must not erase it before a verified cloud save.
-    showDraftStatus(session,
-      "This browser cannot retain an unfinished device copy. Keep this editor open until the school cloud confirms the latest draft.");
-    if(session.remoteVerified&&!session.conflict){
-      clearTimeout(session.timer);session.timer=null;
-      void syncGeneralCloudDraft(session);
-    }
-    return false;
   }
   function closeGeneralSubmission(){
-    if(generalBusy||!mayCloseGeneralSubmission())return;
-    detachGeneralDraft();
+    if(generalBusy)return;
     generalDialog.close();generalTask=null;generalTaskStatus=null;
   }
   document.getElementById("v4GeneralSubmissionClose").addEventListener("click",closeGeneralSubmission);
   document.getElementById("v4GeneralSubmissionCancel").addEventListener("click",closeGeneralSubmission);
-  generalDialog.addEventListener("cancel",event=>{
-    if(generalBusy||!mayCloseGeneralSubmission()){event.preventDefault();return;}
-    detachGeneralDraft();
-  });
+  generalDialog.addEventListener("cancel",event=>{if(generalBusy)event.preventDefault();});
   generalForm.addEventListener("submit",event=>void (async()=>{
     event.preventDefault();
-    if(generalBusy||!generalTask||!picker?.scope.current||generalDraft?.loading||
-       generalDraft?.conflict||!generalDraft?.remoteVerified)return;
+    if(generalBusy||!generalTask||!picker?.scope.current)return;
     const source=generalTask.submissionSource;
     const details=source==="text"?
       {response:document.getElementById("v4TextResponse").value}:
@@ -645,11 +340,6 @@ if(panel&&list&&status&&schoolHost){
       generalStatus.textContent=receipt.alreadyExisted?
         "This exact response was already submitted. No duplicate version was created.":
         "Response submitted as frozen version "+receipt.version+".";
-      if(generalDraft){
-        generalDraft.submitted=true;
-        clearDeviceAssessmentDraft(deviceDraftStorage,generalDraft.context);
-      }
-      detachGeneralDraft();
       generalDialog.close();generalTask=null;generalTaskStatus=null;
       await render(picker.scope);
     }catch(error){

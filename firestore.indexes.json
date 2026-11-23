@@ -97,6 +97,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "assessment_blueprints",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -144,11 +158,6 @@
     {
       "collectionGroup": "studio_exam_final_checkpoints",
       "fieldPath": "artifacts",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "assessment_response_drafts",
-      "fieldPath": "payload",
       "indexes": []
     }
   ]

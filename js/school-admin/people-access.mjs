@@ -148,9 +148,13 @@ const picker=createTenantSchoolPicker({
     void loadSelectedTab(activeTab());
   }
 });
+function assistMode(){
+  try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
+}
 async function performRosterSource(action,details={}){
   const lease=picker.scope.lease();
-  const result=(await rosterSourceApi({schoolId:lease.schoolId,action,...details})).data;
+  const result=(await rosterSourceApi({schoolId:lease.schoolId,action,...details,
+    ...(assistMode()?{platformMode:"assist"}:{})})).data;
   picker.scope.assertLease(lease);return result;
 }
 async function loadRosterSourceStatus(){
@@ -179,7 +183,8 @@ async function previewImportRows(rows,sourceLabel){
 }
 async function perform(action,details={}) {
   const lease=picker.scope.lease();
-  const result=await api({schoolId:lease.schoolId,action,...details});
+  const result=await api({schoolId:lease.schoolId,action,...details,
+    ...(assistMode()?{platformMode:"assist"}:{})});
   picker.scope.assertLease(lease);
   return result.data;
 }
@@ -532,13 +537,17 @@ get("pa-import-commit").addEventListener("click",()=>{
 
 async function performAcademic(action,details={}){
   const lease=picker.scope.lease();
-  const response=(await academicsApi({schoolId:lease.schoolId,action,...details})).data;
+  const response=(await academicsApi({schoolId:lease.schoolId,action,...details,
+    ...(assistMode()?{platformMode:"assist"}:{})})).data;
   picker.scope.assertLease(lease);
   return response;
 }
 function populateOptions(selector,items,idField,nameField="name"){
   const controls=[...document.querySelectorAll(selector)];
   for(const control of controls){
+    // Access state also uses data-school-teacher on the shared navigation root.
+    // Option population must never mutate a non-select element when selectors collide.
+    if(control.tagName!=="SELECT")continue;
     const previous=control.value;control.replaceChildren();
     const blank=document.createElement("option");
     blank.value="";blank.textContent="Choose an option";blank.disabled=true;
@@ -554,6 +563,7 @@ function populateOptions(selector,items,idField,nameField="name"){
 }
 function populateMultiOptions(selector,items,idField,nameField="name"){
   for(const control of document.querySelectorAll(selector)){
+    if(control.tagName!=="SELECT")continue;
     const selected=new Set([...control.selectedOptions].map(option=>option.value));
     control.replaceChildren();
     for(const item of items){
@@ -706,9 +716,9 @@ async function loadAcademics(){
   refreshStudentSectionPicker();
   // The large directory uses server-side student search, not a 100-record picker.
   if(!get("pa-class-student-search")?.value.trim())populateOptions("[data-student-person]",[],"personId");
-  populateOptions("[data-school-teacher]",teachers.teachers||[],"uid");
+  populateOptions("select[data-school-teacher]",teachers.teachers||[],"uid");
   populateMultiOptions("[data-student-person-bulk]",people.students||[],"personId");
-  populateMultiOptions("[data-school-teacher-bulk]",teachers.teachers||[],"uid");
+  populateMultiOptions("select[data-school-teacher-bulk]",teachers.teachers||[],"uid");
   renderSectionAssignmentOfferings();
   renderImportCourseMapping();
   if(people.unavailable)say(people.unavailable+" Teaching and class controls remain available.");

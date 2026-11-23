@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
   <script defer src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="css/adminerva-ui.css?v=02e1513cbfce"><link rel="stylesheet" href="css/home-activity.css?v=20261121-2"><link rel="stylesheet" href="css/public-content.css?v=20261121-2">
+<link rel="stylesheet" href="css/adminerva-ui.css?v=5f678eadbb5e"><link rel="stylesheet" href="css/home-activity.css?v=20261121-2"><link rel="stylesheet" href="css/public-content.css?v=20261121-2">
   <style>
     .own-shell{max-width:1100px;margin:0 auto;padding:1rem}
     .own-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem}
@@ -111,6 +111,25 @@
       <button type="button" class="own-button" data-owner-assist-target="people-access.html#overview" style="background:#0f766e">Assist People &amp; Access</button>
       <button type="button" class="own-button" data-owner-assist-target="school-admin.html" style="background:#475569">Assist School Administration</button>
     </div>
+    <form id="owner-registry-update" style="margin-top:1rem;border-top:1px solid #bae6fd;padding-top:1rem">
+      <h4 style="font-weight:800">Platform registry label</h4>
+      <p class="own-muted">This is the System Admin tenant label. It does not replace the school's official profile name or academic records.</p>
+      <label>Registry display name<input class="own-field" name="displayName" minlength="3" maxlength="120" required></label>
+      <label>Change reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Save registry label</button>
+    </form>
+    <form id="owner-archive-school" hidden style="margin-top:1rem;border-top:1px solid #fed7aa;padding-top:1rem">
+      <h4 style="font-weight:800">Retire institution tenant</h4>
+      <p class="own-muted">Retirement preserves the tenant, memberships, school data and audit history while removing the school from normal verified school selection. Active schools must be suspended first; pilot schools must exit pilot first.</p>
+      <label>Retirement reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button warn">Retire school</button>
+    </form>
+    <form id="owner-restore-school" hidden style="margin-top:1rem;border-top:1px solid #bbf7d0;padding-top:1rem">
+      <h4 style="font-weight:800">Restore retired institution</h4>
+      <p class="own-muted">Restores the preserved tenant to its prior safe state (draft or suspended). It never restores an archived school directly to active production access.</p>
+      <label>Restore reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Restore retired school</button>
+    </form>
    </section>
    <section id="owner-standard-setup" hidden style="margin-top:1rem;padding:1rem;border:1px solid #bfdbfe;border-radius:12px;background:#f8fbff">
     <div style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
@@ -325,10 +344,10 @@
   </section>
  </div>
 </main>
-<script defer src="js/core/adminerva-nav.js?v=02e1513cbfce"></script>
-<script type="module" src="js/core/auth-guard-v4-pilot.js?v=02e1513cbfce"></script>
-<script defer src="js/core/release-footer.js?v=02e1513cbfce"></script>
-<script src="js/core/adminerva-loader.js?v=02e1513cbfce"></script>
-<script type="module" src="js/core/owner-school-registry.mjs?v=02e1513cbfce"></script>
+<script defer src="js/core/adminerva-nav.js?v=5f678eadbb5e"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=5f678eadbb5e"></script>
+<script defer src="js/core/release-footer.js?v=5f678eadbb5e"></script>
+<script src="js/core/adminerva-loader.js?v=5f678eadbb5e"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=5f678eadbb5e"></script>
 <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261121-platform-flow1"></script><script type="module" src="js/core/home-activity.mjs?v=20261121-2"></script><script type="module" src="js/core/home-content.mjs?v=20261121-2"></script><script type="module" src="js/core/experience-mode.mjs?v=20261122-2"></script></body>
 </html>

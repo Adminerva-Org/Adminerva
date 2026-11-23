@@ -2,10 +2,11 @@ import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,getDocs,query,where} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {COURSES} from "./practice-courses.mjs?v=1.5.0";
-import {resolvePracticeContext} from "./practice-session.mjs?v=1.5.0";
+import {COURSES} from "./practice-courses.mjs?v=1.5.1";
+import {resolvePracticeContext} from "./practice-session.mjs?v=1.5.2";
 const missionLabels=new Map(COURSES.flatMap(course=>course.missions.map(mission=>[course.id+":"+mission.id,course.name+" · "+mission.title])));
 const schoolPackApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolPracticePacks");
+let followupSequence=0;
 const dash=document.getElementById("studentFollowupContainer"),packsMount=document.getElementById("practiceAssignedPacks");
 function card(title,meta,body="",href=""){const box=document.createElement(href?"a":"article");if(href)box.href=href;box.className="block rounded-lg border border-slate-200 bg-slate-50 p-3";const h=document.createElement("strong");h.textContent=title;const m=document.createElement("p");m.className="text-xs text-slate-500 mt-1";m.textContent=meta;box.append(h,m);if(body){const p=document.createElement("p");p.className="text-sm text-slate-700 mt-2 whitespace-pre-wrap";p.textContent=body;box.append(p);}return box;}
 function packCard(pack){
@@ -13,11 +14,15 @@ function packCard(pack){
  const missions=document.createElement("div");missions.className="flex flex-wrap gap-2 mt-2";
  for(const ref of (pack.missionRefs||[]).slice(0,8)){const [course,mission]=String(ref).split(":");const a=document.createElement("a");a.href="student-practice.html?course="+encodeURIComponent(course)+"&mission="+encodeURIComponent(mission);a.className="text-xs font-bold text-blue-700 underline";a.textContent=missionLabels.get(String(ref))||course.toUpperCase()+" · "+mission;a.addEventListener("click",e=>e.stopPropagation());missions.append(a);}box.append(missions);return box;
 }
-function clearFollowup(){
+function publishPackState(packs,{loading=false,error=false}={}){
+ window.__adminervaPracticePacks=Array.isArray(packs)?packs:[];
+ window.__adminervaPracticePacksState={loading,error};
+ window.dispatchEvent(new CustomEvent("adminerva:practice-packs",{detail:{packs:window.__adminervaPracticePacks,loading,error}}));
+}
+function clearFollowup({loading=false}={}){
  if(dash)dash.replaceChildren();
  if(packsMount){packsMount.hidden=true;packsMount.replaceChildren();}
- window.__adminervaPracticePacks=[];
- window.dispatchEvent(new CustomEvent("adminerva:practice-packs",{detail:{packs:[]}}));
+ publishPackState([],{loading,error:false});
 }
 async function schoolPacks(user){
  const context=await resolvePracticeContext();
@@ -26,17 +31,17 @@ async function schoolPacks(user){
  if(auth.currentUser?.uid!==user.uid)return [];
  return Array.isArray(response.data?.packs)?response.data.packs:[];
 }
-async function load(user){
+async function load(user,sequence){
  if(!user?.email)return;const uid=user.uid;
- let packs=[];
+ let packs=[],packsError=false;
  try{packs=await schoolPacks(user);}
  catch(error){
-  if(auth.currentUser?.uid!==uid)return;
+  if(sequence!==followupSequence||auth.currentUser?.uid!==uid)return;
+  packsError=true;
   console.warn("School Practice Packs unavailable",error);
  }
- if(auth.currentUser?.uid!==uid)return;
- window.__adminervaPracticePacks=packs;
- window.dispatchEvent(new CustomEvent("adminerva:practice-packs",{detail:{packs}}));
+ if(sequence!==followupSequence||auth.currentUser?.uid!==uid)return;
+ publishPackState(packs,{loading:false,error:packsError});
 
  let profile=null,projects=[],plans=[];
  try{
@@ -49,13 +54,13 @@ async function load(user){
     getDocs(query(collection(db,"student_projects"),where("studentIds","array-contains",profile.id))),
     getDocs(collection(db,"improvement_plans",profile.id,"items"))
    ]);
-   if(auth.currentUser?.uid!==uid)return;
+   if(sequence!==followupSequence||auth.currentUser?.uid!==uid)return;
    const projectDocs=new Map([...wholeProjectSnap.docs,...personalProjectSnap.docs].map(record=>[record.id,record]));
    projects=[...projectDocs.values()].map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
    plans=planSnap.docs.map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
   }
  }catch(error){
-  if(auth.currentUser?.uid!==uid)return;
+  if(sequence!==followupSequence||auth.currentUser?.uid!==uid)return;
   console.warn("Legacy learning follow-up unavailable",error);
  }
  if(dash){
@@ -66,7 +71,7 @@ async function load(user){
   if(!dash.children.length)dash.append(card("No follow-up assigned","Your teacher has not assigned an additional pack, project or improvement plan."));
  }
  if(packsMount){
-  const integratedGamesHub=document.body.dataset.gamesBuild==="20261118-games-platform-preview";
+  const integratedGamesHub=Boolean(document.body.dataset.gamesBuild&&document.getElementById("practiceApp"));
   packsMount.hidden=true;packsMount.replaceChildren();
   if(!integratedGamesHub&&packs.length){
    packsMount.hidden=false;const panel=document.createElement("div");panel.className="rounded-xl border border-blue-200 bg-blue-50 p-4";
@@ -75,4 +80,15 @@ async function load(user){
   }
  }
 }
-onAuthStateChanged(auth,current=>{clearFollowup();if(current?.email)void load(current);});
+onAuthStateChanged(auth,current=>{
+ const sequence=++followupSequence;
+ clearFollowup({loading:Boolean(current?.email)});
+ if(current?.email)void load(current,sequence);
+});
+window.addEventListener("adminerva:practice-refresh",()=>{
+ const current=auth.currentUser;
+ if(!current?.email)return;
+ const sequence=++followupSequence;
+ clearFollowup({loading:true});
+ void load(current,sequence);
+});

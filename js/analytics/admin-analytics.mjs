@@ -8,7 +8,7 @@ import {summarizeActivity} from "./activity-model.mjs?v=1.3.0";
 const field = id => document.getElementById(id);
 let teacherEmail=TEACHER_EMAIL;
 let records = [], preferences = [], students = [], selectedSections = [], epoch = 0, activeOperation=null;
-let reviewedPolicyRevision = null;
+let reviewedPolicyRevision = null, reviewedRosterRevision = 0, reviewedRosterStatus = "missing";
 function syncPolicyControls() {
   const unavailable = reviewedPolicyRevision === null;
   for (const id of ["maintenance-cleanup", "maintenance-summary"]) {
@@ -53,7 +53,15 @@ async function refresh({requireComplete=false}={}) {
   records = snapshots[0].docs.map(record => ({id:record.id, ...record.data()}));
   preferences = snapshots[2].docs.map(record => record.data());
   students = snapshots[3].docs.map(record => ({id:record.id, ...record.data()}));
-  selectedSections = snapshots[4].data()?.sections || [];
+  const roster=snapshots[4].data();
+  reviewedRosterRevision=Number(roster?.revision)||0;
+  reviewedRosterStatus=roster?.status|| (snapshots[4]?.exists?.()?"active":"missing");
+  selectedSections=reviewedRosterStatus==="active"?(roster?.sections||[]):[];
+  field("roster-status").textContent=reviewedRosterStatus==="active"
+    ?"Active assignment · revision "+reviewedRosterRevision+" · "+selectedSections.length+" section"+(selectedSections.length===1?"":"s")
+    :reviewedRosterStatus==="archived"
+      ?"Retired assignment · revision "+reviewedRosterRevision+". Save / restore to use it again."
+      :"No saved monitoring assignment. Saving will create revision 1.";
   const policy = snapshots[5].data(), maintenance = snapshots[6].data();
   reviewedPolicyRevision = results[5].status === "fulfilled" ? (policy?.revision ?? 0) : null;
   syncPolicyControls();
@@ -96,10 +104,50 @@ async function refresh({requireComplete=false}={}) {
 field("refresh-analytics").addEventListener("click", () => operation("Loading monitoring…", refresh));
 field("save-roster").addEventListener("click", () => operation("Saving teacher assignment…", async () => {
   if(/instructor assignment|student directory/.test(field("operations").dataset.unavailable||""))throw Error("Reload the complete assignment first");
-  const sections = [...field("roster-sections").selectedOptions].map(option => option.value);
-  await setDoc(doc(db, "analytics_rosters", teacherEmail), {teacherEmail:teacherEmail, sections, updatedBy:auth.currentUser.uid, updatedAt:serverTimestamp()});
-  selectedSections = sections;
-  field("admin-analytics-status").textContent = "Assignment saved. Publish a fresh summary to replace the previous teacher snapshot.";
+  const sections=[...field("roster-sections").selectedOptions].map(option=>option.value),
+    reason=field("roster-reason").value.trim(),actor=auth.currentUser,generation=epoch,
+    expectedRevision=reviewedRosterRevision;
+  if(reason.length<12||reason.length>600)throw Error("Explain this assignment change in 12–600 characters before saving.");
+  const saved=await runTransaction(db,async transaction=>{
+    const ref=doc(db,"analytics_rosters",teacherEmail),snapshot=await transaction.get(ref),
+      before=snapshot.exists()?snapshot.data():null,currentRevision=Number(before?.revision)||0;
+    if(generation!==epoch||auth.currentUser?.uid!==actor.uid)throw Error("Account changed.");
+    if(currentRevision!==expectedRevision)throw Error("Another administrator changed this monitoring assignment. Refresh before saving.");
+    const revision=currentRevision+1,after={teacherEmail,sections,status:"active",reason,revision,
+      updatedBy:actor.uid,updatedAt:serverTimestamp()};
+    transaction.set(ref,after);
+    transaction.set(doc(ref,"revisions",String(revision)),{before,after,reason,actorUid:actor.uid,createdAt:serverTimestamp()});
+    return revision;
+  });
+  reviewedRosterRevision=saved;reviewedRosterStatus="active";selectedSections=sections;
+  field("roster-reason").value="";
+  field("roster-status").textContent="Active assignment · revision "+saved+" · "+sections.length+" section"+(sections.length===1?"":"s");
+  field("admin-analytics-status").textContent="Assignment saved with an immutable revision record. Publish a fresh summary to replace the previous teacher snapshot.";
+}));
+field("retire-roster").addEventListener("click",()=>operation("Retiring teacher assignment…",async()=>{
+  if(/instructor assignment/.test(field("operations").dataset.unavailable||""))throw Error("Reload the assignment before retiring it.");
+  if(reviewedRosterStatus!=="active")throw Error("Only an active monitoring assignment can be retired.");
+  const reason=field("roster-reason").value.trim(),actor=auth.currentUser,generation=epoch,
+    expectedRevision=reviewedRosterRevision;
+  if(reason.length<12||reason.length>600)throw Error("Explain why this assignment is being retired in 12–600 characters.");
+  if(!confirm("Retire this legacy monitoring assignment? Its revision history will be preserved and future summaries will use no sections until it is restored."))return;
+  const saved=await runTransaction(db,async transaction=>{
+    const ref=doc(db,"analytics_rosters",teacherEmail),snapshot=await transaction.get(ref);
+    if(!snapshot.exists())throw Error("The monitoring assignment no longer exists. Refresh monitoring.");
+    const before=snapshot.data(),currentRevision=Number(before.revision)||0;
+    if(generation!==epoch||auth.currentUser?.uid!==actor.uid)throw Error("Account changed.");
+    if(currentRevision!==expectedRevision||before.status==="archived")throw Error("The monitoring assignment changed. Refresh before retiring it.");
+    const revision=currentRevision+1,after={...before,sections:[],status:"archived",reason,revision,
+      updatedBy:actor.uid,updatedAt:serverTimestamp(),archivedBy:actor.uid,archivedAt:serverTimestamp()};
+    transaction.set(ref,after);
+    transaction.set(doc(ref,"revisions",String(revision)),{before,after,reason,actorUid:actor.uid,createdAt:serverTimestamp()});
+    return revision;
+  });
+  reviewedRosterRevision=saved;reviewedRosterStatus="archived";selectedSections=[];
+  for(const option of field("roster-sections").options)option.selected=false;
+  field("roster-reason").value="";
+  field("roster-status").textContent="Retired assignment · revision "+saved+". Save / restore to use it again.";
+  field("admin-analytics-status").textContent="Legacy monitoring assignment retired. Historical revisions remain preserved.";
 }));
 field("publish-engagement").addEventListener("click", () => operation("Preparing teacher summary…", async () => {
   const actor=auth.currentUser,generation=epoch,targetTeacher=teacherEmail;
@@ -109,7 +157,7 @@ field("publish-engagement").addEventListener("click", () => operation("Preparing
   if (!confirm("Replace the teacher's engagement summary from the current sample? Consent and assigned sections will be checked again before saving. This does not change grades or publish to students.")) return;
   await runTransaction(db, async transaction => {
     const roster = await transaction.get(doc(db, "analytics_rosters", targetTeacher));
-    const sections = roster.data()?.sections || [];
+    const sections = roster.data()?.status==="archived"?[]:(roster.data()?.sections || []);
     const ownerUids = [...new Set(captured.map(event => event.ownerUid))];
     const studentIds = [...new Set(captured.map(event => event.studentId).filter(Boolean))];
     const currentPreferences = await Promise.all(ownerUids.map(uid => transaction.get(doc(db, "activity_preferences", uid))));
@@ -166,8 +214,8 @@ field("purge-events").addEventListener("click", () => operation("Removing expire
 }));
 onAuthStateChanged(auth, user => {
   epoch++; activeOperation=null; records = []; preferences = []; students = [];
-  reviewedPolicyRevision = null;
-  field("maintenance-reason").value = "";
+  reviewedPolicyRevision = null; reviewedRosterRevision=0; reviewedRosterStatus="missing";
+  field("maintenance-reason").value = ""; field("roster-reason").value = "";
   field("operations").querySelectorAll("button,select,input,textarea").forEach(control=>control.disabled=false);
   syncPolicyControls();
   field("raw-events").replaceChildren(); field("module-usage").replaceChildren();
