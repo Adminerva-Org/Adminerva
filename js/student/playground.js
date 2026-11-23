@@ -3,12 +3,12 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=20261123-studio-task-history-1";
+import {createProjectStudio} from "./project-studio.mjs?v=20261123-post-exam-resilience-1";
 import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
 import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261121-recovery-guard";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
-import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=46763fd68540";
+import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=20261123-java-diagnostics-1";
 import {CheerpjStudioClient,CHEERPJ_STUDIO_RUNNER_URL,validateCheerpjRunnerUrl} from "./cheerpj-studio-client.mjs?v=3";
 import {evaluateBrowserJavaAccess,CHEERPJ_STUDIO_ROLLOUT} from "./cheerpj-studio-rollout.mjs?v=2";
 import {terminalHistoryLines,echoBatchInputs,echoLiveInput} from "./studio-terminal-echo.mjs?v=1";
@@ -986,7 +986,14 @@ function switchTab(filename) {
 window.renameFile = function (oldName) {
   let newName = prompt(`New file path for ${oldName}:`, oldName);
   if (!newName || newName.trim() === "" || newName === oldName) return;
-  try{newName=projectPath(newName);}catch(error){return alert(error.message);}
+  try{
+    newName=projectPath(newName);
+    const oldLeaf=String(oldName).split("/").at(-1)||"";
+    const newLeaf=String(newName).split("/").at(-1)||"";
+    if(currentLang==="java"&&oldLeaf.toLowerCase().endsWith(".java")&&!newLeaf.includes(".")){
+      newName+=".java";
+    }
+  }catch(error){return alert(error.message);}
   if(workspaceFolders.includes(newName))return alert("A folder already uses that path.");
   if (workspaceFiles[newName])
     return alert("A file with that name already exists!");
@@ -1408,7 +1415,11 @@ function persistWorkspace(){
     }
     if(typeof projectStudio!=="undefined"&&projectStudio?.getActiveProject()){
       projectStudio.saveState(state);
-      localStorage.setItem(playgroundLanguageKey(uid),currentLang);
+      // The language preference is optional. A full/blocked device store must
+      // not hide the fact that the current Studio snapshot is already queued
+      // for school-cloud persistence.
+      try{localStorage.setItem(playgroundLanguageKey(uid),currentLang);}
+      catch(error){console.warn("Studio language preference unavailable",error);}
     }else{
       localStorage.setItem(playgroundWorkspaceKey(uid,currentLang),JSON.stringify(state));
       localStorage.setItem(playgroundLanguageKey(uid),currentLang);
