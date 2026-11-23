@@ -4,3 +4,7 @@ node_modules/
 .firebase/
 firebase-debug*.log
 firestore-debug*.log
+
+# Generated Capacitor public-preview web assets (not app-store builds)
+apps/mobile/www/
+apps/mobile/www.build/

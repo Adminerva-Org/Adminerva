@@ -1,0 +1,24 @@
+{
+  "name": "adminerva-mobile-public-preview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Unreleased, public-only mobile staging for the canonical Adminerva web UI",
+  "scripts": {
+    "prepare": "node prepare-preview.mjs",
+    "sync": "npm run prepare && cap sync",
+    "add:android": "cap add android",
+    "add:ios": "cap add ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2",
+    "@capacitor/android": "8.6.2",
+    "@capacitor/ios": "8.6.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
