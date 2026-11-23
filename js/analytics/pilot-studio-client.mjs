@@ -3,12 +3,12 @@
  * This never captures source, text, filenames, clipboard, terminal output,
  * keystrokes, cursor locations, grades, or session recordings.
  */
-import {auth} from "../core/firebase-core.js?v=1.3.0";
+import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {currentV4StudioSchool} from "../student/v4-studio-service.mjs?v=20261121-recovery-guard";
 
-const endpoint=httpsCallable(getFunctions(undefined,"asia-southeast1"),"schoolPilotResearch");
+const endpoint=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolPilotResearch");
 const sessionId=crypto.randomUUID();
 const PROJECT_ID=/^[A-Za-z0-9_-]{1,160}$/;
 let schoolId="",ownerUid="",enabled=false,ready=false,generation=0;
