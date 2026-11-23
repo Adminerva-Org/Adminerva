@@ -6,7 +6,6 @@
  * records remain in their canonical school-scoped services.
  */
 const {FieldValue}=require("firebase-admin/firestore");
-const {createHash}=require("node:crypto");
 const {platformAuthority,TenantAccessError,checkedSchoolId,schoolEnrollmentMode}=require("./tenant-access.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -96,9 +95,6 @@ async function platformGrantRecord({db,uid}){
   };
 }
 
-function testStudentPersonId(uid){
-  return "test-"+createHash("sha256").update("platform-test-student\0"+checkedUid(uid)).digest("hex").slice(0,28);
-}
 function testStudentSummary(snapshot){
   const data=snapshot?.exists?snapshot.data():null;
   return {
@@ -215,98 +211,7 @@ function createPlatformUserService({db,auth}){
         testAccount:{active:!retiring,status:nextStatus,revision:nextRevision}};
     }
 
-    if(action==="grant_test_student_school_access"){
-      const uid=checkedUid(input.uid),targetSchoolId=checkedSchoolId(input.targetSchoolId),
-        auditReason=reason(input.reason),user=await getUserOrDeny(auth,uid);
-      if(user.disabled||!user.emailVerified)
-        deny("failed-precondition","The test student login must be verified and enabled before school access is granted.");
-      if((await platformGrantRecord({db,uid})).active)
-        deny("failed-precondition","Platform Administrator accounts cannot receive test-student school access.");
-      const [testAccount,school,existingPeople]=await Promise.all([
-        db.doc("platform_test_accounts/"+uid).get(),
-        db.doc("platform_schools/"+targetSchoolId).get(),
-        db.collection("schools/"+targetSchoolId+"/people").where("authUid","==",uid).limit(3).get()
-      ]);
-      if(!testAccount.exists||testAccount.data()?.kind!=="student"||testAccount.data()?.status!=="active")
-        deny("failed-precondition","Designate this login as a test student before granting cross-school test access.");
-      if(!school.exists||!["active","pilot"].includes(school.data()?.state))
-        deny("failed-precondition","Test students can be added only to an active or pilot school.");
-      if(existingPeople.size>1)
-        deny("failed-precondition","This account is linked to multiple people in the target school. Reconcile the directory before granting test access.");
 
-      const memberRef=db.doc("schools/"+targetSchoolId+"/memberships/"+uid),
-        indexRef=db.doc("platform_users/"+uid+"/memberships/"+targetSchoolId),
-        currentMember=await memberRef.get();
-      let personRef=null;
-      if(currentMember.exists&&currentMember.data()?.personId)
-        personRef=db.doc("schools/"+targetSchoolId+"/people/"+String(currentMember.data().personId));
-      else if(existingPeople.size===1)personRef=existingPeople.docs[0].ref;
-      else personRef=db.doc("schools/"+targetSchoolId+"/people/"+testStudentPersonId(uid));
-
-      let result;
-      await db.runTransaction(async tx=>{
-        const [liveTest,liveSchool,member,person]=await Promise.all([
-          tx.get(db.doc("platform_test_accounts/"+uid)),
-          tx.get(db.doc("platform_schools/"+targetSchoolId)),
-          tx.get(memberRef),tx.get(personRef)
-        ]);
-        if(!liveTest.exists||liveTest.data()?.kind!=="student"||liveTest.data()?.status!=="active")
-          deny("failed-precondition","The test-student designation changed. Refresh the account before granting access.");
-        if(!liveSchool.exists||!["active","pilot"].includes(liveSchool.data()?.state))
-          deny("failed-precondition","The target school's lifecycle changed. Refresh the school list.");
-        const now=FieldValue.serverTimestamp();
-        let createdPerson=false;
-        if(person.exists){
-          const data=person.data()||{};
-          if(data.schoolId!==targetSchoolId||data.kind!=="student"||data.status!=="active"||data.authUid!==uid)
-            deny("failed-precondition","The target school person link conflicts with another identity or inactive record.");
-        }else{
-          if(currentMember.exists&&currentMember.data()?.personId)
-            deny("failed-precondition","The target membership references a missing school person. Repair that school directory before continuing.");
-          tx.create(personRef,{
-            schoolId:targetSchoolId,displayName:String(user.displayName||user.email||"Test student").slice(0,140),
-            searchKey:String(user.displayName||user.email||"Test student").toLocaleLowerCase("en")+"#"+personRef.id,
-            kind:"student",status:"active",authUid:uid,email:String(user.email||"").toLowerCase(),
-            source:"platform_test_student",testAccount:true,revision:1,
-            createdByUid:authority.uid,createdAt:now,updatedByUid:authority.uid,updatedAt:now
-          });
-          createdPerson=true;
-        }
-        const prior=member.exists?member.data():null,priorRoles=cleanRoles(prior?.roles);
-        if(prior&&prior.schoolId!==targetSchoolId)
-          deny("failed-precondition","The target membership belongs to another school context.");
-        if(priorRoles.some(role=>role!=="student"))
-          deny("failed-precondition","This account already has a non-student role in the target school. Use the normal school access workflow.");
-        if(prior?.personId&&prior.personId!==personRef.id)
-          deny("failed-precondition","The target school membership is linked to another person record.");
-        const revision=(Number(prior?.revision)||0)+1;
-        tx.set(memberRef,{
-          schoolId:targetSchoolId,personId:personRef.id,status:"active",roles:["student"],
-          displayName:String(user.displayName||user.email||"Test student").slice(0,140),
-          testStudentAccess:true,revision,updatedByUid:authority.uid,updatedAt:now,
-          ...(member.exists?{}:{createdByUid:authority.uid,createdAt:now})
-        },{merge:true});
-        tx.set(indexRef,{schoolId:targetSchoolId,status:"active",roles:["student"],
-          testStudentAccess:true,revision,updatedAt:now},{merge:true});
-        tx.create(db.collection("schools/"+targetSchoolId+"/directory_audit").doc(),{
-          schoolId:targetSchoolId,actorUid:authority.uid,targetUid:uid,personId:personRef.id,
-          action:member.exists&&prior?.status==="suspended"?
-            "platform_test_student_school_access_restored":"platform_test_student_school_access_granted",
-          reason:auditReason,source:"system_admin_test_mobility",createdAt:now
-        });
-        tx.create(db.collection("platform_audit").doc(),{
-          actorUid:authority.uid,authoritySource:authority.authoritySource||null,targetUid:uid,
-          schoolId:targetSchoolId,personId:personRef.id,
-          action:"platform_test_student_school_access_granted",reason:auditReason,
-          createdPerson,revision,createdAt:now
-        });
-        result={schoolId:targetSchoolId,personId:personRef.id,status:"active",revision,
-          createdPerson,compatibilityMode:liveSchool.data()?.compatibilityMode||"legacy_allowed",
-          enrollmentMode:schoolEnrollmentMode(liveSchool.data()),
-          productionAuthorized:liveSchool.data()?.productionAuthorized===true};
-      });
-      return result;
-    }
 
     if(action==="lookup"){
       const query=String(input.query||"").trim();
