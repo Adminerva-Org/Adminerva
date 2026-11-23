@@ -53,7 +53,7 @@ test("canonical Assessment Studio separates archived blueprint restore from depl
   assert.match(library,/openBlueprintLifecycle\(item,"archive"\)/);
   assert.match(library,/await perform\(action,\{resourceId:item\.id,expectedRevision:item\.contentRevision,reason\}\)/);
   assert.match(library,/performScoped\(scopedAssessmentApi,action,details\)/);
-  assert.match(shell,/teacher-assessment-library\.mjs\?v=20261123-crud-restore1/);
+  assert.match(shell,/teacher-assessment-library\.mjs\?v=20261123-exam-finalize1/);
 });
 
 test("blueprint archival requires a reason and retains original history",()=>{
