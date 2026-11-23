@@ -191,7 +191,7 @@ function createSchoolPracticeSeasonService({
   if(platformBoardCache.season===season&&platformBoardCache.expiresAt>time)
    return platformBoardCache.rows.map(row=>({...row}));
   const schools=await db.collection("platform_schools").get(),
-   rankableSchools=schools.docs.filter(school=>!["suspended","archived"].includes(String(school.data().state||"draft"))),
+   rankableSchools=schools.docs.filter(school=>["draft","pilot","active"].includes(String(school.data().state||""))),
    schoolRows=await Promise.all(rankableSchools.map(async school=>{
     const [members,scores,legacyScores]=await Promise.all([
      db.collection(prefix(school.id)+"memberships").get(),
