@@ -4,7 +4,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"platformUsers");
 const list=el("pu-list"),status=el("pu-status"),dialog=el("pu-detail"),createDialog=el("pu-create-dialog");
-let items=[],busy=false,listRun=0,detailRun=0,currentAccount=null;
+let items=[],busy=false,listRun=0,detailRun=0,currentAccount=null,currentMemberships=[],currentTestAccount={active:false,status:"none",revision:0},testSchoolTargets=null;
 
 function node(tag,className="",text=""){
   const out=document.createElement(tag);
@@ -23,7 +23,7 @@ function when(value){
 }
 function setBusy(value,message=""){
   busy=value;
-  for(const id of ["pu-refresh","pu-create","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-create-submit"]){
+  for(const id of ["pu-refresh","pu-create","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-create-submit","pu-test-toggle","pu-test-grant"]){
     const target=el(id);if(target)target.disabled=value;
   }
   if(message)status.textContent=message;
@@ -94,8 +94,77 @@ function detailTile(label,value){
   box.append(node("span","text-xs text-slate-500",label),node("strong","block mt-1 break-words",value));
   return box;
 }
+
+function enterSchoolAssist({schoolId,personId,enrollmentMode}){
+  if(!schoolId||!personId)return;
+  try{
+    sessionStorage.setItem("Adminerva_platform_view_school",schoolId);
+    sessionStorage.setItem("Adminerva_platform_view_role","schooladmin");
+    sessionStorage.setItem("Adminerva_platform_test_mode","1");
+    sessionStorage.setItem("Adminerva_platform_school_mode","assist");
+  }catch{}
+  const target=enrollmentMode==="canonical"?"school-enrollment.html":"people-access.html";
+  const url=new URL(target,location.href);
+  url.searchParams.set("schoolId",schoolId);
+  url.searchParams.set("personId",personId);
+  if(enrollmentMode!=="canonical")url.hash="classes";
+  location.href=url.href;
+}
+function selectedTestSchool(){
+  return testSchoolTargets?.find(item=>item.schoolId===el("pu-test-school")?.value)||null;
+}
+function renderTestControls(){
+  const active=currentTestAccount?.active===true,account=currentAccount;
+  const state=el("pu-test-state"),toggle=el("pu-test-toggle"),grant=el("pu-test-grant"),
+    select=el("pu-test-school"),note=el("pu-test-school-note");
+  if(!state||!toggle||!grant||!select||!note)return;
+  state.textContent=active
+    ?"Test student designation active · revision "+(currentTestAccount.revision||1)
+    :"Not designated as a test student";
+  toggle.textContent=active?"Retire test designation":"Designate as test student";
+  toggle.className="pu-btn "+(active?"warn":"");
+  toggle.disabled=busy||Boolean(account?.disabled)||Boolean(account?.platformAdmin);
+
+  const previous=select.value;
+  select.replaceChildren(new Option(testSchoolTargets?"Choose target school":"Loading schools…",""));
+  for(const school of testSchoolTargets||[]){
+    const label=school.name+" · "+(school.enrollmentMode==="canonical"?"canonical":"legacy-compatible")+
+      (school.productionAuthorized?" · production":"");
+    select.add(new Option(label,school.schoolId));
+  }
+  if((testSchoolTargets||[]).some(item=>item.schoolId===previous))select.value=previous;
+  const target=selectedTestSchool();
+  const existing=target?currentMemberships.find(item=>item.schoolId===target.schoolId):null;
+  if(!target){
+    note.textContent="Choose an active or pilot school. Existing school history is never moved or deleted.";
+  }else if(existing?.status==="active"&&(existing.roles||[]).includes("student")){
+    note.textContent="This test student already has active student access to "+target.name+". Use Manage placement below to change its section.";
+  }else{
+    note.textContent=(target.productionAuthorized
+      ?"Production school selected. This action is audited and should be used only for an explicitly designated test account. "
+      :"")+(target.enrollmentMode==="canonical"
+      ?"After access is added, use Enrollment & Registration for official section placement."
+      :"After access is added, use People & Access compatibility placement to choose the section.");
+  }
+  grant.textContent=existing?.status==="suspended"?"Restore student access":"Add student access";
+  grant.disabled=busy||!active||!target||Boolean(account?.disabled)||Boolean(account?.platformAdmin)||
+    Boolean(existing?.status==="active"&&(existing.roles||[]).includes("student"));
+}
+async function ensureTestSchoolTargets(){
+  if(testSchoolTargets){renderTestControls();return testSchoolTargets;}
+  try{
+    const result=(await api({action:"list_test_school_targets"})).data;
+    testSchoolTargets=Array.isArray(result.schools)?result.schools:[];
+  }catch(error){
+    el("pu-test-status").textContent=error?.message||"School targets could not be loaded.";
+    testSchoolTargets=[];
+  }
+  renderTestControls();return testSchoolTargets;
+}
 function populateDetail(result){
   const account=result.account;currentAccount=account;
+  currentMemberships=Array.isArray(result.memberships)?result.memberships:[];
+  currentTestAccount=result.testAccount&&typeof result.testAccount==="object"?result.testAccount:{active:false,status:"none",revision:0};
   el("pu-detail-title").textContent=account.displayName||account.email||"User account";
   el("pu-detail-meta").textContent=(account.email||"No email")+" · "+account.uid;
   el("pu-detail-account").replaceChildren(
@@ -122,6 +191,8 @@ function populateDetail(result){
   lifecycle.className="pu-btn "+(account.disabled?"success":"warn");
   lifecycle.disabled=busy||(!account.disabled&&account.platformAdmin);
 
+  renderTestControls();
+  void ensureTestSchoolTargets();
   const host=el("pu-memberships");host.replaceChildren();
   for(const membership of result.memberships||[]){
     const card=node("article","rounded-xl border border-slate-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
@@ -131,11 +202,19 @@ function populateDetail(result){
       node("p","text-xs text-slate-600 mt-1 break-words",
         membership.schoolId+" · "+membership.schoolState+" · "+membership.status+" · "+((membership.roles||[]).join(", ")||"no active school role"))
     );
+    const actions=node("div","flex flex-wrap gap-2 shrink-0");
     const link=node("a","pu-btn","Open School Registry");link.href="owner-schools.html?schoolId="+encodeURIComponent(membership.schoolId);
-    card.append(info,link);host.append(card);
+    actions.append(link);
+    if(currentTestAccount.active&&(membership.roles||[]).includes("student")&&membership.personId){
+      const placement=node("button","pu-btn primary","Manage placement");placement.type="button";
+      placement.addEventListener("click",()=>enterSchoolAssist(membership));
+      actions.append(placement);
+    }
+    card.append(info,actions);host.append(card);
   }
   if(!host.children.length)host.append(node("p","text-sm text-slate-600 py-4","No indexed school memberships are attached to this account."));
   el("pu-detail-status").textContent=(result.memberships||[]).length+" school membership"+((result.memberships||[]).length===1?"":"s")+" loaded.";
+  el("pu-test-status").textContent="";
 }
 async function fetchDetail(uid){
   const result=(await api({action:"get",uid})).data;
@@ -145,7 +224,7 @@ async function fetchDetail(uid){
 async function openDetail(item){
   if(busy)return;
   const run=++detailRun;
-  currentAccount=null;
+  currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};
   el("pu-detail-title").textContent=item.displayName||item.email||"User account";
   el("pu-detail-meta").textContent=item.email||item.uid;
   el("pu-detail-account").replaceChildren(detailTile("Account","Loading…"));
@@ -216,9 +295,43 @@ el("pu-create").addEventListener("click",()=>{
   el("pu-create-form").reset();el("pu-create-output").hidden=true;el("pu-create-link").value="";el("pu-create-status").textContent="";
   createDialog.showModal();
 });
-el("pu-detail-close").addEventListener("click",()=>{++detailRun;currentAccount=null;dialog.close();});
-dialog.addEventListener("cancel",()=>{++detailRun;currentAccount=null;});
+el("pu-detail-close").addEventListener("click",()=>{++detailRun;currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};dialog.close();});
+dialog.addEventListener("cancel",()=>{++detailRun;currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};});
 el("pu-create-close").addEventListener("click",()=>createDialog.close());
+el("pu-test-school").addEventListener("change",renderTestControls);
+el("pu-test-toggle").addEventListener("click",async()=>{
+  if(busy||!currentAccount)return;
+  const reason=administrativeReason();if(!reason)return;
+  const action=currentTestAccount.active?"retire_test_student":"mark_test_student",uid=currentAccount.uid;
+  setBusy(true,currentTestAccount.active?"Retiring test-student designation…":"Designating test student…");
+  el("pu-test-status").textContent=currentTestAccount.active?
+    "Checking active test school access before retiring the designation…":"Saving audited test-student designation…";
+  try{
+    await api({action,uid,reason});
+    await fetchDetail(uid);
+    el("pu-test-status").textContent=action==="mark_test_student"?
+      "Test-student controls enabled for this login.":"Test-student designation retired.";
+  }catch(error){el("pu-test-status").textContent=error?.message||"The test-student designation could not be changed.";}
+  finally{setBusy(false);renderTestControls();}
+});
+el("pu-test-grant").addEventListener("click",async()=>{
+  if(busy||!currentAccount||!currentTestAccount.active)return;
+  const target=selectedTestSchool(),reason=administrativeReason();if(!target||!reason)return;
+  if(target.productionAuthorized&&!confirm("Add this explicitly designated test student to the production school “"+target.name+"”? The action is audited and existing school history is preserved."))return;
+  const uid=currentAccount.uid;
+  setBusy(true,"Adding test student school access…");
+  el("pu-test-status").textContent="Creating or restoring the target school's student identity and membership…";
+  try{
+    const result=(await api({action:"grant_test_student_school_access",uid,targetSchoolId:target.schoolId,reason})).data;
+    await fetchDetail(uid);
+    el("pu-test-school").value=target.schoolId;renderTestControls();
+    el("pu-test-status").textContent="Student access active in "+target.name+
+      ". Use Manage placement to choose or change the section.";
+    if(result?.createdPerson)el("pu-test-status").textContent+=" A school-scoped test student person was created; no source-school record was moved.";
+  }catch(error){el("pu-test-status").textContent=error?.message||"Target school access could not be granted.";}
+  finally{setBusy(false);renderTestControls();}
+});
+
 el("pu-save-profile").addEventListener("click",()=>{
   const displayName=el("pu-profile-name").value.trim();
   if(displayName.length<2){el("pu-action-status").textContent="Enter a display name of at least 2 characters.";return;}
