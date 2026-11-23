@@ -93,7 +93,8 @@
 
   const start=()=>{
     if(currentConsent()==="granted")inject();
-    else if(!currentConsent())consentBanner();
+    // Pilot mode does not solicit optional third-party analytics consent.
+    // Previously granted choices remain respected; no new GA4 collection is enabled.
     document.addEventListener("click",event=>{
       const link=event.target.closest?.("a[href]");
       if(!link||!link.href)return;
