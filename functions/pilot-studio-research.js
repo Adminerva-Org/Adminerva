@@ -140,25 +140,30 @@ async function platformPilotResearchOverview({db,request,now=Date.now}){
 }
 
 async function cleanupPilotResearch({db,Timestamp,now=Date.now,maxPerSchool=400}){
-  const schools=await db.collection("platform_schools").limit(MAX_SCHOOLS+1).get();
-  if(schools.size>MAX_SCHOOLS)throw Error("Pilot research cleanup requires school pagination.");
-  let removed=0,truncated=false;
-  for(const school of schools.docs){
-    for(const collectionName of ["pilot_research_events","pilot_research_quotas"]){
-      const query=db.collection("schools/"+school.id+"/"+collectionName)
-        .where("expiresAt","<=",Timestamp.fromMillis(now())).limit(maxPerSchool);
-      const expired=await query.get();
-      if(!expired.empty){
-        for(let offset=0;offset<expired.docs.length;offset+=400){
-          const batch=db.batch();
-          for(const item of expired.docs.slice(offset,offset+400))batch.delete(item.ref);
-          await batch.commit();
+  let removed=0,truncated=false,lastSchool=null;
+  do{
+    let schoolQuery=db.collection("platform_schools").orderBy("__name__").limit(MAX_SCHOOLS);
+    if(lastSchool)schoolQuery=schoolQuery.startAfter(lastSchool);
+    const schools=await schoolQuery.get();
+    for(const school of schools.docs){
+      for(const collectionName of ["pilot_research_events","pilot_research_quotas"]){
+        const query=db.collection("schools/"+school.id+"/"+collectionName)
+          .where("expiresAt","<=",Timestamp.fromMillis(now())).limit(maxPerSchool);
+        const expired=await query.get();
+        if(!expired.empty){
+          for(let offset=0;offset<expired.docs.length;offset+=400){
+            const batch=db.batch();
+            for(const item of expired.docs.slice(offset,offset+400))batch.delete(item.ref);
+            await batch.commit();
+          }
+          removed+=expired.size;
+          if(expired.size===maxPerSchool)truncated=true;
         }
-        removed+=expired.size;
-        if(expired.size===maxPerSchool)truncated=true;
       }
     }
-  }
+    if(schools.size<MAX_SCHOOLS)break;
+    lastSchool=schools.docs.at(-1);
+  }while(lastSchool);
   return {removed,truncated};
 }
 
