@@ -6,7 +6,7 @@
  * records remain in their canonical school-scoped services.
  */
 const {FieldValue}=require("firebase-admin/firestore");
-const {platformAuthority,TenantAccessError,checkedSchoolId,schoolEnrollmentMode}=require("./tenant-access.js");
+const {platformAuthority,TenantAccessError,schoolEnrollmentMode}=require("./tenant-access.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function checkedUid(value){
