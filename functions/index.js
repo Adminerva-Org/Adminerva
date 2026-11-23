@@ -213,6 +213,9 @@ const {createSchoolDataExportService}=require("./school-data-export.js");
 exports.schoolDataExport=onCall(callOptions,safeCallable(createSchoolDataExportService({db})));
 const {createSchoolAnalyticsService}=require("./school-analytics.js");
 exports.schoolAnalytics=onCall(callOptions,safeCallable(createSchoolAnalyticsService({db})));
+const {createPilotStudioResearchService,platformPilotResearchOverview,cleanupPilotResearch}=require("./pilot-studio-research.js");
+exports.schoolPilotResearch=onCall(callOptions,safeCallable(createPilotStudioResearchService({db,FieldValue,Timestamp})));
+exports.platformPilotResearchOverview=onCall(callOptions,safeCallable(request=>platformPilotResearchOverview({db,request})));
 const {createSchoolPracticeAnalyticsService}=require("./school-practice-analytics.js");
 exports.schoolPracticeAnalytics=onCall(callOptions,safeCallable(createSchoolPracticeAnalyticsService({db})));
 const {createSchoolPracticePackService}=require("./school-practice-packs.js");
@@ -414,6 +417,8 @@ exports.practicePlatformLeaderboard=onCall(practiceOptions,async()=>{
     throw new HttpsError("unavailable","Global Games rankings are temporarily unavailable. Try again shortly.");
   }
 });
+// Dedicated test-only observational data has independent, bounded retention.
+exports.pilotResearchRetention=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>cleanupPilotResearch({db,Timestamp}));
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
 exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;

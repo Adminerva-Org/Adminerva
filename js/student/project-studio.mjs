@@ -1858,6 +1858,11 @@ export function createProjectStudio({
       activeProject.evidence=activeProject.evidence||{events:[],runs:[]};
       activeProject.evidence.runs=[entry,...(activeProject.evidence.runs||[])].slice(0,policy.maxRuns);
       store(activeProject,true);renderMonitor();
+      // A coarse observation only. The source digest, output and stdin stay in project evidence.
+      window.dispatchEvent(new CustomEvent("adminerva:studio-run-recorded",{detail:{
+        projectId,mode:entry.mode,compileSucceeded:entry.compileSucceeded,
+        runSucceeded:entry.runSucceeded,status:entry.status==="cancelled"?"cancelled":"finished"
+      }}));
     })().catch(error=>console.warn("Execution evidence was not saved:",error));
   }
   function renderMonitor(){
