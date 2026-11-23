@@ -47,8 +47,9 @@ test("recovery never changes the original assessment or promotes a personal copy
   assert.doesNotMatch(projects.slice(projects.indexOf("async function loadEarlierProjects"),projects.indexOf("function renderProjectHome")),/deleteDoc\(|updateDoc\(/);
 });
 
-test("cache keys are advanced together so the released page does not run old navigation logic",()=>{
+test("cache keys preserve the released task UI while advancing Studio runtime behavior",()=>{
   assert.match(html,/css\/playground-workspace\.css\?v=20261123-studio-task-history-1/);
-  assert.match(html,/js\/student\/playground\.js\?v=20261123-studio-task-history-1/);
-  assert.match(ui,/project-studio\.mjs\?v=20261123-studio-task-history-1/);
+  assert.match(html,/js\/student\/playground\.js\?v=20261123-post-exam-resilience-1/);
+  assert.match(ui,/project-studio\.mjs\?v=20261123-post-exam-resilience-1/);
+  assert.match(ui,/studio-runtime-integration\.mjs\?v=20261123-java-diagnostics-1/);
 });
