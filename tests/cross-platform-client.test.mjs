@@ -1,0 +1,55 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {createRequire} from "node:module";
+import {readFileSync} from "node:fs";
+import {describeAppClient,assessNativeCapability,CLIENT_PROTOCOL} from "../js/core/app-compatibility.mjs";
+const require=createRequire(import.meta.url);
+const {APP_ORIGIN,START_URL,classifyNavigation}=require("../apps/desktop/navigation-policy.cjs");
+const source=readFileSync(new URL("../apps/desktop/main.cjs",import.meta.url),"utf8");
+const preload=readFileSync(new URL("../apps/desktop/preload.cjs",import.meta.url),"utf8");
+const pkg=JSON.parse(readFileSync(new URL("../apps/desktop/package.json",import.meta.url),"utf8"));
+
+test("desktop preview only stays within explicit PUBLIC Adminerva pages",()=>{
+ assert.equal(START_URL,APP_ORIGIN+"/Adminerva/guest-home.html");
+ for(const route of ["guest-home.html","guest-playground.html","wiki.html","downloads.html"])
+  assert.equal(classifyNavigation(APP_ORIGIN+"/Adminerva/"+route).action,"internal");
+ for(const route of ["login.html","student-playground.html","school-admin.html","teacher-classroom.html"])
+  assert.equal(classifyNavigation(APP_ORIGIN+"/Adminerva/"+route).action,"external");
+ assert.equal(classifyNavigation("https://github.com/Adminerva-Org/Adminerva").action,"external");
+ for(const url of ["http://adminerva-org.github.io/Adminerva/index.html",
+  "https://evil.example","file:///etc/passwd","javascript:alert(1)",
+  "https://adminerva-org.github.io.evil.example/Adminerva/index.html",
+  "https://adminerva-org.github.io/Adminerva/../student-playground.html",
+  "adminerva://callback?token=secret"])
+  assert.equal(classifyNavigation(url).action,"block",url);
+});
+
+test("desktop window is sandboxed, denies native permissions and has no privileged renderer API",()=>{
+ for(const assertion of [/app\.enableSandbox\(\)/,/sandbox:true/,/contextIsolation:true/,
+  /nodeIntegration:false/,/webSecurity:true/,/webviewTag:false/,
+  /setPermissionRequestHandler\([\s\S]*?callback\(false\)/,
+  /setPermissionCheckHandler\(\(\)=>false\)/,
+  /will-attach-webview/,/setWindowOpenHandler/])
+  assert.match(source,assertion);
+ assert.doesNotMatch(source,/ipcMain|desktopCapturer|globalShortcut|autoUpdater/);
+ assert.match(preload,/capabilities:Object\.freeze\(\[\]\)/);
+ assert.doesNotMatch(preload,/ipcRenderer|desktopCapturer|shell\.openExternal/);
+ assert.equal(pkg.version,"0.1.0");
+ assert.equal(CLIENT_PROTOCOL,1);
+});
+
+test("native capabilities are conservative UI hints, not exam or OS authorization",()=>{
+ assert.deepEqual(describeAppClient(null),{
+  kind:"web",channel:"browser",protocol:null,shellVersion:null,capabilities:[]
+ });
+ assert.equal(assessNativeCapability(null,"screen-capture").reason,"browser");
+ const preview={kind:"desktop",channel:"public-preview",protocol:1,shellVersion:"0.1.0",
+  capabilities:["screen-capture","screen-capture","not-allowed"]};
+ assert.deepEqual(describeAppClient(preview).capabilities,["screen-capture"]);
+ assert.equal(assessNativeCapability(preview,"screen-capture").reason,"unreleased-client");
+ assert.equal(assessNativeCapability({...preview,channel:"release",protocol:3},"screen-capture").reason,
+  "incompatible-bridge");
+ const advertised=assessNativeCapability({...preview,channel:"release"},"screen-capture");
+ assert.deepEqual(advertised,{supported:true,reason:"advertised-only"});
+ assert.equal(assessNativeCapability({...preview,channel:"release"},"foreground-applications").supported,false);
+});

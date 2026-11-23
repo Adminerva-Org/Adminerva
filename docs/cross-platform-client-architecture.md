@@ -1,0 +1,40 @@
+# Cross-platform client technical architecture
+
+> Product direction, progress, priorities and release status are exclusively in `docs/adminerva-school-os-master-plan.md`. This document is an engineering contract, not a competing roadmap.
+
+## One product, more than one delivery mechanism
+
+The existing hosted Adminerva frontend, tenant-verified Firebase APIs, identity/roles, school operations, assessment/grade paths, and Studio cloud-save semantics remain canonical. Do not fork the School OS into platform-specific business logic. Platform-specific code may implement **only** native window/chrome, OS-authenticated device access, system-browser sign-in handoffs, secure local storage, notifications, and reviewed native file/capture features.
+
+| Client | Web code delivery | Native code delivery | Current position |
+| --- | --- | --- | --- |
+| Web/PWA | Hosted from canonical site | Not applicable | Operational web; PWA install depends on browser support |
+| Windows/macOS | Approved HTTPS web content in sandboxed Electron renderer, after auth integration | Signed installer + independently versioned native bridge | Public-only preview scaffold; no installer, no native auth |
+| Android/iOS | Reviewed web assets bundled with Capacitor native app, with allowed shared web/API content | Signed store-delivered native application | No Android/iOS native projects or store builds |
+
+**Website updates are not universally native updates.** Hosted desktop public pages load current site changes on normal navigation or relaunch; never force refresh a Studio editor during a practical exam. Bundled mobile UI requires an app-store release to update bundled code, unless a narrowly reviewed category of remote content is allowed. Native bridge changes, new OS privileges and security-sensitive flows require signed native updates. All clients share the same live authorized backend changes only when their API contracts remain compatible.
+
+## Client contract
+
+`js/core/app-compatibility.mjs` defines the shared *UI-only* client descriptor: platform kind, release channel, bridge protocol, shell version and enumerated native feature names. The desktop preview exposes no capabilities and cannot masquerade as release. This descriptor is not a security credential. School authorization, enrollment, student identity, teacher assignment, session epoch, OS permissions and storage access are enforced separately by trusted platform and backend components.
+
+## Desktop security boundary
+
+`apps/desktop/` intentionally starts only in approved public pages on `https://adminerva-org.github.io/Adminerva/`. Authentication and non-public routes open in the system browser; credentials are not handed back. All renderers are sandboxed and isolated, arbitrary window opening and unapproved top-level navigation are blocked, and permission requests are denied. There is no OS bridge beyond a read-only descriptor. The preview is **not ready for classroom/student accounts**. Review remote scripts and create an authenticated native session bridge before allowing private use.
+
+## Mobile security boundary
+
+Use native Android and iOS shells with reviewed bundled web assets and one authorized school backend. Do not ship Capacitor production apps pointing `server.url` at an arbitrary remote website. Native access must be capability-scoped, consented, and subject to OS authorization; do not promise unrestricted iOS app or browser inspection. Native sign-in uses approved system-browser or native provider flows and verified redirect/deep-link bindings. Protect device-only drafts, ownership and source evidence across app updates, OS eviction and account switches.
+
+## Exam, offline and release invariants
+
+- Studio exams continue to use canonical class offering, enrollment, teacher-controlled epoch, cloud autosave, final-save grace, immutable close receipt, teacher review and frozen grade evidence. No native shell may bypass them.
+- Do not auto-reload active editor sessions when a hosted web release appears; show an update-after-save state where appropriate.
+- Device caches and local drafts are NOT cross-device synced until school cloud confirms storage. Preserve older drafts on application update/close.
+- Monitoring must be session-bound, visible, permitted, tenant/role scoped, retained for an approved duration and independently authorized; browser/desktop/mobile coverage varies. Do not auto-penalize application switches or start stealth capture.
+- Never publish native download/store links without signed/tested official artifacts, platform security review, verified publisher identity and appropriate install/update channel.
+- Focused release validation must include login, school isolation, native permissions, 320px layout, Studio execution, lost connection/forced quit, exam close and cloud-save integrity.
+
+## This foundation's scope
+
+Implementation in this branch: a secure **public-only** Electron preview shell; a shared browser/native compatibility model; focused tests; technical documentation; status and future work consolidated into the master plan. Not implemented: native authenticated workflows, installer signing, desktop auto-update service, desktop companion, full mobile projects, mobile packaging or release.
