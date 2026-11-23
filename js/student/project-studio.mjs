@@ -369,7 +369,7 @@ export function createProjectStudio({
       try{
         if(auth.currentUser?.uid!==uid)throw Error("Sign in with the original project account.");
         let school=await currentV4StudioSchool();
-        if(!school&&scopeToken)school=await retryV4StudioSchool();
+        if(!school&&(scopeToken||snapshot.assessment?.provisionedBy==="assessment-launch"))school=await retryV4StudioSchool();
         if(auth.currentUser?.uid!==uid)throw Error("Account changed before saving.");
         let marker;
         if(school){
@@ -382,7 +382,8 @@ export function createProjectStudio({
           marker={kind:"school",schoolId:school.schoolId,revision:result.revision};
         }else{
           if(closingSessionEpoch)throw Error("Verified school cloud storage is required to finalize this exam.");
-          if(scopeToken)throw Error("Reconnect your verified school to save this project.");
+          if(scopeToken||snapshot.assessment?.provisionedBy==="assessment-launch")
+            throw Error("Verified school cloud storage is required for assessment projects. Keep this tab open and retry Save.");
           const ref=doc(db,"student_code_projects",uid,"projects",id);
           const base=readMarker(id);
           const confirmedAt=await runTransaction(db,async tx=>{
