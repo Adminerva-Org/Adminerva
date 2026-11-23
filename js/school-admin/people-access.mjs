@@ -148,9 +148,13 @@ const picker=createTenantSchoolPicker({
     void loadSelectedTab(activeTab());
   }
 });
+function assistMode(){
+  try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
+}
 async function performRosterSource(action,details={}){
   const lease=picker.scope.lease();
-  const result=(await rosterSourceApi({schoolId:lease.schoolId,action,...details})).data;
+  const result=(await rosterSourceApi({schoolId:lease.schoolId,action,...details,
+    ...(assistMode()?{platformMode:"assist"}:{})})).data;
   picker.scope.assertLease(lease);return result;
 }
 async function loadRosterSourceStatus(){
@@ -179,7 +183,8 @@ async function previewImportRows(rows,sourceLabel){
 }
 async function perform(action,details={}) {
   const lease=picker.scope.lease();
-  const result=await api({schoolId:lease.schoolId,action,...details});
+  const result=await api({schoolId:lease.schoolId,action,...details,
+    ...(assistMode()?{platformMode:"assist"}:{})});
   picker.scope.assertLease(lease);
   return result.data;
 }
@@ -532,7 +537,8 @@ get("pa-import-commit").addEventListener("click",()=>{
 
 async function performAcademic(action,details={}){
   const lease=picker.scope.lease();
-  const response=(await academicsApi({schoolId:lease.schoolId,action,...details})).data;
+  const response=(await academicsApi({schoolId:lease.schoolId,action,...details,
+    ...(assistMode()?{platformMode:"assist"}:{})})).data;
   picker.scope.assertLease(lease);
   return response;
 }
