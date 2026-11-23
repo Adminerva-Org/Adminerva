@@ -13,6 +13,7 @@ test("Global Games leaderboard includes every active student membership, includi
     ["platform_schools",snap([
       doc("school-a",{state:"active"}),
       doc("school-b",{state:"pilot"}),
+      doc("mcs-manila",{state:"draft"}),
       doc("school-c",{state:"suspended"})
     ])],
     ["schools/school-a/memberships",snap([
@@ -32,6 +33,13 @@ test("Global Games leaderboard includes every active student membership, includi
     ["schools/school-b/legacy_roots/practice_season_scores/documents",snap([
       doc("u5",{season:"season-1",alias:"Pilot Five",optIn:true,points:200,completedCount:8})
     ])],
+    ["schools/mcs-manila/memberships",snap([
+      doc("u7",{schoolId:"mcs-manila",status:"active",roles:["student"]})
+    ])],
+    ["schools/mcs-manila/practice_season_scores",snap([
+      doc("u7",{schoolId:"mcs-manila",ownerUid:"u7",season:"season-1",alias:"Draft Learner",optIn:true,points:75,completedCount:3})
+    ])],
+    ["schools/mcs-manila/legacy_roots/practice_season_scores/documents",snap([])],
     ["schools/school-c/memberships",snap([
       doc("u6",{schoolId:"school-c",status:"active",roles:["student"]})
     ])],
@@ -51,14 +59,16 @@ test("Global Games leaderboard includes every active student membership, includi
   const result=await service.publicLeaderboard();
 
   assert.equal(result.season,"season-1");
-  assert.equal(result.rows.length,3);
+  assert.equal(result.rows.length,4);
   assert.equal(result.rows[0].alias,"Pilot Five");
   assert.equal(result.rows[0].points,200);
   assert.match(result.rows[1].alias,/^Learner-[A-F0-9]{7}$/);
   assert.equal(result.rows[1].points,100);
-  assert.match(result.rows[2].alias,/^Learner-[A-F0-9]{7}$/);
-  assert.equal(result.rows[2].points,0);
-  assert.equal(result.rows[2].completedCount,0);
+  assert.equal(result.rows[2].alias,"Draft Learner");
+  assert.equal(result.rows[2].points,75);
+  assert.match(result.rows[3].alias,/^Learner-[A-F0-9]{7}$/);
+  assert.equal(result.rows[3].points,0);
+  assert.equal(result.rows[3].completedCount,0);
   assert.equal("ownerUid" in result.rows[0],false);
   assert.equal(result.rows.some(row=>row.alias==="Suspended Six"),false);
 });
