@@ -69,7 +69,7 @@ test("Platform Administrator authority has an audited archive and restore lifecy
 test("explicit test students can receive non-destructive cross-school student access",()=>{
   for(const action of ["mark_test_student","retire_test_student","grant_test_student_school_access","list_test_school_targets"])
     assert.match(backend,new RegExp(action));
-  assert.match(backend,/platform_test_accounts\/\+uid/);
+  assert.match(backend,/platform_test_accounts\/"\+uid/);
   assert.match(backend,/Designate this login as a test student before granting cross-school test access/);
   assert.match(backend,/roles:\["student"\]/);
   assert.match(backend,/testStudentAccess:true/);
