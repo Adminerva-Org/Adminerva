@@ -48,6 +48,8 @@ function database(){
           }]})})})
         };
       }
+      if(["students","assessments","student_grades","student_submissions","assessment_evidence","activity_events"].includes(path))
+        return {count:()=>({get:async()=>({data:()=>({count:2})})})};
       throw Error("Unexpected collection "+path);
     }
   };
