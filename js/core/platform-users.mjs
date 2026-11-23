@@ -276,6 +276,7 @@ async function runDetailAction(action,payload,message){
     if(currentAccount){
       el("pu-lifecycle").disabled=busy||(!currentAccount.disabled&&currentAccount.platformAdmin);
       el("pu-platform-authority").disabled=busy||currentAccount.disabled;
+      renderTestControls();
     }
   }
 }
@@ -303,6 +304,7 @@ el("pu-test-toggle").addEventListener("click",async()=>{
   if(busy||!currentAccount)return;
   const reason=administrativeReason();if(!reason)return;
   const action=currentTestAccount.active?"retire_test_student":"mark_test_student",uid=currentAccount.uid;
+  if(!currentTestAccount.active&&!confirm("Designate this login as a TEST STUDENT? Use this only for a controlled test account. Existing school history will remain intact."))return;
   setBusy(true,currentTestAccount.active?"Retiring test-student designation…":"Designating test student…");
   el("pu-test-status").textContent=currentTestAccount.active?
     "Checking active test school access before retiring the designation…":"Saving audited test-student designation…";
