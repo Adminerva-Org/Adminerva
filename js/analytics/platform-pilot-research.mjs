@@ -1,9 +1,9 @@
 /** Aggregate-only System Admin view. No student records or raw telemetry returned. */
-import {auth} from "../core/firebase-core.js?v=1.3.0";
+import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 
-const endpoint=httpsCallable(getFunctions(undefined,"asia-southeast1"),"platformPilotResearchOverview");
+const endpoint=httpsCallable(getFunctions(app,"asia-southeast1"),"platformPilotResearchOverview");
 const status=document.getElementById("pilot-research-status");
 const rows=document.getElementById("pilot-research-rows");
 const button=document.getElementById("pilot-research-refresh");
