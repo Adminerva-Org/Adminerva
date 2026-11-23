@@ -2,7 +2,9 @@ import {app,auth} from "./firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 
 const el=id=>document.getElementById(id);
-const api=httpsCallable(getFunctions(app,"asia-southeast1"),"platformUsers");
+const functions=getFunctions(app,"asia-southeast1");
+const api=httpsCallable(functions,"platformUsers");
+const schoolAccessApi=httpsCallable(functions,"peopleDirectory");
 const list=el("pu-list"),status=el("pu-status"),dialog=el("pu-detail"),createDialog=el("pu-create-dialog");
 let items=[],busy=false,listRun=0,detailRun=0,currentAccount=null,currentMemberships=[],currentTestAccount={active:false,status:"none",revision:0},testSchoolTargets=null;
 
@@ -324,7 +326,10 @@ el("pu-test-grant").addEventListener("click",async()=>{
   setBusy(true,"Adding test student school access…");
   el("pu-test-status").textContent="Creating or restoring the target school's student identity and membership…";
   try{
-    const result=(await api({action:"grant_test_student_school_access",uid,targetSchoolId:target.schoolId,reason})).data;
+    const result=(await schoolAccessApi({
+      schoolId:target.schoolId,action:"activate_test_student_access",
+      targetUid:uid,reason,platformMode:"assist"
+    })).data;
     await fetchDetail(uid);
     el("pu-test-school").value=target.schoolId;renderTestControls();
     el("pu-test-status").textContent="Student access active in "+target.name+
