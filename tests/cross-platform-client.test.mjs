@@ -68,3 +68,21 @@ test("mobile preview packages canonical public assets, not remote native web per
  assert.match(entry,/public-only test bundle/);
  assert.doesNotMatch(entry,/firebase-auth|signInWithPopup|desktopCapturer/);
 });
+
+test("mobile preview staging generates a canonical public bundle without native login",async()=>{
+ const {execFileSync}=await import("node:child_process");
+ const {existsSync,rmSync}=await import("node:fs");
+ const {fileURLToPath}=await import("node:url");
+ const appDir=fileURLToPath(new URL("../apps/mobile/",import.meta.url));
+ const script=fileURLToPath(new URL("../apps/mobile/prepare-preview.mjs",import.meta.url));
+ const output=fileURLToPath(new URL("../apps/mobile/www/",import.meta.url));
+ try{
+  execFileSync(process.execPath,[script],{cwd:appDir,timeout:20000,stdio:"pipe"});
+  for(const relative of ["index.html","guest-home.html","guest-playground.html",
+   "assets/adminerva-emblem.png","js/core/public-shell.mjs","css/public-shell.css"])
+   assert.ok(existsSync(fileURLToPath(new URL("../apps/mobile/www/"+relative,import.meta.url))),
+    "Missing canonical shared asset: "+relative);
+ }finally{
+  rmSync(output,{recursive:true,force:true});
+ }
+});
