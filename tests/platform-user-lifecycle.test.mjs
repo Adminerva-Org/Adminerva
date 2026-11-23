@@ -5,6 +5,7 @@ import {readFileSync} from "node:fs";
 const backend=readFileSync(new URL("../functions/platform-users.js",import.meta.url),"utf8");
 const client=readFileSync(new URL("../js/core/platform-users.mjs",import.meta.url),"utf8");
 const page=readFileSync(new URL("../system-users.html",import.meta.url),"utf8");
+const peopleBackend=readFileSync(new URL("../functions/people-directory.js",import.meta.url),"utf8");
 const peopleClient=readFileSync(new URL("../js/school-admin/people-access.mjs",import.meta.url),"utf8");
 const peoplePage=readFileSync(new URL("../people-access.html",import.meta.url),"utf8");
 
@@ -66,26 +67,33 @@ test("Platform Administrator authority has an audited archive and restore lifecy
 });
 
 
-test("explicit test students can receive non-destructive cross-school student access",()=>{
-  for(const action of ["mark_test_student","retire_test_student","grant_test_student_school_access","list_test_school_targets"])
+test("explicit test students use platform designation plus school-scoped Assist for access",()=>{
+  for(const action of ["mark_test_student","retire_test_student","list_test_school_targets"])
     assert.match(backend,new RegExp(action));
   assert.match(backend,/platform_test_accounts\/"\+uid/);
-  assert.match(backend,/Designate this login as a test student before granting cross-school test access/);
-  assert.match(backend,/roles:\["student"\]/);
-  assert.match(backend,/testStudentAccess:true/);
-  assert.match(backend,/source:"platform_test_student"/);
-  assert.match(backend,/platform_test_student_school_access_granted/);
-  assert.match(backend,/db\.collection\("schools\/"\+targetSchoolId\+"\/directory_audit"\)/);
-  assert.doesNotMatch(backend,/student_grades.*grant_test_student_school_access/);
-  assert.doesNotMatch(backend,/assessment_submissions.*grant_test_student_school_access/);
-  assert.doesNotMatch(backend,/studio_submissions.*grant_test_student_school_access/);
+  assert.doesNotMatch(backend,/grant_test_student_school_access/);
+  assert.doesNotMatch(backend,/schools\/"\+targetSchoolId\+"\/memberships/);
+
+  assert.match(peopleBackend,/if\(input\.action==="activate_test_student_access"\)/);
+  assert.match(peopleBackend,/Test-student cross-school access requires explicit System Admin Assist/);
+  assert.match(peopleBackend,/platform_test_accounts\/"\+targetUid/);
+  assert.match(peopleBackend,/roles:\["student"\]/);
+  assert.match(peopleBackend,/testStudentAccess:true/);
+  assert.match(peopleBackend,/source:"platform_test_student"/);
+  assert.match(peopleBackend,/system_admin_assist_test_mobility/);
+  assert.match(peopleBackend,/directory_audit/);
+  assert.doesNotMatch(peopleBackend,/student_grades.*activate_test_student_access/);
+  assert.doesNotMatch(peopleBackend,/assessment_submissions.*activate_test_student_access/);
+  assert.doesNotMatch(peopleBackend,/studio_submissions.*activate_test_student_access/);
 });
 
 test("System Admin test mobility UI routes placement into the canonical school workflow",()=>{
   for(const id of ["pu-test-toggle","pu-test-school","pu-test-grant","pu-test-status"])
     assert.match(page,new RegExp('id="'+id+'"'));
   assert.match(page,/This does not move or delete the source school/);
-  assert.match(client,/action:"grant_test_student_school_access"/);
+  assert.match(client,/schoolAccessApi/);
+  assert.match(client,/action:"activate_test_student_access"/);
+  assert.match(client,/platformMode:"assist"/);
   assert.match(client,/enrollmentMode==="canonical"\?"school-enrollment\.html":"people-access\.html"/);
   assert.match(client,/Adminerva_platform_school_mode","assist"/);
   assert.match(client,/Manage placement/);
