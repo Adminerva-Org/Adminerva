@@ -412,7 +412,7 @@ export function createProjectStudio({
         const unbacked=unbackedProjectIds.has(id);
         const suffix=retrying?" · retry scheduled":" · select Save to retry";
         setCloudStatus(unbacked?
-          "No device backup · "+failure.label+" · keep this tab open":
+          "No device backup or cloud confirmation · "+failure.label+" · keep this tab open":
           "Device copy saved · "+failure.label+suffix,"error",id);
         if(!activeProject)setCloudStatus(unbacked?
           "Unsaved in-memory draft · keep this tab open":
