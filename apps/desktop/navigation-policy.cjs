@@ -12,6 +12,10 @@ const EXTERNAL_ORIGINS=Object.freeze(new Set([
  APP_ORIGIN,"https://github.com","https://www.github.com"
 ]));
 function classifyNavigation(raw){
+ // Reject disguised path traversal before URL canonicalization removes dot segments.
+ // The preview must not turn a traversed app route into a browser launch.
+ if(typeof raw!=="string"||raw.includes("\\")||
+    /(?:\/|%2f)(?:\.|%2e){1,2}(?:\/|%2f)/i.test(raw))return {action:"block"};
  let url;
  try{url=new URL(raw);}catch{return {action:"block"};}
  if(url.protocol!=="https:"||url.username||url.password)return {action:"block"};
