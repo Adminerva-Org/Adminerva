@@ -92,6 +92,47 @@ function createPilotStudioResearchService({db,FieldValue,Timestamp,now=Date.now}
   };
 }
 
+/**
+ * Summarize only sanitized metadata from the bounded event sample.
+ * Distinct accounts, sessions and projects here are sample coverage, never
+ * whole-cohort population counts. Do not return their raw identifiers.
+ */
+function summarizePilotEvents(events,{now=Date.now(),since=now-30*DAY_MS}={}){
+  const types={},outcomes={},modes={},participants=new Set(),sessions=new Set(),projects=new Set(),days=new Map();
+  let editChanges=0,firstAt=null,lastAt=null,valid=0;
+  for(const event of events){
+    const row=typeof event?.data==="function"?event.data():event;
+    const stamp=row?.createdAt;
+    const ms=typeof stamp?.toMillis==="function"?stamp.toMillis():
+      stamp instanceof Date?stamp.getTime():NaN;
+    if(!Number.isFinite(ms)||ms<since||ms>now||!EVENT_TYPES.includes(row?.type))continue;
+    valid++;
+    types[row.type]=(types[row.type]||0)+1;
+    if(typeof row.ownerUid==="string")participants.add(row.ownerUid);
+    if(typeof row.sessionId==="string"&&typeof row.ownerUid==="string")
+      sessions.add(row.ownerUid+":"+row.sessionId);
+    if(typeof row.projectId==="string"&&typeof row.ownerUid==="string")
+      projects.add(row.ownerUid+":"+row.projectId);
+    if(row.type==="editor_activity"&&Number.isInteger(row.editCount))
+      editChanges+=Math.max(0,Math.min(250,row.editCount));
+    if(row.type==="run_finished"){
+      if(RUN_OUTCOMES.includes(row.outcome))outcomes[row.outcome]=(outcomes[row.outcome]||0)+1;
+      if(RUN_MODES.includes(row.mode))modes[row.mode]=(modes[row.mode]||0)+1;
+    }
+    const day=new Date(ms).toISOString().slice(0,10);
+    days.set(day,(days.get(day)||0)+1);
+    firstAt=firstAt===null?ms:Math.min(firstAt,ms);
+    lastAt=lastAt===null?ms:Math.max(lastAt,ms);
+  }
+  return {
+    events:valid,observedAccounts:participants.size,observedSessions:sessions.size,
+    observedProjects:projects.size,editorChanges:editChanges,
+    eventsByType:types,runsByOutcome:outcomes,runsByMode:modes,
+    dailyEvents:[...days].sort(([a],[b])=>a.localeCompare(b)).map(([day,count])=>({day,count})),
+    firstObservedAt:firstAt,lastObservedAt:lastAt
+  };
+}
+
 async function platformPilotResearchOverview({db,request,now=Date.now}){
   const authority=await platformAuthority({db,request});
   if(!authority.platformAdmin)deny("permission-denied","Platform Administrator access is required.");
@@ -108,23 +149,26 @@ async function platformPilotResearchOverview({db,request,now=Date.now}){
       const result=await db.collection(prefix+name).count().get();
       return Number(result.data()?.count)||0;
     }));
-    const events=await db.collection(prefix+"pilot_research_events").orderBy("createdAt","desc").limit(SAMPLE_LIMIT+1).get();
-    const observed=events.docs.filter(doc=>{
-      const stamp=doc.data()?.createdAt;
-      const ms=typeof stamp?.toMillis==="function"?stamp.toMillis():NaN;
-      return Number.isFinite(ms)&&ms>=since&&ms<=now();
-    });
-    const eventTypes={},participants=new Set();
-    for(const event of observed.slice(0,SAMPLE_LIMIT)){
-      const row=event.data();
-      if(EVENT_TYPES.includes(row.type))eventTypes[row.type]=(eventTypes[row.type]||0)+1;
-      if(typeof row.ownerUid==="string")participants.add(row.ownerUid);
-    }
+    // The total is an exact count of the 30-day event window. Detailed process
+    // statistics use a bounded recent sample and expose its coverage explicitly.
+    const events=db.collection(prefix+"pilot_research_events")
+      .where("createdAt",">=",new Date(since))
+      .where("createdAt","<=",new Date(now()));
+    const [totalSnap,sampleSnap]=await Promise.all([
+      events.count().get(),
+      events.orderBy("createdAt","desc").limit(SAMPLE_LIMIT+1).get()
+    ]);
+    const totalEvents=Number(totalSnap.data()?.count)||0;
+    const sample=summarizePilotEvents(sampleSnap.docs.slice(0,SAMPLE_LIMIT),{since,now:now()});
+    const truncated=totalEvents>sample.events;
     results.push({
       schoolId:school.id,schoolName:String(school.data()?.displayName||school.id).slice(0,120),
       schoolState:school.data()?.state,counts:Object.fromEntries(names.map((name,index)=>[name,counts[index]])),
-      pilotSample:{windowDays:30,limit:SAMPLE_LIMIT,truncated:events.size>SAMPLE_LIMIT,
-        events:Math.min(observed.length,SAMPLE_LIMIT),observedAccounts:participants.size,eventsByType:eventTypes}
+      pilotSample:{
+        windowDays:30,limit:SAMPLE_LIMIT,truncated,totalEvents,
+        coveragePercent:totalEvents>0?Math.round(sample.events/totalEvents*10000)/100:100,
+        ...sample
+      }
     });
   }
   // Legacy flat collections predate canonical school records. Report them
@@ -136,7 +180,7 @@ async function platformPilotResearchOverview({db,request,now=Date.now}){
   }));
   return {generatedAt:now(),schools:results,scope:"aggregate_only",
     legacySourceCounts:Object.fromEntries(legacyNames.map((name,index)=>[name,legacyValues[index]])),
-    note:"School and legacy source totals are counted separately because historical data can overlap with canonical projections. Pilot activity distributions sample up to 500 recent events per school. No code, grades, names or participant identifiers are returned."};
+    note:"School and legacy source totals are counted separately because historical data can overlap with canonical projections. Pilot event totals use exact 30-day counts. Detailed process distributions are bounded to a recent 500-event sample per school with explicit coverage. No code, grades, names or participant identifiers are returned."};
 }
 
 async function cleanupPilotResearch({db,Timestamp,now=Date.now,maxPerSchool=400}){
@@ -168,6 +212,6 @@ async function cleanupPilotResearch({db,Timestamp,now=Date.now,maxPerSchool=400}
 }
 
 module.exports={
-  EVENT_TYPES,RUN_MODES,RUN_OUTCOMES,MAX_EVENTS_PER_DAY,RETENTION_DAYS,checkedEvent,
+  EVENT_TYPES,RUN_MODES,RUN_OUTCOMES,MAX_EVENTS_PER_DAY,RETENTION_DAYS,checkedEvent,summarizePilotEvents,
   createPilotStudioResearchService,platformPilotResearchOverview,cleanupPilotResearch
 };
