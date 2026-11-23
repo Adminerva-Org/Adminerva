@@ -962,8 +962,10 @@ function addFile(filename, content = "", autoSwitch = true) {
   fileOrder.push(filename);
   if(!projectOrder.includes(filename))projectOrder.push(filename);
 
-  model.onDidChangeContent(() => {
+  model.onDidChangeContent(event => {
     triggerAutoSave();
+    // Research sidecar receives counts only; never editor values or changed text.
+    window.dispatchEvent(new CustomEvent("adminerva:studio-edit-observed",{detail:{count:Math.min(100,event.changes?.length||1)}}));
     monaco.editor.setModelMarkers(model, "judge0", []);
   });
 
