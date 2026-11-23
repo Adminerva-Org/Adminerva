@@ -71,7 +71,8 @@ function createPilotStudioResearchService({db,FieldValue,Timestamp,now=Date.now}
       const quota=await tx.get(quotaRef),count=Number(quota.data()?.count)||0;
       if(count>=MAX_EVENTS_PER_DAY)deny("resource-exhausted","Pilot activity recording reached its daily safety limit.");
       const at=now();
-      tx.set(quotaRef,{ownerUid:context.uid,day,count:count+1,updatedAt:FieldValue.serverTimestamp()});
+      tx.set(quotaRef,{ownerUid:context.uid,day,count:count+1,
+        updatedAt:FieldValue.serverTimestamp(),expiresAt:Timestamp.fromMillis(at+RETENTION_DAYS*DAY_MS)});
       tx.create(eventRef,{
         ...event,ownerUid:context.uid,schoolId:context.schoolId,
         collectionSource:"designated_test_account",createdAt:FieldValue.serverTimestamp(),
@@ -94,7 +95,7 @@ function createPilotStudioResearchService({db,FieldValue,Timestamp,now=Date.now}
 async function platformPilotResearchOverview({db,request,now=Date.now}){
   const authority=await platformAuthority({db,request});
   if(!authority.platformAdmin)deny("permission-denied","Platform Administrator access is required.");
-  const schools=await db.collection("platform_schools").orderBy("displayName").limit(MAX_SCHOOLS+1).get();
+  const schools=await db.collection("platform_schools").limit(MAX_SCHOOLS+1).get();
   if(schools.size>MAX_SCHOOLS)
     deny("resource-exhausted","The school registry exceeds pilot overview limits; add pagination before reporting.");
   const visible=schools.docs.filter(doc=>["draft","pilot","active"].includes(doc.data()?.state));
@@ -135,17 +136,19 @@ async function cleanupPilotResearch({db,Timestamp,now=Date.now,maxPerSchool=400}
   if(schools.size>MAX_SCHOOLS)throw Error("Pilot research cleanup requires school pagination.");
   let removed=0,truncated=false;
   for(const school of schools.docs){
-    const query=db.collection("schools/"+school.id+"/pilot_research_events")
-      .where("expiresAt","<=",Timestamp.fromMillis(now())).limit(maxPerSchool);
-    const expired=await query.get();
-    if(!expired.empty){
-      for(let offset=0;offset<expired.docs.length;offset+=400){
-        const batch=db.batch();
-        for(const item of expired.docs.slice(offset,offset+400))batch.delete(item.ref);
-        await batch.commit();
+    for(const collectionName of ["pilot_research_events","pilot_research_quotas"]){
+      const query=db.collection("schools/"+school.id+"/"+collectionName)
+        .where("expiresAt","<=",Timestamp.fromMillis(now())).limit(maxPerSchool);
+      const expired=await query.get();
+      if(!expired.empty){
+        for(let offset=0;offset<expired.docs.length;offset+=400){
+          const batch=db.batch();
+          for(const item of expired.docs.slice(offset,offset+400))batch.delete(item.ref);
+          await batch.commit();
+        }
+        removed+=expired.size;
+        if(expired.size===maxPerSchool)truncated=true;
       }
-      removed+=expired.size;
-      if(expired.size===maxPerSchool)truncated=true;
     }
   }
   return {removed,truncated};
