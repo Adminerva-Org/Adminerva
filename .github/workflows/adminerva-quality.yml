@@ -51,6 +51,7 @@ jobs:
           node --test tests/v4-repository-evaluation.test.mjs
           node --test tests/studio-student-recovery-guard.test.mjs tests/studio-legacy-reopen.test.mjs
           node --test tests/studio-project-visibility.test.mjs
+          node --test tests/studio-device-storage-resilience.test.mjs tests/assessment-draft-recovery.test.mjs tests/studio-java-diagnostics.test.mjs
           node --check js/student/project-studio.mjs
           node --input-type=module --check < js/student/playground.js
           node --test js/school-admin/enrollment.test.mjs tests/platform-school-setup-readiness.test.mjs tests/grading-policy-overlap.test.mjs tests/school-enrollment-ownership.test.mjs tests/school-enrollment-progression.test.mjs tests/school-student-records.test.mjs tests/registrar-role-access.test.mjs tests/school-enrollment-capability.test.mjs tests/verified-school-enrollment-mode.test.mjs tests/academic-crud-lifecycle.test.mjs tests/school-crud-completion.test.mjs tests/platform-user-lifecycle.test.mjs tests/system-admin-crud-coverage.test.mjs tests/people-header-safety.test.mjs tests/people-invitation-lifecycle.test.mjs tests/people-lifecycle-dependencies.test.mjs tests/student-account-recovery.test.mjs
@@ -173,7 +174,7 @@ jobs:
       - name: Install Firebase emulator and test SDK
         run: npm install --no-audit --no-fund --no-save @firebase/rules-unit-testing@4 firebase@11 firebase-tools@14 firebase-admin@13
       - name: Test Firestore permissions in an isolated emulator
-        run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test --test-concurrency=1 tests/firestore-rules.test.mjs tests/monitoring-maintenance.emulator.mjs tests/staff-workspaces.emulator.mjs tests/studio-submissions.emulator.mjs tests/admissions.emulator.mjs tests/practice-rankings.emulator.mjs tests/practice-authority.emulator.mjs'
+        run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test --test-concurrency=1 tests/firestore-rules.test.mjs tests/monitoring-maintenance.emulator.mjs tests/staff-workspaces.emulator.mjs tests/studio-submissions.emulator.mjs tests/school-assessment-drafts.emulator.mjs tests/admissions.emulator.mjs tests/practice-rankings.emulator.mjs tests/practice-authority.emulator.mjs'
   pages-release:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [javascript-regressions, firestore-security]

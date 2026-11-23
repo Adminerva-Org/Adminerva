@@ -107,5 +107,6 @@ test("compatibility People and Access mutations preserve explicit System Admin A
   assert.match(peopleClient,/function assistMode\(\)/);
   assert.match(peopleClient,/Adminerva_platform_school_mode/);
   assert.ok((peopleClient.match(/platformMode:"assist"/g)||[]).length>=3);
-  assert.match(peoplePage,/people-access\.mjs\?v=20261123-system-assist1/);
+  assert.match(peoplePage,/people-access\.mjs\?v=[A-Za-z0-9._-]+/);
+  assert.doesNotMatch(peoplePage,/people-access\.mjs\?v=e44dd05d2bec/);
 });
