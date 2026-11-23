@@ -22,6 +22,7 @@ const columns=[
   "First sampled UTC","Last sampled UTC","Daily sampled events (UTC)"
 ];
 function safeNumber(value){return Number.isFinite(value)?value:0;}
+function timestampText(value){return Number.isFinite(value)?new Date(value).toISOString():"";}
 function sampledRow(school){
   const record=school.counts||{},pilot=school.pilotSample||{},types=pilot.eventsByType||{};
   const run=pilot.runsByOutcome||{},days=Array.isArray(pilot.dailyEvents)?pilot.dailyEvents:[];
@@ -33,8 +34,7 @@ function sampledRow(school){
     pilot.observedProjects,types.editor_activity||0,pilot.editorChanges||0,
     types.run_finished||0,run.success||0,run.compile_error||0,
     run.runtime_error||0,run.cancelled||0,run.unknown||0,types.cloud_saved||0,
-    pilot.firstObservedAt===null?"":new Date(pilot.firstObservedAt).toISOString(),
-    pilot.lastObservedAt===null?"":new Date(pilot.lastObservedAt).toISOString(),
+    timestampText(pilot.firstObservedAt),timestampText(pilot.lastObservedAt),
     days.map(row=>row.day+":"+row.count).join(" | ")
   ];
 }
@@ -66,7 +66,7 @@ function breakdown(school){
   const title=document.createElement("summary");
   title.className="cursor-pointer font-semibold";
   title.textContent=(school.schoolName||school.schoolId)+
-    " · "+safeNumber(pilot.totalEvents)+" total 30-day events · "+safeNumber(pilot.events)+" sampled";
+    " · "+(Number.isInteger(pilot.totalEvents)?pilot.totalEvents:"Not available")+" total 30-day events · "+safeNumber(pilot.events)+" sampled";
   const text=document.createElement("p");
   text.className="text-sm mt-2";
   text.textContent="30-day sampled events: "+
