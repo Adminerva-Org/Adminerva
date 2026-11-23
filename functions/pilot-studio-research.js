@@ -127,8 +127,16 @@ async function platformPilotResearchOverview({db,request,now=Date.now}){
         events:Math.min(observed.length,SAMPLE_LIMIT),observedAccounts:participants.size,eventsByType:eventTypes}
     });
   }
+  // Legacy flat collections predate canonical school records. Report them
+  // separately: some identities and assessments already project into V4.
+  const legacyNames=["students","assessments","student_grades","student_submissions","assessment_evidence","activity_events"];
+  const legacyValues=await Promise.all(legacyNames.map(async name=>{
+    const result=await db.collection(name).count().get();
+    return Number(result.data()?.count)||0;
+  }));
   return {generatedAt:now(),schools:results,scope:"aggregate_only",
-    note:"Historical school counts are live totals; pilot event distributions sample up to 500 recent events per school. No code, grades, names or participant identifiers are returned."};
+    legacySourceCounts:Object.fromEntries(legacyNames.map((name,index)=>[name,legacyValues[index]])),
+    note:"School and legacy source totals are counted separately because historical data can overlap with canonical projections. Pilot activity distributions sample up to 500 recent events per school. No code, grades, names or participant identifiers are returned."};
 }
 
 async function cleanupPilotResearch({db,Timestamp,now=Date.now,maxPerSchool=400}){
