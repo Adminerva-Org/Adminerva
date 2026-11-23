@@ -51,4 +51,7 @@ async function refresh(){
   }
 }
 button?.addEventListener("click",()=>void refresh());
-onAuthStateChanged(auth,()=>{generation++;rows?.replaceChildren();if(auth.currentUser)void refresh();});
+onAuthStateChanged(auth,()=>{
+  generation++;loading=false;if(button)button.disabled=false;
+  rows?.replaceChildren();if(auth.currentUser)void refresh();
+});
