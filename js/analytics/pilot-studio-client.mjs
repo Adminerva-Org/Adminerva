@@ -81,7 +81,7 @@ onAuthStateChanged(auth,user=>{
   if(user)void loadPilotScope();
 });
 window.addEventListener("adminerva:school-ready",()=>{
-  flushEdits();ready=false;enabled=false;schoolId="";pending=[];
+  flushEdits();generation++;ongoing=null;ready=false;enabled=false;schoolId="";pending=[];
   void loadPilotScope();
 });
 window.addEventListener("adminerva:studio-ready",event=>{
