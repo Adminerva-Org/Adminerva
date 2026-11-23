@@ -140,7 +140,7 @@ async function platformPilotResearchOverview({db,request,now=Date.now}){
   if(schools.size>MAX_SCHOOLS)
     deny("resource-exhausted","The school registry exceeds pilot overview limits; add pagination before reporting.");
   const visible=schools.docs.filter(doc=>["draft","pilot","active"].includes(doc.data()?.state));
-  const since=now()-30*DAY_MS;
+  const cutoff=now(),since=cutoff-30*DAY_MS;
   const results=[];
   for(const school of visible){
     const prefix="schools/"+school.id+"/";
@@ -153,13 +153,13 @@ async function platformPilotResearchOverview({db,request,now=Date.now}){
     // statistics use a bounded recent sample and expose its coverage explicitly.
     const events=db.collection(prefix+"pilot_research_events")
       .where("createdAt",">=",new Date(since))
-      .where("createdAt","<=",new Date(now()));
+      .where("createdAt","<=",new Date(cutoff));
     const [totalSnap,sampleSnap]=await Promise.all([
       events.count().get(),
       events.orderBy("createdAt","desc").limit(SAMPLE_LIMIT+1).get()
     ]);
     const totalEvents=Number(totalSnap.data()?.count)||0;
-    const sample=summarizePilotEvents(sampleSnap.docs.slice(0,SAMPLE_LIMIT),{since,now:now()});
+    const sample=summarizePilotEvents(sampleSnap.docs.slice(0,SAMPLE_LIMIT),{since,now:cutoff});
     const truncated=totalEvents>sample.events;
     results.push({
       schoolId:school.id,schoolName:String(school.data()?.displayName||school.id).slice(0,120),
@@ -178,7 +178,7 @@ async function platformPilotResearchOverview({db,request,now=Date.now}){
     const result=await db.collection(name).count().get();
     return Number(result.data()?.count)||0;
   }));
-  return {generatedAt:now(),schools:results,scope:"aggregate_only",
+  return {generatedAt:cutoff,schools:results,scope:"aggregate_only",
     legacySourceCounts:Object.fromEntries(legacyNames.map((name,index)=>[name,legacyValues[index]])),
     note:"School and legacy source totals are counted separately because historical data can overlap with canonical projections. Pilot event totals use exact 30-day counts. Detailed process distributions are bounded to a recent 500-event sample per school with explicit coverage. No code, grades, names or participant identifiers are returned."};
 }
