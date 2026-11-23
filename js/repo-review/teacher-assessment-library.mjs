@@ -11,13 +11,14 @@ const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
 const requestedFilter=new URL(location.href).searchParams.get("view");
 let items=[],archivedItems=[],archivedNextCursor=null,archivedLoading=false,archivedEpoch=0,deployments=[],legacyDeploymentHistory=[],legacyDeploymentWarning="",filter=["mine","shared","school","deployed","archived"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,
-  lifecycleTask=null,lifecycleAction=null,blueprintLifecycle=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false;
+  lifecycleTask=null,lifecycleAction=null,blueprintLifecycle=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null,shareEpoch=0,deployEpoch=0,deployReady=false,recipientsReady=false,finalSaveRefreshTimer=null;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     ++shareEpoch;++deployEpoch;deployReady=false;recipientsReady=false;items=[];archivedItems=[];archivedNextCursor=null;archivedEpoch++;archivedLoading=false;deployments=[];legacyDeploymentHistory=[];legacyDeploymentWarning="";editing=null;sharing=null;deploying=null;
+    if(finalSaveRefreshTimer){clearTimeout(finalSaveRefreshTimer);finalSaveRefreshTimer=null;}
     deployOfferings=[];deploymentOfferingNames.clear();deploySelectedOfferings.clear();deploySucceededOfferings.clear();deployRequestKeys.clear();
     bulkSettingsDialog?.close();bulkSettingsTasks=[];bulkSettingsSucceeded.clear();
     deployVariantReview=null;deployVariantLoading=false;personalizingOfferings=[];
@@ -531,6 +532,7 @@ function deploymentClassRow(task){
   row.append(main,more);return row;
 }
 function renderDeployedTasks(){
+  if(finalSaveRefreshTimer){clearTimeout(finalSaveRefreshTimer);finalSaveRefreshTimer=null;}
   const current=deployments.filter(task=>task.lifecycle!=="archived"&&task.lifecycle!=="cancelled");
   const historic=deployments.filter(task=>task.lifecycle==="archived"||task.lifecycle==="cancelled");
   const summary=document.createElement("div");summary.className="tl-deploy-overview";
@@ -585,6 +587,18 @@ function renderDeployedTasks(){
     past.append(toggle);
     for(const task of historic)past.append(deploymentClassRow(task));
     list.append(past);
+  }
+  const nextFinalSaveExpiry=current
+    .filter(task=>["closed","closing"].includes(task.manualAccessState)&&Number(task.manualCloseGraceUntil||0)>Date.now())
+    .map(task=>Number(task.manualCloseGraceUntil))
+    .sort((a,b)=>a-b)[0];
+  if(nextFinalSaveExpiry){
+    finalSaveRefreshTimer=setTimeout(()=>{
+      finalSaveRefreshTimer=null;
+      if(filter!=="deployed")return;
+      render();
+      say("Final exam save window ended. Use Class save history to verify each student's confirmed checkpoint.");
+    },Math.max(50,nextFinalSaveExpiry-Date.now()+75));
   }
   if(legacyDeploymentHistory.length){
     const legacy=document.createElement("details");legacy.className="tl-deploy-history";
@@ -827,6 +841,9 @@ async function refresh(){
 document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListener("click",()=>{
   filter=button.dataset.filter;
   const url=new URL(location.href);url.searchParams.set("view",filter);history.replaceState(null,"",url);
+  if(filter!=="deployed"&&finalSaveRefreshTimer){
+    clearTimeout(finalSaveRefreshTimer);finalSaveRefreshTimer=null;
+  }
   if(filter==="archived"||(filter==="deployed"&&!deploymentOfferingNames.size))
     void refresh().catch(error=>say(error.message));
   else render();

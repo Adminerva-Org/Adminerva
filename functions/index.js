@@ -406,6 +406,14 @@ for(const [name,action] of Object.entries({
       throw new HttpsError("unavailable","School Practice could not complete this request. Saved progress is unchanged; retry safely.");
     }
   });
+exports.practicePlatformLeaderboard=onCall(practiceOptions,async()=>{
+  try{return await schoolPractice.publicLeaderboard();}
+  catch(error){
+    if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
+    console.error("Platform Practice leaderboard failed",{code:error.code||"internal"});
+    throw new HttpsError("unavailable","Global Games rankings are temporarily unavailable. Try again shortly.");
+  }
+});
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
 exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>{
   if(!(await legacyMcsCompatibilityAllowed()))return;

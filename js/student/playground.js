@@ -3,7 +3,7 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=20261121-studio-reopen-hotfix2";
+import {createProjectStudio} from "./project-studio.mjs?v=20261123-studio-task-history-1";
 import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
 import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261121-recovery-guard";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
@@ -2398,7 +2398,6 @@ function initializeMobileStudio(){
   if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
   const compact=()=>window.matchMedia('(max-width:767px)').matches;
   const commandBar=document.querySelector('.studio-command-bar');
-  let ribbonTaskButton=null;
   const setupRibbon=()=>{
     if(!commandBar||document.getElementById('studioRibbon'))return;
     const ribbon=document.createElement('div');
@@ -2501,16 +2500,9 @@ function initializeMobileStudio(){
       panels.appendChild(panel);
     }
 
-    ribbonTaskButton=document.createElement('button');
-    ribbonTaskButton.id='studioRibbonTask';
-    ribbonTaskButton.type='button';
-    ribbonTaskButton.textContent='Task';
-    ribbonTaskButton.className='studio-ribbon-task hidden';
-    ribbonTaskButton.addEventListener('click',()=>{
-      (compact()?taskButton:taskDesktopOpen)?.click();
-    });
+    // Task has one permanent entry beside Projects. The ribbon's Assessment
+    // tab remains reserved for submission controls.
     const assessmentPanel=panels.querySelector('[data-studio-ribbon-panel="assessment"]');
-    assessmentPanel?.prepend(ribbonTaskButton);
 
     const examIndicator=document.createElement('div');
     examIndicator.id='studioExamIndicator';
@@ -2602,7 +2594,6 @@ function initializeMobileStudio(){
   const refreshTaskButton=()=>{
     const available=Boolean(taskAvailable());
     taskButton?.classList.toggle('hidden',!available);
-    ribbonTaskButton?.classList.toggle('hidden',!available);
     taskBar?.classList.toggle('hidden',!available);
     if(!available&&activeDrawer==='task')closeDrawer();
     if(!available)return;
@@ -2629,6 +2620,7 @@ function initializeMobileStudio(){
     if(taskBarStatus)taskBarStatus.textContent=status;
     if(taskDockStatus)taskDockStatus.textContent=status;
     taskButton?.setAttribute('title',(title||'View task')+' · '+status);
+    taskButton?.setAttribute('aria-label','Open task instructions: '+(title||'Assigned Studio task')+'. '+status);
     const taskSubmitShortcut=document.getElementById('studioTaskSubmitShortcut');
     if(taskSubmitShortcut){
       const disabled=context?.readOnly===true||
@@ -2714,7 +2706,7 @@ function initializeMobileStudio(){
   moreButton?.addEventListener('click',()=>showDrawer('actions'));
   taskButton?.addEventListener('click',()=>showDrawer('task'));
   taskDesktopOpen?.addEventListener('click',()=>showDrawer('task'));
-  const focusTaskTrigger=()=>{(compact()?taskButton:taskDesktopOpen)?.focus();};
+  const focusTaskTrigger=()=>{taskButton?.focus();};
   taskClose?.addEventListener('click',()=>{
     closeDrawer();
     focusTaskTrigger();
@@ -2767,7 +2759,7 @@ function initializeMobileStudio(){
     if(event.key==='Escape'){
       if(activeDrawer){
         const trigger=activeDrawer==='task'
-          ?(compact()?taskButton:taskDesktopOpen)
+          ?taskButton
           :({files:filesButton,actions:moreButton}[activeDrawer]);
         closeDrawer();
         trigger?.focus();
