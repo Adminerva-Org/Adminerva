@@ -91,9 +91,13 @@ test("System Admin test mobility UI routes placement into the canonical school w
   for(const id of ["pu-test-toggle","pu-test-school","pu-test-grant","pu-test-status"])
     assert.match(page,new RegExp('id="'+id+'"'));
   assert.match(page,/This does not move or delete the source school/);
+  assert.match(page,/ordinary school access remains school-admin owned/);
   assert.match(client,/schoolAccessApi/);
   assert.match(client,/action:"activate_test_student_access"/);
+  assert.match(client,/action:"suspend_access"/);
+  assert.match(client,/expectedRevision:membership\.revision/);
   assert.match(client,/platformMode:"assist"/);
+  assert.match(client,/Suspend test access/);
   assert.match(client,/enrollmentMode==="canonical"\?"school-enrollment\.html":"people-access\.html"/);
   assert.match(client,/Adminerva_platform_school_mode","assist"/);
   assert.match(client,/Manage placement/);
