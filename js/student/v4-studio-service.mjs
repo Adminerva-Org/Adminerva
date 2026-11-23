@@ -15,7 +15,7 @@ const variantApi=httpsCallable(functions,"schoolStudioAssessmentVariant");
 const assessmentsApi=httpsCallable(functions,"schoolAssessments");
 const host=document.getElementById("studioSchoolSwitcher");
 const status=document.getElementById("studioSchoolStatus");
-let picker=null,loadPromise=null,activeSchool=null,lastError="",syncTimer=null,queued=null,syncing=Promise.resolve();
+let picker=null,loadPromise=null,activeSchool=null,lastError="",syncTimer=null,queued=null,syncing=Promise.resolve(),schoolRetryPromise=null;
 let loadedSchoolId=null,waitingForSchool=false,openProjectId="",syncActive=false;
 
 function setStatus(message,tone="info"){
@@ -134,6 +134,34 @@ async function init(){
 export async function currentV4StudioSchool(){
   await init();
   return activeSchool;
+}
+// An initial tenantSchools outage must not strand Studio in its cached
+// "no school" state for the remainder of the browser session. Reuse the
+// canonical picker; never accept a client-supplied school or bypass its lease.
+export async function retryV4StudioSchool(){
+  await init();
+  if(activeSchool||!picker||!auth.currentUser)return activeSchool;
+  if(schoolRetryPromise)return schoolRetryPromise;
+  schoolRetryPromise=(async()=>{
+    try{
+      const state=await picker.load();
+      const verified=picker.scope.current;
+      activeSchool=verified?.uid===auth.currentUser?.uid?verified:null;
+      if(!activeSchool){
+        setStatus(state?.state==="choose_school"?
+          "Choose your verified school to resume saving.":
+          "School access is not verified. Keep this tab open and retry Save after reconnecting.","error");
+      }
+      return activeSchool;
+    }catch(error){
+      lastError=callableMessage(error,"School verification unavailable.");
+      activeSchool=null;
+      setStatus("School verification unavailable. Your device draft is retained; retry Save after reconnecting.","error");
+      return null;
+    }
+  })();
+  try{return await schoolRetryPromise;}
+  finally{schoolRetryPromise=null;}
 }
 async function scopedCall(api,action,details={}){
   await init();
