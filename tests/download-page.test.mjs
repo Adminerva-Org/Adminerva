@@ -1,0 +1,30 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {detectDownloadPlatform,getInstallHint} from "../js/core/downloads-platform.mjs";
+test("platform guidance recognizes desktop, Android, iOS and iPadOS",()=>{
+ assert.equal(detectDownloadPlatform("Mozilla Windows NT 10.0","Win32"),"windows");
+ assert.equal(detectDownloadPlatform("Mozilla Macintosh","MacIntel"),"macos");
+ assert.equal(detectDownloadPlatform("Mozilla Android 15","Linux armv8"),"android");
+ assert.equal(detectDownloadPlatform("Mozilla iPhone","iPhone"),"ios");
+ assert.equal(detectDownloadPlatform("Mozilla Macintosh","MacIntel",5),"ios");
+ assert.equal(detectDownloadPlatform("Unknown","Linux"),"other");
+ assert.match(getInstallHint("ios"),/Safari/);
+ assert.match(getInstallHint("android"),/Chrome/);
+ assert.match(getInstallHint("windows",{installPrompt:true}),/Install web app/);
+ assert.match(getInstallHint("windows",{standalone:true}),/already open/);
+});
+test("public downloads page is navigable and never fabricates native release links",()=>{
+ const html=readFileSync(new URL("../downloads.html",import.meta.url),"utf8");
+ const shell=readFileSync(new URL("../js/core/public-shell.mjs",import.meta.url),"utf8");
+ const home=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ assert.match(html,/data-page="downloads"/);
+ assert.match(html,/href="manifest.webmanifest"/);
+ assert.match(html,/id="web-install"/);
+ for(const platform of ["windows","macos","android","ios"])assert.match(html,new RegExp('data-platform="'+platform+'"'));
+ assert.match(html,/Not available yet/);
+ assert.doesNotMatch(html,/href="[^"]+\.(exe|dmg|msi|apk|ipa)"/i);
+ assert.doesNotMatch(html,/href="https:\/\/(apps\.apple\.com|play\.google\.com)/i);
+ assert.match(shell,/\["downloads","Download","downloads\.html"\]/);
+ assert.match(home,/href="downloads\.html"/);
+});

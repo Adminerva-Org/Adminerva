@@ -7,6 +7,7 @@ if(root){
     ["home","Home","index.html"],
     ["enrollment","Enrollment","enroll.html"],
     ["explore","Explore","guest-home.html"],
+    ["downloads","Download","downloads.html"],
     ["opportunities","Opportunities","opportunities.html"],
     ["pulse","Pulse","pulse.html"],
     ["wiki","Help & guides","wiki.html"],
