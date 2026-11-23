@@ -9,7 +9,7 @@ import {chromium} from 'playwright';
 const root=resolve('.');
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.woff2':'font/woff2'};
 const roles=new Set(['student','teacher','admin','platform']);
-const fixture=role=>`<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/css/adminerva-ui.css"><link rel="stylesheet" href="/css/experience-mode.css"></head><body><main data-home-experience="${role}" style="max-width:1100px;margin:auto;padding:1rem"><section id="real-dashboard"><h2>Operational dashboard fixture</h2><p>This remains available below the entry runway.</p></section></main><script type="module" src="/js/core/experience-mode.mjs"></script></body></html>`;
+const fixture=role=>`<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/css/adminerva-ui.css"><link rel="stylesheet" href="/css/experience-mode.css"></head><body><main data-home-experience="${role}" style="max-width:1100px;margin:auto;padding:1rem"><header class="av-home-hero"><p>Canonical ${role} home</p><h1>One home. One navigation.</h1><p>Operational work starts on this page.</p></header><section id="real-dashboard"><h2>Operational dashboard fixture</h2><p>This is visible without crossing a second homepage.</p></section></main><script type="module" src="/js/core/experience-mode.mjs"></script></body></html>`;
 const server=createServer(async(req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://127.0.0.1').pathname);
   if(pathname.startsWith('/__role/')){
@@ -43,7 +43,7 @@ async function assess(page,label,viewport){
     const rect=n=>{const r=n.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
     const headingRects=headings.map(n=>{const style=getComputedStyle(n);return {text:n.textContent,box:rect(n),scrollWidth:n.scrollWidth,clientWidth:n.clientWidth,scrollHeight:n.scrollHeight,clientHeight:n.clientHeight,clippedX:['hidden','clip'].includes(style.overflowX),clippedY:['hidden','clip'].includes(style.overflowY)};});
     const nav=document.querySelector('#adminerva-public-nav .av-public-shell');
-    const stage=document.querySelector('.avx-world-shell,.avx-role-runway,.avx-editorial-world');
+    const stage=document.querySelector('.avx-world-shell,.avx-canonical-home-hero,.avx-editorial-world');
     const actions=[...main.querySelectorAll('a[href],button')].filter(n=>n.getClientRects().length&&getComputedStyle(n).visibility!=='hidden');
     const tiny=actions.filter(n=>{const r=n.getBoundingClientRect();return r.width<24||r.height<24;}).slice(0,8).map(n=>({label:n.getAttribute('aria-label')||n.textContent.trim().slice(0,45),box:rect(n)}));
     return {innerWidth,innerHeight,docWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth,headings:headingRects,nav:nav?rect(nav):null,stage:stage?rect(stage):null,tiny,mode:document.documentElement.dataset.adminervaExperience};
@@ -103,12 +103,11 @@ try{
     for(const role of ['student','teacher','admin','platform']){
       const page=await context.newPage();
       await page.goto(origin+'/__role/'+role+'.html',{waitUntil:'domcontentloaded'});
-      await page.locator('.avx-role-runway').waitFor({timeout:10000});
+      await page.locator('.avx-canonical-home-hero[data-avx-canonical-home="true"]').waitFor({timeout:10000});
       await assess(page,role,viewport);
-      const button=page.locator('.avx-dashboard-entry');
-      assert.equal(await button.isVisible(),true);
-      await button.click();
-      assert.equal(await page.locator('#real-dashboard').isVisible(),true);
+      assert.equal(await page.locator('.avx-role-runway').count(),0,'separate signed-in runway must not return');
+      assert.equal(await page.locator('.avx-dashboard-entry').count(),0,'dashboard continuation gate must not return');
+      assert.equal(await page.locator('#real-dashboard').isVisible(),true,'operational dashboard must already be on the canonical Home');
       await page.close();
     }
     await context.close();
