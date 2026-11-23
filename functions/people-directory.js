@@ -591,6 +591,96 @@ function createPeopleDirectoryService({db}) {
         revision:Number(person.data().revision)||1
       })),truncated:snap.size===101||matches.length>50};
     }
+    if(input.action==="activate_test_student_access"){
+      if(!ctx.platformOverride)
+        throw new TenantAccessError("permission-denied","Test-student cross-school access requires explicit System Admin Assist.");
+      const targetUid=id(input.targetUid),reason=field(input.reason,500,"Test access reason");
+      if(reason.length<12)invalid("Explain the test-student school access in at least 12 characters.");
+      const {getAuth}=require("firebase-admin/auth");
+      let account;
+      try{account=await getAuth().getUser(targetUid);}
+      catch(error){
+        if(error?.code==="auth/user-not-found")
+          throw new TenantAccessError("not-found","The test student login no longer exists.");
+        throw new TenantAccessError("unavailable","The test student login could not be verified.");
+      }
+      if(account.disabled||!account.emailVerified)
+        throw new TenantAccessError("failed-precondition","The test student login must be verified and enabled before school access is granted.");
+
+      const testRef=db.doc("platform_test_accounts/"+targetUid),
+        memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+targetUid),
+        indexRef=db.doc("platform_users/"+targetUid+"/memberships/"+ctx.schoolId),
+        linkedQuery=base.where("authUid","==",targetUid).limit(3),
+        deterministicId="test-"+createHash("sha256").update("platform-test-student\0"+targetUid).digest("hex").slice(0,28);
+      let result;
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const [testAccount,school,member,linkedPeople]=await Promise.all([
+          tx.get(testRef),tx.get(schoolRef),tx.get(memberRef),tx.get(linkedQuery)
+        ]);
+        if(!testAccount.exists||testAccount.data()?.kind!=="student"||testAccount.data()?.status!=="active")
+          throw new TenantAccessError("failed-precondition","The login is not currently designated as a platform test student.");
+        if(!school.exists||!["active","pilot"].includes(school.data()?.state))
+          throw new TenantAccessError("failed-precondition","Test students can be added only to an active or pilot school.");
+        if(linkedPeople.size>1)
+          throw new TenantAccessError("failed-precondition","This account is linked to multiple people in the target school. Reconcile the directory before granting test access.");
+
+        const prior=member.exists?member.data():null;
+        let personRef;
+        if(prior?.personId)personRef=base.doc(id(prior.personId));
+        else if(linkedPeople.size===1)personRef=linkedPeople.docs[0].ref;
+        else personRef=base.doc(deterministicId);
+        const person=await tx.get(personRef);
+        const now=FieldValue.serverTimestamp();
+        let createdPerson=false;
+        if(person.exists){
+          const data=person.data()||{};
+          if(data.schoolId!==ctx.schoolId||data.kind!=="student"||data.status!=="active"||data.authUid!==targetUid)
+            throw new TenantAccessError("failed-precondition","The target school person link conflicts with another identity or inactive record.");
+        }else{
+          if(prior?.personId)
+            throw new TenantAccessError("failed-precondition","The target membership references a missing school person. Repair that school directory before continuing.");
+          const displayName=String(account.displayName||account.email||"Test student").slice(0,140);
+          tx.create(personRef,{
+            personId:personRef.id,schoolId:ctx.schoolId,displayName,
+            searchKey:displayName.toLocaleLowerCase("en")+"#"+personRef.id,
+            kind:"student",status:"active",authUid:targetUid,
+            email:String(account.email||"").toLowerCase(),studentNumber:"",
+            source:"platform_test_student",testAccount:true,revision:1,
+            createdByUid:ctx.uid,createdAt:now,updatedByUid:ctx.uid,updatedAt:now
+          });
+          createdPerson=true;
+        }
+
+        const priorRoles=Array.isArray(prior?.roles)?prior.roles.filter(role=>
+          ["student","teacher","registrar","school_admin"].includes(role)):[];
+        if(prior&&prior.schoolId!==ctx.schoolId)
+          throw new TenantAccessError("failed-precondition","The existing membership belongs to another school context.");
+        if(priorRoles.some(role=>role!=="student"))
+          throw new TenantAccessError("failed-precondition","This account already has a non-student role in the target school. Use the normal school access workflow.");
+        if(prior?.personId&&prior.personId!==personRef.id)
+          throw new TenantAccessError("failed-precondition","The target school membership is linked to another person record.");
+
+        const revision=(Number(prior?.revision)||0)+1;
+        tx.set(memberRef,{
+          schoolId:ctx.schoolId,personId:personRef.id,status:"active",roles:["student"],
+          displayName:String(account.displayName||account.email||"Test student").slice(0,140),
+          testStudentAccess:true,revision,updatedByUid:ctx.uid,updatedAt:now,
+          ...(member.exists?{}:{createdByUid:ctx.uid,createdAt:now})
+        },{merge:true});
+        tx.set(indexRef,{schoolId:ctx.schoolId,status:"active",roles:["student"],
+          testStudentAccess:true,revision,updatedAt:now},{merge:true});
+        tx.create(db.collection("schools/"+ctx.schoolId+"/directory_audit").doc(),{
+          schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,personId:personRef.id,
+          action:member.exists&&prior?.status==="suspended"?
+            "platform_test_student_school_access_restored":"platform_test_student_school_access_granted",
+          reason,source:"system_admin_assist_test_mobility",createdAt:now
+        });
+        result={schoolId:ctx.schoolId,personId:personRef.id,status:"active",revision,createdPerson};
+      });
+      return result;
+    }
+
     if(input.action==="activate_linked_staff"){
       // Expedited, reviewed access grant for an existing identity-linked staff record.
       // No UID alone can confer access: a matching active canonical person is required.
