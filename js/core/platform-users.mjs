@@ -336,8 +336,8 @@ el("pu-create").addEventListener("click",()=>{
   el("pu-create-form").reset();el("pu-create-output").hidden=true;el("pu-create-link").value="";el("pu-create-status").textContent="";
   createDialog.showModal();
 });
-el("pu-detail-close").addEventListener("click",()=>{++detailRun;resetDiagnostics();currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};dialog.close();});
-dialog.addEventListener("cancel",()=>{++detailRun;resetDiagnostics();currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};});
+el("pu-detail-close").addEventListener("click",()=>{++detailRun;currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};dialog.close();});
+dialog.addEventListener("cancel",()=>{++detailRun;currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};});
 el("pu-create-close").addEventListener("click",()=>createDialog.close());
 el("pu-test-school").addEventListener("change",renderTestControls);
 el("pu-test-toggle").addEventListener("click",async()=>{
