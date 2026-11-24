@@ -10,7 +10,7 @@
   <script defer src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=7fe6ab08fd82">
   <link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1">
-  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-global-event-stream-1">
+  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-live-console-1">
 </head>
 <body id="pageBody" class="hidden">
   <div id="adminerva-nav" data-module="admin" data-page="platform-logs"></div>
@@ -52,7 +52,8 @@
         <label for="pl-search">Search by name, email or account ID</label>
         <input id="pl-search" type="search" autocomplete="off" placeholder="Search all platform users…" disabled>
         <div class="pl-directory-actions">
-          <button id="pl-show-global" class="pl-button pl-primary" type="button" disabled>Global event stream</button>
+          <button id="pl-show-live" class="pl-button pl-primary" type="button" disabled>Live console · 3s</button>
+          <button id="pl-show-global" class="pl-button pl-secondary" type="button" disabled>Global event history</button>
           <button id="pl-show-recent" class="pl-button pl-secondary" type="button" disabled>Latest event per account</button>
         </div>
         <div id="pl-accounts" class="pl-account-list" aria-label="Accounts"></div>
@@ -87,6 +88,32 @@
         <label class="pl-log-search" for="pl-event-search">Filter loaded events by account, action, error or trace
           <input id="pl-event-search" type="search" autocomplete="off" placeholder="Filter the loaded page of events…">
         </label>
+        <section id="pl-live" class="pl-live" aria-labelledby="pl-live-title" hidden>
+          <div class="pl-live-header">
+            <div>
+              <p class="pl-eyebrow">Operational event console · all accounts</p>
+              <h3 id="pl-live-title">Near-live activity stream <span class="pl-live-lamp" id="pl-live-lamp" data-status="idle">Stopped</span></h3>
+              <p>Appended in server receipt order. The console checks for newly indexed events every 3 seconds while this tab is visible. Recorded events only—not screen monitoring or a complete browser console.</p>
+            </div>
+            <div class="pl-live-actions">
+              <button id="pl-live-toggle" type="button" class="pl-button pl-primary">Start live watch</button>
+              <button id="pl-live-stop" type="button" class="pl-button pl-secondary" disabled>Stop</button>
+            </div>
+          </div>
+          <div class="pl-live-metrics" role="group" aria-label="Live diagnostic activity">
+            <div><span>New on last check</span><strong id="pl-live-batch">+0</strong></div>
+            <div><span>Added since starting</span><strong id="pl-live-total">0</strong></div>
+            <div><span>Last checked</span><strong id="pl-live-last">—</strong></div>
+          </div>
+          <div class="pl-live-options">
+            <label><input id="pl-live-follow" type="checkbox" checked> Follow newest events</label>
+            <span id="pl-live-status" role="status" aria-live="polite">Enter an investigation reason, then start the live watch.</span>
+          </div>
+          <div id="pl-live-console" class="pl-live-console" role="log" aria-label="Platform-wide recorded events, chronological" aria-live="off" tabindex="0">
+            <p class="pl-live-empty">No live watch started. Existing recorded events remain in Global event history.</p>
+          </div>
+          <p class="pl-live-footnote">Color and severity identify the recorded outcome. New lines are highlighted briefly; you can pause, inspect details, and resume from the last received event. Severity and module filters affect visible console lines, not which events are fetched. Polling is bounded and audited in ten-minute viewing windows.</p>
+        </section>
         <section id="pl-impact" class="pl-impact" aria-labelledby="pl-impact-heading" hidden>
           <div class="pl-impact-head">
             <div><h3 id="pl-impact-heading">Cross-account failure patterns</h3>
@@ -111,14 +138,14 @@
           <p>Account lifecycle actions remain in the original platform audit store; this viewer does not copy or edit those records.</p>
           <div id="pl-audit-records"></div>
         </details>
-        <p class="pl-footnote">This log is for authorized system debugging, not student misconduct findings. A normal click means it was observed, not that a save or submission succeeded. Severity and module filters are applied server-side in the Global Event Stream; text search filters the currently loaded rows only. Events are recorded at server receipt time and may arrive late or be missing. No password, student source code, private notification body, full URL, raw stack trace, grade, screenshot or arbitrary typed input is collected. Previously recorded per-user events remain accessible under the original account timeline; the new global index starts with newly recorded events. Diagnostic records expire after 60 days. Global error-pattern counts are a bounded sample, not an exact platform-wide census.</p>
+        <p class="pl-footnote">This log is for authorized system debugging, not student misconduct findings. A normal click means it was observed, not that a save or submission succeeded. The Live console is a three-second polling view, not a direct socket or a guarantee of every interaction. Severity and module filters are applied server-side in the Global Event Stream; text search filters the currently loaded rows only. Events are recorded at server receipt time and may arrive late or be missing. No password, student source code, private notification body, full URL, raw stack trace, grade, screenshot or arbitrary typed input is collected. Previously recorded per-user events remain accessible under the original account timeline; the new global index starts with newly recorded events. Diagnostic records expire after 60 days. Global error-pattern counts are a bounded sample, not an exact platform-wide census.</p>
       </section>
     </div>
   </main>
   <script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
   <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
   <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
-  <script type="module" src="js/core/platform-logs.mjs?v=20261124-global-feed-1"></script>
+  <script type="module" src="js/core/platform-logs.mjs?v=20261124-live-console-1"></script>
   <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script>
   <script defer src="js/core/release-footer.js?v=7fe6ab08fd82"></script>
 </body>

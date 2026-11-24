@@ -36,6 +36,34 @@ test("Log Viewer loads the shared Tailwind navigation and safely contains notifi
   assert.match(css,/@media\(max-width:640px\)\{[\s\S]*?#adminerva-nav #av-alert-panel/);
 });
 
+test("live console is separate from historical views with three-second polling and bounded rendering",()=>{
+  assert.match(page,/id="pl-show-live"/);
+  assert.match(page,/id="pl-live"/);
+  assert.match(page,/id="pl-live-console"/);
+  assert.match(page,/id="pl-live-batch"/);
+  assert.match(page,/id="pl-live-total"/);
+  assert.match(page,/id="pl-live-last"/);
+  assert.match(page,/id="pl-live-toggle"/);
+  assert.match(page,/id="pl-live-stop"/);
+  assert.match(page,/id="pl-live-follow"/);
+  assert.match(page,/id="pl-live-status"/);
+  assert.match(page,/checks for newly indexed events every 3 seconds/);
+  assert.match(viewer,/LIVE_INTERVAL_MS=3000,LIVE_MAX_LINES=240/);
+  assert.match(viewer,/action:"global_live"/);
+  assert.match(viewer,/function pollLive\(/);
+  assert.match(viewer,/function stopLive\(/);
+  assert.match(viewer,/function toggleLive\(/);
+  assert.match(viewer,/function liveLine\(/);
+  assert.match(viewer,/new Set\(\),highlighted:new Map\(\)/);
+  assert.match(viewer,/result\.hasMore\?150:LIVE_INTERVAL_MS/);
+  assert.match(viewer,/document\.addEventListener\("visibilitychange"/);
+  assert.match(viewer,/window\.addEventListener\("offline"/);
+  assert.match(viewer,/window\.addEventListener\("online"/);
+  assert.match(css,/pl-live-line\.pl-live-new/);
+  assert.match(css,/@media\(prefers-reduced-motion:reduce\).*pl-live-new/);
+  assert.doesNotMatch(viewer,/onSnapshot|collectionGroup|Firestore\.collection/);
+});
+
 test("separate logs route retains platform administration role guards and canonical navigation",()=>{
   assert.match(guard,/owner-schools\|system-users\|platform-logs/);
   assert.match(navigation,/live\("platform-logs","User Action & System Logs","platform-logs\.html"/);
