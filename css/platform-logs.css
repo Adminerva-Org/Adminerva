@@ -230,3 +230,35 @@ body{background:#f2f5fa;color:#102139;font-family:system-ui,-apple-system,BlinkM
   .pl-trends-breakdowns{grid-template-columns:1fr}
   .pl-trends-chart{grid-auto-columns:minmax(26px,1fr)}
 }
+
+
+/* Investigation filter scope is explicit in every view. */
+.pl-filter-feedback{display:flex;justify-content:space-between;align-items:center;gap:.65rem;padding:.75rem .85rem;margin:.15rem 0 .85rem;background:#eaf2f9;border:1px solid #cbdde9;border-radius:11px}
+.pl-filter-status{font-size:.75rem;line-height:1.55;color:#294961;min-width:0;overflow-wrap:anywhere}
+.pl-filter-feedback .pl-button{flex-shrink:0;min-height:38px}
+
+/* Sample coverage remains distinct from an observed zero. */
+.pl-trend-legend{display:flex;flex-wrap:wrap;align-items:center;gap:.65rem;margin:.65rem 0 .35rem;font-size:.71rem;color:#52677c}
+.pl-trend-legend span{display:inline-flex;align-items:center;gap:.33rem}
+.pl-trend-legend i{width:11px;height:11px;display:inline-block;border-radius:2px;background:#22a06b}
+.pl-trend-legend i[data-level=warning]{background:#e3ad35}
+.pl-trend-legend i[data-level=failure]{background:#d94848}
+.pl-trend-legend i[data-level=unsampled],.pl-trend-bucket[data-coverage=unsampled]{
+  background:repeating-linear-gradient(135deg,#e8edf3 0,#e8edf3 5px,#c8d4e1 5px,#c8d4e1 9px)
+}
+.pl-trend-bucket[data-coverage=partial]{background:#fff8e7;border:1px dashed #dba55c;border-radius:5px}
+.pl-trend-bucket[data-coverage=unsampled]{border-radius:4px;border:1px solid #bac8d6}
+.pl-trend-bucket[data-coverage=unsampled] .pl-trend-bar{visibility:hidden}
+.pl-trends-data{margin:.65rem 0;border:1px solid #dce6f0;background:#fff;border-radius:10px;padding:.75rem}
+.pl-trends-data summary{font-size:.76rem;font-weight:800;color:#17516f;cursor:pointer}
+.pl-trends-data summary:focus-visible{outline:2px solid #0e7490;outline-offset:2px}
+.pl-trends-table-wrap{max-height:280px;overflow:auto;margin-top:.55rem}
+.pl-trends-table{width:100%;border-collapse:collapse;font-size:.72rem}
+.pl-trends-table th{text-align:left;position:sticky;top:0;background:#edf4fb;color:#324e65}
+.pl-trends-table td,.pl-trends-table th{padding:.45rem .55rem;border-bottom:1px solid #e5edf4;white-space:nowrap}
+.pl-trends-table tr[data-coverage=unsampled] td{color:#63778c;background:#f3f6fa}
+.pl-trends-table tr[data-coverage=partial] td{background:#fff8e6}
+@media(max-width:560px){
+  .pl-filter-feedback{flex-direction:column;align-items:stretch;padding:.7rem}
+  .pl-filter-feedback .pl-button{width:100%}
+}
