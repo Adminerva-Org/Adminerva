@@ -13,7 +13,7 @@ const UID=/^[A-Za-z0-9_-]{1,128}$/;
 const MODULES=["auth","home","studio","assessments","classroom","school","games","grades","notifications","settings","platform","api","other"];
 const KINDS=["session","navigation","action","error","notification","system"];
 const ACTIONS=["session_started","session_ended","page_open","school_switched","signed_in","signed_out",
-  "cloud_save_confirmed","notification_delivered","network_offline","network_online",
+  "cloud_save_confirmed","notification_delivered","notification_opened","network_offline","network_online",
   "javascript_error","promise_error","resource_error","api_failed","api_succeeded","support_report_submitted"];
 const STATES=["info","ok","error","unavailable"];
 function deny(code,message){throw new TenantAccessError(code,message);}
