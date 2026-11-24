@@ -1,7 +1,7 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
-import {authorizeGithubSession,getGithubSession} from "./github-session.mjs?v=fff9d893855d";
+import {authorizeGithubSession,getGithubSession} from "./github-session.mjs?v=d28869a1e9c5";
 
 const functions=getFunctions(app,"asia-southeast1");
 const profileApi=httpsCallable(functions,"schoolStudentProfile");

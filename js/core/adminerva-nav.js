@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   const platformTestMode = root.dataset.platformTestMode === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=fff9d893855d");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=d28869a1e9c5");
   if(turn!==navigationEpoch)return;
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isRegistrar,isPlatformOwner,
@@ -367,7 +367,7 @@ document.addEventListener("DOMContentLoaded", () => {
     import("./notifications.mjs?v=07ff052f7d63").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
-  import("./account-context-switcher.mjs?v=fff9d893855d")
+  import("./account-context-switcher.mjs?v=d28869a1e9c5")
     .then(module=>module.mountAccountContextSwitcher(root))
     .catch(error=>console.warn("Account context switcher unavailable:",error));
   };
