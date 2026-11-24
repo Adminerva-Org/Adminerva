@@ -42,6 +42,7 @@ jobs:
           node --test js/student/studio-assessment-model.test.mjs
           node --test tests/studio-assessment-variants.test.mjs tests/external-personalization.test.mjs
           node --test tests/assessment-personalization-planning.test.mjs
+          node --test tests/school-class-record-historical.test.mjs
           node --test tests/school-legacy-studio-review.test.mjs
           node --test tests/school-legacy-github-review.test.mjs
           node --check js/repo-review/v4-gradebook.mjs
