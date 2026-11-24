@@ -103,6 +103,20 @@ test("System Admin test mobility UI routes placement into the canonical school w
   assert.match(client,/Manage placement/);
 });
 
+test("test-student actions validate audit reason in their own section",()=>{
+  assert.match(page,/id="pu-test-reason"/);
+  assert.match(page,/Reason for test-student designation or school access/);
+  assert.match(page,/at least 12 characters/);
+  assert.match(client,/function testStudentReason\(\)/);
+  assert.match(client,/el\("pu-test-status"\)\.textContent="Enter a reason of at least 12 characters in Test student mobility/);
+  assert.match(client,/const reason=testStudentReason\(\);if\(!reason\)return;\s*if\(!confirm\("Suspend this test student/);
+  assert.match(client,/const reason=testStudentReason\(\);if\(!reason\)return;\s*const action=currentTestAccount\.active/);
+  assert.match(client,/const target=selectedTestSchool\(\);[\s\S]{0,230}const reason=testStudentReason\(\);if\(!reason\)return;/);
+  assert.match(client,/el\("pu-test-reason"\)\.value="";/);
+  assert.match(backend,/const uid=checkedUid\(input\.uid\),auditReason=reason\(input\.reason\)/);
+  assert.match(backend,/tx\.create\(db\.collection\("platform_audit"\)\.doc\(\),\{/);
+});
+
 test("compatibility People and Access mutations preserve explicit System Admin Assist authority",()=>{
   assert.match(peopleClient,/function assistMode\(\)/);
   assert.match(peopleClient,/Adminerva_platform_school_mode/);
