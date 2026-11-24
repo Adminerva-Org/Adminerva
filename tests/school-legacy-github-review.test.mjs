@@ -225,3 +225,47 @@ test("zero or unresolved points cannot be published, and stale versions cannot p
  })),error=>error.code==="failed-precondition");
  assert.equal(f.map.get("student_grades/"+evidenceId).published,false);
 });
+
+test("historical GitHub bulk publishing uses the same frozen evidence checks and is idempotent",async()=>{
+ const f=fixture();
+ await f.service(f.request("legacy_github_save_draft",f.gradeArgs));
+ const result=await f.service(f.request("legacy_github_bulk_publish"));
+ assert.equal(result.published,1);
+ assert.equal(result.failed,0);
+ assert.equal(result.zeroSkipped,0);
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,true);
+ const repeated=await f.service(f.request("legacy_github_bulk_publish"));
+ assert.equal(repeated.published,0);
+ assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,2,
+   "retry cannot duplicate a completed publication or audit event");
+});
+test("historical GitHub bulk publication excludes zero points and teacher-only discoveries",async()=>{
+ const zero=fixture();
+ await zero.service(zero.request("legacy_github_save_draft",{
+   ...zero.gradeArgs,
+   criteria:[{awardedPoints:0,pendingPoints:0,comment:"No qualifying source"},
+     {awardedPoints:0,pendingPoints:0,comment:"No qualifying behavior"}]
+ }));
+ const zeroResult=await zero.service(zero.request("legacy_github_bulk_publish"));
+ assert.equal(zeroResult.published,0);
+ assert.equal(zeroResult.zeroSkipped,1);
+ assert.equal(zero.map.get("student_grades/"+evidenceId).published,false);
+ const discovered=fixture({discovery:true,approval:true,
+   grade:{studentId,taskId,score:35,maxScore:40,gradeVersion:1,pending:0}});
+ const noReceipt=await discovered.service(discovered.request("legacy_github_bulk_publish"));
+ assert.equal(noReceipt.published,0);
+ assert.equal(noReceipt.unverifiedSkipped,1);
+ assert.equal(discovered.map.get("student_grades/"+evidenceId).published,false);
+ assert.equal(discovered.writes.length,0);
+});
+test("historical GitHub bulk publication cannot publish a stale checkpoint or altered source",async()=>{
+ const f=fixture();
+ await f.service(f.request("legacy_github_save_draft",f.gradeArgs));
+ f.map.get("assessment_evidence/"+evidenceId).checkpointSha="f".repeat(40);
+ const result=await f.service(f.request("legacy_github_bulk_publish"));
+ assert.equal(result.published,0);
+ assert.equal(result.failed,1);
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,false);
+ assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,1,
+   "only the original private draft may be audited, never a stale publication");
+});
