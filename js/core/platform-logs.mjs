@@ -414,7 +414,8 @@ function renderTrends(){
       timeZone:"Asia/Manila",month:"short",day:"numeric",hour:"2-digit",hour12:false})));
     chart.append(bucket);
     const tr=make("tr");tr.dataset.coverage=coverage;
-    const values=[time(item.at),counts[0][1],counts[1][1],counts[2][1],
+    const values=[time(item.at),
+      ...counts.map(([,value])=>coverage==="unsampled"?"—":value),
       coverage==="unsampled"?"—":sum,
       coverage==="unsampled"?"Not covered":coverage==="partial"?"Partial sample":"Sampled"];
     for(const value of values)tr.append(make("td","",value));
