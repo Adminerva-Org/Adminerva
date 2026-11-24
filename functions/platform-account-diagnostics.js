@@ -10,6 +10,8 @@ const {randomUUID,createHash}=require("node:crypto");
 const RETENTION_DAYS=60,PER_ACCOUNT_DAILY_LIMIT=300,NORMAL_DAILY_LIMIT=240,MAX_PAGE=75,DAY_MS=86400000;
 const GLOBAL_SCOPE="platform_account_diagnostic";
 const GLOBAL_SAMPLE_LIMIT=400;
+const TREND_SAMPLE_LIMIT=800;
+const SERVER_ONLY_ACTIONS=new Set(["notification_delivered","api_succeeded","signed_in","signed_out"]);
 const GLOBAL_WINDOWS={24:1,168:7,720:30,1440:60};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UID=/^[A-Za-z0-9_-]{1,128}$/;
@@ -138,6 +140,7 @@ function serialize(doc,source="client"){
   const row=doc.data()||{};
   return {
     id:doc.id,at:createdAtNumber(row.createdAt),severity:diagnosticSeverity(row),
+    provenance:row.source==="backend"?"server_confirmed":"client_observed",
     phase:String(row.phase||(row.state==="error"?"failed":row.state==="unavailable"?"interrupted":"observed")).slice(0,16),sessionId:String(row.sessionId||"").slice(0,40),
     operationId:String(row.operationId||"").slice(0,40),traceId:String(row.traceId||"").slice(0,40),
     durationMs:Number.isInteger(row.durationMs)?row.durationMs:null,
@@ -421,6 +424,87 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     };
   }
 
+
+  async function globalTrends(request,input){
+    const authority=await platformAuthority({db,request});
+    if(!authority.platformAdmin)deny("permission-denied","Platform Administrator authority is required.");
+    const purpose=reason(input.reason);
+    const windowHours=input.windowHours===undefined?24:Number(input.windowHours);
+    const module=input.module||"";
+    // This uses the canonical, index-backed global event query. It intentionally
+    // samples at most 800 newest entries; a clipped period is never reported
+    // as an exact fleet-wide rate or a complete zero-activity bucket.
+    const result=await globalQuery({module,windowHours}).limit(TREND_SAMPLE_LIMIT+1).get();
+    const events=result.docs.slice(0,TREND_SAMPLE_LIMIT).map(safeGlobalDoc).filter(Boolean);
+    const truncated=result.size>TREND_SAMPLE_LIMIT,periodStart=now()-windowHours*3600000;
+    const bucketHours=windowHours===24?1:windowHours===168?6:windowHours===720?24:48;
+    const bucketMs=bucketHours*3600000,binCount=Math.ceil(windowHours/bucketHours);
+    const bins=Array.from({length:binCount},(_,index)=>({
+      at:periodStart+index*bucketMs,normal:0,warning:0,failure:0,
+      serverConfirmed:0,clientObserved:0
+    }));
+    const affected=new Set(),backendServices=new Map(),browserFailures=new Map();
+    const durations=[],summary={normal:0,warning:0,failure:0,
+      serverConfirmed:0,clientObserved:0};
+    let oldestAt=0,newestAt=0;
+    for(const row of events){
+      const at=Number(row.at)||0;
+      if(!at||at<periodStart||at>now()+60000)continue;
+      oldestAt=!oldestAt?at:Math.min(oldestAt,at);
+      newestAt=Math.max(newestAt,at);
+      affected.add(row.ownerUid);
+      const level=["normal","warning","failure"].includes(row.severity)?row.severity:"normal";
+      const provenance=row.provenance==="server_confirmed"?"serverConfirmed":"clientObserved";
+      summary[level]++;summary[provenance]++;
+      const index=Math.max(0,Math.min(binCount-1,Math.floor((at-periodStart)/bucketMs)));
+      bins[index][level]++;bins[index][provenance]++;
+      if(provenance==="serverConfirmed"&&Number.isInteger(row.durationMs)&&
+        row.durationMs>=0)durations.push(row.durationMs);
+      if(provenance==="serverConfirmed"&&row.service){
+        if(!backendServices.has(row.service))backendServices.set(row.service,{
+          service:row.service,success:0,failure:0,warning:0,accounts:new Set()
+        });
+        const service=backendServices.get(row.service);
+        service.accounts.add(row.ownerUid);
+        if(level==="failure")service.failure++;
+        else if(level==="warning")service.warning++;
+        else if(row.action==="api_succeeded")service.success++;
+      }
+      if(level!=="failure")continue;
+      const browser=row.browserFamily||"unknown";
+      if(!browserFailures.has(browser))browserFailures.set(browser,{
+        browser,events:0,accounts:new Set()
+      });
+      const environment=browserFailures.get(browser);
+      environment.events++;environment.accounts.add(row.ownerUid);
+    }
+    durations.sort((a,b)=>a-b);
+    const pct=percentage=>durations.length?
+      durations[Math.ceil(percentage*durations.length)-1]:null;
+    await db.collection("platform_audit").add({
+      actorUid:authority.uid,action:"platform_user_diagnostics_trends_viewed",
+      reason:purpose,windowHours,module,returned:events.length,
+      createdAt:FieldValue.serverTimestamp()
+    });
+    return {
+      scope:"bounded_global_diagnostic_trends",windowHours,bucketHours,
+      sampleCap:TREND_SAMPLE_LIMIT,truncated,eventsSampled:events.length,
+      observedAccounts:affected.size,oldestSampleAt:oldestAt,newestSampleAt:newestAt,
+      windowStartAt:periodStart,windowEndAt:now(),
+      summary,series:bins,
+      backendDurationP50Ms:pct(.5),backendDurationP95Ms:pct(.95),
+      backendDurationSample:durations.length,
+      backendServices:[...backendServices.values()].map(item=>({
+        service:item.service,success:item.success,failure:item.failure,warning:item.warning,
+        affectedAccounts:item.accounts.size
+      })).sort((a,b)=>b.failure-a.failure||b.warning-a.warning||b.success-a.success).slice(0,10),
+      clientErrorBrowsers:[...browserFailures.values()].map(item=>({
+        browser:item.browser,events:item.events,affectedAccounts:item.accounts.size
+      })).sort((a,b)=>b.events-a.events).slice(0,6),
+      coverage:"Newest indexed records only. Browser reports are not server-confirmed results; sample truncation and missing telemetry can understate event volume, affected accounts and failure rates."
+    };
+  }
+
   async function globalImpact(request,input){
     const authority=await platformAuthority({db,request});
     if(!authority.platformAdmin)deny("permission-denied","Platform Administrator authority is required.");
@@ -471,8 +555,8 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       if(request?.auth?.token?.email_verified!==true||!request?.auth?.uid)
         deny("unauthenticated","Sign in with a verified account.");
       const ownerUid=uid(request.auth.uid),event=checkedEvent(input.event);
-      if(event.action==="notification_delivered")
-        deny("permission-denied","Notification delivery records come from the server, not the browser.");
+      if(SERVER_ONLY_ACTIONS.has(event.action))
+        deny("permission-denied","Server-confirmed outcomes cannot be submitted from the browser.");
       return insert(ownerUid,event);
     }
     if(action==="list")return list(request,input);
@@ -480,6 +564,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     if(action==="global_feed")return globalFeed(request,input);
     if(action==="global_live")return liveFeed(request,input);
     if(action==="global_impact")return globalImpact(request,input);
+    if(action==="global_trends")return globalTrends(request,input);
     deny("invalid-argument","Unknown diagnostic operation.");
   }
   async function cleanup({maxAccounts=50,maxPerAccount=200}={}){
