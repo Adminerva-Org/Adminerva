@@ -157,6 +157,8 @@ function eventRow(record,ownerUid,overview){
     ["Module",record.module],["Source",record.source],
     ["Service",record.service],["Error code",record.errorCode],
     ["Phase",record.phase],["Duration (ms)",record.durationMs],
+    ["Device class",record.deviceClass],["Browser family",record.browserFamily],
+    ["Operating system",record.osFamily],["Viewport category",record.viewport],
     ["Page path",record.route]
   ])if(value!==undefined&&value!==null&&value!==""){
     const item=make("div");item.append(make("dt","",label),make("dd","",value));
