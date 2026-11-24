@@ -31,6 +31,12 @@ const make=(tag,className="",value)=>{
   return element;
 };
 const humanize=value=>String(value||"unknown").replaceAll("_"," ").replaceAll("-"," ");
+function diagnosticActionLabel(action){
+  if(action==="api_succeeded")return "Backend callable returned";
+  if(action==="api_failed")return "Backend callable failed";
+  if(action==="auth_session_observed")return "Authenticated session observed";
+  return humanize(action||"unknown event");
+}
 function time(value){
   if(!Number.isFinite(value)||value<=0)return "Time unavailable";
   try{return new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",dateStyle:"medium",timeStyle:"medium"}).format(new Date(value))+" PHT";}
@@ -39,8 +45,12 @@ function time(value){
 function permissionError(error){
   const code=String(error?.code||"");
   if(/permission-denied|unauthenticated/.test(code))return "Only an authorized Platform Administrator may inspect platform account activity.";
-  if(/failed-precondition/.test(code))return "The log page changed while loading. Refresh the current view and retry.";
-  if(/resource-exhausted/.test(code))return "The log backend reached a safe request limit. Retry with a smaller page.";
+  if(/failed-precondition/.test(code))
+    return "The log cursor expired or the required Firestore index is not ready. Refresh; if this continues, verify the backend/index deployment.";
+  if(/resource-exhausted/.test(code))
+    return "The log backend reached a safety limit. Retry later; previously recorded events have not been deleted.";
+  if(/unavailable|deadline-exceeded/.test(code))
+    return "The diagnostic backend is temporarily unavailable. Retry this view after connectivity is restored.";
   return "Could not load diagnostic records. Check the connection and backend availability; earlier records have not been changed.";
 }
 function requiredReason(){
@@ -77,7 +87,7 @@ function resetRead({clearRecent=false}={}){
   state.readEpoch++;state.loading=false;state.canMore=false;state.eventNext=null;
   state.events=[];state.audit=[];state.auditCapped=false;
   state.globalNext=null;state.global=[];state.impact=null;state.impactBusy=false;
-  state.trends=null;state.trendsBusy=false;
+  state.trends=null;state.trendsBusy=false;state.trendsRendered=undefined;
   $("pl-impact").hidden=true;$("pl-impact-results").replaceChildren();
   $("pl-trends").hidden=true;
   if(clearRecent){state.recent=[];state.recentNext=null;}
@@ -145,7 +155,7 @@ function eventRow(record,ownerUid,overview){
   }else owner.append(make("strong","pl-primary-cell",labelFor(ownerUid)));
   owner.append(make("span","pl-muted",ownerUid));
   const event=make("td");
-  event.append(make("strong","pl-primary-cell",record.action?humanize(record.action):"No recent action classified"),
+  event.append(make("strong","pl-primary-cell",record.action?diagnosticActionLabel(record.action):"No recent action classified"),
     make("span","pl-muted",humanize(record.module||"other")));
   const context=make("td");
   const pieces=[
@@ -158,6 +168,7 @@ function eventRow(record,ownerUid,overview){
     record.source?"Source: "+record.source:"",
     record.provenance?"Evidence: "+(record.provenance==="server_confirmed"?"Server-confirmed":"Client-observed"):""
   ].filter(Boolean);
+  if(record.action==="api_succeeded")pieces.push("Callable returned without throwing; not proof of a committed record");
   context.append(make("span","",pieces.join(" · ")||"No additional diagnostic metadata"));
   const details=make("details","pl-event-detail");
   details.append(make("summary","","Developer details"));
@@ -211,8 +222,9 @@ function refreshEnabled(){
   $("pl-refresh").disabled=!state.eligible||state.loading;
   $("pl-load-recent").disabled=!state.eligible||state.loading;
   $("pl-more").disabled=state.loading||!state.canMore;
-  $("pl-show-global").disabled=!state.eligible||state.loading;
-  $("pl-show-live").disabled=!state.eligible||state.loading;
+  // Mode navigation can interrupt a slow read: resetRead invalidates its token.
+  $("pl-show-global").disabled=!state.eligible;
+  $("pl-show-live").disabled=!state.eligible;
   $("pl-impact-refresh").disabled=!state.eligible||state.impactBusy||state.view!=="global";
   $("pl-trends-refresh").disabled=!state.eligible||state.trendsBusy||state.view!=="global";
 }
@@ -368,7 +380,7 @@ function renderTrends(){
     }
   };
   breakdown(services,data.backendServices,item=>[
-    item.service,(item.failure||0)+" failed · "+(item.success||0)+" succeeded · "+
+    item.service,(item.failure||0)+" failed · "+(item.success||0)+" returned · "+
     (item.affectedAccounts||0)+" accounts"]);
   breakdown(browsers,data.clientErrorBrowsers,item=>[
     item.browser,(item.events||0)+" reported failures · "+(item.affectedAccounts||0)+" accounts"]);
@@ -425,7 +437,7 @@ function renderImpact(){
     const card=make("article","pl-cluster");
     const left=make("div");
     left.append(flag(item.severity),
-      make("strong","",humanize(item.action||"operational failure")),
+      make("strong","",diagnosticActionLabel(item.action||"operational failure")),
       make("p","",humanize(item.module)+" · "+(item.errorCode||"No error code")+
         " · "+item.observedEvents+" observed events across "+item.observedAccounts+
         " accounts · Last: "+time(item.lastAt)));
@@ -560,7 +572,7 @@ function liveLine(row){
   actor.type="button";actor.title="Open this account's diagnostic timeline";
   actor.addEventListener("click",()=>chooseAccount(row.ownerUid));
   const content=make("div","pl-live-content");
-  content.append(make("span","pl-live-action",humanize(row.action||"unknown event")));
+  content.append(make("span","pl-live-action",diagnosticActionLabel(row.action)));
   const descriptors=[row.module||"other",row.phase||row.state||"observed",
     row.source||"",row.provenance==="server_confirmed"?"server-confirmed":"client-observed",
     row.service||"",row.errorCode?"error: "+row.errorCode:"",
