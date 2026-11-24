@@ -2,6 +2,7 @@
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {checkId}=require("./school-academics.js");
+const {HISTORICAL_SOURCE,historicalPublishedGrades}=require("./school-class-record-historical.js");
 const MAX_CLASSES=100,MAX_COLUMNS=80,SCHOOL_SOURCE="school",LEGACY_PERSONALIZED_SOURCE="legacy_personalized",LEGACY_BRIDGE_SCHOOL="mcs-manila";
 const CELL_STATUSES=new Set(["normal","incomplete","exempt","not_applicable"]);
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
@@ -56,12 +57,18 @@ function createSchoolStudentClassRecordService({db,resolveUsers=null}){
    const schoolGrades=await Promise.all(cols.map(c=>c.kind==="assessment"&&(c.assessmentSource||SCHOOL_SOURCE)===SCHOOL_SOURCE?
     db.doc(prefix+"student_grades/"+hash(c.taskId,ctx.uid)).get():Promise.resolve(null)));
    const legacyIds=new Set(cols.filter(c=>c.kind==="assessment"&&c.assessmentSource===LEGACY_PERSONALIZED_SOURCE).map(c=>c.taskId));
-   const legacyGrades=await legacy(label.sectionName,legacyIds);
+   const [legacyGrades,historicalGrades]=await Promise.all([
+    legacy(label.sectionName,legacyIds),
+    historicalPublishedGrades({db,schoolId:ctx.schoolId,offeringId,offering:o,columns:cols,
+      roster:[{personId,authUid:ctx.uid,legacyStudentIds:person.data().legacyStudentIds||[]}],resolveUsers})
+   ]);
+   const historicalByTask=new Map(historicalGrades.map(grade=>[grade.taskId,grade]));
    const scores=cols.map((c,i)=>{const s=states[i]?.exists&&states[i].data().schoolId===ctx.schoolId?status(states[i].data().status):"normal";
     let score=null,sourceType=c.kind==="manual"?"manual":(c.assessmentSource||SCHOOL_SOURCE);
     if(s==="normal"&&c.kind==="manual"){const d=manuals[i]?.exists?manuals[i].data():null;if(d&&d.schoolId===ctx.schoolId&&d.personId===personId&&d.score!==null&&Number.isFinite(Number(d.score)))score=Number(d.score);}
     else if(s==="normal"&&sourceType===SCHOOL_SOURCE){const d=schoolGrades[i]?.exists?schoolGrades[i].data():null;if(d&&d.schoolId===ctx.schoolId&&d.offeringId===offeringId&&d.personId===personId&&d.studentUid===ctx.uid&&d.status==="published"&&Number.isFinite(Number(d.awarded)))score=Number(d.awarded);}
-    else if(s==="normal"){const d=legacyGrades.get(c.taskId);if(d)score=Number(d.score);}
+    else if(s==="normal"&&sourceType===HISTORICAL_SOURCE){const d=historicalByTask.get(c.taskId);if(d&&Math.abs(d.total-Number(c.maxPoints))<0.0001)score=d.awarded;}
+    else if(s==="normal"&&sourceType===LEGACY_PERSONALIZED_SOURCE){const d=legacyGrades.get(c.taskId);if(d)score=Number(d.score);}
     return {columnId:c.columnId,label:String(c.label||"Activity"),category:String(c.category||""),kind:c.kind,sourceType,maxPoints:Number(c.maxPoints)||0,status:s,score:Number.isFinite(score)?score:null};
    });
    let finalGrade=null;const releasedRevision=finalization.exists&&finalization.data().schoolId===ctx.schoolId?Number(finalization.data().releasedRevision)||0:0;
