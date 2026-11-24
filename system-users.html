@@ -70,6 +70,7 @@
     <div class="flex items-center justify-between gap-3 mb-3">
       <div>
         <h2 class="font-extrabold text-lg">Account directory</h2>
+        <p class="text-xs text-slate-500">For read-only troubleshooting timelines, use the separate <a class="underline font-semibold" href="platform-logs.html">Platform Log Viewer</a>.</p>
         <p class="text-xs text-slate-500">The full Firebase Auth directory is loaded into this System Admin workspace, then searched and filtered locally.</p>
       </div>
       <span id="pu-count" class="pu-chip">—</span>
@@ -86,7 +87,10 @@
         <h2 id="pu-detail-title" class="text-xl font-extrabold mt-1 break-words">User account</h2>
         <p id="pu-detail-meta" class="text-sm text-slate-600 mt-1 break-words"></p>
       </div>
-      <button id="pu-detail-close" class="pu-btn shrink-0" type="button">Close</button>
+      <div class="flex flex-wrap gap-2 shrink-0">
+        <a id="pu-open-logs" class="pu-btn" href="platform-logs.html">View account logs</a>
+        <button id="pu-detail-close" class="pu-btn" type="button">Close</button>
+      </div>
     </div>
 
     <div id="pu-detail-account" class="grid sm:grid-cols-2 gap-3 mt-4"></div>
@@ -151,31 +155,6 @@
       <p class="text-xs text-slate-500 mt-1">School membership summary. Explicit test-student access and placement changes use audited System Admin Assist; ordinary school access remains school-admin owned.</p>
       <div id="pu-memberships" class="grid gap-2 mt-3"></div>
     </section>
-    <section class="mt-5 rounded-xl border border-cyan-200 bg-cyan-50/40 p-4" aria-label="Platform-only account diagnostic timeline">
-      <h3 class="font-extrabold">Account diagnostic timeline</h3>
-      <p class="text-xs text-slate-600 mt-1">Platform Administrator only. Review safe page activity, API error codes, network transitions, Studio cloud-save confirmations, notification delivery/opening and immutable account-administration actions. This is a best-effort support log, not a recording of what the student typed or viewed.</p>
-      <label class="block text-sm font-bold mt-3" for="pu-diagnostic-reason">Reason for accessing this user's log
-        <textarea id="pu-diagnostic-reason" class="pu-input mt-1" minlength="12" maxlength="300" rows="2" placeholder="Required support case, incident reference or security investigation purpose"></textarea>
-      </label>
-      <div class="flex flex-wrap gap-2 items-center mt-3">
-        <button id="pu-diagnostic-load" class="pu-btn primary" type="button">View account log</button>
-        <button id="pu-diagnostic-next" class="pu-btn" type="button" disabled>Older events</button>
-        <span id="pu-diagnostic-count" class="text-xs text-slate-600"></span>
-      </div>
-      <p id="pu-diagnostic-status" class="text-sm text-slate-700 mt-3" role="status" aria-live="polite">Events are not requested until you enter a reason and open the log. Each inspection is audited.</p>
-      <div class="overflow-x-auto mt-3">
-        <table class="w-full min-w-[560px] text-sm border-collapse">
-          <caption class="text-left text-xs text-slate-500 mb-2">Recent sanitized account events</caption>
-          <thead><tr class="text-left border-b"><th scope="col" class="p-2">When</th><th scope="col" class="p-2">Action</th><th scope="col" class="p-2">Outcome</th><th scope="col" class="p-2">Location / error</th></tr></thead>
-          <tbody id="pu-diagnostic-events"></tbody>
-        </table>
-      </div>
-      <details class="mt-4 border rounded-lg bg-white p-3">
-        <summary class="font-bold cursor-pointer">Related account administration history</summary>
-        <p class="text-xs text-slate-500 mt-2">Existing immutable account lifecycle records are included separately, not copied into the diagnostic stream. Only the newest bounded audit sample is shown.</p>
-        <div id="pu-diagnostic-audit" class="mt-2 space-y-2"></div>
-      </details>
-    </section>
     <p id="pu-detail-status" class="text-sm text-slate-600 mt-4" role="status" aria-live="polite"></p>
   </div>
 </dialog>
@@ -218,6 +197,6 @@
 <script src="js/core/adminerva-loader.js?v=9dc90ac0f1c0"></script>
 <script defer src="js/core/adminerva-nav.js?v=9dc90ac0f1c0"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=9dc90ac0f1c0"></script>
-<script type="module" src="js/core/platform-users.mjs?v=20261124-test-reason-ux-1"></script>
+<script type="module" src="js/core/platform-users.mjs?v=20261124-dedicated-logs-1"></script>
 <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261121-platform-flow1"></script></body>
 </html>
