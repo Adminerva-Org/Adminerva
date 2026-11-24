@@ -129,7 +129,7 @@ test("verified subject can append only own events, with idempotent retry and bou
   }),/Sign in with a verified account/);
   await assert.rejects(api(request(USER,{action:"record",targetUid:ADMIN,event:event({
     eventId:"cccccccc-cccc-4ccc-8ccc-cccccccccccc",action:"notification_delivered",kind:"notification",module:"notifications"
-  })})),/server, not the browser/);
+  })})),/Server-confirmed outcomes cannot be submitted from the browser/);
 });
 
 test("only Platform Admin can view a specific login; access reason and reads are audited",async()=>{

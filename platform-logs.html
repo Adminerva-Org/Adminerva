@@ -10,7 +10,7 @@
   <script defer src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=7fe6ab08fd82">
   <link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1">
-  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-live-console-1">
+  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-diagnostic-trends-1">
 </head>
 <body id="pageBody" class="hidden">
   <div id="adminerva-nav" data-module="admin" data-page="platform-logs"></div>
@@ -114,6 +114,24 @@
           </div>
           <p class="pl-live-footnote">Color and severity identify the recorded outcome. New lines are highlighted briefly; you can pause, inspect details, and resume from the last received event. Severity and module filters affect visible console lines, not which events are fetched. Polling is bounded and audited in ten-minute viewing windows.</p>
         </section>
+        <section id="pl-trends" class="pl-trends" aria-labelledby="pl-trends-heading" hidden>
+          <div class="pl-trends-heading">
+            <div>
+              <p class="pl-eyebrow">Diagnostic analytics · bounded sample</p>
+              <h3 id="pl-trends-heading">Event health &amp; backend outcomes</h3>
+              <p>Inspect event volume, recorded failures, distinct affected accounts and backend processing time over the selected period. Browser reports and server-confirmed outcomes are shown separately.</p>
+            </div>
+            <button id="pl-trends-refresh" type="button" class="pl-button pl-secondary">Analyze recorded trends</button>
+          </div>
+          <p id="pl-trends-status" class="pl-trends-status" role="status" aria-live="polite">Select an investigation period and choose Analyze recorded trends.</p>
+          <div id="pl-trends-metrics" class="pl-trends-metrics"></div>
+          <div id="pl-trends-chart" class="pl-trends-chart" role="group" aria-label="Recorded normal, warning and failure events by time bucket"></div>
+          <div class="pl-trends-breakdowns">
+            <div><h4>Backend operation outcomes</h4><div id="pl-trends-services"></div></div>
+            <div><h4>Reported failures by browser family</h4><div id="pl-trends-browsers"></div></div>
+          </div>
+          <p class="pl-trends-notice">This is a sampled diagnostic view, not an exact count of all activity or a measure of student effort. Each aggregate is restricted to events already recorded. A truncated sample understates event volume and may omit older intervals.</p>
+        </section>
         <section id="pl-impact" class="pl-impact" aria-labelledby="pl-impact-heading" hidden>
           <div class="pl-impact-head">
             <div><h3 id="pl-impact-heading">Cross-account failure patterns</h3>
@@ -145,7 +163,7 @@
   <script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
   <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
   <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
-  <script type="module" src="js/core/platform-logs.mjs?v=20261124-live-console-1"></script>
+  <script type="module" src="js/core/platform-logs.mjs?v=20261124-diagnostic-trends-1"></script>
   <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script>
   <script defer src="js/core/release-footer.js?v=7fe6ab08fd82"></script>
 </body>
