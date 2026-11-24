@@ -342,9 +342,15 @@ function renderTrends(){
   $("pl-trends").hidden=!visible;
   if(!visible)return;
   const data=state.trends;
+  // Avoid rebuilding the sampled chart and collapsing its inspectable table
+  // whenever a user types in the unrelated event text filter.
+  if(state.trendsRendered===data)return;
+  state.trendsRendered=data;
   const metricHost=$("pl-trends-metrics"),chart=$("pl-trends-chart");
   const services=$("pl-trends-services"),browsers=$("pl-trends-browsers");
+  const table=$("pl-trends-table");
   metricHost.replaceChildren();chart.replaceChildren();services.replaceChildren();browsers.replaceChildren();
+  table.replaceChildren();
   if(!data){
     if(!state.trendsBusy)$("pl-trends-status").textContent=
       "Select a time period, then choose Analyze recorded trends. Analysis is manual to control backend reads.";
@@ -356,7 +362,7 @@ function renderTrends(){
     ["Distinct observed accounts",data.observedAccounts||0],
     ["Recorded failures",summary.failure||0],
     ["Recorded warnings",summary.warning||0],
-    ["Server-confirmed outcomes",summary.serverConfirmed||0],
+    ["Backend-recorded events",summary.serverConfirmed||0],
     ["Client-observed events",summary.clientObserved||0],
     ["Backend P95",data.backendDurationP95Ms===null?"Not recorded":data.backendDurationP95Ms+" ms"]
   ];
@@ -370,21 +376,31 @@ function renderTrends(){
     :"Sample not capped. Missing telemetry and client reports still prevent exact fleet-wide counts.";
   const from=data.oldestSampleAt?time(data.oldestSampleAt):"None";
   $("pl-trends-status").textContent="Period: past "+data.windowHours+
-    " hours · "+total+" recorded events · Oldest observed: "+from+
-    " · Backend latency sample: "+data.backendDurationSample+". "+caveat;
+    " hours · "+total+" recorded events · Oldest sampled: "+from+
+    " · Backend duration sample: "+data.backendDurationSample+
+    ". Time and module scope only; flag and text filters are excluded. "+caveat;
   const series=Array.isArray(data.series)?data.series:[];
   const maximum=Math.max(1,...series.map(item=>
     (Number(item.normal)||0)+(Number(item.warning)||0)+(Number(item.failure)||0)));
   for(const item of series){
     const bucket=make("div","pl-trend-bucket");
+    const cutoff=data.truncated&&Number.isFinite(data.oldestSampleAt)?
+      Number(data.oldestSampleAt):0;
+    const bucketStart=Number(item.at)||0;
+    const bucketEnd=bucketStart+(Number(data.bucketHours)||1)*3600000;
+    const coverage=cutoff&&bucketEnd<=cutoff?"unsampled":
+      cutoff&&bucketStart<cutoff?"partial":"sampled";
+    bucket.dataset.coverage=coverage;
     const counts=[
       ["normal",Math.max(0,Number(item.normal)||0)],
       ["warning",Math.max(0,Number(item.warning)||0)],
       ["failure",Math.max(0,Number(item.failure)||0)]
     ];
     const sum=counts.reduce((acc,[,n])=>acc+n,0);
-    bucket.title=time(item.at)+": "+sum+" observed; normal "+
-      counts[0][1]+", warning "+counts[1][1]+", failure "+counts[2][1];
+    bucket.title=time(item.at)+": "+(coverage==="unsampled"?"Not covered by latest sample":
+      coverage==="partial"?"Partially covered by latest sample":
+      sum+" sampled events")+"; normal "+counts[0][1]+
+      ", warning "+counts[1][1]+", failure "+counts[2][1];
     bucket.setAttribute("aria-label",bucket.title);
     const stack=make("div","pl-trend-bar");
     stack.style.height=Math.max(sum?3:0,sum/maximum*108)+"px";
@@ -397,6 +413,12 @@ function renderTrends(){
     bucket.append(stack,make("span","pl-trend-time",new Date(item.at).toLocaleString("en-PH",{
       timeZone:"Asia/Manila",month:"short",day:"numeric",hour:"2-digit",hour12:false})));
     chart.append(bucket);
+    const tr=make("tr");tr.dataset.coverage=coverage;
+    const values=[time(item.at),counts[0][1],counts[1][1],counts[2][1],
+      coverage==="unsampled"?"—":sum,
+      coverage==="unsampled"?"Not covered":coverage==="partial"?"Partial sample":"Sampled"];
+    for(const value of values)tr.append(make("td","",value));
+    table.append(tr);
   }
   const breakdown=(host,items,format)=>{
     if(!items?.length){host.append(make("p","pl-empty","No matching recorded outcomes in this bounded sample."));return;}
@@ -407,7 +429,7 @@ function renderTrends(){
     }
   };
   breakdown(services,data.backendServices,item=>[
-    item.service,(item.failure||0)+" failed · "+(item.success||0)+" returned · "+
+    item.service,(item.failure||0)+" failed · "+(item.success||0)+" returned without exception · "+
     (item.affectedAccounts||0)+" accounts"]);
   breakdown(browsers,data.clientErrorBrowsers,item=>[
     item.browser,(item.events||0)+" reported failures · "+(item.affectedAccounts||0)+" accounts"]);
