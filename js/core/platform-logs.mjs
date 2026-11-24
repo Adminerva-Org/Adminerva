@@ -704,6 +704,7 @@ onAuthStateChanged(auth,user=>{
   $("pl-search").disabled=true;$("pl-show-recent").disabled=true;$("pl-show-global").disabled=true;$("pl-show-live").disabled=true;$("pl-load-recent").disabled=true;
   $("pl-refresh").disabled=true;$("pl-reason").value="";
   $("pl-purpose-status").textContent=user?"Checking Platform Administrator access…":"Sign in with an authorized Platform Administrator account.";
+  liveStatus(user?"Monitoring stopped while Platform Administrator access is rechecked.":"Signed out. Live monitoring is stopped.");
   renderAccounts();renderEvents();
   if(user)void loadDirectory(user,state.epoch);
 });
