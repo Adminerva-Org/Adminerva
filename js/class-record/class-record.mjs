@@ -1975,7 +1975,9 @@ async function findEarlierAssessment(){
     sourceSearchResults.append(make("p","cr-help",
       "Checked "+checked+" sources belonging to your verified teacher account. "+
       candidates.length+" match"+(candidates.length===1?"":"es")+" found."));
-    if(!candidates.length){
+    const legacyCandidates=Array.isArray(result.legacyRepositoryCandidates)?
+      result.legacyRepositoryCandidates:[];
+    if(!candidates.length&&!legacyCandidates.length){
       sourceSearchResults.append(make("p","cr-help",
         "No matching assessment was found under this teacher identity in the current school. "+
         "The missing work may belong to an earlier login, another school, or a source outside "+
@@ -1999,6 +2001,30 @@ async function findEarlierAssessment(){
       }
       sourceSearchResults.append(card);
     }
+    if(legacyCandidates.length){
+      sourceSearchResults.append(make("p","cr-help",
+        legacyCandidates.length+" earlier Repository Management assessment"+
+        (legacyCandidates.length===1?"":"s")+
+        " found in a verified original class section, but ownership requires review:"));
+      for(const item of legacyCandidates){
+        const card=make("article");
+        card.append(make("strong","",item.title||"Legacy assessment"));
+        card.append(make("p","",
+          "Legacy source reference: "+item.assessmentId+
+          (item.subject?" · Original subject: "+item.subject:"")+
+          (item.originalSections?.length?" · Original section: "+item.originalSections.join(", "):"")+
+          (item.maximum?" · Max score: "+item.maximum:" · Original maximum not recorded")));
+        card.append(make("p","",
+          item.originalOwnerStatus==="owner_not_recorded"?
+            "This assessment predates teacher ownership fields. Its historical section matches verified student identities, but the original owner must still be reviewed.":
+            "This assessment belongs to a different historical login or teacher identity. It cannot be reassigned from this screen."));
+        card.append(make("p","",
+          "NOT LINKABLE / NOT GRADABLE YET — ask School Administration to review original author, deployed section and account history. No scores were copied, published or created."));
+        sourceSearchResults.append(card);
+      }
+    }
+    if(result.legacyRepositoryDiagnostic)
+      sourceSearchResults.append(make("p","cr-help",result.legacyRepositoryDiagnostic));
     if(result.truncated)
       sourceSearchResults.append(make("p","cr-help",
         "Showing the first 30 matches. Narrow the title to refine the search."));
