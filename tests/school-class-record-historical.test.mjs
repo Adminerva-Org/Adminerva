@@ -18,6 +18,7 @@ test("earlier assessment title finder recognizes Mini PETA variants without unre
   assert.equal(matchesAssessmentTitle("Mini PETA 1","Mini PETA #1 — UI/XML"),true);
   assert.equal(matchesAssessmentTitle("UI XML","Mini PETA 1: UI / XML"),true);
   assert.equal(matchesAssessmentTitle("Mini PETA 1","Mini PETA 2 — UI/XML"),false);
+  assert.equal(matchesAssessmentTitle("Mini PETA 1","Mini PETA 10 — UI/XML"),false);
   assert.equal(matchesAssessmentTitle("UI/XML","Q3 Mini PETA — UI Interaction"),false);
   assert.equal(matchesAssessmentTitle("", "Mini PETA 1"),false);
   assert.equal(matchesAssessmentTitle("@@", "Mini PETA 1"),false);
