@@ -368,6 +368,56 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       scope:"all_recorded_account_events",windowHours,activePattern:pattern,
       coverage:"Globally indexed events only. Earlier per-user diagnostics remain in account history; anonymous and unrecorded actions are not reconstructed."};
   }
+
+  // Three-second near-live watch. Do not create one immutable audit write per
+  // poll: a platform admin's continuously authenticated access is audited once
+  // per ten-minute investigation window, with a fresh reason on each window.
+  async function liveFeed(request,input){
+    const authority=await platformAuthority({db,request});
+    if(!authority.platformAdmin)
+      deny("permission-denied","Platform Administrator authority is required.");
+    const purpose=reason(input.reason);
+    const limit=Number.isInteger(input.limit)&&input.limit>=1?Math.min(MAX_PAGE,input.limit):60;
+    const windowKey=Math.floor(now()/600000);
+    const audit=db.collection("platform_audit").doc("diagnostic_live_"+authority.uid+"_"+windowKey);
+    await db.runTransaction(async tx=>{
+      const existing=await tx.get(audit);
+      if(!existing.exists)tx.create(audit,{
+        actorUid:authority.uid,action:"platform_user_diagnostics_live_viewed",
+        reason:purpose,windowMinutes:10,createdAt:FieldValue.serverTimestamp()
+      });
+    });
+    const scope=db.collectionGroup("entries").where("diagnosticScope","==",GLOBAL_SCOPE);
+    const rawCursor=input.cursor===undefined||input.cursor===null?"":input.cursor;
+    if(typeof rawCursor!=="string"||rawCursor.length>260)
+      deny("invalid-argument","Invalid live diagnostic cursor.");
+    let docs=[],nextCursor="",hasMore=false,initial=!rawCursor;
+    if(rawCursor){
+      const parts=rawCursor.split("/");
+      if(parts.length!==4||parts[0]!=="platform_account_diagnostics"||!UID.test(parts[1])||
+         parts[2]!=="entries"||!UUID.test(parts[3]))
+        deny("invalid-argument","Invalid live diagnostic cursor.");
+      const last=await root(parts[1]).collection("entries").doc(parts[3]).get();
+      if(!last.exists||last.data()?.ownerUid!==parts[1]||
+        last.data()?.diagnosticScope!==GLOBAL_SCOPE)
+        deny("failed-precondition","Live cursor expired; restart from the latest indexed events.");
+      const result=await scope.orderBy("createdAt","asc").startAfter(last).limit(limit+1).get();
+      docs=result.docs.slice(0,limit);
+      nextCursor=docs.at(-1)?.ref?.path||rawCursor;
+      hasMore=result.size>limit;
+    }else{
+      const result=await scope.orderBy("createdAt","desc").limit(Math.min(limit,50)).get();
+      docs=result.docs.slice().reverse();
+      nextCursor=result.docs[0]?.ref?.path||"";
+    }
+    const events=docs.map(safeGlobalDoc).filter(Boolean);
+    return {
+      scope:"live_indexed_account_events",initial,events,cursor:nextCursor,hasMore,
+      pollAfterMs:3000,serverAt:now(),
+      coverage:"Near-live 3-second polling, not direct device monitoring. Only recorded, indexed and authorized diagnostic metadata; no guarantee of every click or anonymous sign-in."
+    };
+  }
+
   async function globalImpact(request,input){
     const authority=await platformAuthority({db,request});
     if(!authority.platformAdmin)deny("permission-denied","Platform Administrator authority is required.");
@@ -425,6 +475,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     if(action==="list")return list(request,input);
     if(action==="recent_accounts")return recentAccounts(request,input);
     if(action==="global_feed")return globalFeed(request,input);
+    if(action==="global_live")return liveFeed(request,input);
     if(action==="global_impact")return globalImpact(request,input);
     deny("invalid-argument","Unknown diagnostic operation.");
   }
