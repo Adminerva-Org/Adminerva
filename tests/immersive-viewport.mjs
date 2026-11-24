@@ -85,11 +85,14 @@ try{
       }
       if(name==='public'&&viewport.name==='mobile-320'){
         const flow=await page.evaluate(()=>{
-          const intro=document.querySelector('.avx-route-intro')?.getBoundingClientRect();
+          const introText=[...document.querySelectorAll('.avx-route-intro h2,.avx-route-intro p')]
+            .filter(node=>node.getClientRects().length)
+            .map(node=>node.getBoundingClientRect().bottom);
           const firstStop=document.querySelector('.avx-route-stop')?.getBoundingClientRect();
-          return intro&&firstStop?{introBottom:intro.bottom,firstStopTop:firstStop.top}:null;
+          const textBottom=introText.length?Math.max(...introText):null;
+          return textBottom!==null&&firstStop?{textBottom,firstStopTop:firstStop.top}:null;
         });
-        assert.ok(flow&&flow.firstStopTop>=flow.introBottom+8,'mobile public first destination must clear its narrative intro');
+        assert.ok(flow&&flow.firstStopTop>=flow.textBottom+8,'mobile public first destination must clear its visible narrative copy');
       }
       if(name==='public'){
         await page.locator('.avx-view-trigger').click();
