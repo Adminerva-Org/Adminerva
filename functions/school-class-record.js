@@ -15,7 +15,7 @@ const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
-const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,validOrigin}=require("./school-class-record-historical.js");
+const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
 
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
@@ -48,6 +48,52 @@ function canDiscloseAssessmentSource(scope,data,schoolId,uid){
   return false;
 }
 
+
+/**
+ * Some October 2026 Repository Management assessments preceded ownerUid,
+ * schemaVersion, sectionIds and maxScore. They must not be silently assigned
+ * to a teacher. A limited source-title diagnostic may reveal an *already
+ * deployed* legacy task only when this offering has verified original student
+ * identities in the original section. This is NOT a permission to grade/link.
+ */
+function legacyRepositoryDeploymentSections(data){
+  const raw=[
+    ...(Array.isArray(data?.deployments)?data.deployments.map(item=>item?.section):[]),
+    ...(Array.isArray(data?.targetSections)?data.targetSections:[])
+  ];
+  const sections=new Map();
+  for(const section of raw){
+    if(typeof section!=="string"||!section.trim()||section.trim().length>160)continue;
+    const normalized=section.trim().toLocaleLowerCase("en").replace(/\s+/g," ");
+    if(!sections.has(normalized))sections.set(normalized,section.trim());
+  }
+  return [...sections.values()];
+}
+function legacyRepositoryMetadataCandidate({
+  task,schoolId,titleQuery,originalSectionPeople,rosterSize
+}){
+  if(!validOrigin(task,schoolId)||![null,undefined,""].includes(task.ownerUid)&&
+     typeof task.ownerUid!=="string")return null;
+  if(!matchesAssessmentTitle(titleQuery,task.title)||task.schemaVersion===2||
+     task.schemaVersion===3)return null;
+  // An undeployed teacher preparation resource remains private.
+  const sections=legacyRepositoryDeploymentSections(task);
+  const required=rosterSize===1?1:2;
+  const proven=sections.filter(section=>{
+    const key=section.trim().toLocaleLowerCase("en").replace(/\s+/g," ");
+    return (originalSectionPeople.get(key)?.size||0)>=required;
+  });
+  if(!proven.length)return null;
+  return {
+    title:String(task.title||"").trim().slice(0,160),
+    subject:String(task.subject||"").trim().slice(0,120),
+    originalSections:proven.slice(0,12),
+    originalOwnerStatus:typeof task.ownerUid==="string"&&task.ownerUid.trim()?
+      "different_account":"owner_not_recorded",
+    maximum:Number.isFinite(Number(task.maxScore))&&Number(task.maxScore)>0?
+      Number(task.maxScore):null
+  };
+}
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function text(value,label,max){
@@ -1134,10 +1180,75 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           add("original_assessment",doc,data);
         }
       }
+      // The old Repository Management route listed all assessments and did
+      // not depend on ownerUid. Never silently grant that legacy-wide scope to
+      // Class Record, but inspect early, already-deployed records for an
+      // owner-reconciliation lead. Only this teacher's active assigned course
+      // may reveal minimal metadata from a verified original student cohort.
+      let legacyRepositoryCandidates=[],legacyRepositoryDiagnostic="";
+      if(ctx.schoolId===LEGACY_BRIDGE_SCHOOL&&
+         ![...found.values()].some(item=>item.sourceType==="original_assessment")){
+        const activeGrant=await grantRef.get();
+        if(activeGrant.exists&&activeGrant.data().schoolId===ctx.schoolId&&
+           activeGrant.data().teacherUid===ctx.uid&&
+           activeGrant.data().offeringId===offeringId&&
+           activeGrant.data().status==="active"){
+          const legacy=await db.collection("assessments").limit(501).get();
+          if(legacy.size>=501){
+            legacyRepositoryDiagnostic="Legacy Repository Management has more than 500 assessment records; a School Administrator must review the historical archive with pagination.";
+          }else{
+            const possible=legacy.docs.filter(doc=>{
+              const data=doc.data();
+              return data.ownerUid!==ctx.uid&&validOrigin(data,ctx.schoolId)&&
+                matchesAssessmentTitle(query,data.title)&&
+                legacyRepositoryDeploymentSections(data).length>0;
+            });
+            if(possible.length){
+              const roster=await classRoster();
+              const identities=await resolveHistoricalRoster({
+                db,schoolId:ctx.schoolId,roster,resolveUsers
+              });
+              const originalSectionPeople=new Map();
+              const originalIds=[...identities.keys()];
+              for(let offset=0;offset<originalIds.length;offset+=100){
+                const ids=originalIds.slice(offset,offset+100);
+                const records=await db.getAll(...ids.map(id=>db.doc("students/"+id)));
+                records.forEach((doc,index)=>{
+                  if(!doc.exists)return;
+                  const data=doc.data(),section=String(data?.section||
+                    data?.sectionName||data?.classSection||"").trim()
+                    .toLocaleLowerCase("en").replace(/\s+/g," ");
+                  if(!section)return;
+                  if(!originalSectionPeople.has(section))
+                    originalSectionPeople.set(section,new Set());
+                  originalSectionPeople.get(section).add(identities.get(ids[index]));
+                });
+              }
+              for(const doc of possible){
+                const metadata=legacyRepositoryMetadataCandidate({
+                  task:doc.data(),schoolId:ctx.schoolId,titleQuery:query,
+                  originalSectionPeople,rosterSize:roster.length
+                });
+                if(!metadata)continue;
+                legacyRepositoryCandidates.push({
+                  assessmentId:doc.id,...metadata,
+                  status:"ownership_review_required",
+                  canLink:false,canGrade:false
+                });
+              }
+              legacyRepositoryCandidates.sort((a,b)=>a.title.localeCompare(b.title));
+              legacyRepositoryCandidates=legacyRepositoryCandidates.slice(0,15);
+              if(!legacyRepositoryCandidates.length)
+                legacyRepositoryDiagnostic="No owner-unverified original assessment could be verified against this class's preserved student identities. The assessment may use another original section or an earlier account, or its original record may be missing.";
+            }
+          }
+        }
+      }
       return {query:String(input.query).trim(),checked:counts,
         results:[...found.values()].sort((a,b)=>a.title.localeCompare(b.title)||
           a.sourceType.localeCompare(b.sourceType)).slice(0,30),
-        truncated:found.size>30};
+        truncated:found.size>30,legacyRepositoryCandidates,
+        legacyRepositoryDiagnostic};
     }
     if(input.action==="workspace"){
       const data=await buildWorkspaceData();
@@ -1771,5 +1882,6 @@ module.exports={
   createSchoolClassRecordService,cleanColumns,cleanSettings,
   schemeMatchesOffering,schemeSpecificity,schemeScopesOverlap,
   matchesAssessmentTitle,canDiscloseAssessmentSource,
+  legacyRepositoryDeploymentSections,legacyRepositoryMetadataCandidate,
   SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE,HISTORICAL_SOURCE
 };
