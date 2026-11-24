@@ -734,3 +734,11 @@ html[data-adminerva-experience="quick"] .avx-canonical-home{background:initial!i
   .avx-gate-mark{left:.5rem;right:auto;top:.5rem}
   .avx-gate-logo{width:94px!important}
 }
+
+
+/* Phone route flow: keep narrative copy fully above the first destination. */
+@media (max-width:699px) and (orientation:portrait){
+  .avx-route-section{display:block}
+  .avx-route-intro{margin-bottom:2.35rem}
+  .avx-route{margin-top:0}
+}
