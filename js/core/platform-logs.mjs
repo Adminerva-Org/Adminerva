@@ -153,9 +153,11 @@ function renderEvents(){
   const filtered=rows.filter(row=>(!level||severity(row.severity)===level)&&(!module||row.module===module));
   const host=$("pl-events");host.replaceChildren();
   for(const row of filtered)host.append(eventRow(row,state.selectedUid||row.ownerUid,!state.selectedUid));
-  if(!filtered.length)host.append(make("tr")).firstChild.append(make("td","pl-empty",
-    rows.length?"No loaded events match these filters.":"No recorded activity loaded for this view."));
-  if(!filtered.length){const cell=host.lastElementChild.firstElementChild;cell.colSpan=5;}
+  if(!filtered.length){
+    const empty=make("tr"),cell=make("td","pl-empty",
+      rows.length?"No loaded events match these filters.":"No recorded activity loaded for this view.");
+    cell.colSpan=5;empty.append(cell);host.append(empty);
+  }
   $("pl-more").hidden=!state.canMore;$("pl-more").disabled=state.loading||!state.canMore;
   renderAudit();
 }
