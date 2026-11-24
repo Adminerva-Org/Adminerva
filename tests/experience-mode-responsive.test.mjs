@@ -55,6 +55,11 @@ test('signed-in Full Experience decorates the canonical Home instead of creating
   const css=await text('css/experience-mode.css');
   assert.match(css,/\.avx-canonical-home-hero/);
   assert.match(css,/\.avx-canonical-guide/);
+  assert.match(css,/\.avx-scene-architecture/);
+  assert.match(css,/\.avx-home-handoff/);
+  assert.match(source,/sceneArchitecture\(role\)/);
+  assert.match(source,/sceneHandoff\(role\)/);
+  assert.match(css,/assets\/immersive\/world-arrival\.webp/);
   assert.match(css,/assets\/immersive\/world-journey\.webp/);
 });
 test('public full experience uses canonical public channels and real routes only',async()=>{

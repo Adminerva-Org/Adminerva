@@ -9,7 +9,7 @@ import {chromium} from 'playwright';
 const root=resolve('.');
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.woff2':'font/woff2'};
 const roles=new Set(['student','teacher','admin','platform']);
-const fixture=role=>`<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/css/adminerva-ui.css"><link rel="stylesheet" href="/css/experience-mode.css"></head><body><main data-home-experience="${role}" style="max-width:1100px;margin:auto;padding:1rem"><header class="av-home-hero"><p>Canonical ${role} home</p><h1>One home. One navigation.</h1><p>Operational work starts on this page.</p></header><section id="real-dashboard"><h2>Operational dashboard fixture</h2><p>This is visible without crossing a second homepage.</p></section></main><script type="module" src="/js/core/experience-mode.mjs"></script></body></html>`;
+const fixture=role=>`<!doctype html><html lang="en"><head><base href="/"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/css/adminerva-ui.css"><link rel="stylesheet" href="/css/experience-mode.css"></head><body><main data-home-experience="${role}" style="max-width:1100px;margin:auto;padding:1rem"><header class="av-home-hero"><p>Canonical ${role} home</p><h1>One home. One navigation.</h1><p>Operational work starts on this page.</p></header><section id="real-dashboard"><h2>Operational dashboard fixture</h2><p>This is visible without crossing a second homepage.</p></section></main><script type="module" src="/js/core/experience-mode.mjs"></script></body></html>`;
 const server=createServer(async(req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://127.0.0.1').pathname);
   if(pathname.startsWith('/__role/')){
@@ -25,7 +25,9 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin=`http://127.0.0.1:${server.address().port}`;
-const browser=await chromium.launch({headless:true,args:['--disable-dev-shm-usage']});
+const launchOptions={headless:true,args:['--disable-dev-shm-usage']};
+if(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH)launchOptions.executablePath=process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+const browser=await chromium.launch(launchOptions);
 const dimensions=[
   {name:'desktop-wide',width:1600,height:900,isMobile:false,hasTouch:false},
   {name:'desktop-narrow',width:1100,height:780,isMobile:false,hasTouch:false},
@@ -107,7 +109,29 @@ try{
       await assess(page,role,viewport);
       assert.equal(await page.locator('.avx-role-runway').count(),0,'separate signed-in runway must not return');
       assert.equal(await page.locator('.avx-dashboard-entry').count(),0,'dashboard continuation gate must not return');
+      assert.equal(await page.locator('.avx-scene-architecture').count(),1,'canonical Home should own one scene architecture layer');
+      assert.equal(await page.locator('.avx-home-handoff').count(),1,'scene should hand off directly into the operational Home');
+      assert.equal(await page.locator('.avx-canonical-logo').count(),1,'official Adminerva logo should remain the foreground brand identity');
+      await page.waitForFunction(()=>[...document.querySelectorAll('.avx-canonical-logo,.avx-canonical-guide')].every(img=>img.complete&&img.naturalWidth>0),null,{timeout:8000});
+      assert.equal(await page.locator('.avx-canonical-logo').isVisible(),true,'official Adminerva logo should be visibly composed in Full Experience');
+      assert.equal(await page.locator('.avx-canonical-guide').isVisible(),true,'Adminerva guide character should be visibly composed in Full Experience');
+      const loadedSceneImages=await page.locator('.avx-canonical-logo,.avx-canonical-guide').evaluateAll(nodes=>nodes.every(img=>img.complete&&img.naturalWidth>0));
+      assert.equal(loadedSceneImages,true,'canonical scene image assets should load successfully');
       assert.equal(await page.locator('#real-dashboard').isVisible(),true,'operational dashboard must already be on the canonical Home');
+      if(['desktop-wide','tablet-landscape','mobile-320'].includes(viewport.name)){
+        await page.locator('.avx-canonical-home-hero').screenshot({path:`/tmp/adminerva-${role}-${viewport.name}.png`,animations:'disabled'});
+      }
+      if(role==='student'){
+        await page.locator('.avx-view-trigger').click();
+        await page.getByRole('button',{name:'Quick Mode'}).click();
+        assert.equal(await page.locator('.avx-home-handoff').isVisible(),false,'Quick Mode should remove scenic handoff only');
+        assert.equal(await page.locator('.avx-canonical-home-hero').count(),0,'Quick Mode should remove immersive hero layout styling');
+        assert.equal(await page.locator('#real-dashboard').isVisible(),true,'Quick Mode must keep the same operational Home');
+        await page.locator('.avx-view-trigger').click();
+        await page.getByRole('button',{name:'Full Experience'}).click();
+        assert.equal(await page.locator('.avx-home-handoff').isVisible(),true,'Full Experience should restore scene handoff');
+        assert.equal(await page.locator('.avx-canonical-home-hero').count(),1,'Full Experience should restore immersive hero layout styling');
+      }
       await page.close();
     }
     await context.close();
