@@ -28,6 +28,14 @@ test("log inspection is a separate read-only page and no longer embedded in User
   assert.doesNotMatch(page,/id="pu-(?:create|lifecycle|platform-authority|save-profile)"/);
 });
 
+test("Log Viewer loads the shared Tailwind navigation and safely contains notifications",()=>{
+  assert.match(page,/<script defer src="https:\/\/cdn\.tailwindcss\.com"><\/script>/);
+  assert.match(page,/adminerva-nav\.js\?v=/);
+  assert.match(css,/#adminerva-nav #av-alert-panel\.hidden\{display:none!important\}/);
+  assert.match(css,/#adminerva-nav #av-alert-panel\{[\s\S]*?position:absolute/);
+  assert.match(css,/@media\(max-width:640px\)\{[\s\S]*?#adminerva-nav #av-alert-panel/);
+});
+
 test("separate logs route retains platform administration role guards and canonical navigation",()=>{
   assert.match(guard,/owner-schools\|system-users\|platform-logs/);
   assert.match(navigation,/live\("platform-logs","User Action & System Logs","platform-logs\.html"/);
