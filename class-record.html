@@ -273,11 +273,14 @@
     </div>
 
     <div id="cr-assessment-fields" hidden>
-      <label class="cr-field">Deployed assessment
+      <label class="cr-field">Current or historical assessment
         <select name="taskId" id="cr-assessment" class="cr-select mt-1"></select>
       </label>
       
       <div id="cr-assessment-source-note" class="cr-source-note mt-3" hidden></div>
+      <div id="cr-historical-confirm" class="cr-source-note mt-3" hidden>
+        <label class="flex items-start gap-2"><input id="cr-historical-period" type="checkbox" class="mt-1 shrink-0" disabled> <span id="cr-historical-period-label">I confirm the academic period.</span></label>
+      </div>
     </div>
 
     <p id="cr-column-lock-note" class="cr-help" hidden>When editing an existing column, its score source and maximum stay locked so recorded grades retain the same meaning.</p>
@@ -501,6 +504,6 @@
 <script src="js/core/adminerva-loader.js?v=fff9d893855d"></script>
 <script defer src="js/core/adminerva-nav.js?v=fff9d893855d"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=fff9d893855d"></script>
-<script type="module" src="js/class-record/class-record.mjs?v=18e01668e864"></script>
+<script type="module" src="js/class-record/class-record.mjs?v=20261124-historical-links1"></script>
 </body>
 </html>
