@@ -57,12 +57,13 @@ async function startDesktopSignIn(){
   if(sequence!==pairingSequence)return;
   pendingPairing=pairing;
   await shell.openExternal(pairing.browserUrl);
+  if(sequence!==pairingSequence||!activeWindow||activeWindow.isDestroyed())return;
   void dialog.showMessageBox(activeWindow,{
    type:"info",title:"Adminerva Desktop sign-in",
    message:"Enter this code in the system browser: "+pairing.confirmationCode,
    detail:"Only authorize this desktop if you initiated this sign-in. The code expires after five minutes. Never share it with another person.",
    buttons:["Close"],noLink:true
-  });
+  }).catch(()=>{});
   const deadline=Date.now()+5*60*1000;
   while(sequence===pairingSequence&&Date.now()<deadline&&
     activeWindow&&!activeWindow.isDestroyed()){
@@ -84,12 +85,14 @@ async function startDesktopSignIn(){
   }
   if(sequence===pairingSequence)pendingPairing=null;
  }catch{
-  if(sequence===pairingSequence)void dialog.showMessageBox(activeWindow,{
+  if(sequence===pairingSequence)pendingPairing=null;
+  if(sequence===pairingSequence&&activeWindow&&!activeWindow.isDestroyed())
+   void dialog.showMessageBox(activeWindow,{
    type:"warning",title:"Adminerva sign-in unavailable",
    message:"Native desktop account sign-in is not released yet.",
    detail:"Use Adminerva in your regular browser. This preview does not have access to private school records.",
    buttons:["OK"]
-  });
+  }).catch(()=>{});
  }
 }
 function setupMenu(){
