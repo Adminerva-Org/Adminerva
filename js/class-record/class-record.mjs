@@ -1041,6 +1041,7 @@ function openColumnDialog(column=null,preferredKind="manual"){
   if(column?.archived===true)return;
   editingColumnId=column?.columnId||null;
   columnForm.reset();
+  sourceSearchResults.replaceChildren();
   el("cr-column-heading").textContent=column?"Edit column":"Add column";
   el("cr-column-save").textContent=column?"Save column details":"Add column";
   el("cr-column-lock-note").hidden=!column;
@@ -1947,6 +1948,65 @@ el("cr-import-file").addEventListener("change",async event=>{
   el("cr-import-status").textContent="File loaded. Stage the scores to preview changes in the record.";
 });
 el("cr-import-template").addEventListener("click",downloadImportTemplate);
+async function findEarlierAssessment(){
+  if(!currentOfferingId||sourceSearchButton.disabled)return;
+  const query=sourceSearchInput.value.trim();
+  sourceSearchResults.replaceChildren();
+  if(query.length<2){
+    sourceSearchResults.append(make("p","cr-muted","Enter at least two characters from the assessment title."));
+    return;
+  }
+  sourceSearchButton.disabled=true;
+  sourceSearchButton.textContent="Searching…";
+  try{
+    const result=await scoped(classRecordApi,"find_assessment_source",{
+      offeringId:currentOfferingId,query
+    });
+    const candidates=Array.isArray(result.results)?result.results:[];
+    const inspected=result.checked||{};
+    const checked=(Number(inspected.originalAssessments)||0)+
+      (Number(inspected.schoolAssessments)||0)+(Number(inspected.importedBlueprints)||0);
+    sourceSearchResults.append(make("p","cr-help",
+      "Checked "+checked+" sources belonging to your verified teacher account. "+
+      candidates.length+" match"+(candidates.length===1?"":"es")+" found."));
+    if(!candidates.length){
+      sourceSearchResults.append(make("p","cr-help",
+        "No matching assessment was found under this teacher identity in the current school. "+
+        "The missing work may belong to an earlier login, another school, or a source outside "+
+        "the original assessment library. Ask School Administration to verify the original "+
+        "assessment owner and recovery mapping; do not recreate the grade or submission."));
+    }
+    for(const item of candidates){
+      const card=make("article");
+      const type=item.sourceType==="original_assessment"?"Historical original":
+        item.sourceType==="imported_blueprint"?"Imported school blueprint":"School assessment";
+      card.append(make("strong","",item.title||"Unnamed assessment"));
+      card.append(make("p","",type+
+        (item.subject?" · Subject: "+item.subject:"")+
+        (item.status?" · "+item.status:"")));
+      card.append(make("p","",item.summary||""));
+      if(item.sourceType==="imported_blueprint"&&item.originalAssessmentId)
+        card.append(make("p","","Original source reference: "+item.originalAssessmentId));
+      if(item.sourceType==="school_assessment"&&item.inSelectedOffering){
+        card.append(make("p","","This class is its current offering. If it is not linkable, "+
+          "check its deployment and lifecycle in the Assessment Library."));
+      }
+      sourceSearchResults.append(card);
+    }
+    if(result.truncated)
+      sourceSearchResults.append(make("p","cr-help",
+        "Showing the first 30 matches. Narrow the title to refine the search."));
+  }catch(error){
+    sourceSearchResults.append(make("p","cr-help",
+      error?.message||"The source search could not be completed."));
+  }finally{
+    sourceSearchButton.disabled=false;sourceSearchButton.textContent="Find assessment";
+  }
+}
+sourceSearchButton.addEventListener("click",()=>void findEarlierAssessment());
+sourceSearchInput.addEventListener("keydown",event=>{
+  if(event.key==="Enter"){event.preventDefault();void findEarlierAssessment();}
+});
 assessmentSelect.addEventListener("change",syncAssessmentSourceNote);
 el("cr-column-close").addEventListener("click",closeColumnDialog);
 el("cr-column-cancel").addEventListener("click",closeColumnDialog);
