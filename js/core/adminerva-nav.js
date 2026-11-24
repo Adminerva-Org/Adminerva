@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   const platformTestMode = root.dataset.platformTestMode === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=9dc90ac0f1c0");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=20261124-platform-logs-1");
   if(turn!==navigationEpoch)return;
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isRegistrar,isPlatformOwner,

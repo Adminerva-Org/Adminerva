@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
-const {checkedEvent,createPlatformAccountDiagnostics,RETENTION_DAYS}=require("../functions/platform-account-diagnostics.js");
+const {checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics,RETENTION_DAYS}=require("../functions/platform-account-diagnostics.js");
 
 const USER="student001",ADMIN="admin001",SESSION="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   EVENT="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",T=Date.UTC(2026,10,24,8);
@@ -83,6 +83,37 @@ test("operational events reject user content, URL queries, tokens and arbitrary 
   assert.throws(()=>checkedEvent(event({kind:"error",action:"api_failed",state:"ok"})),/must declare/);
 });
 
+test("severity categories distinguish normal observations, interruptions and failures",()=>{
+  assert.equal(diagnosticSeverity({kind:"navigation",action:"page_open",state:"ok"}),"normal");
+  assert.equal(diagnosticSeverity({kind:"action",action:"studio_run_requested",state:"info"}),"normal");
+  assert.equal(diagnosticSeverity({kind:"system",action:"network_offline",state:"unavailable"}),"warning");
+  assert.equal(diagnosticSeverity({kind:"action",action:"school_switched",state:"unavailable"}),"warning");
+  assert.equal(diagnosticSeverity({kind:"error",action:"api_failed",state:"error"}),"failure");
+  assert.equal(diagnosticSeverity({kind:"error",action:"resource_error",state:"unavailable"}),"failure");
+  assert.equal(diagnosticSeverity({kind:"action",action:"cloud_save_failed",state:"error"}),"failure");
+  assert.equal(diagnosticSeverity({kind:"action",action:"studio_run_completed",state:"ok"}),"normal");
+});
+
+test("Platform-only recent account activity is a bounded audited index of all observed logins",async()=>{
+  const db=fakeDb(),api=service(db).service;
+  await api(request(USER,{action:"record",event:event()}));
+  await api(request("student002",{action:"record",event:event({
+    eventId:"cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    kind:"system",module:"other",action:"network_offline",state:"unavailable",route:""
+  })}));
+  await assert.rejects(api(request(USER,{action:"recent_accounts",reason:"Investigating recurring connectivity issues"})),/Platform Administrator/);
+  await assert.rejects(api(request(ADMIN,{action:"recent_accounts",reason:"short"})),/12–300/);
+  const result=await api(request(ADMIN,{action:"recent_accounts",reason:"Investigating recurring connectivity issues"}));
+  assert.equal(result.accounts.length,2);
+  assert.equal(result.scope,"account_activity_index");
+  assert.equal(result.accounts.find(a=>a.ownerUid===USER).severity,"normal");
+  assert.equal(result.accounts.find(a=>a.ownerUid==="student002").severity,"warning");
+  assert.equal(result.accounts.find(a=>a.ownerUid==="student002").action,"network_offline");
+  assert.equal(db.reads.length,1);
+  assert.equal(db.reads[0].action,"platform_user_diagnostics_recent_viewed");
+  assert.equal(JSON.stringify(result).includes("Investigating recurring"),false);
+});
+
 test("verified subject can append only own events, with idempotent retry and bounded expiry",async()=>{
   const db=fakeDb(),api=service(db).service;
   const payload={action:"record",event:event()};
@@ -111,6 +142,7 @@ test("only Platform Admin can view a specific login; access reason and reads are
   const response=await api(request(ADMIN,{action:"list",targetUid:USER,reason:"Investigating support case #417"}));
   assert.equal(response.events.length,1);
   assert.equal(response.events[0].route,"/student-playground.html");
+  assert.equal(response.events[0].severity,"normal");
   assert.equal(response.accountAudit.length,1);
   assert.equal(response.accountAudit[0].action,"platform_login_disabled");
   assert.equal(db.reads.length,1);

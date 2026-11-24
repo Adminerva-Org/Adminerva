@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Platform Administrator-only account diagnostic log viewer with normal, warning and failure flags.">
+  <title>User Action &amp; System Logs · System Admin · Adminerva</title>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=fff9d893855d">
+  <link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1">
+  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-1">
+</head>
+<body id="pageBody" class="hidden">
+  <div id="adminerva-nav" data-module="admin" data-page="platform-logs"></div>
+  <main class="pl-shell">
+    <header class="pl-hero">
+      <div>
+        <p class="pl-eyebrow">System Administration · Observability</p>
+        <h1>User Action &amp; System Logs</h1>
+        <p>Read-only operational logs for all Adminerva accounts, including students, staff, and administrators. Choose an account to inspect its recorded activity and error history. This is not the School Admin directory or a student monitoring screen.</p>
+      </div>
+      <a class="pl-link" href="system-users.html">Platform Users</a>
+    </header>
+    <div class="pl-legend" role="group" aria-label="Diagnostic severity legend">
+      <span class="pl-flag" data-level="normal"><span aria-hidden="true" class="pl-dot"></span>Green · Normal events</span>
+      <span class="pl-flag" data-level="warning"><span aria-hidden="true" class="pl-dot"></span>Yellow · Warnings / interruptions</span>
+      <span class="pl-flag" data-level="failure"><span aria-hidden="true" class="pl-dot"></span>Red · Failures</span>
+    </div>
+    <section class="pl-purpose pl-card" aria-labelledby="pl-purpose-title">
+      <div>
+        <h2 id="pl-purpose-title">Investigation access</h2>
+        <p>Each activity-log request is audited. Enter a concrete support or security reason before loading user events or recent-account activity. Do not include passwords or private student work.</p>
+      </div>
+      <div class="pl-purpose-form">
+        <label for="pl-reason">Reason for reviewing logs <span aria-hidden="true">*</span></label>
+        <textarea id="pl-reason" rows="2" minlength="12" maxlength="300" placeholder="Example: Investigating missing Studio cloud-save confirmation"></textarea>
+        <div class="pl-actions">
+          <button id="pl-load-recent" class="pl-button pl-primary" type="button" disabled>Load recent account activity</button>
+          <span id="pl-purpose-status" role="status" aria-live="polite">Verifying Platform Administrator access…</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="pl-main">
+      <aside class="pl-directory pl-card" aria-labelledby="pl-directory-heading">
+        <div class="pl-card-heading">
+          <div><p class="pl-eyebrow">Account directory</p><h2 id="pl-directory-heading">Find a user</h2></div>
+          <span id="pl-account-count" class="pl-count">—</span>
+        </div>
+        <label for="pl-search">Search by name, email or account ID</label>
+        <input id="pl-search" type="search" autocomplete="off" placeholder="Search all platform users…" disabled>
+        <div class="pl-directory-actions">
+          <button id="pl-show-recent" class="pl-button pl-secondary" type="button" disabled>All-account activity overview</button>
+        </div>
+        <div id="pl-accounts" class="pl-account-list" aria-label="Accounts"></div>
+        <p class="pl-footnote">Accounts with no recorded diagnostic events still appear here. Their history may be empty. This list is loaded from the global identity directory.</p>
+      </aside>
+
+      <section class="pl-view pl-card" aria-labelledby="pl-view-title">
+        <div class="pl-card-heading pl-view-heading">
+          <div><p id="pl-view-eyebrow" class="pl-eyebrow">Recent account activity</p><h2 id="pl-view-title">Activity overview</h2>
+            <p id="pl-view-description">Load the recent-account overview, or select a user to view their detailed diagnostic timeline.</p>
+          </div>
+          <button id="pl-refresh" class="pl-button pl-secondary" type="button" disabled>Refresh</button>
+        </div>
+
+        <div class="pl-stats" aria-label="Current loaded event classification">
+          <div><span>Normal</span><strong id="pl-normal-count">—</strong></div>
+          <div><span>Warnings</span><strong id="pl-warning-count">—</strong></div>
+          <div><span>Failures</span><strong id="pl-failure-count">—</strong></div>
+          <div><span>Unclassified</span><strong id="pl-unknown-count">—</strong></div>
+        </div>
+        <div class="pl-filters">
+          <label for="pl-level">Flag
+            <select id="pl-level"><option value="">All flags</option><option value="normal">Green · Normal</option><option value="warning">Yellow · Warning</option><option value="failure">Red · Failure</option><option value="unknown">Not yet classified</option></select>
+          </label>
+          <label for="pl-module">Module
+            <select id="pl-module"><option value="">All modules</option><option value="auth">Authentication</option><option value="home">Home</option><option value="studio">Studio</option><option value="assessments">Assessments</option><option value="classroom">Classroom</option><option value="school">School</option><option value="games">Games</option><option value="grades">Grades</option><option value="notifications">Notifications</option><option value="settings">Settings</option><option value="platform">Platform</option><option value="api">API</option><option value="other">Other</option></select>
+          </label>
+        </div>
+        <p id="pl-log-status" class="pl-status" role="status" aria-live="polite">No logs loaded. Enter a reason above before inspecting account activity.</p>
+        <div class="pl-table-wrap">
+          <table class="pl-table">
+            <thead><tr>
+              <th scope="col">Flag</th><th scope="col">Date / time</th><th scope="col">Account</th><th scope="col">Event / action</th><th scope="col">Outcome and context</th>
+            </tr></thead>
+            <tbody id="pl-events"></tbody>
+          </table>
+        </div>
+        <button id="pl-more" class="pl-button pl-secondary pl-more" type="button" disabled hidden>Load older events</button>
+        <details id="pl-audit-wrap" class="pl-audit" hidden>
+          <summary>Related immutable platform account administration history</summary>
+          <p>Account lifecycle actions remain in the original platform audit store; this viewer does not copy or edit those records.</p>
+          <div id="pl-audit-records"></div>
+        </details>
+        <p class="pl-footnote">Flags classify the recorded event or outcome, not a user's intent or conduct. A normal click means it was observed, not that a save or submission succeeded. Activity is best-effort; filters apply to the currently loaded recent records, and older events require another page. Diagnostic events expire after 60 days; historical unrecorded activity cannot be reconstructed.</p>
+      </section>
+    </div>
+  </main>
+  <script src="js/core/adminerva-loader.js?v=fff9d893855d"></script>
+  <script defer src="js/core/adminerva-nav.js?v=20261124-platform-logs-1"></script>
+  <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20261124-platform-logs-1"></script>
+  <script type="module" src="js/core/platform-logs.mjs?v=20261124-1"></script>
+  <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script>
+  <script defer src="js/core/release-footer.js?v=fff9d893855d"></script>
+</body>
+</html>

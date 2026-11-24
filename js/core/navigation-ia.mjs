@@ -308,6 +308,7 @@ export function buildNavigationIA(ctx){
         live("system-users","Platform Users","system-users.html","Complete global login directory with audited account and Platform Administrator lifecycle controls.")
       ]),
       group("Platform Operations",[
+        live("platform-logs","User Action & System Logs","platform-logs.html","Platform-only read-only log viewing with normal, warning and failure flags across user accounts."),
         needs("platform-monitoring","Monitoring & Maintenance","admin-analytics.html","Operational telemetry plus revisioned legacy monitoring-assignment and maintenance-policy lifecycle controls; not a school academic administration surface."),
         live("updates","Updates & Releases","patch-notes.html","Published source-controlled release history. Release entries are reviewed through repository release authority rather than edited as CRUD records."),
         future("operations-center","Operations Center","Incidents, service health, observability, background jobs and controlled platform operations · In development separately.")
