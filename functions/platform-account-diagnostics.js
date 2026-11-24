@@ -10,7 +10,7 @@ const {randomUUID,createHash}=require("node:crypto");
 const RETENTION_DAYS=60,PER_ACCOUNT_DAILY_LIMIT=300,MAX_PAGE=75,DAY_MS=86400000;
 const GLOBAL_SCOPE="platform_account_diagnostic";
 const GLOBAL_SAMPLE_LIMIT=400;
-const GLOBAL_WINDOWS={24:1,168:7,720:30};
+const GLOBAL_WINDOWS={24:1,168:7,720:30,1440:60};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UID=/^[A-Za-z0-9_-]{1,128}$/;
 const MODULES=["auth","home","studio","assessments","classroom","school","games","grades","notifications","settings","platform","api","other"];
@@ -127,7 +127,7 @@ function serialize(doc,source="client"){
   const row=doc.data()||{};
   return {
     id:doc.id,at:createdAtNumber(row.createdAt),severity:diagnosticSeverity(row),
-    phase:String(row.phase||"observed").slice(0,16),sessionId:String(row.sessionId||"").slice(0,40),
+    phase:String(row.phase||(row.state==="error"?"failed":row.state==="unavailable"?"interrupted":"observed")).slice(0,16),sessionId:String(row.sessionId||"").slice(0,40),
     operationId:String(row.operationId||"").slice(0,40),traceId:String(row.traceId||"").slice(0,40),
     durationMs:Number.isInteger(row.durationMs)?row.durationMs:null,
     fingerprint:String(row.fingerprint||fingerprint(row)).slice(0,24),
