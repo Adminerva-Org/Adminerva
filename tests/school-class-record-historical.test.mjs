@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
-const {HISTORICAL_SOURCE,historicalSubjectMatches,historicalMapping,mappingMatches,projectedGrade,
+const {HISTORICAL_SOURCE,historicalSubjectMatches,historicalSections,historicalMapping,verifiedHistoricalSectionMapping,mappingMatches,projectedGrade,
   resolveHistoricalRoster,historicalPublishedGrades}=require("../functions/school-class-record-historical.js");
 const {cleanColumns}=require("../functions/school-class-record.js");
 const schoolId="mcs-manila",offeringId="offering-q3",ownerUid="teacher1";
@@ -36,6 +36,67 @@ test("historical generic course title maps narrowly to official Computer Program
   assert.equal(historicalMapping({...officialCourse,ownerUid:"unrelated-owner"}),null);
   assert.equal(historicalMapping({...officialCourse,schoolId:"unrelated-school"}),null);
   assert.equal(historicalMapping({...officialCourse,labels:{...officialCourse.labels,sectionName:"another section"}}),null);
+});
+
+test("the original section is never guessed from a different SIS label",()=>{
+  const moved={...task,deployments:[{section:"Original Grade 12 - St. Peter"}]};
+  assert.deepEqual(historicalSections(moved),["Original Grade 12 - St. Peter"]);
+  assert.equal(historicalMapping({...args,task:moved}),null);
+  assert.equal(historicalMapping({...args,task:moved,sourceSectionName:"Original Grade 12 - St. Peter"}),null);
+  assert.equal(historicalMapping({...args,task:moved,sourceSectionName:"Another Grade 12",verifiedSection:true}),null);
+  const verified=historicalMapping({...args,task:moved,
+    sourceSectionName:"Original Grade 12 - St. Peter",verifiedSection:true});
+  assert.equal(verified.sectionName,"Original Grade 12 - St. Peter");
+  assert.equal(verified.offeringSectionName,"Section A");
+});
+test("section remapping requires multiple uniquely verified student identities from the original class",async()=>{
+  const oldSection="Original Grade 12 - St. Peter";
+  const moved={...task,deployments:[{section:oldSection}]};
+  const canonicalRoster=[
+    {personId:"p1",authUid:"u1",legacyStudentIds:["old1"]},
+    {personId:"p2",authUid:"u2",legacyStudentIds:["old2"]},
+    {personId:"p3",authUid:"u3",legacyStudentIds:["old3"]},
+    {personId:"p4",authUid:"u4",legacyStudentIds:["old4"]},
+    {personId:"p5",authUid:"u5",legacyStudentIds:["old5"]},
+    {personId:"p6",authUid:"u6",legacyStudentIds:["old6"]}
+  ];
+  const rows=new Map([["old1",{section:oldSection}],["old2",{section:oldSection}],
+    ["old3",{section:"Another Section"}],["old4",{section:"Another Section"}]]);
+  const db={doc:path=>({path}),getAll:async(...refs)=>refs.map(ref=>{
+    const value=rows.get(ref.path.split("/").at(-1));
+    return {exists:Boolean(value),data:()=>value};
+  })};
+  const input={db,schoolId,roster:canonicalRoster,task:moved,taskId:"legacy-task",ownerUid,
+    offering,offeringId,labels,sourceSectionName:oldSection};
+  const verified=await verifiedHistoricalSectionMapping(input);
+  assert.equal(verified.sectionName,oldSection);
+  assert.equal(verified.identityProof,"original_student_section");
+  assert.equal(verified.identityVerifiedCount,2);
+  rows.delete("old2");
+  assert.equal(await verifiedHistoricalSectionMapping(input),null);
+  assert.equal(await verifiedHistoricalSectionMapping({...input,schoolId:"foreign-school"}),null);
+  assert.equal(await verifiedHistoricalSectionMapping({...input,ownerUid:"different-owner"}),null);
+  assert.equal(await verifiedHistoricalSectionMapping({...input,sourceSectionName:"Unknown Section"}),null);
+  const ambiguous=[{personId:"p1",authUid:"u1",legacyStudentIds:["old1"]},
+    {personId:"p2",authUid:"u2",legacyStudentIds:["old1"]},...canonicalRoster.slice(2)];
+  assert.equal(await verifiedHistoricalSectionMapping({...input,roster:ambiguous}),null);
+});
+test("section-verified historical grades still read only the original publication and section",async()=>{
+  const oldSection="Original Grade 12 - St. Peter";
+  const original={...task,deployments:[{section:oldSection}]};
+  const verified=historicalMapping({...args,task:original,sourceSectionName:oldSection,verifiedSection:true});
+  const sourceColumn={...column,historicalMapping:verified};
+  const saved=new Map([
+    ["assessments/legacy-task",original],
+    ["student_grades/old_student_legacy-task",{...row,section:oldSection}]
+  ]);
+  const db={doc:path=>({path,get:async()=>({exists:saved.has(path),data:()=>saved.get(path)})}),
+    getAll:async(...refs)=>Promise.all(refs.map(ref=>ref.get()))};
+  const roster=[{personId:"p1",authUid:"u1",legacyStudentIds:["old_student"]}];
+  const input={db,schoolId,offering,offeringId,columns:[sourceColumn],roster};
+  assert.equal((await historicalPublishedGrades(input))[0].awarded,17);
+  saved.set("student_grades/old_student_legacy-task",{...row,section:"Section A"});
+  assert.deepEqual(await historicalPublishedGrades(input),[]);
 });
 
 test("layout stores only server-generated mapping and rejects unconfirmed or duplicate historical links",()=>{
