@@ -403,10 +403,17 @@ export function createProjectStudio({
         if(same){cloudPending.delete(id);unbackedProjectIds.delete(id);}
         if(same){clearTimeout(cloudRetryTimers.get(id));cloudRetryTimers.delete(id);cloudRetryAttempts.delete(id);}
         writeMarker(id,{...marker,pending:!same});
-        if(same){setCloudStatus("Saved to cloud","success",id);if(!activeProject)setCloudStatus(cloudPending.size?"Cloud sync pending":"Cloud projects up to date",cloudPending.size?"info":"success");}
+        if(same){
+          setCloudStatus("Saved to cloud","success",id);
+          if(marker.kind==="legacy")document.dispatchEvent(new CustomEvent("adminerva:v4-project-synced",{detail:{projectId:id}}));
+          if(!activeProject)setCloudStatus(cloudPending.size?"Cloud sync pending":"Cloud projects up to date",cloudPending.size?"info":"success");
+        }
         return true;
       }catch(error){
         console.warn("Studio cloud save failed:",error);
+        document.dispatchEvent(new CustomEvent("adminerva:diagnostic-event",{detail:{
+          action:"cloud_save_failed",errorCode:String(error?.code||error?.name||"unavailable")
+        }}));
         const failure=describeStudioCloudSaveError(error,{online:navigator.onLine!==false});
         const retrying=scheduleCloudRetry(id,error,closingSessionEpoch);
         const unbacked=unbackedProjectIds.has(id);
