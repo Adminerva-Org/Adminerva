@@ -92,6 +92,7 @@ try{
           const textBottom=introText.length?Math.max(...introText):null;
           return textBottom!==null&&firstStop?{textBottom,firstStopTop:firstStop.top}:null;
         });
+        console.log(JSON.stringify({event:'mobile_route_flow',flow}));
         assert.ok(flow&&flow.firstStopTop>=flow.textBottom-1,'mobile public first destination must not overlap its visible narrative copy');
       }
       if(name==='public'){
