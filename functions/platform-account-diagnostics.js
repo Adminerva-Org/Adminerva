@@ -170,7 +170,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       return {recorded:true,duplicate:false};
     });
   }
-  async function writeServerFailure(request,error){
+  async function writeServerFailure(request,error,startedAt=now()){
     if(request?.auth?.token?.email_verified!==true||!request?.auth?.uid)return;
     const ownerUid=String(request.auth.uid);
     if(!UID.test(ownerUid))return;
@@ -183,7 +183,8 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     const synthetic={
       eventId:randomUUID(),sessionId:randomUUID(),kind:"error",module:"api",
       action:"api_failed",state:"error",errorCode:type,route:"",release:"",
-      phase:"failed",traceId:traceFromRequest(request)
+      phase:"failed",traceId:traceFromRequest(request),
+      durationMs:Math.max(0,Math.min(120000,now()-(Number(startedAt)||now())))
     };
     try{return await insert(ownerUid,synthetic,{source:"backend",service:service+"."+safeAction});}
     catch(writeError){console.warn("Account diagnostic write skipped",{code:writeError?.code||"unknown"});}
@@ -281,7 +282,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     const rawAction=String(request?.data?.action||"call");
     const safeAction=safeProcess(rawAction,48);
     const safeServiceName=safeProcess(service,64);
-    const ms=Math.max(0,Math.min(120000,Date.now()-(Number(startedAt)||Date.now())));
+    const ms=Math.max(0,Math.min(120000,now()-(Number(startedAt)||now())));
     const event={
       eventId:randomUUID(),sessionId:randomUUID(),kind:"action",module:"api",
       action:"api_succeeded",state:"ok",errorCode:"",route:"",
