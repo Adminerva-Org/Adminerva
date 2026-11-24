@@ -70,10 +70,11 @@ function legacyRepositoryDeploymentSections(data){
   return [...sections.values()];
 }
 function legacyRepositoryMetadataCandidate({
-  task,schoolId,titleQuery,originalSectionPeople,rosterSize
+  task,schoolId,titleQuery,originalSectionPeople,rosterSize,currentTeacherUid
 }){
-  if(!validOrigin(task,schoolId)||![null,undefined,""].includes(task.ownerUid)&&
-     typeof task.ownerUid!=="string")return null;
+  if(!validOrigin(task,schoolId)||task?.ownerUid===currentTeacherUid||
+     (task?.ownerUid!==undefined&&task?.ownerUid!==null&&
+       typeof task.ownerUid!=="string"))return null;
   if(!matchesAssessmentTitle(titleQuery,task.title)||task.schemaVersion===2||
      task.schemaVersion===3)return null;
   // An undeployed teacher preparation resource remains private.
@@ -1227,7 +1228,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
               for(const doc of possible){
                 const metadata=legacyRepositoryMetadataCandidate({
                   task:doc.data(),schoolId:ctx.schoolId,titleQuery:query,
-                  originalSectionPeople,rosterSize:roster.length
+                  originalSectionPeople,rosterSize:roster.length,
+                  currentTeacherUid:ctx.uid
                 });
                 if(!metadata)continue;
                 legacyRepositoryCandidates.push({
