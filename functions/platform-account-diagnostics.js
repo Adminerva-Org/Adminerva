@@ -380,7 +380,9 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     uid(authority.uid);
     const limit=Number.isInteger(input.limit)&&input.limit>=1?Math.min(MAX_PAGE,input.limit):60;
     const windowKey=Math.floor(now()/600000);
-    const audit=db.collection("platform_audit").doc("diagnostic_live_"+authority.uid+"_"+windowKey);
+    const purposeKey=createHash("sha256").update(purpose).digest("hex").slice(0,12);
+    const audit=db.collection("platform_audit")
+      .doc("diagnostic_live_"+authority.uid+"_"+windowKey+"_"+purposeKey);
     await db.runTransaction(async tx=>{
       const existing=await tx.get(audit);
       if(!existing.exists)tx.create(audit,{
