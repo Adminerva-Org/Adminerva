@@ -15,7 +15,8 @@ const KINDS=["session","navigation","action","error","notification","system"];
 const ACTIONS=["session_started","session_ended","page_open","school_switched","signed_in","signed_out",
   "cloud_save_confirmed","notification_delivered","notification_opened","network_offline","network_online",
   "javascript_error","promise_error","resource_error","api_failed","api_succeeded","support_report_submitted",
-  "studio_run_requested","assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested"];
+  "studio_run_requested","studio_run_completed","studio_run_failed","cloud_save_failed",
+  "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested"];
 const STATES=["info","ok","error","unavailable"];
 function deny(code,message){throw new TenantAccessError(code,message);}
 function uid(value){if(typeof value!=="string"||!UID.test(value))deny("invalid-argument","A valid account ID is required.");return value;}
@@ -57,9 +58,9 @@ function checkedEvent(input){
     session:["session_started","session_ended","signed_in","signed_out"],
     navigation:["page_open"],notification:["notification_delivered","notification_opened"],
     system:["network_offline","network_online"],
-    error:["javascript_error","promise_error","resource_error","api_failed"],
+    error:["javascript_error","promise_error","resource_error","api_failed","studio_run_failed","cloud_save_failed"],
     action:["school_switched","cloud_save_confirmed","api_succeeded","support_report_submitted",
-      "studio_run_requested","assessment_submit_requested","assessment_submitted",
+      "studio_run_requested","studio_run_completed","assessment_submit_requested","assessment_submitted",
       "assessment_withdraw_requested","assessment_evaluate_requested"]
   };
   if(!kindActions[input.kind].includes(input.action))
