@@ -405,7 +405,7 @@ export function createProjectStudio({
         writeMarker(id,{...marker,pending:!same});
         if(same){
           setCloudStatus("Saved to cloud","success",id);
-          if(marker.kind==="legacy")document.dispatchEvent(new CustomEvent("adminerva:v4-project-synced",{detail:{projectId:id}}));
+          if(marker.kind==="legacy")document.dispatchEvent(new CustomEvent("adminerva:studio-cloud-confirmed"));
           if(!activeProject)setCloudStatus(cloudPending.size?"Cloud sync pending":"Cloud projects up to date",cloudPending.size?"info":"success");
         }
         return true;
