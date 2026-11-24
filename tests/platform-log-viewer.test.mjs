@@ -44,6 +44,21 @@ test("separate logs route retains platform administration role guards and canoni
   assert.match(page,/platform-logs\.mjs\?v=/);
 });
 
+test("global developer console queries individual events and provides bounded impact analysis",()=>{
+  assert.match(page,/Global Event Stream/);
+  assert.match(page,/id="pl-window"/);
+  assert.match(page,/id="pl-impact-results"/);
+  assert.match(page,/id="pl-event-search"/);
+  assert.match(viewer,/action:"global_feed"/);
+  assert.match(viewer,/action:"global_impact"/);
+  assert.match(viewer,/function loadGlobal\(/);
+  assert.match(viewer,/function loadImpact\(/);
+  assert.match(viewer,/request trace|Cloud trace|cloud trace/i);
+  assert.match(viewer,/record\.operationId/);
+  assert.match(viewer,/state\.fingerprint/);
+  assert.match(page,/the new global index starts with newly recorded events/);
+});
+
 test("normal, warning, failure flags remain readable on mobile and do not conflate clicks with saved outcomes",()=>{
   for(const level of ["normal","warning","failure"]){
     assert.match(page,new RegExp('data-level="'+level+'"'));
