@@ -993,6 +993,8 @@ async function saveLayout(nextColumns,nextSettings=settings,success="Class Recor
   if(!canEditClassRecord())throw Error("Only the Primary Teacher may change the formal Class Record.");
   if(busy||!currentOfferingId)throw Error("Finish the current Class Record operation first.");
   if(dirtyColumns.size)throw Error("Save manual score changes before changing the Class Record layout.");
+  const existingIds=new Set(columns.map(column=>column.columnId));
+  const addedAssessment=nextColumns.some(column=>column.kind==="assessment"&&!existingIds.has(column.columnId));
   setBusy(true,"Saving Class Record…");
   try{
     const result=await scoped(classRecordApi,"save_layout",{
@@ -1002,7 +1004,12 @@ async function saveLayout(nextColumns,nextSettings=settings,success="Class Recor
     columns=Array.isArray(result.columns)?result.columns:nextColumns;
     settings=result.settings||nextSettings;
     sheetRevision=Number(result.revision)||sheetRevision+1;
-    render();say(success);return result;
+    render();
+    if(addedAssessment){
+      const refreshed=await loadWorkspace();
+      say(refreshed?success:"Column saved. Refresh Class Record to load its published grades.");
+    }else say(success);
+    return result;
   }finally{
     setBusy(false);syncColumnFields();
   }
