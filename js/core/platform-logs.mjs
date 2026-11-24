@@ -564,7 +564,8 @@ async function pollLive(generation){
     if(!first)live.added+=additions.length;
     live.lastChecked=Number(result.serverAt)||Date.now();
     live.errors=0;
-    renderLive({append:additions});
+    if(additions.length)renderLive({append:additions});
+    else liveStats();
     liveStatus(result.hasMore?"Catching up with queued events; more records are available.":
       additions.length&&!first?"+"+additions.length+" new recorded event"+
       (additions.length===1?"":"s")+" since the previous check.":
@@ -651,17 +652,24 @@ $("pl-level").addEventListener("change",()=>{
   state.fingerprint="";
   if(state.view==="global"&&$("pl-reason").value.trim().length>=12){
     resetRead();void loadGlobal();
-  }else renderEvents();
+  }else if(state.view==="live")renderLive();
+  else renderEvents();
 });
 $("pl-module").addEventListener("change",()=>{
   state.fingerprint="";
   if(state.view==="global"&&$("pl-reason").value.trim().length>=12){
     resetRead();void loadGlobal();
-  }else renderEvents();
+  }else if(state.view==="live")renderLive();
+  else renderEvents();
 });
 $("pl-show-recent").addEventListener("click",chooseOverview);
 $("pl-show-global").addEventListener("click",chooseGlobal);
-$("pl-event-search").addEventListener("input",renderEvents);
+$("pl-show-live").addEventListener("click",chooseLive);
+$("pl-live-toggle").addEventListener("click",toggleLive);
+$("pl-live-stop").addEventListener("click",()=>{
+  stopLive();liveStatus("Live watch stopped. Earlier events remain in Global event history.");
+});
+$("pl-event-search").addEventListener("input",()=>state.view==="live"?renderLive():renderEvents());
 $("pl-window").addEventListener("change",()=>{if(state.view==="global"){
   resetRead();renderImpact();if($("pl-reason").value.trim().length>=12)void loadGlobal();
 }});
@@ -669,10 +677,29 @@ $("pl-impact-refresh").addEventListener("click",()=>{if(state.view==="global"){
   const reason=requiredReason();if(reason)void loadImpact(reason,state.epoch,state.readEpoch);
 }});
 $("pl-load-recent").addEventListener("click",chooseGlobal);
-$("pl-refresh").addEventListener("click",()=>state.view==="user"?loadAccount():state.view==="recent"?loadRecent():loadGlobal());
+$("pl-refresh").addEventListener("click",()=>state.view==="user"?loadAccount():state.view==="recent"?loadRecent():state.view==="live"?(state.live.running&&!state.live.paused?scheduleLive(0):toggleLive()):loadGlobal());
 $("pl-more").addEventListener("click",()=>state.view==="user"?loadAccount({older:true}):state.view==="recent"?loadRecent({older:true}):loadGlobal({older:true}));
+document.addEventListener("visibilitychange",()=>{
+  if(state.view!=="live"||!state.live.running||state.live.paused)return;
+  if(document.hidden){
+    if(state.live.timer!==null)clearTimeout(state.live.timer);
+    state.live.timer=null;
+    liveStatus("Live monitoring paused while the tab is hidden.");
+  }else{liveStatus("Tab visible. Resuming the live stream.");scheduleLive(0);}
+});
+window.addEventListener("offline",()=>{
+  if(state.view!=="live"||!state.live.running)return;
+  if(state.live.timer!==null)clearTimeout(state.live.timer);
+  state.live.timer=null;liveStatus("Offline. Listening resumes after reconnection.");
+});
+window.addEventListener("online",()=>{
+  if(state.view==="live"&&state.live.running&&!state.live.paused)
+    scheduleLive(0);
+});
 onAuthStateChanged(auth,user=>{
   state.epoch++;resetRead({clearRecent:true});
+  state.live.rows=[];state.live.seen.clear();state.live.highlighted.clear();
+  state.live.cursor="";state.live.reason="";state.live.baseline=false;
   state.accounts=[];state.byUid.clear();state.directoryReady=false;state.eligible=false;
   $("pl-search").disabled=true;$("pl-show-recent").disabled=true;$("pl-show-global").disabled=true;$("pl-show-live").disabled=true;$("pl-load-recent").disabled=true;
   $("pl-refresh").disabled=true;$("pl-reason").value="";
