@@ -7,7 +7,7 @@ import {app,auth} from "./firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 const record=httpsCallable(getFunctions(app,"asia-southeast1"),"platformAccountDiagnostics");
-let activeUid="",sessionId="",enabled=false,eventsSent=0,epoch=0;
+let activeUid="",sessionId="",enabled=false,eventsSent=0,epoch=0,pendingRunOperationId="";
 let errors=new Map();
 const MAX_PAGE_EVENTS=90;
 const ID=()=>crypto.randomUUID();
@@ -21,6 +21,7 @@ function route(){
 function moduleForRoute(){
   const path=route().toLowerCase();
   if(/login|register|auth/.test(path))return "auth";
+  if(/platform-logs/.test(path))return "platform";
   if(/studio|playground/.test(path))return "studio";
   if(/assessment|exam|quiz/.test(path))return "assessments";
   if(/classroom|subject|lesson/.test(path))return "classroom";
@@ -53,19 +54,20 @@ async function send(event){
     }
   }
 }
-function emit(action,{kind="action",module=moduleForRoute(),state="info",errorCode=""}={}){
+function emit(action,{kind="action",module=moduleForRoute(),state="info",errorCode="",operationId="",phase=""}={}){
   if(!enabled||!activeUid||!sessionId||eventsSent>=MAX_PAGE_EVENTS)return;
   const event={eventId:ID(),sessionId,kind,module,action,state,
-    errorCode:kind==="error"?code(errorCode):"",route:route(),release};
+    errorCode:kind==="error"?code(errorCode):"",route:route(),release,
+    ...(operationId?{operationId}:{}),...(phase?{phase}:{})};
   void send(event);
 }
-function diagnosticError(action,value,module=moduleForRoute()){
+function diagnosticError(action,value,module=moduleForRoute(),operationId=""){
   const errorCode=code(value)||"unknown";
   const key=action+"|"+errorCode+"|"+route(),now=Date.now();
   if(now-(errors.get(key)||0)<60000)return;
   errors.set(key,now);
   if(errors.size>40)errors=new Map([...errors].slice(-25));
-  emit(action,{kind:"error",module,state:"error",errorCode});
+  emit(action,{kind:"error",module,state:"error",errorCode,operationId,phase:"failed"});
 }
 function initializeSession(user){
   const key="Adminerva_diagnostic_session_"+user.uid;
@@ -76,14 +78,15 @@ function initializeSession(user){
     try{sessionStorage.setItem(key,id);}catch{}
   }
   sessionId=id;
-  if(fresh)emit("session_started",{kind:"session",state:"ok"});
+  if(fresh)emit("session_started",{kind:"session",state:"ok",phase:"observed"});
 }
 onAuthStateChanged(auth,user=>{
-  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;errors.clear();
+  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;pendingRunOperationId="";errors.clear();
   if(!user?.emailVerified)return;
   activeUid=user.uid;enabled=true;
   initializeSession(user);
-  emit("page_open",{kind:"navigation",state:"ok"});
+  emit("auth_session_observed",{kind:"session",module:"auth",state:"ok",phase:"observed"});
+  emit("page_open",{kind:"navigation",state:"ok",phase:"observed"});
 });
 window.addEventListener("error",event=>{
   if(event?.target&&event.target!==window){
@@ -106,9 +109,10 @@ document.addEventListener("adminerva:notification-opened",()=>emit("notification
 document.addEventListener("adminerva:studio-submitted",()=>emit("assessment_submitted",{module:"assessments",state:"ok"}));
 window.addEventListener("adminerva:studio-run-recorded",event=>{
   const run=event.detail||{};
-  if(run.compileSucceeded===false)diagnosticError("studio_run_failed","compile_error","studio");
-  else if(run.runSucceeded===false)diagnosticError("studio_run_failed","runtime_error","studio");
-  else if(run.runSucceeded===true)emit("studio_run_completed",{module:"studio",state:"ok"});
+  const operationId=pendingRunOperationId;pendingRunOperationId="";
+  if(run.compileSucceeded===false)diagnosticError("studio_run_failed","compile_error","studio",operationId);
+  else if(run.runSucceeded===false)diagnosticError("studio_run_failed","runtime_error","studio",operationId);
+  else if(run.runSucceeded===true)emit("studio_run_completed",{module:"studio",state:"ok",operationId,phase:"completed"});
 });
 const buttonActions={
   runBtn:["studio_run_requested","studio"],
@@ -121,7 +125,9 @@ document.addEventListener("click",event=>{
   const button=event.target?.closest?.("button");
   if(!event.isTrusted||!button||button.disabled||!buttonActions[button.id])return;
   const [action,module]=buttonActions[button.id];
-  emit(action,{module,state:"info"});
+  const operationId=ID();
+  if(action==="studio_run_requested")pendingRunOperationId=operationId;
+  emit(action,{module,state:"info",operationId,phase:"started"});
 },true);
 document.addEventListener("adminerva:diagnostic-event",event=>{
   const data=event?.detail||{};
