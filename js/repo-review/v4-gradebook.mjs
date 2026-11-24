@@ -322,8 +322,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const publishableDrafts=draftRows.filter(item=>Number(item.awarded)>0&&Number(item.pending||0)===0).length;
       const zeroDrafts=draftRows.filter(item=>Number(item.awarded)===0).length;
       if(bulkPublish){
-        bulkPublish.dataset.ready=historicalGithub?"false":publishableDrafts?"true":"false";
-        bulkPublish.disabled=busy||historicalGithub||!publishableDrafts;
+        bulkPublish.dataset.ready=publishableDrafts?"true":"false";
+        bulkPublish.disabled=busy||!publishableDrafts;
         bulkPublish.textContent="Publish all drafts ("+publishableDrafts+")";
         bulkPublish.title=zeroDrafts
           ?zeroDrafts+" zero-score draft"+(zeroDrafts===1?" is":"s are")+" excluded from bulk publication."
@@ -932,8 +932,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   document.getElementById("gbV4Close").addEventListener("click",()=>{if(!busy)dialog.close();});
   dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
   bulkPublish?.addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||bulkPublish.dataset.ready!=="true"||
-      (currentTask.legacyCompatibility&&currentTask.submissionSource==="github"))return;
+    if(busy||!currentTask||bulkPublish.dataset.ready!=="true")return;
     const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
     if(!count)return;
     if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? This confirmation is the teacher approval step. Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
@@ -941,16 +940,18 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       setBusy(true,"Publishing all valid drafts…");
       let result;
       if(currentTask.legacyCompatibility){
-        const totals={published:0,failed:0,zeroSkipped:0};
+        const totals={published:0,failed:0,zeroSkipped:0,unverifiedSkipped:0};
         let cursor="",pages=0;
         for(;;){
-          const part=await scoped(migrationApi,"legacy_review_bulk_publish",{
+          const part=await scoped(migrationApi,currentTask.submissionSource==="github"
+            ?"legacy_github_bulk_publish":"legacy_review_bulk_publish",{
             legacyAssessmentId:currentTask.legacyAssessmentId,
             ...(cursor?{cursor}:{})
           });
           totals.published+=Number(part.published||0);
           totals.failed+=Number(part.failed||0);
           totals.zeroSkipped+=Number(part.zeroSkipped||0);
+          totals.unverifiedSkipped+=Number(part.unverifiedSkipped||0);
           pages++;
           if(!part.hasMore)break;
           if(!part.nextCursor||part.nextCursor===cursor||pages>25)
@@ -958,7 +959,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           cursor=part.nextCursor;
           status.textContent="Historical bulk publication: "+totals.published+
             " published, "+totals.zeroSkipped+" zero-score drafts held, "+
-            totals.failed+" failed or changed. Preparing next class page…";
+            totals.failed+" failed or changed, "+totals.unverifiedSkipped+
+            " without verified student-submitted evidence. Preparing next page…";
         }
         result=totals;
       }else{
@@ -966,7 +968,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       }
       const summary="Published "+result.published+" draft"+(result.published===1?"":"s")+
         (result.zeroSkipped?" · "+result.zeroSkipped+" zero-score draft"+(result.zeroSkipped===1?" remains":"s remain")+" for attention":"")+
-        (result.failed?" · "+result.failed+" draft"+(result.failed===1?" was":"s were")+" skipped after validation":"")+".";
+        (result.failed?" · "+result.failed+" draft"+(result.failed===1?" was":"s were")+" skipped after validation":"")+
+        (result.unverifiedSkipped?" · "+result.unverifiedSkipped+" source record"+(result.unverifiedSkipped===1?" lacked":"s lacked")+" verified student-submitted evidence":"")+".";
       await loadInbox();
       status.textContent=summary+" "+status.textContent;
     }catch(error){
