@@ -1048,6 +1048,84 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       };
     }
 
+    if(input.action==="find_assessment_source"){
+      // Read-only teacher-owned source discovery. Never enumerate another
+      // teacher's work, student submissions, grades, or another school's data.
+      await verifyOffering();
+      if(!teacher&&!ctx.platformOverride)
+        deny("permission-denied","Only an assigned teacher can search their assessment sources.");
+      const query=text(input.query,"Assessment search",80).toLocaleLowerCase("en");
+      if(query.length<2)deny("invalid-argument","Use at least two characters to search.");
+      const normalized=value=>String(value||"").toLocaleLowerCase("en")
+        .replace(/[^a-z0-9]+/g," ").trim();
+      const tokens=normalized(query).split(/\s+/).filter(Boolean);
+      if(!tokens.length)deny("invalid-argument","Enter a descriptive assessment title.");
+      const matches=value=>{
+        const title=normalized(value);
+        return tokens.every(token=>title.split(" ").some(word=>word.startsWith(token)));
+      };
+      const max=201;
+      const queries=[
+        db.collection(prefix+"assessments").where("ownerUid","==",ctx.uid).limit(max).get(),
+        db.collection(prefix+"assessments").where("reviewerUid","==",ctx.uid).limit(max).get(),
+        db.collection(prefix+"assessment_blueprints").where("ownerUid","==",ctx.uid).limit(max).get(),
+        ...(ctx.schoolId===LEGACY_BRIDGE_SCHOOL?
+          [db.collection("assessments").where("ownerUid","==",ctx.uid).limit(max).get()]:[])
+      ];
+      const sources=await Promise.all(queries);
+      if(sources.some(snapshot=>snapshot.size>=max))
+        deny("resource-exhausted","This account has more assessment sources than the bounded search can inspect. Contact School Administration for an indexed lookup.");
+      const found=new Map(),counts={schoolAssessments:0,importedBlueprints:0,originalAssessments:0};
+      const add=(scope,doc,data)=>{
+        const title=String(data?.title||data?.name||"").trim();
+        if(!title||!matches(title))return;
+        const recordKey=scope+":"+doc.id;
+        if(found.has(recordKey))return;
+        found.set(recordKey,{
+          sourceType:scope,taskId:doc.id,title:title.slice(0,160),
+          subject:String(data?.subject||"").slice(0,120),
+          originalAssessmentId:scope==="imported_blueprint"?
+            String(data?.legacyImport?.assessmentId||"").slice(0,128):"",
+          offeringId:scope==="school_assessment"?String(data?.offeringId||"").slice(0,330):"",
+          status:String(data?.lifecycle||data?.status||"").slice(0,60),
+          inSelectedOffering:scope==="school_assessment"&&data?.offeringId===offeringId,
+          summary:scope==="original_assessment"?
+            "Original teacher-owned historical assessment; use Class Record source mapping.":
+            scope==="imported_blueprint"?
+            "School blueprint or imported resource; this is not itself a graded deployment.":
+            data?.offeringId===offeringId?
+            "School assessment in this class.":"School assessment in another course offering."
+        });
+      };
+      const schoolDocs=new Map();
+      for(const snapshot of sources.slice(0,2))
+        for(const doc of snapshot.docs)schoolDocs.set(doc.id,doc);
+      for(const doc of schoolDocs.values()){
+        const data=doc.data();
+        if(data.schoolId!==ctx.schoolId||
+           data.ownerUid!==ctx.uid&&data.reviewerUid!==ctx.uid)continue;
+        counts.schoolAssessments++;
+        add("school_assessment",doc,data);
+      }
+      for(const doc of sources[2].docs){
+        const data=doc.data();
+        if(data.schoolId!==ctx.schoolId||data.ownerUid!==ctx.uid)continue;
+        counts.importedBlueprints++;
+        add("imported_blueprint",doc,data);
+      }
+      if(ctx.schoolId===LEGACY_BRIDGE_SCHOOL){
+        for(const doc of sources[3].docs){
+          const data=doc.data();
+          if(data.ownerUid!==ctx.uid||!validOrigin(data,ctx.schoolId))continue;
+          counts.originalAssessments++;
+          add("original_assessment",doc,data);
+        }
+      }
+      return {query:String(input.query).trim(),checked:counts,
+        results:[...found.values()].sort((a,b)=>a.title.localeCompare(b.title)||
+          a.sourceType.localeCompare(b.sourceType)).slice(0,30),
+        truncated:found.size>30};
+    }
     if(input.action==="workspace"){
       const data=await buildWorkspaceData();
       return {
