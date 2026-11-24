@@ -377,6 +377,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     if(!authority.platformAdmin)
       deny("permission-denied","Platform Administrator authority is required.");
     const purpose=reason(input.reason);
+    uid(authority.uid);
     const limit=Number.isInteger(input.limit)&&input.limit>=1?Math.min(MAX_PAGE,input.limit):60;
     const windowKey=Math.floor(now()/600000);
     const audit=db.collection("platform_audit").doc("diagnostic_live_"+authority.uid+"_"+windowKey);
