@@ -742,3 +742,10 @@ html[data-adminerva-experience="quick"] .avx-canonical-home{background:initial!i
   .avx-route-intro{margin-bottom:2.35rem}
   .avx-route{margin-top:0}
 }
+
+
+/* The route nav can begin in the same layout row on narrow browsers; keep
+   the first actionable destination clear of the narrative copy. */
+@media (max-width:699px) and (orientation:portrait){
+  .avx-route{padding-top:3.25rem}
+}
