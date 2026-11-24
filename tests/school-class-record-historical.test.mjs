@@ -124,6 +124,12 @@ test("a different original subject requires explicit teacher attestation AND ver
   assert.equal(mapped.subjectProof,"teacher_confirmed_original_subject_with_roster");
   assert.equal(mapped.originalSubjectName,original.subject);
   assert.equal(mapped.identityVerifiedCount,2);
+  const padded={...original,subject:"  "+original.subject+"  "};
+  const paddedMap=await verifiedHistoricalSectionMapping({
+    ...options,task:padded,confirmOriginalSubject:original.subject
+  });
+  assert.equal(paddedMap?.originalSubjectName,original.subject,
+    "whitespace in legacy subject labels does not invalidate an explicit exact confirmation");
   rows.delete("old2");
   assert.equal(await verifiedHistoricalSectionMapping({...options,confirmOriginalSubject:original.subject}),null,
     "one student among three is below the minimum verified-person threshold");
