@@ -208,7 +208,7 @@ exports.platformUsers=onCall(callOptions,safeCallable(createPlatformUserService(
 exports.platformAccountDiagnostics=onCall(callOptions,platformAccountDiagnostics.service);
 exports.platformNotificationDiagnostics=onDocumentCreated({
   document:"notifications/{uid}/items/{notificationId}",region:"asia-southeast1",maxInstances:2,concurrency:10
-},async event=>platformAccountDiagnostics.recordNotificationDelivered(event.params.uid));
+},async event=>platformAccountDiagnostics.recordNotificationDelivered(event.params.uid,event.params.notificationId));
 
 const {createMcsPilotControlService}=require("./mcs-pilot-control.js");
 exports.mcsPilotControl=onCall(callOptions,safeCallable(createMcsPilotControlService({db,auth:getAuth()})));
