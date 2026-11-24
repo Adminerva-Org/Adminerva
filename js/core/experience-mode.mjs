@@ -34,10 +34,21 @@ function officialBrand(cls='avx-official-brand'){
 function guideCharacter(cls='avx-guide-character'){
   const img=document.createElement('img');img.className=cls;img.src='assets/immersive/guide.webp';img.alt='';img.loading='eager';img.decoding='async';return img;
 }
-function toolMotifs(){
+function toolMotifs(names=['portal','beacons','path','shards'],role=''){
   const group=el('div','avx-tool-motifs');group.setAttribute('aria-hidden','true');
-  for(const name of ['portal','beacons','path','shards'])group.append(el('i','avx-tool-sprite avx-tool-'+name));
+  if(role)group.dataset.sceneRole=role;
+  for(const name of names)group.append(el('i','avx-tool-sprite avx-tool-'+name));
   return group;
+}
+function sceneArchitecture(role){
+  const scene=el('div','avx-scene-architecture avx-scene-architecture--'+role);scene.setAttribute('aria-hidden','true');
+  for(const name of ['arch','horizon','floor','lens'])scene.append(el('i','avx-scene-'+name));
+  return scene;
+}
+function sceneHandoff(role){
+  const handoff=el('div','avx-home-handoff avx-home-handoff--'+role);handoff.setAttribute('aria-hidden','true');
+  handoff.append(el('i','avx-home-handoff-path'),el('i','avx-home-handoff-glow'));
+  return handoff;
 }
 function routeStop(entry){
   const [index,kicker,title,summary,href]=entry;const a=link(href,'','avx-route-stop');a.dataset.route=index;
@@ -87,14 +98,29 @@ if(publicLike){
   if(hero){
     home.classList.add('avx-canonical-home','avx-canonical-home--'+role);
     home.dataset.avxCanonicalHome='true';
-    hero.classList.add('avx-canonical-home-hero','avx-canonical-home-hero--'+role);
+    hero.classList.add('avx-canonical-home-hero--'+role);
     hero.dataset.avxCanonicalHome='true';
+    const syncCanonicalScene=()=>hero.classList.toggle('avx-canonical-home-hero',document.documentElement.dataset.adminervaExperience==='full');
+    syncCanonicalScene();
+    document.addEventListener('adminerva:experience-mode-change',syncCanonicalScene);
 
+    const roleTools={
+      student:['portal','path','shards'],
+      teacher:['beacons','path','shards'],
+      admin:['portal','beacons','path'],
+      platform:['portal','beacons','shards']
+    };
     const art=el('div','avx-canonical-art');art.setAttribute('aria-hidden','true');
     const brand=officialBrand('avx-canonical-logo');
     const guide=guideCharacter('avx-canonical-guide');
-    art.append(brand,guide,toolMotifs());
+    art.append(sceneArchitecture(role),brand,guide,toolMotifs(roleTools[role]||['path'],role));
     hero.prepend(art);
+    const handoff=sceneHandoff(role);
+    hero.insertAdjacentElement('afterend',handoff);
+    [...home.children].filter(node=>node!==hero&&node!==handoff&&node.matches?.('section,div')).forEach((node,index)=>{
+      node.classList.add('avx-home-zone');
+      node.style.setProperty('--avx-zone-index',String(index));
+    });
     bindDepth(hero);
   }
 }

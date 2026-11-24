@@ -471,3 +471,281 @@ html[data-adminerva-experience="quick"] .avx-canonical-home-hero .text-cyan-800{
   .avx-canonical-home-hero::before,
   .avx-guide-character,.avx-canonical-guide{transform:none!important;transition:none!important}
 }
+
+
+/* 2026-11-24 v2: role-specific cinematic composition on the canonical Home.
+   These layers are decorative only; operational content and routes remain authoritative. */
+.avx-canonical-home{
+  --avx-role-accent:#7ee7d0;
+  --avx-role-accent-soft:rgba(126,231,208,.16);
+  --avx-scene-x:58%;
+  isolation:isolate;
+}
+.avx-canonical-home--student{--avx-role-accent:#78e9d2;--avx-role-accent-soft:rgba(120,233,210,.17);--avx-scene-x:52%}
+.avx-canonical-home--teacher{--avx-role-accent:#76dfff;--avx-role-accent-soft:rgba(118,223,255,.16);--avx-scene-x:64%}
+.avx-canonical-home--admin{--avx-role-accent:#ffd08a;--avx-role-accent-soft:rgba(255,208,138,.14);--avx-scene-x:72%}
+.avx-canonical-home--platform{--avx-role-accent:#a8c9ff;--avx-role-accent-soft:rgba(168,201,255,.14);--avx-scene-x:82%}
+
+html[data-adminerva-experience="full"] .avx-canonical-home{
+  background:
+    radial-gradient(circle at var(--avx-scene-x) 4%,var(--avx-role-accent-soft),transparent 24rem),
+    linear-gradient(180deg,rgba(228,241,240,.62),transparent 36rem);
+}
+.avx-canonical-home-hero{
+  min-height:clamp(390px,48vw,590px);
+  padding-top:clamp(2.2rem,5vw,4.5rem)!important;
+  padding-bottom:clamp(2.6rem,6vw,5rem)!important;
+}
+.avx-canonical-home-hero--student::before{
+  background-image:url("../assets/immersive/world-arrival.webp");
+  background-position:56% center;
+  filter:saturate(.76) contrast(.98) brightness(.92);
+}
+.avx-canonical-home-hero--teacher::before{
+  background-image:url("../assets/immersive/world-journey.webp");
+  background-position:62% center;
+  filter:saturate(.78) contrast(.98) brightness(.88);
+}
+.avx-canonical-home-hero--admin::before{
+  background-image:url("../assets/immersive/world-journey.webp");
+  background-position:74% center;
+  filter:saturate(.7) contrast(1.01) brightness(.86);
+}
+.avx-canonical-home-hero--platform::before{
+  background-image:url("../assets/immersive/world-journey.webp");
+  background-position:88% center;
+  filter:saturate(.66) contrast(1.03) brightness(.82);
+}
+.avx-canonical-home-hero::after{
+  background:
+    linear-gradient(90deg,rgba(3,13,24,.97) 0%,rgba(4,15,27,.9) 37%,rgba(4,15,27,.53) 64%,rgba(3,12,22,.16) 100%),
+    linear-gradient(0deg,rgba(2,10,18,.52),transparent 46%);
+}
+.avx-canonical-home-hero--admin::after,
+.avx-canonical-home-hero--platform::after{
+  background:
+    linear-gradient(90deg,rgba(3,13,24,.97) 0%,rgba(4,15,27,.92) 42%,rgba(4,15,27,.58) 70%,rgba(3,12,22,.22) 100%),
+    linear-gradient(0deg,rgba(2,10,18,.58),transparent 48%);
+}
+.avx-canonical-home-hero>*:not(.avx-canonical-art){
+  max-width:min(62rem,72%);
+  text-shadow:0 2px 18px rgba(0,0,0,.24);
+}
+.avx-canonical-home-hero .av-button-row{max-width:46rem}
+.avx-canonical-home-hero h1{max-width:14ch}
+.avx-canonical-home-hero p{max-width:68ch}
+
+.avx-scene-architecture{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.avx-scene-architecture i{position:absolute;display:block;pointer-events:none}
+.avx-scene-arch{
+  right:-5%;top:8%;width:min(36vw,470px);height:112%;
+  border:1px solid color-mix(in srgb,var(--avx-role-accent) 48%,transparent);
+  border-bottom:0;border-radius:52% 52% 0 0;
+  box-shadow:
+    inset 0 0 0 12px rgba(5,22,34,.18),
+    inset 0 0 0 13px color-mix(in srgb,var(--avx-role-accent) 15%,transparent),
+    0 0 70px color-mix(in srgb,var(--avx-role-accent) 12%,transparent);
+  transform:translate3d(calc(var(--avx-px,0)*14px),calc(var(--avx-py,0)*8px),0) rotate(-1.5deg);
+  opacity:.56;
+}
+.avx-scene-horizon{
+  right:3%;top:54%;width:56%;height:1px;
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--avx-role-accent) 52%,transparent),transparent);
+  box-shadow:0 0 26px color-mix(in srgb,var(--avx-role-accent) 24%,transparent);
+  transform:rotate(-7deg);
+  opacity:.62;
+}
+.avx-scene-floor{
+  right:-8%;bottom:-15%;width:60%;height:55%;
+  background:
+    linear-gradient(90deg,transparent 0 10%,color-mix(in srgb,var(--avx-role-accent) 20%,transparent) 50%,transparent 90%),
+    linear-gradient(180deg,color-mix(in srgb,var(--avx-role-accent) 13%,transparent),transparent 72%);
+  clip-path:polygon(36% 0,64% 0,100% 100%,0 100%);
+  transform:translate3d(calc(var(--avx-px,0)*10px),0,0);
+  opacity:.76;
+}
+.avx-scene-lens{
+  right:4%;top:13%;width:min(38vw,500px);aspect-ratio:1;
+  border-radius:50%;
+  background:radial-gradient(circle,color-mix(in srgb,var(--avx-role-accent) 12%,transparent),transparent 64%);
+  filter:blur(5px);
+  transform:translate3d(calc(var(--avx-px,0)*-8px),calc(var(--avx-py,0)*-4px),0);
+}
+
+.avx-canonical-logo{
+  right:clamp(1.15rem,3.2vw,3.3rem);top:clamp(1rem,2.7vw,2.2rem);
+  width:clamp(142px,17vw,245px);
+}
+.avx-canonical-guide{
+  right:clamp(.3rem,2.6vw,2.6rem);bottom:-5%;
+  width:clamp(125px,20vw,248px);
+  opacity:.96;
+}
+.avx-canonical-home--teacher .avx-canonical-guide{right:2%;width:clamp(120px,18vw,225px)}
+.avx-canonical-home--admin .avx-canonical-guide{right:1.5%;width:clamp(112px,17vw,210px);opacity:.9}
+.avx-canonical-home--platform .avx-canonical-guide{right:2%;width:clamp(108px,16vw,198px);opacity:.86}
+
+.avx-canonical-art .avx-tool-motifs{z-index:2}
+.avx-canonical-art .avx-tool-sprite{
+  opacity:.24;
+  filter:drop-shadow(0 14px 28px color-mix(in srgb,var(--avx-role-accent) 18%,transparent));
+}
+.avx-canonical-art [data-scene-role="student"] .avx-tool-portal{right:27%;bottom:-4%;width:180px;opacity:.28}
+.avx-canonical-art [data-scene-role="student"] .avx-tool-path{right:13%;bottom:0;width:210px;opacity:.42}
+.avx-canonical-art [data-scene-role="student"] .avx-tool-shards{right:36%;bottom:12%;opacity:.22}
+.avx-canonical-art [data-scene-role="teacher"] .avx-tool-beacons{right:4%;top:18%;opacity:.24}
+.avx-canonical-art [data-scene-role="teacher"] .avx-tool-path{right:19%;bottom:0;width:230px;opacity:.35}
+.avx-canonical-art [data-scene-role="teacher"] .avx-tool-shards{right:35%;bottom:17%;opacity:.2}
+.avx-canonical-art [data-scene-role="admin"] .avx-tool-portal{right:21%;bottom:-5%;width:190px;opacity:.2}
+.avx-canonical-art [data-scene-role="admin"] .avx-tool-beacons{right:2%;top:24%;opacity:.18}
+.avx-canonical-art [data-scene-role="admin"] .avx-tool-path{right:18%;bottom:1%;width:220px;opacity:.28}
+.avx-canonical-art [data-scene-role="platform"] .avx-tool-portal{right:18%;bottom:-6%;width:190px;opacity:.19}
+.avx-canonical-art [data-scene-role="platform"] .avx-tool-beacons{right:1%;top:22%;opacity:.16}
+.avx-canonical-art [data-scene-role="platform"] .avx-tool-shards{right:34%;bottom:18%;opacity:.18}
+
+.avx-home-handoff{
+  position:relative;z-index:3;height:84px;margin:0!important;pointer-events:none;overflow:hidden;
+  background:linear-gradient(180deg,#07131f 0%,rgba(7,19,31,.76) 14%,rgba(228,241,240,.54) 72%,transparent 100%);
+}
+.avx-home-handoff-path{
+  position:absolute;left:8%;right:8%;top:0;height:100%;
+  background:url("../assets/immersive/path-light.svg") center/contain no-repeat;
+  opacity:.28;
+  transform:translateY(-20%);
+}
+.avx-home-handoff-glow{
+  position:absolute;left:16%;right:16%;top:8%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--avx-role-accent),transparent);
+  box-shadow:0 0 24px color-mix(in srgb,var(--avx-role-accent) 28%,transparent);
+  opacity:.55;
+}
+html[data-adminerva-experience="full"] .avx-canonical-home .avx-home-zone{position:relative;z-index:4}
+html[data-adminerva-experience="full"] .avx-canonical-home .av-home-task,
+html[data-adminerva-experience="full"] .avx-canonical-home .av-home-quick-grid>a,
+html[data-adminerva-experience="full"] .avx-canonical-home .av-setup-steps li>a{
+  border-color:color-mix(in srgb,var(--avx-role-accent) 18%,#cbd5e1);
+  box-shadow:0 10px 34px rgba(15,35,48,.05);
+}
+html[data-adminerva-experience="full"] .avx-canonical-home .av-home-task:hover,
+html[data-adminerva-experience="full"] .avx-canonical-home .av-home-quick-grid>a:hover,
+html[data-adminerva-experience="full"] .avx-canonical-home .av-setup-steps li>a:hover{
+  border-color:color-mix(in srgb,var(--avx-role-accent) 46%,#cbd5e1);
+  box-shadow:0 18px 42px rgba(15,35,48,.1);
+}
+
+html[data-adminerva-experience="quick"] .avx-home-handoff{display:none!important}
+html[data-adminerva-experience="quick"] .avx-canonical-home{background:initial!important}
+
+@media (min-width:901px) and (max-width:1180px){
+  .avx-canonical-home-hero>*:not(.avx-canonical-art){max-width:68%}
+  .avx-scene-arch{width:38vw;right:-8%}
+  .avx-canonical-guide{width:clamp(118px,19vw,205px)}
+}
+@media (min-width:700px) and (max-width:900px){
+  .avx-canonical-home-hero{min-height:390px!important;padding-right:30vw!important}
+  .avx-canonical-home-hero>*:not(.avx-canonical-art){max-width:78%}
+  .avx-scene-arch{width:45vw;right:-12%;opacity:.42}
+  .avx-canonical-logo{width:150px}
+  .avx-canonical-guide{width:150px}
+  .avx-home-handoff{height:66px}
+}
+@media (max-width:699px) and (orientation:portrait){
+  .avx-canonical-home-hero{min-height:410px!important;padding:1.35rem!important;padding-bottom:8.4rem!important}
+  .avx-canonical-home-hero>*:not(.avx-canonical-art){max-width:100%}
+  .avx-canonical-home-hero h1{max-width:12ch}
+  .avx-canonical-home-hero::after{
+    background:linear-gradient(180deg,rgba(3,13,24,.5) 0%,rgba(3,13,24,.86) 48%,#06111e 100%);
+  }
+  .avx-canonical-home-hero--student::before{background-position:64% center}
+  .avx-canonical-home-hero--teacher::before{background-position:72% center}
+  .avx-canonical-home-hero--admin::before{background-position:80% center}
+  .avx-canonical-home-hero--platform::before{background-position:90% center}
+  .avx-canonical-logo{top:.9rem;right:.9rem;width:min(38vw,138px)}
+  .avx-canonical-guide{right:.4rem;bottom:-2%;width:108px;opacity:.88}
+  .avx-scene-arch{right:-26%;top:30%;width:75vw;height:82%;opacity:.28}
+  .avx-scene-floor{right:-18%;bottom:-10%;width:92%;height:42%;opacity:.48}
+  .avx-scene-horizon{right:-4%;top:68%;width:72%;opacity:.38}
+  .avx-canonical-art .avx-tool-sprite{transform:scale(.72);opacity:.15}
+  .avx-canonical-art [data-scene-role] .avx-tool-beacons,
+  .avx-canonical-art [data-scene-role] .avx-tool-shards{display:none}
+  .avx-canonical-art [data-scene-role] .avx-tool-path{right:18%;bottom:-2%;opacity:.22}
+  .avx-home-handoff{height:54px}
+  .avx-home-handoff-path{left:-8%;right:-8%;opacity:.2}
+}
+@media (max-width:430px) and (orientation:portrait){
+  .avx-canonical-home-hero{min-height:390px!important;padding-bottom:7.5rem!important}
+  .avx-canonical-logo{width:116px}
+  .avx-canonical-guide{width:90px;opacity:.78}
+  .avx-scene-arch{opacity:.2}
+  .avx-home-handoff{height:46px}
+}
+@media (max-height:620px) and (orientation:landscape) and (pointer:coarse){
+  .avx-canonical-home-hero{min-height:280px!important;padding-right:29vw!important;padding-top:1.2rem!important;padding-bottom:1.2rem!important}
+  .avx-canonical-home-hero>*:not(.avx-canonical-art){max-width:72%}
+  .avx-canonical-logo{width:115px;top:.7rem}
+  .avx-canonical-guide{width:94px;bottom:-7%}
+  .avx-scene-arch{width:36vw;right:-8%;opacity:.3}
+  .avx-home-handoff{height:34px}
+}
+@media (prefers-reduced-motion:reduce){
+  .avx-scene-arch,.avx-scene-floor,.avx-scene-lens{transform:none!important;transition:none!important}
+}
+
+
+/* Qualitative scene polish from PR #294 Chromium evidence. */
+.avx-gate-mark{top:4%;right:4%;z-index:5}
+.avx-gate-logo{
+  width:clamp(118px,14vw,170px)!important;
+  border-radius:18px;
+  opacity:.9;
+  filter:drop-shadow(0 12px 24px rgba(0,0,0,.34))!important;
+}
+.avx-canonical-logo{
+  z-index:5;
+  width:clamp(108px,11vw,155px)!important;
+  border-radius:16px;
+  opacity:.88;
+}
+.avx-canonical-guide{z-index:4}
+.avx-canonical-art .avx-tool-motifs{z-index:2}
+.avx-scene-architecture{z-index:1}
+@media (max-width:900px){
+  .avx-gate-mark{top:3%;right:2%}
+  .avx-gate-logo{width:132px!important}
+  .avx-canonical-logo{width:112px!important}
+}
+@media (max-width:699px) and (orientation:portrait){
+  .avx-gate-logo{width:108px!important}
+  .avx-canonical-logo{width:92px!important;top:.7rem;right:.7rem}
+}
+@media (max-width:430px) and (orientation:portrait){
+  .avx-canonical-logo{width:82px!important;opacity:.78}
+}
+
+
+/* Public gateway brand/guide separation after visual evidence review. */
+.avx-gate-mark{left:5%;right:auto;top:5%;text-align:left}
+.avx-gate-logo{width:clamp(105px,12vw,150px)!important}
+@media (max-width:900px){
+  .avx-gate-mark{left:2%;right:auto;top:4%}
+  .avx-gate-logo{width:118px!important}
+}
+@media (max-width:699px) and (orientation:portrait){
+  .avx-gate-mark{left:.5rem;right:auto;top:.5rem}
+  .avx-gate-logo{width:94px!important}
+}
+
+
+/* Phone route flow: keep narrative copy fully above the first destination. */
+@media (max-width:699px) and (orientation:portrait){
+  .avx-route-section{display:block}
+  .avx-route-intro{margin-bottom:2.35rem}
+  .avx-route{margin-top:0}
+}
+
+
+/* The route nav can begin in the same layout row on narrow browsers; keep
+   the first actionable destination clear of the narrative copy. */
+@media (max-width:699px) and (orientation:portrait){
+  .avx-route{padding-top:3.25rem}
+}
