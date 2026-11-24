@@ -34,7 +34,7 @@ const assessmentSearchWords=value=>String(value||"").toLocaleLowerCase("en")
 function matchesAssessmentTitle(query,title){
   const terms=assessmentSearchWords(query),words=assessmentSearchWords(title);
   return terms.length>0&&words.length>0&&
-    terms.every(term=>words.some(word=>word.startsWith(term)));
+    terms.every(term=>words.some(word=>/^[0-9]+$/.test(term)?word===term:word.startsWith(term)));
 }
 function canDiscloseAssessmentSource(scope,data,schoolId,uid){
   if(!data||!schoolId||!uid)return false;
