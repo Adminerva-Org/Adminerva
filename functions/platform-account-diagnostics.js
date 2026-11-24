@@ -164,6 +164,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
         phase:event.phase||(event.state==="error"?"failed":event.state==="unavailable"?"interrupted":
           event.action.endsWith("_requested")?"started":event.state==="ok"?"completed":"observed"),
         createdAt:FieldValue.serverTimestamp(),expiresAt:expiry};
+      sanitized.severity=diagnosticSeverity(sanitized);
       sanitized.fingerprint=fingerprint(sanitized);
       tx.create(entry,sanitized);
       return {recorded:true,duplicate:false};
