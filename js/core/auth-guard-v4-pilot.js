@@ -186,7 +186,7 @@ async function checkAccess(user){
   if(v4Cutover&&actualRole==="platformowner"&&currentPath.endsWith("/issues.html")){
     replacePage("owner-schools.html");return;
   }
-  if(/\/(owner-schools|system-users)\.html$/.test(currentPath)&&
+  if(/\/(owner-schools|system-users|platform-logs)\.html$/.test(currentPath)&&
      !(access.platformAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
