@@ -45,7 +45,7 @@ test("normal, warning, failure flags remain readable on mobile and do not confla
   assert.match(css,/@media\(max-width:560px\)/);
   assert.match(page,/minlength="12" maxlength="300"/);
   assert.match(viewer,/severity:severity\(row.severity\)/);
-  assert.match(viewer,/kind/); // event properties are displayed, not edited.
+  assert.match(viewer,/function renderEvents\(\)/); // event properties are displayed, not edited.
 });
 
 test("directory and recent accounts are read only from canonical callable APIs after an audited reason",()=>{
