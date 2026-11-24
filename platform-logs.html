@@ -10,7 +10,7 @@
   <script defer src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=7fe6ab08fd82">
   <link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1">
-  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-diagnostic-trends-1">
+  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-log-investigation-ux-1">
 </head>
 <body id="pageBody" class="hidden">
   <div id="adminerva-nav" data-module="admin" data-page="platform-logs"></div>
@@ -88,6 +88,10 @@
         <label class="pl-log-search" for="pl-event-search">Filter loaded events by account, action, error or trace
           <input id="pl-event-search" type="search" autocomplete="off" placeholder="Filter the loaded page of events…">
         </label>
+        <div class="pl-filter-feedback">
+          <p id="pl-filter-status" class="pl-filter-status" role="status" aria-live="polite">Select a view and load recorded activity. Server and local filters have different scopes.</p>
+          <button id="pl-clear-filters" class="pl-button pl-secondary" type="button">Clear filters</button>
+        </div>
         <section id="pl-live" class="pl-live" aria-labelledby="pl-live-title" hidden>
           <div class="pl-live-header">
             <div>
@@ -125,17 +129,32 @@
           </div>
           <p id="pl-trends-status" class="pl-trends-status" role="status" aria-live="polite">Select an investigation period and choose Analyze recorded trends.</p>
           <div id="pl-trends-metrics" class="pl-trends-metrics"></div>
+          <div class="pl-trend-legend" aria-label="Chart legend">
+            <span><i data-level="normal" aria-hidden="true"></i> Normal</span>
+            <span><i data-level="warning" aria-hidden="true"></i> Warning</span>
+            <span><i data-level="failure" aria-hidden="true"></i> Failure</span>
+            <span><i data-level="unsampled" aria-hidden="true"></i> Not covered by sample</span>
+          </div>
           <div id="pl-trends-chart" class="pl-trends-chart" role="group" aria-label="Recorded normal, warning and failure events by time bucket"></div>
+          <details class="pl-trends-data">
+            <summary>View exact recorded event counts by time</summary>
+            <div class="pl-trends-table-wrap">
+              <table class="pl-trends-table">
+                <thead><tr><th scope="col">Time (PHT)</th><th scope="col">Normal</th><th scope="col">Warning</th><th scope="col">Failure</th><th scope="col">Total</th><th scope="col">Coverage</th></tr></thead>
+                <tbody id="pl-trends-table"></tbody>
+              </table>
+            </div>
+          </details>
           <div class="pl-trends-breakdowns">
-            <div><h4>Backend operation outcomes</h4><div id="pl-trends-services"></div></div>
+            <div><h4>Backend callable outcomes (return ≠ saved)</h4><div id="pl-trends-services"></div></div>
             <div><h4>Reported failures by browser family</h4><div id="pl-trends-browsers"></div></div>
           </div>
-          <p class="pl-trends-notice">This is a sampled diagnostic view, not an exact count of all activity or a measure of student effort. Each aggregate is restricted to events already recorded. A truncated sample understates event volume and may omit older intervals.</p>
+          <p class="pl-trends-notice">This analysis uses the selected time window and module, not the flag or free-text filters. Backend callable returns are not proof of a durable database write. This is a sampled diagnostic view, not an exact count of all activity or a measure of student effort. A truncated sample understates event volume and may omit older intervals.</p>
         </section>
         <section id="pl-impact" class="pl-impact" aria-labelledby="pl-impact-heading" hidden>
           <div class="pl-impact-head">
             <div><h3 id="pl-impact-heading">Cross-account failure patterns</h3>
-              <p id="pl-impact-description">A bounded sample of recently indexed events, grouped by failure signature. Correlation is a diagnostic lead, not proof of a shared outage.</p>
+              <p id="pl-impact-description">A bounded sample of recently indexed events, grouped by failure signature. Uses the selected time window, not the flag, module or text filters. Correlation is a diagnostic lead, not proof of a shared outage.</p>
             </div>
             <button id="pl-impact-refresh" type="button" class="pl-button pl-secondary">Analyze sample</button>
           </div>
@@ -156,14 +175,14 @@
           <p>Account lifecycle actions remain in the original platform audit store; this viewer does not copy or edit those records.</p>
           <div id="pl-audit-records"></div>
         </details>
-        <p class="pl-footnote">This log is for authorized system debugging, not student misconduct findings. A normal click means it was observed, not that a save or submission succeeded. The Live console is a three-second polling view, not a direct socket or a guarantee of every interaction. Severity and module filters are applied server-side in the Global Event Stream; text search filters the currently loaded rows only. Events are recorded at server receipt time and may arrive late or be missing. No password, student source code, private notification body, full URL, raw stack trace, grade, screenshot or arbitrary typed input is collected. Previously recorded per-user events remain accessible under the original account timeline; the new global index starts with newly recorded events. Diagnostic records expire after 60 days. Global error-pattern counts are a bounded sample, not an exact platform-wide census.</p>
+        <p class="pl-footnote">This log is for authorized system debugging, not student misconduct findings. A backend callable returning without an exception does not independently prove that a requested school record was committed. A normal click means it was observed, not that a save or submission succeeded. The Live console is a three-second polling view, not a direct socket or a guarantee of every interaction. Severity and module filters are applied server-side in the Global Event Stream; text search filters the currently loaded rows only. Events are recorded at server receipt time and may arrive late or be missing. No password, student source code, private notification body, full URL, raw stack trace, grade, screenshot or arbitrary typed input is collected. Previously recorded per-user events remain accessible under the original account timeline; the new global index starts with newly recorded events. Diagnostic records expire after 60 days. Global error-pattern counts are a bounded sample, not an exact platform-wide census.</p>
       </section>
     </div>
   </main>
   <script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
   <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
   <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
-  <script type="module" src="js/core/platform-logs.mjs?v=20261124-diagnostic-trends-1"></script>
+  <script type="module" src="js/core/platform-logs.mjs?v=20261124-log-investigation-ux-1"></script>
   <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script>
   <script defer src="js/core/release-footer.js?v=7fe6ab08fd82"></script>
 </body>
