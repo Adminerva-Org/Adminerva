@@ -1,55 +1,142 @@
 "use strict";
 /**
- * Adminerva desktop PUBLIC PREVIEW only.
- * No authenticated session handoff, native file access, exam monitoring,
- * unattended screen capture, update/install channel, or native permissions.
+ * Adminerva Desktop development preview.
+ * The existing public-only renderer remains the default.
+ * Opt-in development sign-in is gated on BOTH native and backend rollout flags.
+ * No signed release or Companion permissions are part of this workstream.
  */
-const {app,BrowserWindow,shell}=require("electron");
+const {app,BrowserWindow,shell,Menu,dialog,ipcMain}=require("electron");
 const path=require("node:path");
-const {START_URL,classifyNavigation}=require("./navigation-policy.cjs");
+const {APP_ORIGIN,APP_PREFIX,START_URL,classifyNavigation}=require("./navigation-policy.cjs");
+const {generatePairing}=require("./native-auth-protocol.cjs");
+const {sendHandoff}=require("./native-handoff-client.cjs");
 const APP_TITLE="Adminerva — Desktop Public Preview";
-
+const DEV_SIGNIN=process.env.ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI==="true";
+const LOGIN_BOOTSTRAP=APP_ORIGIN+APP_PREFIX+"desktop-session.html";
 app.enableSandbox();
+let activeWindow=null;
+let pendingPairing=null;
+let pendingToken=null;
+let allowPrivate=false;
+let pairingSequence=0;
+function currentWindow(sender){
+ return activeWindow&&!activeWindow.isDestroyed()&&sender===activeWindow.webContents;
+}
+function currentBootstrap(sender){
+ return currentWindow(sender)&&activeWindow.webContents.getURL()===LOGIN_BOOTSTRAP;
+}
+ipcMain.handle("adminerva:consume-signin-token",event=>{
+ if(!DEV_SIGNIN||!currentBootstrap(event.sender)||
+    event.senderFrame!==event.sender.mainFrame)return null;
+ const token=pendingToken;
+ pendingToken=null;
+ return typeof token==="string"?token:null;
+});
+ipcMain.handle("adminerva:confirm-signin",event=>{
+ if(!DEV_SIGNIN||!currentBootstrap(event.sender)||
+    event.senderFrame!==event.sender.mainFrame)return false;
+ allowPrivate=true;
+ return true;
+});
 function launchExternalIfAllowed(target){
- const decision=classifyNavigation(target);
- if(decision.action==="external"){
-  // Approved HTTPS origins only. Never pass arbitrary URLs or protocols to the OS.
-  void shell.openExternal(decision.url).catch(()=>{});
- }
+ const decision=classifyNavigation(target,{allowPrivate});
+ if(decision.action==="external")void shell.openExternal(decision.url).catch(()=>{});
  return decision;
+}
+function navigation(target){
+ return classifyNavigation(target,{allowPrivate,allowBootstrap:DEV_SIGNIN&&pendingToken!==null});
+}
+async function startDesktopSignIn(){
+ if(!DEV_SIGNIN||!activeWindow||activeWindow.isDestroyed())return;
+ const sequence=++pairingSequence;
+ pendingPairing=null;
+ pendingToken=null;
+ const pairing=generatePairing();
+ try{
+  await sendHandoff("begin",pairing);
+  if(sequence!==pairingSequence)return;
+  pendingPairing=pairing;
+  await shell.openExternal(pairing.browserUrl);
+  void dialog.showMessageBox(activeWindow,{
+   type:"info",title:"Adminerva Desktop sign-in",
+   message:"Enter this code in the system browser: "+pairing.confirmationCode,
+   detail:"Only authorize this desktop if you initiated this sign-in. The code expires after five minutes. Never share it with another person.",
+   buttons:["Close"],noLink:true
+  });
+  const deadline=Date.now()+5*60*1000;
+  while(sequence===pairingSequence&&Date.now()<deadline&&
+    activeWindow&&!activeWindow.isDestroyed()){
+   await new Promise(resolve=>setTimeout(resolve,3500));
+   if(sequence!==pairingSequence)break;
+   let response;
+   try{response=await sendHandoff("redeem",pairing);}
+   catch{continue;} // transient offline/server errors do not destroy the pairing
+   if(response.state==="authorized"){
+    // Only native main process ever holds this token until the one-shot IPC
+    // handoff into a single trusted desktop-session.html main frame.
+    if(sequence!==pairingSequence)return;
+    pendingToken=response.customToken;
+    pendingPairing=null;
+    await activeWindow.loadURL(LOGIN_BOOTSTRAP);
+    return;
+   }
+   if(response.state==="expired"||response.state==="unavailable")break;
+  }
+  if(sequence===pairingSequence)pendingPairing=null;
+ }catch{
+  if(sequence===pairingSequence)void dialog.showMessageBox(activeWindow,{
+   type:"warning",title:"Adminerva sign-in unavailable",
+   message:"Native desktop account sign-in is not released yet.",
+   detail:"Use Adminerva in your regular browser. This preview does not have access to private school records.",
+   buttons:["OK"]
+  });
+ }
+}
+function setupMenu(){
+ if(!DEV_SIGNIN)return;
+ Menu.setApplicationMenu(Menu.buildFromTemplate([
+  {label:"Adminerva",submenu:[
+   {label:"Connect school account…",click:()=>void startDesktopSignIn()},
+   {label:"Cancel pending sign-in",click:()=>{
+    ++pairingSequence;
+    if(pendingPairing)void sendHandoff("cancel",pendingPairing).catch(()=>{});
+    pendingPairing=null;pendingToken=null;
+   }},
+   {type:"separator"},{role:"quit"}
+  ]},
+  {label:"View",submenu:[{role:"reload"},{role:"toggleDevTools"}]}
+ ]));
 }
 function createWindow(){
  const win=new BrowserWindow({
   title:APP_TITLE,width:1160,height:790,minWidth:320,minHeight:480,
-  show:false,
-  webPreferences:{
+  show:false,webPreferences:{
    preload:path.join(__dirname,"preload.cjs"),
    partition:"persist:adminerva-public-preview",
    sandbox:true,contextIsolation:true,nodeIntegration:false,
    webSecurity:true,allowRunningInsecureContent:false,webviewTag:false
   }
  });
+ activeWindow=win;
  const contents=win.webContents;
  const ses=contents.session;
- // Default deny: screen, camera, microphone, notifications, location, etc.
- // Adding monitored exam permissions requires its own reviewed school/session flow.
+ // No camera, microphone, desktop capture, notifications or other OS access.
  ses.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
  ses.setPermissionCheckHandler(()=>false);
  contents.setWindowOpenHandler(({url})=>{
-  const decision=classifyNavigation(url);
+  const decision=navigation(url);
   if(decision.action!=="internal")launchExternalIfAllowed(url);
   return {action:"deny"};
  });
  contents.on("will-navigate",(event,url)=>{
-  const decision=classifyNavigation(url);
+  const decision=navigation(url);
   if(decision.action==="internal")return;
   event.preventDefault();
   launchExternalIfAllowed(url);
  });
  win.on("page-title-updated",event=>event.preventDefault());
  contents.once("did-finish-load",()=>{if(!win.isDestroyed())win.show();});
- // If the network is unavailable, show Chromium's load error rather than
- // silently replacing the page with a stale or fabricated school workspace.
+ win.on("closed",()=>{if(activeWindow===win){++pairingSequence;pendingPairing=null;pendingToken=null;allowPrivate=false;activeWindow=null;}});
  void win.loadURL(START_URL).catch(()=>{if(!win.isDestroyed())win.show();});
  return win;
 }
@@ -57,7 +144,7 @@ app.on("web-contents-created",(_event,contents)=>{
  contents.on("will-attach-webview",event=>event.preventDefault());
 });
 app.whenReady().then(()=>{
- createWindow();
+ setupMenu();createWindow();
  app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)createWindow();});
 });
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});

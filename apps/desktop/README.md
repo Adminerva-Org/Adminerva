@@ -24,7 +24,7 @@ The dependency is pinned to a current supported Electron release; an immutable l
 
 ## Pending browser-to-device sign-in
 
-`native-auth-protocol.cjs` generates an unpredictable flow ID, 256-bit PKCE verifier/challenge and eight-digit confirmation code. The system browser authorization page is `native-connect.html` and only receives the flow ID. A gated, TTL-backed callable approves the pairing only after a verified recent login and manually entered confirmation code. It releases a one-time Firebase custom token only to the original verifier. The current desktop preview is intentionally **not wired to redeem or consume** a token; this needs a separate safe completion flow and security review.
+`native-auth-protocol.cjs` generates an unpredictable flow ID, 256-bit PKCE verifier/challenge and eight-digit confirmation code. The system browser authorization page is `native-connect.html` and only receives the flow ID. A gated, TTL-backed callable approves the pairing only after a verified recent login and manually entered confirmation code. It releases a one-time Firebase custom token only to the original verifier. The current desktop preview includes **development-only** redeem and one-shot token consumption, gated behind `ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI=true` in the app and a separate disabled-by-default backend flag. The Firebase completion page reuses the existing role resolution and server-verification paths. There is still **no published native application**, production auth approval, or student-exam acceptance.
 
 
 ## Native-client release gate

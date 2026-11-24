@@ -31,9 +31,13 @@ test("desktop window is sandboxed, denies native permissions and has no privileg
   /setPermissionCheckHandler\(\(\)=>false\)/,
   /will-attach-webview/,/setWindowOpenHandler/])
   assert.match(source,assertion);
- assert.doesNotMatch(source,/ipcMain|desktopCapturer|globalShortcut|autoUpdater/);
+ assert.doesNotMatch(source,/desktopCapturer|globalShortcut|autoUpdater/);
+ assert.match(source,/ipcMain\.handle\("adminerva:consume-signin-token"/);
+ assert.match(source,/currentBootstrap\(event\.sender\)/);
  assert.match(preload,/capabilities:Object\.freeze\(\[\]\)/);
- assert.doesNotMatch(preload,/ipcRenderer|desktopCapturer|shell\.openExternal/);
+ assert.doesNotMatch(preload,/desktopCapturer|shell\.openExternal|fs\.readFile/);
+ assert.match(preload,/ipcRenderer\.invoke\("adminerva:consume-signin-token"\)/);
+ assert.match(preload,/ipcRenderer\.invoke\("adminerva:confirm-signin"\)/);
  assert.equal(pkg.version,"0.1.0");
  assert.equal(CLIENT_PROTOCOL,1);
 });
@@ -85,4 +89,15 @@ test("mobile preview staging generates a canonical public bundle without native 
  }finally{
   rmSync(output,{recursive:true,force:true});
  }
+});
+
+test("native app stays public until the paired session completes in the trusted bootstrap",()=>{
+ const boot="https://adminerva-org.github.io/Adminerva/desktop-session.html";
+ const privatePage="https://adminerva-org.github.io/Adminerva/student-playground.html";
+ assert.equal(classifyNavigation(boot).action,"external");
+ assert.equal(classifyNavigation(boot,{allowBootstrap:true}).action,"internal");
+ assert.equal(classifyNavigation(privatePage).action,"external");
+ assert.equal(classifyNavigation(privatePage,{allowPrivate:true}).action,"internal");
+ assert.equal(classifyNavigation("https://evil.example/Adminerva/student-playground.html",{allowPrivate:true}).action,"block");
+ assert.equal(classifyNavigation("https://adminerva-org.github.io/Adminerva/login.html",{allowPrivate:true}).action,"external");
 });
