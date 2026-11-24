@@ -146,15 +146,32 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       q=q.startAfter(last);
     }
     const rows=await q.get(),page=rows.docs.slice(0,limit);
+    // Historical platform lifecycle actions are already immutable in platform_audit.
+    // Do not duplicate them as new diagnostic events.
+    let accountAudit=[];
+    if(!cursor){
+      const audit=await db.collection("platform_audit").where("targetUid","==",ownerUid).limit(100).get();
+      accountAudit=audit.docs.map(doc=>{
+        const data=doc.data()||{};
+        const action=String(data.action||"").slice(0,90);
+        return {
+          id:doc.id,source:"platform_audit",at:createdAtNumber(data.createdAt),
+          action:/^[a-z][a-z0-9_-]{0,89}$/.test(action)?action:"administrative_action",
+          actorUid:typeof data.actorUid==="string"&&UID.test(data.actorUid)?data.actorUid:"",
+          kind:"administrative_audit"
+        };
+      }).sort((a,b)=>b.at-a.at);
+    }
     // Viewing activity for any account is itself an immutable audited act.
     await db.collection("platform_audit").add({
       actorUid:authority.uid,targetUid:ownerUid,action:"platform_user_diagnostics_viewed",
       reason:purpose,returned:page.length,createdAt:FieldValue.serverTimestamp()
     });
-    return {targetUid:ownerUid,events:page.map(doc=>serialize(doc)),
+    return {targetUid:ownerUid,events:page.map(doc=>serialize(doc)),accountAudit,
+      auditSampleCapped:accountAudit.length===100,
       hasMore:rows.size>limit,cursor:rows.size>limit?page.at(-1)?.id:null,
       retentionDays:RETENTION_DAYS,
-      note:"Best-effort event metadata, not a complete session recording. Historical events before enablement cannot be reconstructed."};
+      note:"Best-effort diagnostics plus preserved existing platform lifecycle audit records. No historical browser events can be reconstructed."};
   }
   async function service(request){
     const input=request.data||{},action=String(input.action||"record");
