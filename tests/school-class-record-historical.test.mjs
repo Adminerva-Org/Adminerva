@@ -4,7 +4,7 @@ import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {HISTORICAL_SOURCE,historicalSubjectMatches,historicalSections,historicalMapping,verifiedHistoricalSectionMapping,mappingMatches,projectedGrade,
   resolveHistoricalRoster,historicalPublishedGrades}=require("../functions/school-class-record-historical.js");
-const {cleanColumns}=require("../functions/school-class-record.js");
+const {cleanColumns,matchesAssessmentTitle,canDiscloseAssessmentSource}=require("../functions/school-class-record.js");
 const schoolId="mcs-manila",offeringId="offering-q3",ownerUid="teacher1";
 const offering={schoolId,yearId:"year",termId:"q3",sectionId:"section",subjectId:"subject"};
 const labels={yearName:"2026-2027",termName:"Quarter 3",sectionName:"Section A",subjectName:"Computer Programming"};
@@ -14,6 +14,29 @@ const mapping=historicalMapping(args);
 const row={studentId:"old_student",taskId:"legacy-task",section:"Section A",published:true,score:17,maxScore:20,gradeVersion:3};
 const column={columnId:"col1",kind:"assessment",taskId:"legacy-task",assessmentSource:HISTORICAL_SOURCE,
   label:"Historical activity",category:"Performance Task",maxPoints:20,historicalMapping:mapping};
+test("earlier assessment title finder recognizes Mini PETA variants without unrelated matches",()=>{
+  assert.equal(matchesAssessmentTitle("Mini PETA 1","Mini PETA #1 — UI/XML"),true);
+  assert.equal(matchesAssessmentTitle("UI XML","Mini PETA 1: UI / XML"),true);
+  assert.equal(matchesAssessmentTitle("Mini PETA 1","Mini PETA 2 — UI/XML"),false);
+  assert.equal(matchesAssessmentTitle("UI/XML","Q3 Mini PETA — UI Interaction"),false);
+  assert.equal(matchesAssessmentTitle("", "Mini PETA 1"),false);
+  assert.equal(matchesAssessmentTitle("@@", "Mini PETA 1"),false);
+});
+test("earlier assessment source search cannot disclose another teacher or school",()=>{
+  const school={schoolId,ownerUid,reviewerUid:"different-reviewer"};
+  assert.equal(canDiscloseAssessmentSource("school_assessment",school,schoolId,ownerUid),true);
+  assert.equal(canDiscloseAssessmentSource("school_assessment",school,schoolId,"different-reviewer"),true);
+  assert.equal(canDiscloseAssessmentSource("school_assessment",school,schoolId,"stranger"),false);
+  assert.equal(canDiscloseAssessmentSource("school_assessment",school,"other-school",ownerUid),false);
+  assert.equal(canDiscloseAssessmentSource("imported_blueprint",school,schoolId,ownerUid),true);
+  assert.equal(canDiscloseAssessmentSource("imported_blueprint",school,schoolId,"different-reviewer"),false);
+  assert.equal(canDiscloseAssessmentSource("original_assessment",task,schoolId,ownerUid),true);
+  assert.equal(canDiscloseAssessmentSource("original_assessment",task,"other-school",ownerUid),false);
+  assert.equal(canDiscloseAssessmentSource("original_assessment",{...task,schoolId:"other-school"},schoolId,ownerUid),false);
+  assert.equal(canDiscloseAssessmentSource("original_assessment",task,schoolId,"stranger"),false);
+  assert.equal(canDiscloseAssessmentSource("unknown",school,schoolId,ownerUid),false);
+});
+
 test("historical link needs the original owner, verified school, section, subject and explicit period",()=>{
   assert.equal(mapping.termId,"q3");
   assert.equal(historicalMapping({...args,schoolId:"school-b"}),null);

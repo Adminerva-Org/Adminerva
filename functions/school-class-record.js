@@ -29,6 +29,25 @@ const LEGACY_PERSONALIZED_SOURCE="legacy_personalized";
 const CELL_STATUSES=new Set(["normal","incomplete","exempt","not_applicable"]);
 const STUDENT_VISIBILITIES=new Set(["hidden","released"]);
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
+const assessmentSearchWords=value=>String(value||"").toLocaleLowerCase("en")
+  .replace(/[^a-z0-9]+/g," ").trim().split(/\s+/).filter(Boolean);
+function matchesAssessmentTitle(query,title){
+  const terms=assessmentSearchWords(query),words=assessmentSearchWords(title);
+  return terms.length>0&&words.length>0&&
+    terms.every(term=>words.some(word=>word.startsWith(term)));
+}
+function canDiscloseAssessmentSource(scope,data,schoolId,uid){
+  if(!data||!schoolId||!uid)return false;
+  if(scope==="school_assessment")
+    return data.schoolId===schoolId&&
+      (data.ownerUid===uid||data.reviewerUid===uid);
+  if(scope==="imported_blueprint")
+    return data.schoolId===schoolId&&data.ownerUid===uid;
+  if(scope==="original_assessment")
+    return data.ownerUid===uid&&validOrigin(data,schoolId);
+  return false;
+}
+
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function text(value,label,max){
@@ -1048,6 +1067,78 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       };
     }
 
+    if(input.action==="find_assessment_source"){
+      // Read-only teacher-owned source discovery. Never enumerate another
+      // teacher's work, student submissions, grades, or another school's data.
+      await verifyOffering();
+      if(!teacher&&!ctx.platformOverride)
+        deny("permission-denied","Only an assigned teacher can search their assessment sources.");
+      const query=text(input.query,"Assessment search",80).toLocaleLowerCase("en");
+      if(query.length<2)deny("invalid-argument","Use at least two characters to search.");
+      if(!assessmentSearchWords(query).length)
+        deny("invalid-argument","Enter a descriptive assessment title.");
+      const matches=value=>matchesAssessmentTitle(query,value);
+      const max=201;
+      const queries=[
+        db.collection(prefix+"assessments").where("ownerUid","==",ctx.uid).limit(max).get(),
+        db.collection(prefix+"assessments").where("reviewerUid","==",ctx.uid).limit(max).get(),
+        db.collection(prefix+"assessment_blueprints").where("ownerUid","==",ctx.uid).limit(max).get(),
+        ...(ctx.schoolId===LEGACY_BRIDGE_SCHOOL?
+          [db.collection("assessments").where("ownerUid","==",ctx.uid).limit(max).get()]:[])
+      ];
+      const sources=await Promise.all(queries);
+      if(sources.some(snapshot=>snapshot.size>=max))
+        deny("resource-exhausted","This account has more assessment sources than the bounded search can inspect. Contact School Administration for an indexed lookup.");
+      const found=new Map(),counts={schoolAssessments:0,importedBlueprints:0,originalAssessments:0};
+      const add=(scope,doc,data)=>{
+        const title=String(data?.title||data?.name||"").trim();
+        if(!title||!matches(title))return;
+        const recordKey=scope+":"+doc.id;
+        if(found.has(recordKey))return;
+        found.set(recordKey,{
+          sourceType:scope,taskId:doc.id,title:title.slice(0,160),
+          subject:String(data?.subject||"").slice(0,120),
+          originalAssessmentId:scope==="imported_blueprint"?
+            String(data?.legacyImport?.assessmentId||"").slice(0,128):"",
+          offeringId:scope==="school_assessment"?String(data?.offeringId||"").slice(0,330):"",
+          status:String(data?.lifecycle||data?.status||"").slice(0,60),
+          inSelectedOffering:scope==="school_assessment"&&data?.offeringId===offeringId,
+          summary:scope==="original_assessment"?
+            "Original teacher-owned historical assessment; use Class Record source mapping.":
+            scope==="imported_blueprint"?
+            "School blueprint or imported resource; this is not itself a graded deployment.":
+            data?.offeringId===offeringId?
+            "School assessment in this class.":"School assessment in another course offering."
+        });
+      };
+      const schoolDocs=new Map();
+      for(const snapshot of sources.slice(0,2))
+        for(const doc of snapshot.docs)schoolDocs.set(doc.id,doc);
+      for(const doc of schoolDocs.values()){
+        const data=doc.data();
+        if(!canDiscloseAssessmentSource("school_assessment",data,ctx.schoolId,ctx.uid))continue;
+        counts.schoolAssessments++;
+        add("school_assessment",doc,data);
+      }
+      for(const doc of sources[2].docs){
+        const data=doc.data();
+        if(!canDiscloseAssessmentSource("imported_blueprint",data,ctx.schoolId,ctx.uid))continue;
+        counts.importedBlueprints++;
+        add("imported_blueprint",doc,data);
+      }
+      if(ctx.schoolId===LEGACY_BRIDGE_SCHOOL){
+        for(const doc of sources[3].docs){
+          const data=doc.data();
+          if(!canDiscloseAssessmentSource("original_assessment",data,ctx.schoolId,ctx.uid))continue;
+          counts.originalAssessments++;
+          add("original_assessment",doc,data);
+        }
+      }
+      return {query:String(input.query).trim(),checked:counts,
+        results:[...found.values()].sort((a,b)=>a.title.localeCompare(b.title)||
+          a.sourceType.localeCompare(b.sourceType)).slice(0,30),
+        truncated:found.size>30};
+    }
     if(input.action==="workspace"){
       const data=await buildWorkspaceData();
       return {
@@ -1679,5 +1770,6 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
 module.exports={
   createSchoolClassRecordService,cleanColumns,cleanSettings,
   schemeMatchesOffering,schemeSpecificity,schemeScopesOverlap,
+  matchesAssessmentTitle,canDiscloseAssessmentSource,
   SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE,HISTORICAL_SOURCE
 };
