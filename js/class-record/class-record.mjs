@@ -9,11 +9,12 @@ const academicsApi=httpsCallable(functions,"schoolAcademics");
 
 const SCHOOL_SOURCE="school";
 const PERSONALIZED_SOURCE="legacy_personalized";
+const HISTORICAL_SOURCE="legacy_historical";
 const initialParams=new URLSearchParams(location.search);
 const deepLinkOfferingId=String(initialParams.get("offering")||"");
 let pendingAssessmentDeepLink=initialParams.get("assessment")?{
   taskId:String(initialParams.get("assessment")||""),
-  source:[SCHOOL_SOURCE,PERSONALIZED_SOURCE].includes(initialParams.get("source"))?
+  source:[SCHOOL_SOURCE,PERSONALIZED_SOURCE,HISTORICAL_SOURCE].includes(initialParams.get("source"))?
     initialParams.get("source"):SCHOOL_SOURCE
 }:null;
 const offeringSelect=el("cr-offering");
@@ -162,7 +163,7 @@ function schemeScopeSummary(scheme){
   return parts.length?parts.join(" · "):"school-wide";
 }
 function sourceName(source){
-  return source===PERSONALIZED_SOURCE?"Personalized Studio":"School assessment";
+  return source===PERSONALIZED_SOURCE?"Personalized Studio":source===HISTORICAL_SOURCE?"Historical assessment":"School assessment";
 }
 function studentVisibility(column){return column?.studentVisibility==="released"?"released":"hidden"}
 function activeColumns(){return columns.filter(column=>column.archived!==true)}
@@ -609,7 +610,7 @@ function render(){
       const task=columnTask(column);
       if(task?.gradeRoute||task?.reviewRoute){
         const link=make("a","text-xs font-bold text-indigo-700 underline",
-          task.sourceType===PERSONALIZED_SOURCE?"Studio grading":"Gradebook");
+          task.sourceType===PERSONALIZED_SOURCE?"Studio grading":task.sourceType===HISTORICAL_SOURCE?"Historical Review & Grade":"Gradebook");
         link.href=task.sourceType===PERSONALIZED_SOURCE?(task.reviewRoute||task.gradeRoute):task.gradeRoute;
         actions.append(link);
       }
@@ -696,7 +697,7 @@ function render(){
         }else{
           value.title=personalized
             ?"No published Personalized Studio grade yet. Review the Studio submission, save the grade draft, and publish it from Studio grading."
-            :"No published school Gradebook result yet.";
+            :(column.assessmentSource===HISTORICAL_SOURCE?"No verified published historical grade for this learner. Check the original grade, class section and identity mapping.":"No published school Gradebook result yet.");
         }
         td.append(value);
       }
@@ -724,15 +725,16 @@ function populateAssessmentOptions(selectedSource="",selectedTaskId=""){
   const used=new Set(columns.filter(column=>column.kind==="assessment"&&column.archived!==true&&
       column.columnId!==editingColumnId)
     .map(column=>assessmentKey(column.assessmentSource||SCHOOL_SOURCE,column.taskId)));
+  const usedLegacy=new Set(columns.filter(column=>column.kind==="assessment"&&column.archived!==true&&column.columnId!==editingColumnId&&[PERSONALIZED_SOURCE,HISTORICAL_SOURCE].includes(column.assessmentSource)).map(column=>column.taskId));
   const selectedKey=selectedTaskId?assessmentKey(selectedSource,selectedTaskId):"";
   const available=assessments.filter(task=>{
     const key=assessmentKey(task.sourceType,task.taskId);
-    return (task.linkable!==false&&!used.has(key))||key===selectedKey;
+    return (task.linkable!==false&&!used.has(key)&&(![HISTORICAL_SOURCE,PERSONALIZED_SOURCE].includes(task.sourceType)||!usedLegacy.has(task.taskId)))||key===selectedKey;
   });
   assessmentSelect.add(new Option(available.length?"Choose an assessment…":"No unlinked assessments available",""));
   assessmentSelect.options[0].disabled=true;
   for(const task of available){
-    const label=(task.sourceType===PERSONALIZED_SOURCE?"Personalized Studio · ":"School · ")+
+    const label=(task.sourceType===HISTORICAL_SOURCE?"Historical "+(task.submissionSource==="studio"?"Studio":"GitHub")+" · ":task.sourceType===PERSONALIZED_SOURCE?"Personalized Studio · ":"School · ")+
       task.title+" · "+numberText(task.maxPoints)+" pts"+
       (task.historical?" · historical":task.published===false?" · unpublished":"");
     assessmentSelect.add(new Option(label,assessmentKey(task.sourceType,task.taskId)));
@@ -755,10 +757,18 @@ function policyCategorySuggestion(task){
 }
 function syncAssessmentSourceNote(){
   const note=el("cr-assessment-source-note"),task=selectedAssessment();
+  const confirm=el("cr-historical-confirm"),checkbox=el("cr-historical-period");
+  const needsConfirmation=task?.sourceType===HISTORICAL_SOURCE&&!editingColumnId&&columnKind.value==="assessment";
+  confirm.hidden=!needsConfirmation;checkbox.disabled=!needsConfirmation;checkbox.required=needsConfirmation;
+  if(!needsConfirmation||checkbox.dataset.assessment!==task?.taskId)checkbox.checked=false;
+  checkbox.dataset.assessment=task?.taskId||"";
   if(!task){note.hidden=true;note.textContent="";return;}
   note.hidden=false;
   const suggested=policyCategorySuggestion(task);
-  if(task.sourceType===PERSONALIZED_SOURCE){
+  if(task.sourceType===HISTORICAL_SOURCE){
+    note.textContent="Original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" grades are read in place, without copying or changing them. Only published, identity-matched grades appear. Confirm the assessment belongs to "+(task.periodLabel||currentOffering?.termName||"this selected period")+".";
+    el("cr-historical-period-label").textContent="I confirm this historical assessment belongs to "+(task.periodLabel||currentOffering?.termName||"the selected academic period")+".";
+  }else if(task.sourceType===PERSONALIZED_SOURCE){
     note.textContent="Personalized Studio is graded from the exact learner-specific Studio submission. Class Record imports the score only after Studio grading publishes it; Repository Management is not involved.";
   }else{
     note.textContent="This school assessment uses the school Gradebook. Class Record shows only its published score.";
@@ -776,7 +786,7 @@ function syncColumnFields(){
   el("cr-assessment-fields").hidden=kind!=="assessment";
   columnForm.elements.maxPoints.required=kind==="manual";
   assessmentSelect.required=kind==="assessment";
-  if(kind==="assessment")syncAssessmentSourceNote();
+  syncAssessmentSourceNote();
 }
 function closeColumnDialog(){
   if(busy)return;
@@ -983,6 +993,8 @@ async function saveLayout(nextColumns,nextSettings=settings,success="Class Recor
   if(!canEditClassRecord())throw Error("Only the Primary Teacher may change the formal Class Record.");
   if(busy||!currentOfferingId)throw Error("Finish the current Class Record operation first.");
   if(dirtyColumns.size)throw Error("Save manual score changes before changing the Class Record layout.");
+  const existingIds=new Set(columns.map(column=>column.columnId));
+  const addedAssessment=nextColumns.some(column=>column.kind==="assessment"&&!existingIds.has(column.columnId));
   setBusy(true,"Saving Class Record…");
   try{
     const result=await scoped(classRecordApi,"save_layout",{
@@ -992,7 +1004,12 @@ async function saveLayout(nextColumns,nextSettings=settings,success="Class Recor
     columns=Array.isArray(result.columns)?result.columns:nextColumns;
     settings=result.settings||nextSettings;
     sheetRevision=Number(result.revision)||sheetRevision+1;
-    render();say(success);return result;
+    render();
+    if(addedAssessment){
+      const refreshed=await loadWorkspace();
+      say(refreshed?success:"Column saved. Refresh Class Record to load its published grades.");
+    }else say(success);
+    return result;
   }finally{
     setBusy(false);syncColumnFields();
   }
@@ -1858,12 +1875,14 @@ columnForm.addEventListener("submit",event=>{
     };
   }else{
     const task=selectedAssessment();
-    if(!task){el("cr-column-status").textContent="Choose a deployed assessment.";return;}
+    if(!task){el("cr-column-status").textContent="Choose an assessment.";return;}
+    if(task.sourceType===HISTORICAL_SOURCE&&!el("cr-historical-period").checked){el("cr-column-status").textContent="Confirm the academic period before linking.";return;}
     nextColumn={
       columnId:"col_"+crypto.randomUUID().replaceAll("-","").slice(0,20),
       label,category,kind:"assessment",taskId:task.taskId,
       assessmentSource:task.sourceType,maxPoints:task.maxPoints,
-      sourceTitle:task.title,archived:false,studentVisibility:visibility
+      sourceTitle:task.title,archived:false,studentVisibility:visibility,
+      ...(task.sourceType===HISTORICAL_SOURCE?{confirmHistoricalOffering:currentOfferingId}:{})
     };
   }
   const next=existing?
