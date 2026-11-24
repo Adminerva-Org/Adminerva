@@ -4,7 +4,7 @@ import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {HISTORICAL_SOURCE,historicalSubjectMatches,historicalSections,historicalMapping,verifiedHistoricalSectionMapping,mappingMatches,projectedGrade,
   resolveHistoricalRoster,historicalPublishedGrades}=require("../functions/school-class-record-historical.js");
-const {cleanColumns,matchesAssessmentTitle,canDiscloseAssessmentSource}=require("../functions/school-class-record.js");
+const {cleanColumns,matchesAssessmentTitle,canDiscloseAssessmentSource,legacyRepositoryDeploymentSections,legacyRepositoryMetadataCandidate}=require("../functions/school-class-record.js");
 const schoolId="mcs-manila",offeringId="offering-q3",ownerUid="teacher1";
 const offering={schoolId,yearId:"year",termId:"q3",sectionId:"section",subjectId:"subject"};
 const labels={yearName:"2026-2027",termName:"Quarter 3",sectionName:"Section A",subjectName:"Computer Programming"};
@@ -18,6 +18,7 @@ test("earlier assessment title finder recognizes Mini PETA variants without unre
   assert.equal(matchesAssessmentTitle("Mini PETA 1","Mini PETA #1 — UI/XML"),true);
   assert.equal(matchesAssessmentTitle("UI XML","Mini PETA 1: UI / XML"),true);
   assert.equal(matchesAssessmentTitle("Mini PETA 1","Mini PETA 2 — UI/XML"),false);
+  assert.equal(matchesAssessmentTitle("Mini PETA 1","Mini PETA 10 — UI/XML"),false);
   assert.equal(matchesAssessmentTitle("UI/XML","Q3 Mini PETA — UI Interaction"),false);
   assert.equal(matchesAssessmentTitle("", "Mini PETA 1"),false);
   assert.equal(matchesAssessmentTitle("@@", "Mini PETA 1"),false);
@@ -35,6 +36,54 @@ test("earlier assessment source search cannot disclose another teacher or school
   assert.equal(canDiscloseAssessmentSource("original_assessment",{...task,schoolId:"other-school"},schoolId,ownerUid),false);
   assert.equal(canDiscloseAssessmentSource("original_assessment",task,schoolId,"stranger"),false);
   assert.equal(canDiscloseAssessmentSource("unknown",school,schoolId,ownerUid),false);
+});
+
+test("pre-owner Repository Management assessments are diagnosable only with verified original student sections",()=>{
+  // The Oct 2026 v1 author saved title/targetSections/createdAt but no
+  // ownerUid, subject or maxScore. This source may not be graded or linked.
+  const v1={
+    title:"Mini PETA #1 — UI/XML",
+    targetSections:["11 TechPro - St. Carlo Acutis"],
+    type:"Mini PETA"
+  };
+  const section="11 techpro - st. carlo acutis";
+  const verified=new Map([[section,new Set(["person1","person2"])]]);
+  const args={task:v1,schoolId,titleQuery:"Mini PETA 1",
+    originalSectionPeople:verified,rosterSize:35,currentTeacherUid:ownerUid};
+  assert.deepEqual(legacyRepositoryDeploymentSections(v1),["11 TechPro - St. Carlo Acutis"]);
+  const match=legacyRepositoryMetadataCandidate(args);
+  assert.equal(match.title,v1.title);
+  assert.equal(match.maximum,null);
+  assert.equal(match.originalOwnerStatus,"owner_not_recorded");
+  assert.deepEqual(match.originalSections,["11 TechPro - St. Carlo Acutis"]);
+  assert.equal(legacyRepositoryMetadataCandidate({...args,task:{...v1,schoolId:"another-school"}}),null);
+  assert.equal(legacyRepositoryMetadataCandidate({...args,titleQuery:"Mini PETA 2"}),null);
+  assert.equal(legacyRepositoryMetadataCandidate({...args,task:{...v1,ownerUid}}),null);
+  assert.equal(legacyRepositoryMetadataCandidate({...args,task:{...v1,deployments:[],targetSections:[]}}),null,
+    "undelivered preparation resources cannot appear in diagnostics");
+  assert.equal(legacyRepositoryMetadataCandidate({...args,originalSectionPeople:
+    new Map([[section,new Set(["person1"])]])}),null,"one student cannot identify a cohort of 35");
+  assert.equal(legacyRepositoryMetadataCandidate({...args,originalSectionPeople:
+    new Map([["another section",new Set(["person1","person2"])]])}),null);
+  assert.equal(legacyRepositoryMetadataCandidate({...args,task:{...v1,schemaVersion:3}}),null);
+});
+test("legacy diagnostic never confuses different historical owners with teacher authorization",()=>{
+  const legacy={
+    title:"Mini PETA 1 — XML",
+    deployments:[{section:"11 TechPro - St. Carlo Acutis"}],
+    ownerUid:"older_login_uid"
+  };
+  const section=new Map([["11 techpro - st. carlo acutis",new Set(["p1","p2"])]]);
+  const input={task:legacy,schoolId,titleQuery:"Mini PETA 1",
+    originalSectionPeople:section,rosterSize:35,currentTeacherUid:ownerUid};
+  const found=legacyRepositoryMetadataCandidate(input);
+  assert.equal(found.originalOwnerStatus,"different_account");
+  assert.equal(found.title,legacy.title);
+  assert.equal(found.ownerUid,undefined,"historical owner IDs must never be disclosed in diagnostic summaries");
+  assert.equal(found.canGrade,undefined,"candidate metadata is not a grade permission");
+  assert.equal(legacyRepositoryMetadataCandidate({...input,schoolId:"another-school"}),null);
+  assert.equal(legacyRepositoryMetadataCandidate({...input,task:{...legacy,ownerUid:ownerUid}}),null);
+  assert.equal(legacyRepositoryMetadataCandidate({...input,task:{...legacy,deployments:[]}}),null);
 });
 
 test("historical link needs the original owner, verified school, section, subject and explicit period",()=>{
