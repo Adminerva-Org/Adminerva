@@ -15,7 +15,7 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UID=/^[A-Za-z0-9_-]{1,128}$/;
 const MODULES=["auth","home","studio","assessments","classroom","school","games","grades","notifications","settings","platform","api","other"];
 const KINDS=["session","navigation","action","error","notification","system"];
-const ACTIONS=["session_started","session_ended","page_open","school_switched","signed_in","signed_out",
+const ACTIONS=["session_started","auth_session_observed","session_ended","page_open","school_switched","signed_in","signed_out",
   "cloud_save_confirmed","notification_delivered","notification_opened","network_offline","network_online",
   "javascript_error","promise_error","resource_error","api_failed","api_succeeded","support_report_submitted",
   "studio_run_requested","studio_run_completed","studio_run_failed","cloud_save_failed",
@@ -59,7 +59,7 @@ function checkedEvent(input){
      !ACTIONS.includes(input.action)||!STATES.includes(input.state))
     deny("invalid-argument","Diagnostic event category is invalid.");
   const kindActions={
-    session:["session_started","session_ended","signed_in","signed_out"],
+    session:["session_started","auth_session_observed","session_ended","signed_in","signed_out"],
     navigation:["page_open"],notification:["notification_delivered","notification_opened"],
     system:["network_offline","network_online"],
     error:["javascript_error","promise_error","resource_error","api_failed","studio_run_failed","cloud_save_failed"],
