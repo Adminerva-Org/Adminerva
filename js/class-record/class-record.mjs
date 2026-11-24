@@ -762,7 +762,14 @@ function syncAssessmentSourceNote(){
   confirm.hidden=!needsConfirmation;checkbox.disabled=!needsConfirmation;checkbox.required=needsConfirmation;
   if(!needsConfirmation||checkbox.dataset.assessment!==task?.taskId)checkbox.checked=false;
   checkbox.dataset.assessment=task?.taskId||"";
-  if(!task){note.hidden=true;note.textContent="";return;}
+  if(!task){
+    const empty=columnKind.value==="assessment"&&assessmentSelect.options.length<=1;
+    note.hidden=!empty;
+    note.textContent=!empty?"":assessments.length
+      ?"No additional assessments can be linked here. Existing sources may already be linked, archived, or ineligible. Review the Class Record columns and refresh the class."
+      :"No assessment matches this class yet. For older Studio/GitHub work, check the selected school, class section and original assessment owner. Historical Computer Programming assessments can match official Computer Programming 1 or 2 classes when their original section is verified. Refresh after correcting the source.";
+    return;
+  }
   note.hidden=false;
   const suggested=policyCategorySuggestion(task);
   if(task.sourceType===HISTORICAL_SOURCE){
