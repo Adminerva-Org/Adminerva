@@ -53,9 +53,12 @@ function safeCallable(handler,options={}){return async request=>{
   if(options.diagnosticsService&&DIAGNOSTIC_WRITE_ACTION.test(String(request?.data?.action||""))){
     // Diagnostics are best-effort and never block an academic save, assessment,
     // identity change or financial transaction.
-    void platformAccountDiagnostics.recordServerProcess(request,{
+    // This write is an operational side effect AFTER the canonical mutation.
+    // The diagnostic service contains its own errors so an unavailable log
+    // sink cannot turn an already-successful student save into a failed call.
+    await platformAccountDiagnostics.recordServerProcess(request,{
       service:options.diagnosticsService,startedAt,status:"ok"
-    }).catch(()=>{});
+    });
   }
   if(platformContext?.assist){
     db.collection("platform_admin_assistance_audit").add({
