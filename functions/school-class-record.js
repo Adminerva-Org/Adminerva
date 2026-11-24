@@ -1466,7 +1466,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
              (mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"&&
                (mapping.identityProof!=="original_student_section"||
                 !Number.isInteger(mapping.identityVerifiedCount)||mapping.identityVerifiedCount<1||
-                mapping.originalSubjectName!==original.data().subject))||
+                mapping.originalSubjectName!==String(original.data().subject||"").trim()))||
              Number(original.data().maxScore)!==column.maxPoints)
             deny("failed-precondition","The original historical assessment changed. Reload before linking.");
           if(prior.exists&&(prior.data().schoolId!==ctx.schoolId||prior.data().offeringId!==offeringId))
