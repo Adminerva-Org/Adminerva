@@ -4,11 +4,9 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 const el=id=>document.getElementById(id);
 const functions=getFunctions(app,"asia-southeast1");
 const api=httpsCallable(functions,"platformUsers");
-const diagnosticsApi=httpsCallable(functions,"platformAccountDiagnostics");
 const schoolAccessApi=httpsCallable(functions,"peopleDirectory");
 const list=el("pu-list"),status=el("pu-status"),dialog=el("pu-detail"),createDialog=el("pu-create-dialog");
 let items=[],busy=false,listRun=0,detailRun=0,currentAccount=null,currentMemberships=[],currentTestAccount={active:false,status:"none",revision:0},testSchoolTargets=null;
-let diagnosticRun=0,diagnosticCursor=null,diagnosticNext=null,diagnosticBusy=false,diagnosticCount=0;
 
 function node(tag,className="",text=""){
   const out=document.createElement(tag);
@@ -93,93 +91,6 @@ async function loadAll(){
     items=[];render();status.textContent=error?.message||"The complete user directory could not be loaded.";
   }finally{if(run===listRun)setBusy(false);}
 }
-function resetDiagnostics(){
-  diagnosticRun++;diagnosticCursor=null;diagnosticNext=null;diagnosticBusy=false;diagnosticCount=0;
-  el("pu-diagnostic-reason").value="";
-  el("pu-diagnostic-events").replaceChildren();el("pu-diagnostic-audit").replaceChildren();
-  el("pu-diagnostic-count").textContent="";
-  el("pu-diagnostic-load").disabled=false;el("pu-diagnostic-next").disabled=true;
-  el("pu-diagnostic-status").textContent="Enter a support reason to inspect this account. Every diagnostic read is audited.";
-}
-function diagnosticTime(value){
-  if(!Number.isFinite(value)||value<=0)return "Time unavailable";
-  return new Date(value).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"medium"});
-}
-function renderAudit(items,cap){
-  const host=el("pu-diagnostic-audit");host.replaceChildren();
-  for(const item of items||[]){
-    const action=String(item.action||"administrative action").replaceAll("_"," ");
-    host.append(node("div","rounded border border-slate-200 bg-slate-50 p-2 text-sm",
-      diagnosticTime(item.at)+" · "+action+" · Actor ID: "+(item.actorUid||"not recorded")));
-  }
-  if(!host.children.length)host.append(node("p","text-xs text-slate-600",
-    "No matching platform account lifecycle actions were found in the bounded audit sample."));
-  if(cap)host.append(node("p","text-xs text-amber-800","Audit sample capped at 100; not necessarily complete."));
-}
-function renderDiagnosticEvent(item){
-  const row=document.createElement("tr");
-  row.className="border-b border-slate-200";
-  const location=[String(item.route||""),
-    item.service?"Service: "+item.service:"",
-    item.errorCode?"Code: "+item.errorCode:"",
-    item.release?"Release: "+item.release:""].filter(Boolean).join(" · ");
-  for(const value of [
-    diagnosticTime(item.at),
-    (item.module||"other")+" · "+String(item.action||"event").replaceAll("_"," "),
-    (item.state||"info")+" · "+(item.source||"browser"),
-    location||"No additional metadata"
-  ]){
-    const cell=document.createElement("td");cell.className="p-2 align-top break-words";cell.textContent=value;
-    row.append(cell);
-  }
-  return row;
-}
-async function loadDiagnostics({older=false}={}){
-  if(diagnosticBusy||!currentAccount||!dialog.open)return;
-  const purpose=el("pu-diagnostic-reason").value.trim();
-  if(purpose.length<12||purpose.length>300){
-    el("pu-diagnostic-status").textContent="Enter a support or investigation reason of 12–300 characters before reading a user's log.";
-    el("pu-diagnostic-reason").focus();return;
-  }
-  if(older&&!diagnosticNext)return;
-  const uid=currentAccount.uid,turn=++diagnosticRun,detail=detailRun;
-  const cursor=older?diagnosticNext:null;
-  diagnosticBusy=true;
-  el("pu-diagnostic-load").disabled=true;el("pu-diagnostic-next").disabled=true;
-  el("pu-diagnostic-status").textContent=older?"Loading older diagnostic events…":"Loading account diagnostics and audit history…";
-  try{
-    const result=(await diagnosticsApi({
-      action:"list",targetUid:uid,reason:purpose,limit:40,...(cursor?{cursor}:{})
-    })).data;
-    if(turn!==diagnosticRun||detail!==detailRun||!dialog.open||currentAccount?.uid!==uid)return;
-    if(!older){
-      el("pu-diagnostic-events").replaceChildren();
-      diagnosticCount=0;
-      renderAudit(result.accountAudit||[],result.auditSampleCapped===true);
-    }
-    for(const item of result.events||[]){
-      el("pu-diagnostic-events").append(renderDiagnosticEvent(item));
-      diagnosticCount++;
-    }
-    diagnosticCursor=cursor;diagnosticNext=result.hasMore?result.cursor:null;
-    el("pu-diagnostic-count").textContent=diagnosticCount+" diagnostic event"+(diagnosticCount===1?"":"s")+" loaded";
-    el("pu-diagnostic-status").textContent=diagnosticCount
-      ?"Showing most recent sanitized events. Only verified sign-in activity recorded after this feature was released is available. Reads are audited."
-      :"No diagnostic events found for this account. This does not mean the user had no activity.";
-    el("pu-diagnostic-next").disabled=!diagnosticNext;
-  }catch(error){
-    if(turn===diagnosticRun&&detail===detailRun){
-      el("pu-diagnostic-status").textContent=
-        /permission-denied|unauthenticated/.test(String(error?.code||""))
-        ?"Only a verified active Platform Administrator may review account logs."
-        :"The diagnostic timeline is unavailable. Check your access, connection and backend deployment.";
-      el("pu-diagnostic-next").disabled=!diagnosticNext;
-    }
-  }finally{
-    if(turn===diagnosticRun){diagnosticBusy=false;el("pu-diagnostic-load").disabled=false;}
-  }
-}
-
 function detailTile(label,value){
   const box=node("div","rounded-xl border border-slate-200 bg-slate-50 p-3");
   box.append(node("span","text-xs text-slate-500",label),node("strong","block mt-1 break-words",value));
@@ -279,6 +190,7 @@ function populateDetail(result){
   currentTestAccount=result.testAccount&&typeof result.testAccount==="object"?result.testAccount:{active:false,status:"none",revision:0};
   el("pu-detail-title").textContent=account.displayName||account.email||"User account";
   el("pu-detail-meta").textContent=(account.email||"No email")+" · "+account.uid;
+  el("pu-open-logs").href="platform-logs.html?uid="+encodeURIComponent(account.uid);
   el("pu-detail-account").replaceChildren(
     detailTile("Account state",accountState(account)),
     detailTile("Platform role",account.platformAdminStatus==="active"?"Platform Administrator":
@@ -342,7 +254,6 @@ async function openDetail(item){
   if(busy)return;
   const run=++detailRun;
   currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};
-  resetDiagnostics();
   el("pu-test-reason").value="";
   el("pu-test-status").textContent="";
   el("pu-detail-title").textContent=item.displayName||item.email||"User account";
@@ -428,8 +339,6 @@ el("pu-create").addEventListener("click",()=>{
 el("pu-detail-close").addEventListener("click",()=>{++detailRun;resetDiagnostics();currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};dialog.close();});
 dialog.addEventListener("cancel",()=>{++detailRun;resetDiagnostics();currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};});
 el("pu-create-close").addEventListener("click",()=>createDialog.close());
-el("pu-diagnostic-load").addEventListener("click",()=>void loadDiagnostics());
-el("pu-diagnostic-next").addEventListener("click",()=>void loadDiagnostics({older:true}));
 el("pu-test-school").addEventListener("change",renderTestControls);
 el("pu-test-toggle").addEventListener("click",async()=>{
   if(busy||!currentAccount)return;
