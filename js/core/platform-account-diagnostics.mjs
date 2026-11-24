@@ -103,6 +103,12 @@ document.addEventListener("adminerva:role-ready",event=>{
 document.addEventListener("adminerva:v4-project-synced",()=>emit("cloud_save_confirmed",{module:"studio",state:"ok"}));
 document.addEventListener("adminerva:notification-opened",()=>emit("notification_opened",{kind:"notification",module:"notifications",state:"ok"}));
 document.addEventListener("adminerva:studio-submitted",()=>emit("assessment_submitted",{module:"assessments",state:"ok"}));
+window.addEventListener("adminerva:studio-run-recorded",event=>{
+  const run=event.detail||{};
+  if(run.compileSucceeded===false)diagnosticError("studio_run_failed","compile_error","studio");
+  else if(run.runSucceeded===false)diagnosticError("studio_run_failed","runtime_error","studio");
+  else if(run.runSucceeded===true)emit("studio_run_completed",{module:"studio",state:"ok"});
+});
 const buttonActions={
   runBtn:["studio_run_requested","studio"],
   studioConfirmSubmit:["assessment_submit_requested","assessments"],
@@ -118,7 +124,8 @@ document.addEventListener("click",event=>{
 },true);
 document.addEventListener("adminerva:diagnostic-event",event=>{
   const data=event?.detail||{};
-  if(data.action==="api_failed")diagnosticError("api_failed",data.errorCode||"unavailable",
+  if(data.action==="cloud_save_failed")diagnosticError("cloud_save_failed",data.errorCode||"unavailable","studio");
+  else if(data.action==="api_failed")diagnosticError("api_failed",data.errorCode||"unavailable",
     ["studio","assessments","classroom","school","games","grades","notifications","settings","api"].includes(data.module)?data.module:"api");
   else if(data.action==="support_report_submitted")emit("support_report_submitted",{module:"other",state:"ok"});
 });
