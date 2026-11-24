@@ -86,10 +86,10 @@ try{
       if(name==='public'&&viewport.name==='mobile-320'){
         const flow=await page.evaluate(()=>{
           const intro=document.querySelector('.avx-route-intro')?.getBoundingClientRect();
-          const route=document.querySelector('.avx-route')?.getBoundingClientRect();
-          return intro&&route?{introBottom:intro.bottom,routeTop:route.top}:null;
+          const firstStop=document.querySelector('.avx-route-stop')?.getBoundingClientRect();
+          return intro&&firstStop?{introBottom:intro.bottom,firstStopTop:firstStop.top}:null;
         });
-        assert.ok(flow&&flow.routeTop>=flow.introBottom-1,'mobile public route list must start below its narrative intro');
+        assert.ok(flow&&flow.firstStopTop>=flow.introBottom+8,'mobile public first destination must clear its narrative intro');
       }
       if(name==='public'){
         await page.locator('.avx-view-trigger').click();
