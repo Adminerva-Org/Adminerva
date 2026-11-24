@@ -83,6 +83,14 @@ try{
         const stage=page.locator(name==='public'||name==='guest'?'.avx-world-shell':'.avx-editorial-world');
         await stage.screenshot({path:`/tmp/adminerva-${name}-${viewport.name}.png`,animations:'disabled'});
       }
+      if(name==='public'&&viewport.name==='mobile-320'){
+        const flow=await page.evaluate(()=>{
+          const intro=document.querySelector('.avx-route-intro')?.getBoundingClientRect();
+          const route=document.querySelector('.avx-route')?.getBoundingClientRect();
+          return intro&&route?{introBottom:intro.bottom,routeTop:route.top}:null;
+        });
+        assert.ok(flow&&flow.routeTop>=flow.introBottom-1,'mobile public route list must start below its narrative intro');
+      }
       if(name==='public'){
         await page.locator('.avx-view-trigger').click();
         await page.getByRole('button',{name:'Quick Mode'}).click();
