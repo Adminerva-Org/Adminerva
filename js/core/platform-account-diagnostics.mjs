@@ -39,9 +39,14 @@ async function flushPending(){
   if(flushing||!enabled||navigator.onLine===false||!pending.length)return;
   flushing=true;
   try{
-    for(const event of pending.splice(0,MAX_DELAYED_EVENTS)){
-      if(!enabled||navigator.onLine===false)break;
-      await send(event,true);
+    const batch=pending.splice(0,MAX_DELAYED_EVENTS);
+    for(let i=0;i<batch.length;i++){
+      if(!enabled)return;
+      if(navigator.onLine===false){
+        pending=batch.slice(i).concat(pending).slice(0,MAX_DELAYED_EVENTS);
+        break;
+      }
+      await send(batch[i],true);
     }
   }finally{flushing=false;}
 }
