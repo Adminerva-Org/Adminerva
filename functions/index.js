@@ -205,7 +205,7 @@ exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolServ
 const {createPlatformUserService}=require("./platform-users.js");
 exports.platformUsers=onCall(callOptions,safeCallable(createPlatformUserService({db,auth:getAuth()})));
 // Platform-only timeline reads; individual users may append bounded, code-free diagnostics.
-exports.platformAccountDiagnostics=onCall(callOptions,platformAccountDiagnostics.service);
+exports.platformAccountDiagnostics=onCall(callOptions,safeCallable(platformAccountDiagnostics.service));
 exports.platformNotificationDiagnostics=onDocumentCreated({
   document:"notifications/{uid}/items/{notificationId}",region:"asia-southeast1",maxInstances:2,concurrency:10
 },async event=>platformAccountDiagnostics.recordNotificationDelivered(event.params.uid,event.params.notificationId));
