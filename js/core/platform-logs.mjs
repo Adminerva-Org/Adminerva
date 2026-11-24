@@ -379,6 +379,7 @@ async function loadTrends(){
   const epoch=state.epoch,token=state.readEpoch;
   state.trendsBusy=true;$("pl-trends-status").textContent="Analyzing bounded recent diagnostic records…";
   refreshEnabled();
+  let failureText="";
   try{
     const data=(await getLogs({
       action:"global_trends",reason,windowHours:Number($("pl-window").value),
@@ -390,10 +391,12 @@ async function loadTrends(){
     state.trends=data;
   }catch(error){
     if(epoch===state.epoch&&token===state.readEpoch)
-      $("pl-trends-status").textContent=permissionError(error);
+      failureText=permissionError(error);
   }finally{
     if(epoch===state.epoch&&token===state.readEpoch){
-      state.trendsBusy=false;renderTrends();refreshEnabled();
+      state.trendsBusy=false;renderTrends();
+      if(failureText)$("pl-trends-status").textContent=failureText;
+      refreshEnabled();
     }
   }
 }
