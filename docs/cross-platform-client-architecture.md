@@ -18,6 +18,13 @@ The existing hosted Adminerva frontend, tenant-verified Firebase APIs, identity/
 
 `js/core/app-compatibility.mjs` defines the shared *UI-only* client descriptor: platform kind, release channel, bridge protocol, shell version and enumerated native feature names. The desktop preview exposes no capabilities and cannot masquerade as release. This descriptor is not a security credential. School authorization, enrollment, student identity, teacher assignment, session epoch, OS permissions and storage access are enforced separately by trusted platform and backend components.
 
+## Native system-browser sign-in handoff (in development; disabled)
+
+The new server-only `nativeClientHandoff` callable follows a four-step device-authorization exchange: an unauthenticated native client creates a five-minute pairing challenge with an eight-digit confirmation code (the browser link carries only a random flow ID); a recently authenticated, verified Firebase user explicitly approves in the system browser by entering that code; the original native client proves possession of the 256-bit PKCE verifier; and the backend atomically consumes the pairing before issuing a Firebase custom token for that exact existing UID. All Firestore pairing records are denied to clients and have TTL. Neither browser cookies, ID tokens nor private verifier are put in a URL.
+
+**This is not operational:** callable issuance is off unless `ADMINERVA_NATIVE_AUTH_HANDOFF_ENABLED` is deliberately configured; even then, production activation requires abuse limits, real-browser provider verification, a safe native-token consumption / `signInWithCustomToken` completion page, role-resolving native navigation, and signed physical-device acceptance. Do not enable or advertise sign-in from this implementation slice. This bridge is not school authority: existing school/role services must independently validate every protected request.
+
+
 ## Desktop security boundary
 
 `apps/desktop/` intentionally starts only in approved public pages on `https://adminerva-org.github.io/Adminerva/`. Authentication and non-public routes open in the system browser; credentials are not handed back. All renderers are sandboxed and isolated, arbitrary window opening and unapproved top-level navigation are blocked, and permission requests are denied. There is no OS bridge beyond a read-only descriptor. The preview is **not ready for classroom/student accounts**. Review remote scripts and create an authenticated native session bridge before allowing private use.

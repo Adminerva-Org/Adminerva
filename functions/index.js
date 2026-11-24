@@ -122,6 +122,18 @@ exports.schoolAttendance=onCall(callOptions,safeCallable(createSchoolAttendanceS
 
 const {createSchoolAssessmentService}=require("./school-assessments.js");
 exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db})));
+const {createNativeClientHandoffService}=require("./native-client-handoff.js");
+// Credential issuance is DISABLED by default, even if this callable deploys.
+// Do not set the rollout flag until official native signing, throttling,
+// approved session UX, and school/identity acceptance tests are complete.
+exports.nativeClientHandoff=onCall(
+ {...callOptions,maxInstances:1,concurrency:5,timeoutSeconds:20},
+ safeCallable(createNativeClientHandoffService({
+  db,auth:getAuth(),Timestamp,
+  enabled:()=>process.env.ADMINERVA_NATIVE_AUTH_HANDOFF_ENABLED==="true"
+ }))
+);
+
 // Teacher Open/Close writes a durable outbox atomically with its exam state.
 // Delivery and roster capture must never block the teacher's callable.
 const {createSchoolStudioExamSessionFanout}=require("./school-studio-exam-fanout.js");

@@ -31,7 +31,7 @@ function fakeDb(){
   }
  };
 }
-const Timestamp={fromMillis:ms=>({toMillis:()=>ms})};
+const Timestamp={fromMillis:ms=>({epochMillis:ms})};
 const users=new Map([["student-uid",{uid:"student-uid",email:"student@example.edu",emailVerified:true,disabled:false}]]);
 const auth={
  async getUser(uid){return users.get(uid)||{uid,disabled:true};},

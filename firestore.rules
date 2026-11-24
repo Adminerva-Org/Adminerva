@@ -94,6 +94,8 @@ service cloud.firestore {
     }
     // School credentials, usage counters and cached AI responses never reach web clients.
     match /system_private/{record=**} { allow read, write: if false; }
+    // Short-lived device pairing and issued-token provenance are server-only.
+    match /native_client_handoffs/{handoffId} { allow read, write: if false; }
     match /school_ai_results/{record=**} { allow read, write: if false; }
     match /school_ai_usage/{record=**} { allow read, write: if false; }
     // Public visibility is explicit opt-in. Only backend handlers may publish scores.

@@ -19,7 +19,7 @@ function showStatus(message){status.textContent=message;}
 function render(){
  const user=auth.currentUser,valid=validFlowId(flowId);
  identity.hidden=!user||!valid;
- providerSelection.hidden=Boolean(user)||!valid;
+ providerSelection.hidden=!valid;
  if(!valid){showStatus("This pairing link is invalid. Begin again inside Adminerva Desktop.");return;}
  if(user){accountLabel.textContent="Signing in as "+(user.email||"your verified account");showStatus("Check the code on your desktop before authorizing.");}
  else showStatus("Sign in first, then enter your desktop pairing code.");

@@ -22,6 +22,11 @@ The dependency is pinned to a current supported Electron release; an immutable l
 - Exposes a harmless read-only preview descriptor, not credentials or a native API bridge. The `app-compatibility.mjs` browser model treats such descriptors as UI hints, never school authorization.
 - Does not monitor devices, run a companion, capture screens, or have a signed installer.
 
+## Pending browser-to-device sign-in
+
+`native-auth-protocol.cjs` generates an unpredictable flow ID, 256-bit PKCE verifier/challenge and eight-digit confirmation code. The system browser authorization page is `native-connect.html` and only receives the flow ID. A gated, TTL-backed callable approves the pairing only after a verified recent login and manually entered confirmation code. It releases a one-time Firebase custom token only to the original verifier. The current desktop preview is intentionally **not wired to redeem or consume** a token; this needs a separate safe completion flow and security review.
+
+
 ## Native-client release gate
 
 Implement authenticated system-browser OAuth/PKCE handoff and validated return through a short-lived server-verified exchange. Never reuse browser cookies, forward Firebase ID tokens through URL parameters, enable Electron Node integration for remote pages, or automatically allow screen capture. Validate exam epoch, school, saved project, idle/unload and close behavior before admitting authenticated examination work. Then add signed/notarized Windows/macOS packaging, explicit native versioning and safe updates.
