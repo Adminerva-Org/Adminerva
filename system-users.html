@@ -129,6 +129,10 @@
         <button id="pu-test-toggle" class="pu-btn shrink-0" type="button">Designate as test student</button>
       </div>
       <p id="pu-test-state" class="text-xs font-bold text-indigo-950 mt-3">Checking test designation…</p>
+      <label class="text-sm font-bold text-indigo-950 block mt-3" for="pu-test-reason">Reason for test-student designation or school access
+        <textarea id="pu-test-reason" class="pu-input mt-1" minlength="12" maxlength="500" rows="2" placeholder="For example: Controlled student login and school placement testing"></textarea>
+      </label>
+      <p class="text-xs text-indigo-900 mt-1">Required for designation, retirement, school access and suspension (at least 12 characters). This reason is recorded in the relevant audit trail. You do not need to fill in the reason under Login account lifecycle.</p>
       <div class="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end mt-3">
         <label class="text-sm font-bold text-indigo-950">Target school
           <select id="pu-test-school" class="pu-input mt-1">
@@ -214,6 +218,6 @@
 <script src="js/core/adminerva-loader.js?v=9dc90ac0f1c0"></script>
 <script defer src="js/core/adminerva-nav.js?v=9dc90ac0f1c0"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=9dc90ac0f1c0"></script>
-<script type="module" src="js/core/platform-users.mjs?v=20261124-account-diagnostics-1"></script>
+<script type="module" src="js/core/platform-users.mjs?v=20261124-test-reason-ux-1"></script>
 <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261121-platform-flow1"></script></body>
 </html>
