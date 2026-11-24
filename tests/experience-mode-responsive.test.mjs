@@ -46,12 +46,16 @@ test('mode control is compact dialog based and preserves existing mode preferenc
   assert.match(world,/prefers-reduced-motion/);
   assert.doesNotMatch(world,/firebase|firestore|schoolId|studentId|accessToken/i);
 });
-test('role runways point only to existing destinations and hand back to operational dashboards',async()=>{
-  const routes=['student-classroom.html','student-dashboard.html','student-practice.html','assessment-studio.html','repofetch.html','class-record.html','people-access.html','school-enrollment.html','school-academic-structure.html','system-users.html','issues.html','patch-notes.html'];
-  for(const route of routes)await assert.doesNotReject(access(new URL(route,root)),route+' must exist');
+test('signed-in Full Experience decorates the canonical Home instead of creating a second runway',async()=>{
   const source=await text('js/core/experience-mode.mjs');
-  assert.match(source,/Continue to operational dashboard/);
-  assert.match(source,/authoritative dashboard/);
+  assert.match(source,/avx-canonical-home-hero/);
+  assert.match(source,/data\.avxCanonicalHome|dataset\.avxCanonicalHome/);
+  assert.match(source,/assets\/New Adminerva logo\.png/);
+  assert.doesNotMatch(source,/avx-role-runway|Continue to operational dashboard|avx-dashboard-entry/);
+  const css=await text('css/experience-mode.css');
+  assert.match(css,/\.avx-canonical-home-hero/);
+  assert.match(css,/\.avx-canonical-guide/);
+  assert.match(css,/assets\/immersive\/world-journey\.webp/);
 });
 test('public full experience uses canonical public channels and real routes only',async()=>{
   const source=await text('js/core/experience-mode.mjs');
@@ -67,6 +71,15 @@ test('full experience escapes legacy centered shells and integrates public navig
   assert.match(css,/\.avx-world-shell\{[^}]*width:100vw/);
   assert.match(css,/margin-left:calc\(50% - 50vw\)/);
   assert.match(css,/data-adminerva-experience="full"\] \.av-public-shell/);
-  assert.match(experience,/const journey=el\('div','avx-world-shell'\)/);
+  assert.match(experience,/const journey=el\('div','avx-world-shell avx-world-shell--illustrated'\)/);
   assert.doesNotMatch(experience,/el\('section','avx-(?:world-shell|threshold|route-section|current-section|crossing)'/);
+});
+
+test('authenticated public-root routing uses canonical role Home, not last-workspace return',async()=>{
+  const [page,routing]=await Promise.all([text('index.html'),text('js/core/public-home-routing.mjs')]);
+  assert.ok(page.includes('js/core/public-home-routing.mjs'));
+  assert.doesNotMatch(page,/workspace-return\.mjs|data-workspace-return|Return to my workspace/);
+  assert.match(routing,/roleHome/);
+  assert.match(routing,/location\.replace\(home\|\|"login\.html\?continue=1"\)/);
+  assert.doesNotMatch(routing,/cachedWorkspaceDestination|Adminerva_last_workspace_/);
 });

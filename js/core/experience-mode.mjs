@@ -28,6 +28,17 @@ function makeBackdrop(){
   const backdrop=el('div','avx-world-backdrop');backdrop.setAttribute('aria-hidden','true');
   backdrop.innerHTML='<i class="avx-plane avx-plane-a"></i><i class="avx-plane avx-plane-b"></i><i class="avx-horizon"></i><i class="avx-glow"></i>';return backdrop;
 }
+function officialBrand(cls='avx-official-brand'){
+  const img=document.createElement('img');img.className=cls;img.src='assets/New Adminerva logo.png';img.alt='';img.decoding='async';return img;
+}
+function guideCharacter(cls='avx-guide-character'){
+  const img=document.createElement('img');img.className=cls;img.src='assets/immersive/guide.webp';img.alt='';img.loading='eager';img.decoding='async';return img;
+}
+function toolMotifs(){
+  const group=el('div','avx-tool-motifs');group.setAttribute('aria-hidden','true');
+  for(const name of ['portal','beacons','path','shards'])group.append(el('i','avx-tool-sprite avx-tool-'+name));
+  return group;
+}
 function routeStop(entry){
   const [index,kicker,title,summary,href]=entry;const a=link(href,'','avx-route-stop');a.dataset.route=index;
   a.append(el('span','avx-route-index',index));
@@ -38,7 +49,7 @@ function signalRow(kicker,title,summary,href){
   const a=link(href,'','avx-current-row');a.append(el('small',null,kicker),el('strong',null,title),el('span',null,summary),el('b',null,'↗'));return a;
 }
 if(publicLike){
-  const journey=el('div','avx-world-shell');journey.setAttribute('aria-label',role==='public'?'Explore Adminerva':'Explore public Adminerva tools');journey.append(makeBackdrop());
+  const journey=el('div','avx-world-shell avx-world-shell--illustrated');journey.setAttribute('aria-label',role==='public'?'Explore Adminerva':'Explore public Adminerva tools');journey.append(makeBackdrop());
   const threshold=el('div','avx-threshold');const thresholdCopy=el('div','avx-threshold-copy');
   thresholdCopy.innerHTML=role==='public'
     ?'<p class="avx-kicker">ADMINERVA / SCHOOL OPERATING SYSTEM</p><h1>Enter a school day that <em>moves as one.</em></h1><p>Learning, teaching, evidence, records and operations connect through one school context. Discover the system by moving through it.</p>'
@@ -47,9 +58,8 @@ if(publicLike){
   const enter=link(role==='public'?'login.html?continue=1':'guest-playground.html',role==='public'?'Open my workspace ↗':'Start building ↗','avx-text-link');
   actions.append(begin,enter);thresholdCopy.append(actions);
   const gate=el('div','avx-gate');gate.setAttribute('aria-hidden','true');
-  const gateMark=el('div','avx-gate-mark');const owl=document.createElement('img');owl.src='assets/adminerva-emblem.png';owl.alt='';owl.width=112;owl.height=112;
-  gateMark.append(owl,el('span',null,'ADMINERVA'));
-  gate.innerHTML='<i class="avx-gate-plane avx-gate-plane-left"></i><i class="avx-gate-plane avx-gate-plane-right"></i><i class="avx-gate-floor"></i>';gate.append(gateMark);
+  const gateMark=el('div','avx-gate-mark');gateMark.append(officialBrand('avx-gate-logo'));
+  gate.innerHTML='<i class="avx-gate-plane avx-gate-plane-left"></i><i class="avx-gate-plane avx-gate-plane-right"></i><i class="avx-gate-floor"></i>';gate.append(gateMark,guideCharacter(),toolMotifs());
   threshold.append(thresholdCopy,gate);
   const routeSection=el('div','avx-route-section');routeSection.id='adminerva-route';
   const routeIntro=el('header','avx-route-intro');routeIntro.innerHTML='<p class="avx-kicker">FOLLOW THE PATH</p><h2>Every turn leads somewhere real.</h2><p>Move by intent. Each stop opens an existing Adminerva destination.</p>';
@@ -71,19 +81,20 @@ if(publicLike){
     currentRows.replaceChildren(...(rows.length?rows:[signalRow('QUIET CHANNEL','No public signal is currently published','Adminerva does not invent releases, opportunities or activity.','pulse.html')]));
   });
 }else{
-  const configs={
-    student:{kicker:'STUDENT / LEARNING RUNWAY',title:'See the next move. Then get to work.',summary:'The runway points to real learning destinations. Verified assignments, grades and evidence remain in the operational workspace below.',actions:[['01','Classroom','Stream, classwork and teacher directions','student-classroom.html?v=20261115-stream3'],['02','Projects','Continue saved school work','student-dashboard.html'],['03','Practice','Build skill with guided missions','student-practice.html']]},
-    teacher:{kicker:'TEACHER / TEACHING RUNWAY',title:'Prepare. Review. Move the class forward.',summary:'Enter the canonical teaching workflow without replacing the authoritative dashboard, review queue or Class Record.',actions:[['01','Assessment Studio','Create, deploy and manage assessments','assessment-studio.html'],['02','Review & Grade','Inspect submissions and evidence','repofetch.html'],['03','Class Record','Review and publish verified results','class-record.html']]},
-    admin:{kicker:'SCHOOL ADMIN / OPERATIONS RUNWAY',title:'Move from concern to the right school workflow.',summary:'School-scoped operational data remains below. This entry layer only directs you to canonical administration work.',actions:[['01','People & Access','Students, staff, roles and account concerns','people-access.html'],['02','Enrollment','Registration, placement and student lifecycle','school-enrollment.html'],['03','Academic Structure','Programs, sections and school configuration','school-academic-structure.html']]},
-    platform:{kicker:'SYSTEM ADMIN / PLATFORM RUNWAY',title:'Operate the platform without collapsing school boundaries.',summary:'Platform authority stays distinct from School Admin authority. Institution and support operations remain explicit.',actions:[['01','System Users','Platform identities and access','system-users.html'],['02','Support Reports','Platform issues requiring attention','issues.html'],['03','Release History','Verified public product releases','patch-notes.html']]}
-  };
-  const cfg=configs[role];
-  if(cfg){
-    const stage=el('section','avx-role-runway');stage.append(makeBackdrop());const copy=el('div','avx-role-copy');
-    copy.append(el('p','avx-kicker',cfg.kicker),el('h1',null,cfg.title),el('p','avx-role-summary',cfg.summary));
-    const lanes=el('nav','avx-role-lanes');lanes.setAttribute('aria-label',role+' priority destinations');
-    cfg.actions.forEach(([index,title,summary,href])=>{const a=link(href,'','avx-role-lane');a.append(el('span','avx-role-lane-index',index),el('strong',null,title),el('small',null,summary),el('b',null,'↗'));lanes.append(a);});
-    const dashboard=el('button','avx-dashboard-entry','Continue to operational dashboard ↓');dashboard.type='button';copy.append(dashboard);stage.append(copy,lanes);home.prepend(stage);bindDepth(stage);
-    dashboard.addEventListener('click',()=>{const target=[...home.children].find(n=>n!==stage);scrollToElement(target);});
+  // Signed-in users stay on their one canonical role home. Full Experience
+  // decorates that real page instead of inserting a second runway/home above it.
+  const hero=home.querySelector('.av-home-hero')||home.querySelector(':scope > header');
+  if(hero){
+    home.classList.add('avx-canonical-home','avx-canonical-home--'+role);
+    home.dataset.avxCanonicalHome='true';
+    hero.classList.add('avx-canonical-home-hero','avx-canonical-home-hero--'+role);
+    hero.dataset.avxCanonicalHome='true';
+
+    const art=el('div','avx-canonical-art');art.setAttribute('aria-hidden','true');
+    const brand=officialBrand('avx-canonical-logo');
+    const guide=guideCharacter('avx-canonical-guide');
+    art.append(brand,guide,toolMotifs());
+    hero.prepend(art);
+    bindDepth(hero);
   }
 }

@@ -29,8 +29,7 @@ export function mountHelp() {
   footer.setAttribute("aria-label","Help, privacy and website updates");
   footer.innerHTML = '<span class="av-footer-brand">ADMINERVA</span><nav aria-label="Website information"><button type="button" id="page-help-open">ⓘ Help / tutorial</button><a href="wiki.html">Wiki</a><a href="patch-notes.html">Patch notes</a><a href="wiki.html#privacy">Privacy</a></nav>';
   if(!document.getElementById("adminerva-nav")){
-    const returnLink=document.createElement("a");returnLink.href="login.html?continue=1";returnLink.dataset.workspaceReturn="";returnLink.textContent="Return to my workspace →";footer.querySelector("nav").prepend(returnLink);
-    import("../core/workspace-return.mjs?v=1.3.0").then(module=>module.refreshWorkspaceReturn()).catch(()=>{});
+    const signInLink=document.createElement("a");signInLink.href="login.html?continue=1";signInLink.textContent="Sign in to Adminerva →";footer.querySelector("nav").prepend(signInLink);
   }
   document.body.classList.add("av-with-footer");
   if (location.pathname.endsWith("/login.html")) {
@@ -48,7 +47,7 @@ export function mountHelp() {
   const dialog = document.createElement("dialog"); dialog.id = "page-help-dialog";
   dialog.className = "p-6 rounded-xl border border-slate-300 max-w-xl w-[95vw] text-slate-900 bg-white";
   dialog.setAttribute("aria-labelledby", "page-help-title");
-  dialog.innerHTML = '<h2 id="page-help-title" class="text-xl font-bold"></h2><p id="page-help-description" class="my-4"></p><a id="page-help-guide" class="underline">Read the full guide</a><p class="my-5">Optional activity sharing and the home reminder can be changed in your <a href="student-settings.html" id="help-settings-link" class="underline">Account Settings</a>. Public pages do not collect activity.</p><form method="dialog"><button class="bg-cyan-800 text-white rounded p-3">Close help</button></form>';
+  dialog.innerHTML = '<h2 id="page-help-title" class="text-xl font-bold"></h2><p id="page-help-description" class="my-4"></p><a id="page-help-guide" class="underline">Read the full guide</a><p class="my-5">Optional activity sharing can be changed in your <a href="student-settings.html" id="help-settings-link" class="underline">Account Settings</a>. Public pages do not collect activity.</p><form method="dialog"><button class="bg-cyan-800 text-white rounded p-3">Close help</button></form>';
   dialog.querySelector("#page-help-title").textContent = title;
   dialog.querySelector("#page-help-description").textContent = description;
   dialog.querySelector("#page-help-guide").href = "wiki.html#" + anchor;

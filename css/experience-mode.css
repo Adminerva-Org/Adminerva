@@ -77,23 +77,6 @@ html[data-adminerva-experience="full"]{scroll-behavior:smooth}
 html[data-adminerva-experience="quick"] .avx-world-shell{display:none!important}
 html[data-adminerva-experience="full"] main[data-home-experience="public"]>:not(.avx-world-shell),html[data-adminerva-experience="full"] main[data-home-experience="guest"]>:not(.avx-world-shell){display:none!important}
 
-/* Signed-in entry runways hand off to, rather than replace, operational dashboards. */
-.avx-role-runway{position:relative;isolation:isolate;overflow:hidden;display:grid;grid-template-columns:minmax(0,.8fr) minmax(420px,1.2fr);gap:clamp(2rem,6vw,7rem);align-items:center;width:100vw;margin-left:calc(50% - 50vw);min-height:min(760px,calc(100dvh - 68px));padding:clamp(2rem,6vw,5rem);margin-bottom:1.2rem;background:linear-gradient(145deg,#07131f,#0b2630);border-bottom:1px solid rgba(116,209,192,.22)}
-.avx-role-copy{max-width:620px}
-.avx-role-copy h1{font-size:clamp(2.7rem,5.4vw,6rem);line-height:.91;letter-spacing:-.065em;margin:.7rem 0 1rem;font-weight:900}
-.avx-role-summary{color:#9eb8c0;line-height:1.65;max-width:54ch}
-.avx-role-lanes{display:grid;border-top:1px solid var(--avx-line)}
-.avx-role-lane{display:grid;grid-template-columns:54px minmax(130px,.72fr) minmax(180px,1.28fr) 30px;gap:.85rem;align-items:center;min-height:106px;padding:1rem 0;text-decoration:none;color:#ecfbf6;border-bottom:1px solid var(--avx-line);transition:transform .2s ease,color .2s ease}
-.avx-role-lane:hover{transform:translateX(10px);color:var(--avx-mint)}
-.avx-role-lane-index{font-size:.62rem;color:#77939e;font-weight:900}
-.avx-role-lane strong{font-size:clamp(1.05rem,1.8vw,1.55rem)}
-.avx-role-lane small{color:#8faab3;font-size:.78rem;line-height:1.45}
-.avx-role-lane b{font-size:1.05rem}
-.avx-dashboard-entry{margin-top:1.3rem;padding:.7rem 0;border:0;border-bottom:1px solid var(--avx-line-strong);background:none;color:#eafdf7;font-weight:850;cursor:pointer}
-.avx-dashboard-entry:hover{color:var(--avx-mint)}
-html[data-adminerva-experience="quick"] .avx-role-runway{display:none!important}
-
-
 /* Full Experience integrates the existing public shell into the world instead of layering a second navigation treatment. */
 html[data-adminerva-experience="full"] .av-public-shell{background:rgba(6,16,29,.88);border-bottom-color:var(--avx-line);box-shadow:none}
 html[data-adminerva-experience="full"] .av-public-shell__links a,
@@ -324,3 +307,167 @@ html[data-adminerva-experience="quick"] .avx-expedition-body,html[data-adminerva
 @media (pointer:coarse){.avx-route-stop,.avx-role-lane,.avx-expedition-stop,.avx-trail-stop,.avx-time-channels button,.avx-time-entry{min-height:48px}}
 @media (prefers-reduced-motion:reduce){html[data-adminerva-experience="full"]{scroll-behavior:auto}.avx-view-trigger,.avx-route-stop,.avx-role-lane,.avx-crossing-link,.avx-plane,.avx-gate-plane{transition:none!important;transform:none!important;animation:none!important}}
 .avx-world-shell :is(a,button,input,summary):focus-visible,.avx-role-runway :is(a,button):focus-visible,.avx-editorial-world :is(a,button,input,summary):focus-visible,.avx-view-trigger:focus-visible,.avx-mode-dialog button:focus-visible{outline:3px solid #d8ff92;outline-offset:4px}
+
+
+/* 2026-11-24: illustrated world + one canonical signed-in Home. Generated
+   scenery never replaces the official Adminerva logo or operational content. */
+.avx-world-shell--illustrated .avx-threshold{
+  position:relative;isolation:isolate;overflow:hidden;
+  background:#06101d;
+}
+.avx-world-shell--illustrated .avx-threshold::before{
+  content:"";position:absolute;inset:0;z-index:-3;
+  background-image:url("../assets/immersive/world-arrival.webp");
+  background-size:cover;background-position:center;
+  filter:saturate(.8) contrast(.96);
+  transform:scale(1.025) translate3d(calc(var(--avx-px,0)*-6px),calc(var(--avx-py,0)*-4px),0);
+  transition:transform .18s linear;
+}
+.avx-world-shell--illustrated .avx-threshold::after{
+  content:"";position:absolute;inset:0;z-index:-2;
+  background:
+    linear-gradient(90deg,rgba(3,11,20,.96) 0%,rgba(4,14,25,.88) 35%,rgba(5,17,29,.42) 66%,rgba(5,15,25,.14) 100%),
+    linear-gradient(0deg,rgba(4,14,25,.76),transparent 48%);
+}
+.avx-world-shell--illustrated .avx-route-section,
+.avx-world-shell--illustrated .avx-current-section,
+.avx-world-shell--illustrated .avx-crossing{isolation:isolate;overflow:hidden}
+.avx-world-shell--illustrated .avx-route-section::before,
+.avx-world-shell--illustrated .avx-current-section::before,
+.avx-world-shell--illustrated .avx-crossing::before{
+  content:"";position:absolute;inset:0;z-index:-2;pointer-events:none;
+  background:url("../assets/immersive/world-journey.webp") center/cover no-repeat;
+}
+.avx-world-shell--illustrated .avx-route-section::after,
+.avx-world-shell--illustrated .avx-current-section::after,
+.avx-world-shell--illustrated .avx-crossing::after{
+  content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background:linear-gradient(110deg,rgba(5,16,29,.97),rgba(7,23,35,.9) 52%,rgba(8,26,37,.72));
+}
+.avx-world-shell--illustrated .avx-current-section::before{background-position:65% center;opacity:.42}
+.avx-world-shell--illustrated .avx-crossing::before{background-position:right center;opacity:.34}
+.avx-world-shell--illustrated .avx-route-section::before{opacity:.32}
+.avx-gate{z-index:1}
+.avx-gate-plane{opacity:.14;backdrop-filter:blur(1px)}
+.avx-gate-floor{opacity:.34}
+.avx-gate-mark{z-index:4;top:18%;left:auto;right:7%;transform:none;text-align:right}
+.avx-gate-logo{display:block;width:clamp(150px,20vw,280px);height:auto;object-fit:contain;filter:drop-shadow(0 14px 25px rgba(0,0,0,.38))}
+.avx-guide-character{
+  position:absolute;right:3%;bottom:-3%;z-index:3;width:min(24vw,260px);height:auto;
+  filter:drop-shadow(0 24px 34px rgba(0,0,0,.5));pointer-events:none;opacity:.96;
+  transform:translate3d(calc(var(--avx-px,0)*10px),calc(var(--avx-py,0)*5px),0);
+}
+.avx-tool-motifs{position:absolute;inset:0;pointer-events:none;z-index:2}
+.avx-tool-sprite{
+  position:absolute;display:block;width:150px;height:100px;
+  background-repeat:no-repeat;background-position:center;background-size:contain;
+  opacity:.48;filter:drop-shadow(0 12px 26px rgba(16,214,228,.17));
+}
+.avx-tool-portal{left:4%;bottom:8%;background-image:url("../assets/immersive/portal.svg")}
+.avx-tool-beacons{right:3%;top:10%;background-image:url("../assets/immersive/beacons.svg")}
+.avx-tool-path{left:34%;bottom:1%;width:180px;background-image:url("../assets/immersive/path-light.svg")}
+.avx-tool-shards{right:24%;bottom:5%;width:125px;background-image:url("../assets/immersive/shards.svg")}
+.avx-gate .avx-tool-sprite{opacity:.35}
+.avx-route-intro,.avx-current-intro,.avx-crossing-copy{position:relative;z-index:3}
+
+/* Signed-in Full Experience lives inside the canonical Home header. There is
+   no second Home, runway, or "continue to dashboard" gate. */
+.avx-canonical-home{position:relative}
+.avx-canonical-home-hero{
+  position:relative!important;isolation:isolate;overflow:hidden!important;
+  min-height:clamp(260px,42vw,510px);
+  display:flex!important;flex-direction:column;justify-content:center;
+  background:#07131f!important;color:#f6fffc!important;
+  border-color:rgba(122,224,207,.22)!important;
+  box-shadow:0 24px 70px rgba(2,13,24,.18)!important;
+}
+.avx-canonical-home-hero::before{
+  content:"";position:absolute;inset:0;z-index:-3;
+  background:url("../assets/immersive/world-journey.webp") center/cover no-repeat;
+  filter:saturate(.82) contrast(.96);
+  transform:scale(1.035) translate3d(calc(var(--avx-px,0)*-8px),calc(var(--avx-py,0)*-5px),0);
+}
+.avx-canonical-home-hero::after{
+  content:"";position:absolute;inset:0;z-index:-2;
+  background:linear-gradient(90deg,rgba(3,13,24,.96) 0%,rgba(5,18,31,.89) 40%,rgba(5,18,31,.47) 70%,rgba(5,18,31,.28));
+}
+.avx-canonical-home-hero>*:not(.avx-canonical-art){position:relative;z-index:4}
+.avx-canonical-home-hero .text-slate-600,
+.avx-canonical-home-hero .text-slate-500{color:#c4d8dd!important}
+.avx-canonical-home-hero .text-blue-700,
+.avx-canonical-home-hero .text-cyan-800{color:#adf7e8!important}
+.avx-canonical-home-hero a:not(.av-primary-button),
+.avx-canonical-home-hero button:not(.av-primary-button){position:relative;z-index:5}
+.avx-canonical-art{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden}
+.avx-canonical-logo{
+  position:absolute;right:clamp(1rem,3vw,3rem);top:clamp(1rem,3vw,2rem);
+  width:clamp(120px,18vw,230px);height:auto;object-fit:contain;
+  filter:drop-shadow(0 12px 24px rgba(0,0,0,.38));opacity:.98;
+}
+.avx-canonical-guide{
+  position:absolute;right:clamp(.25rem,3vw,3rem);bottom:-7%;
+  width:clamp(105px,20vw,230px);height:auto;object-fit:contain;
+  opacity:.9;filter:drop-shadow(0 25px 36px rgba(0,0,0,.52));
+  transform:translate3d(calc(var(--avx-px,0)*9px),calc(var(--avx-py,0)*5px),0);
+}
+.avx-canonical-art .avx-tool-portal{left:auto;right:20%;bottom:-1%;opacity:.22}
+.avx-canonical-art .avx-tool-beacons{right:2%;top:35%;opacity:.18}
+.avx-canonical-art .avx-tool-path{left:auto;right:15%;bottom:3%;opacity:.3}
+.avx-canonical-art .avx-tool-shards{right:31%;bottom:12%;opacity:.24}
+.avx-canonical-home-hero--student::before{background-position:42% center}
+.avx-canonical-home-hero--teacher::before{background-position:58% center}
+.avx-canonical-home-hero--admin::before{background-position:68% center}
+.avx-canonical-home-hero--platform::before{background-position:75% center}
+.avx-canonical-home-hero--admin,
+.avx-canonical-home-hero--platform{padding-right:clamp(7rem,24vw,18rem)!important}
+.avx-canonical-home-hero--admin #adminRefresh{background:rgba(255,255,255,.94)!important;color:#0f2432!important;border-color:transparent!important}
+
+/* Quick Mode is the same Home and navigation with the scenic layer removed. */
+html[data-adminerva-experience="quick"] .avx-canonical-art{display:none!important}
+html[data-adminerva-experience="quick"] .avx-canonical-home-hero{
+  min-height:unset;background:initial!important;color:inherit!important;box-shadow:initial!important;
+}
+html[data-adminerva-experience="quick"] .avx-canonical-home-hero::before,
+html[data-adminerva-experience="quick"] .avx-canonical-home-hero::after{display:none!important}
+html[data-adminerva-experience="quick"] .avx-canonical-home-hero .text-slate-600,
+html[data-adminerva-experience="quick"] .avx-canonical-home-hero .text-slate-500,
+html[data-adminerva-experience="quick"] .avx-canonical-home-hero .text-blue-700,
+html[data-adminerva-experience="quick"] .avx-canonical-home-hero .text-cyan-800{color:revert!important}
+
+@media (max-width:900px){
+  .avx-gate-mark{right:3%;top:8%}
+  .avx-guide-character{width:min(29vw,190px);right:0}
+  .avx-tool-sprite{transform:scale(.82)}
+  .avx-canonical-home-hero{min-height:330px;padding-right:clamp(1rem,28vw,12rem)!important}
+  .avx-canonical-logo{width:clamp(105px,25vw,180px)}
+  .avx-canonical-guide{width:clamp(95px,25vw,175px);right:0}
+  .avx-canonical-art .avx-tool-beacons,.avx-canonical-art .avx-tool-shards{display:none}
+}
+@media (max-width:699px) and (orientation:portrait){
+  .avx-world-shell--illustrated .avx-threshold::before{background-position:62% center}
+  .avx-world-shell--illustrated .avx-threshold::after{background:linear-gradient(180deg,rgba(3,11,20,.4),rgba(3,12,22,.94) 48%,#06101d 100%)}
+  .avx-gate-logo{width:min(46vw,180px)}
+  .avx-guide-character{width:min(38vw,150px);bottom:-2%}
+  .avx-tool-portal,.avx-tool-beacons{display:none}
+  .avx-canonical-home-hero{min-height:360px;padding:1.35rem!important;padding-bottom:7.6rem!important}
+  .avx-canonical-home-hero::after{background:linear-gradient(180deg,rgba(3,13,24,.68),rgba(3,13,24,.94) 56%,#06111e)}
+  .avx-canonical-logo{top:1rem;right:1rem;width:min(40vw,150px)}
+  .avx-canonical-guide{width:112px;bottom:-3%;right:.5rem;opacity:.82}
+  .avx-canonical-art .avx-tool-path{right:28%;bottom:0;opacity:.2}
+}
+@media (max-width:430px) and (orientation:portrait){
+  .avx-canonical-logo{width:120px}
+  .avx-canonical-guide{width:92px;opacity:.76}
+  .avx-canonical-home-hero{padding-bottom:6.6rem!important}
+}
+@media (max-height:620px) and (orientation:landscape) and (pointer:coarse){
+  .avx-canonical-home-hero{min-height:250px;padding-right:28vw!important}
+  .avx-canonical-guide{width:120px}
+  .avx-canonical-logo{width:130px}
+  .avx-guide-character{width:130px}
+}
+@media (prefers-reduced-motion:reduce){
+  .avx-world-shell--illustrated .avx-threshold::before,
+  .avx-canonical-home-hero::before,
+  .avx-guide-character,.avx-canonical-guide{transform:none!important;transition:none!important}
+}
