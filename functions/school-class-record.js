@@ -403,6 +403,7 @@ function cleanColumns(raw,assessmentMap,previousColumns=[]){
     if(assessmentSource===HISTORICAL_SOURCE){
       mapping=sameHistoricalSource?previous.historicalMapping:task?.historicalMapping;
       if(!mapping)deny("failed-precondition","The original assessment has no verified class mapping.");
+      if(!sameHistoricalSource&&archived)deny("invalid-argument","New historical assessment columns must be active.");
       if(!sameHistoricalSource&&item?.confirmHistoricalOffering!==mapping.offeringId)
         deny("failed-precondition","Confirm the selected academic year and period for this historical assessment before linking.");
     }
@@ -790,7 +791,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           enrollmentId:row.id,personId:row.data().personId,
           name:data?String(data.displayName||"Student"):"Unlinked student record",
           authUid:data&&typeof data.authUid==="string"?data.authUid:"",
-          legacyStudentIds:data&&Array.isArray(data.legacyStudentIds)?data.legacyStudentIds:[]
+          legacyStudentIds:data&&data.kind==="student"&&data.status==="active"&&Array.isArray(data.legacyStudentIds)?data.legacyStudentIds:[]
         };
       }).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
       return internal;
@@ -1083,7 +1084,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           }else{
             const source=column.assessmentSource||SCHOOL_SOURCE;
             const row=gradeMap.get(source+"::"+column.taskId+"::"+personId);
-            if(row&&Number.isFinite(Number(row.awarded)))score=Number(row.awarded);
+            if(row&&Number.isFinite(Number(row.awarded))&&
+               (source!==HISTORICAL_SOURCE||Math.abs(Number(row.total)-Number(column.maxPoints))<0.0001))score=Number(row.awarded);
           }
         }
         return {
@@ -1394,8 +1396,10 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       let revision;
       await db.runTransaction(async tx=>{
-        const [grant,currentOffering,current,...priorMappings]=await Promise.all([
-          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),...mappingRefs.map(ref=>tx.get(ref))
+        const [grant,currentOffering,current,priorMappings,originalTasks]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),
+          Promise.all(mappingRefs.map(ref=>tx.get(ref))),
+          Promise.all(newHistorical.map(column=>tx.get(db.doc("assessments/"+column.taskId))))
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
            grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
@@ -1406,6 +1410,11 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           const column=newHistorical[i],mapping=column.historicalMapping,prior=priorMappings[i];
           if(!mappingMatches(mapping,ctx.schoolId,offeringId,currentOffering.data()))
             deny("failed-precondition","The selected academic period or class changed. Reload before linking.");
+          const original=originalTasks[i];
+          const rechecked=historicalMapping({task:original.exists?original.data():null,taskId:column.taskId,
+            schoolId:ctx.schoolId,ownerUid:ctx.uid,offering:currentOffering.data(),offeringId,labels});
+          if(!rechecked||Number(original.data().maxScore)!==column.maxPoints)
+            deny("failed-precondition","The original historical assessment changed. Reload before linking.");
           if(prior.exists&&(prior.data().schoolId!==ctx.schoolId||prior.data().offeringId!==offeringId))
             deny("failed-precondition","This historical assessment section is already mapped to another academic period. Review its original Class Record.");
         }
