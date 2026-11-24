@@ -72,7 +72,7 @@ async function verifiedHistoricalSectionMapping({db,schoolId,roster,resolveUsers
   const needsSubjectReview=!historicalSubjectMatches(task?.subject,labels?.subjectName);
   // The teacher must explicitly acknowledge the exact original subject before
   // attempting a different-subject source link; a guessed label cannot pass.
-  if(needsSubjectReview&&(!task?.subject||confirmOriginalSubject!==task.subject))return null;
+  if(needsSubjectReview&&(!task?.subject||confirmOriginalSubject!==task.subject.trim()))return null;
   const candidate=historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,
     labels,sourceSectionName,verifiedSection:true,verifiedSubject:needsSubjectReview});
   if(!candidate)return null;
@@ -163,7 +163,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
       "teacher_confirmed_original_subject_with_roster"&&
       mapping.identityProof==="original_student_section"&&
       Number(mapping.identityVerifiedCount)>0&&
-      mapping.originalSubjectName===original.subject;
+      mapping.originalSubjectName===String(original.subject||"").trim();
     if(!validOrigin(original,schoolId)||original.ownerUid!==mapping.ownerUid||
        !historicalSections(original).some(section=>canonical(section)===canonical(mapping.sectionName))||
        !(historicalSubjectMatches(original.subject,mapping.subjectName)||verifiedSubjectReview))continue;
