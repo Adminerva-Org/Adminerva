@@ -278,6 +278,14 @@
       </label>
       
       <div id="cr-assessment-source-note" class="cr-source-note mt-3" hidden></div>
+      <div id="cr-historical-section-panel" class="cr-source-note mt-3" hidden>
+        <label class="cr-field">Original historical section
+          <select id="cr-historical-source-section" class="cr-select mt-1" disabled>
+            <option value="">Select original section…</option>
+          </select>
+        </label>
+        <p class="cr-help mt-2">This section will be verified against the enrolled students' historical school identities. Grade evidence stays in its original records.</p>
+      </div>
       <div id="cr-historical-confirm" class="cr-source-note mt-3" hidden>
         <label class="flex items-start gap-2"><input id="cr-historical-period" type="checkbox" class="mt-1 shrink-0" disabled> <span id="cr-historical-period-label">I confirm the academic period.</span></label>
       </div>
@@ -504,6 +512,6 @@
 <script src="js/core/adminerva-loader.js?v=3bc029269047"></script>
 <script defer src="js/core/adminerva-nav.js?v=3bc029269047"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=3bc029269047"></script>
-<script type="module" src="js/class-record/class-record.mjs?v=20261124-historical-subject2"></script>
+<script type="module" src="js/class-record/class-record.mjs?v=20261124-historical-source-discovery3"></script>
 </body>
 </html>

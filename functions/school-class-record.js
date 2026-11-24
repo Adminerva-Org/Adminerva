@@ -15,7 +15,7 @@ const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
-const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades}=require("./school-class-record-historical.js");
+const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,validOrigin}=require("./school-class-record-historical.js");
 
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
@@ -744,26 +744,41 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       })).filter(task=>Number.isFinite(task.maxPoints)&&task.maxPoints>0);
     }
     async function ownedHistoricalAssessments(offering,labels){
-      // Root legacy records have a known migration origin; cutover mode must
-      // not prevent a read-only projection of their published grades.
-      if(ctx.schoolId!==LEGACY_BRIDGE_SCHOOL)return [];
+      // Read only original assessments owned by this verified teacher, and only
+      // from the confirmed legacy origin. Never enumerate another tenant.
+      const stats={supported:ctx.schoolId===LEGACY_BRIDGE_SCHOOL,ownedCount:0,
+        availableCount:0,sectionReviewCount:0,subjectMismatchCount:0,
+        noSectionCount:0,invalidScoreCount:0,originMismatchCount:0};
+      if(!stats.supported)return {items:[],stats};
       const snap=await db.collection("assessments").where("ownerUid","==",ctx.uid).limit(501).get();
       if(snap.size===501)
-        deny("resource-exhausted","Historical assessment library exceeds the current bounded picker capacity.");
-      return snap.docs.flatMap(doc=>{
-        const task=doc.data(),mapping=historicalMapping({task,taskId:doc.id,schoolId:ctx.schoolId,
+        deny("resource-exhausted","Historical assessment library exceeds the bounded picker capacity.");
+      stats.ownedCount=snap.size;
+      const items=[];
+      for(const doc of snap.docs){
+        const task=doc.data(),sections=historicalSections(task);
+        if(!validOrigin(task,ctx.schoolId)){stats.originMismatchCount++;continue;}
+        if(!historicalSubjectMatches(task.subject,labels.subjectName)){stats.subjectMismatchCount++;continue;}
+        const maximum=Number(task.maxScore);
+        if(!Number.isFinite(maximum)||maximum<=0||maximum>10000){stats.invalidScoreCount++;continue;}
+        if(!sections.length){stats.noSectionCount++;continue;}
+        const mapping=historicalMapping({task,taskId:doc.id,schoolId:ctx.schoolId,
           ownerUid:ctx.uid,offering,offeringId,labels});
-        if(!mapping)return [];
+        if(mapping)stats.availableCount++;
+        else stats.sectionReviewCount++;
         const studio=task.schemaVersion===3||task.submissionSource==="studio"||task.assessmentFormat==="studio_code";
-        return [{
-          sourceType:HISTORICAL_SOURCE,taskId:doc.id,title:String(task.title||"Historical assessment"),
+        items.push({
+          sourceType:HISTORICAL_SOURCE,taskId:doc.id,title:String(task.title||"Historical assessment").slice(0,160),
           submissionSource:studio?"studio":"github",lifecycle:"historical",
-          maxPoints:Number(task.maxScore),categorySuggestion:String(task.type||"").trim().slice(0,60),
-          published:task.published!==false,linkable:true,historical:true,
-          historicalMapping:mapping,periodLabel:labels.yearName+" · "+labels.termName,
+          maxPoints:maximum,categorySuggestion:String(task.type||"").trim().slice(0,60),
+          published:task.published!==false,linkable:Boolean(mapping),
+          historicalSectionReview:!mapping,sourceSections:!mapping?sections.slice(0,40):[],
+          historical:true,historicalMapping:mapping,
+          periodLabel:labels.yearName+" · "+labels.termName,
           gradeRoute:"school-gradebook.html?view=review&task="+encodeURIComponent("legacy:"+doc.id)
-        }];
-      });
+        });
+      }
+      return {items,stats};
     }
     async function availableAssessments(offering,labels){
       const [school,legacy,historical]=await Promise.all([
@@ -771,12 +786,12 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         ownedLegacyPersonalizedAssessments(labels.sectionName),
         ownedHistoricalAssessments(offering,labels)
       ]);
-      const historicalIds=new Set(historical.map(task=>task.taskId));
-      // Keep previously supported columns resolvable, but offer one preferred
-      // historical source for each original record in the new-column picker.
-      return [...school,...legacy.map(task=>historicalIds.has(task.taskId)?{...task,linkable:false}:task),...historical].sort((a,b)=>
+      const historicalIds=new Set(historical.items.map(task=>task.taskId));
+      const items=[...school,...legacy.map(task=>historicalIds.has(task.taskId)?{...task,linkable:false}:task),
+        ...historical.items].sort((a,b)=>
         a.title.localeCompare(b.title,undefined,{sensitivity:"base"})||
         a.sourceType.localeCompare(b.sourceType));
+      return {items,historicalAvailability:historical.stats};
     }
     async function classRoster(){
       const enrollments=await db.collection(prefix+"enrollments")
@@ -860,7 +875,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         db,prefix,schoolId:ctx.schoolId,offering,periodType:labels.periodType
       });
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
-      const [roster,assessments,sheet,gradeSnap,manualSnap,cellStateSnap,finalizationDoc,collaboratorState]=await Promise.all([
+      const [roster,discovery,sheet,gradeSnap,manualSnap,cellStateSnap,finalizationDoc,collaboratorState]=await Promise.all([
         classRoster(),
         availableAssessments(offering,labels),
         sheetRef.get(),
@@ -870,6 +885,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         finalizationRef.get(),
         activeOfferingTeachers(offering)
       ]);
+      const assessments=discovery.items;
       if(gradeSnap.size>MAX_SCORE_CELLS)
         deny("resource-exhausted","Published school grade cells exceed the bounded Class Record capacity.");
       if(manualSnap.size>MAX_SCORE_CELLS)
@@ -948,7 +964,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         stale:String(finalizationDoc.data().sourceDigest||"")!==snapshot.sourceDigest
       }:null;
       return {
-        offering,labels,roster,assessments,columns,settings,gradingPolicy:gradingPolicy.policy,
+        offering,labels,roster,assessments,historicalAvailability:discovery.historicalAvailability,
+        columns,settings,gradingPolicy:gradingPolicy.policy,
         manualScores,publishedGrades,cellStates,collaborators:collaboratorState.teachers,
         permissions:{
           primaryTeacherUid:collaboratorState.lead.primaryTeacherUid,
@@ -1036,7 +1053,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           termName:data.labels.termName,periodType:data.labels.periodType,
           sectionName:data.labels.sectionName,subjectName:data.labels.subjectName},
         roster:data.roster.map(({authUid,legacyStudentIds,...row})=>row),
-        assessments:data.assessments,columns:data.columns,settings:data.settings,
+        assessments:data.assessments,historicalAvailability:data.historicalAvailability,
+        columns:data.columns,settings:data.settings,
         gradingPolicy:data.gradingPolicy,
         manualScores:data.manualScores,publishedGrades:data.publishedGrades,cellStates:data.cellStates,
         collaborators:data.collaborators,permissions:data.permissions,
@@ -1376,10 +1394,34 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const gradingPolicy=await resolveSchoolGradingPolicy({
         db,prefix,schoolId:ctx.schoolId,offering,periodType:labels.periodType
       });
-      const assessmentRows=await availableAssessments(offering,labels);
-      const assessmentMap=new Map(assessmentRows.map(task=>[
+      const discovery=await availableAssessments(offering,labels);
+      const assessmentMap=new Map(discovery.items.map(task=>[
         assessmentKey(task.sourceType,task.taskId),task
       ]));
+      // A historical section label is not an identity. If a teacher explicitly
+      // selects a different original section, prove it against canonical person
+      // lineage + original school student sections before permitting a link.
+      const reviewRequests=(Array.isArray(input.columns)?input.columns:[]).filter(column=>
+        column?.kind==="assessment"&&column.assessmentSource===HISTORICAL_SOURCE&&
+        typeof column.historicalSourceSection==="string"&&column.historicalSourceSection.trim());
+      if(reviewRequests.length>10)
+        deny("resource-exhausted","Link up to ten verified historical sections per layout save.");
+      if(reviewRequests.length){
+        const roster=await classRoster();
+        for(const item of reviewRequests){
+          const taskId=checkId(String(item.taskId||""),"Historical assessment ID",160);
+          const available=assessmentMap.get(assessmentKey(HISTORICAL_SOURCE,taskId));
+          if(!available||!available.historicalSectionReview)
+            deny("failed-precondition","This historical source cannot use section remapping. Reload Class Record.");
+          const original=await db.doc("assessments/"+taskId).get();
+          const mapping=await verifiedHistoricalSectionMapping({db,schoolId:ctx.schoolId,roster,
+            resolveUsers,task:original.exists?original.data():null,taskId,ownerUid:ctx.uid,
+            offering,offeringId,labels,sourceSectionName:item.historicalSourceSection});
+          if(!mapping)
+            deny("failed-precondition","The selected original section could not be verified against enough enrolled students' historical school identities. Check the original section, identity recovery, or ask School Administration to reconcile the legacy roster.");
+          available.historicalMapping=mapping;available.linkable=true;
+        }
+      }
       const beforeSheet=await sheetRef.get();
       const previousColumns=beforeSheet.exists&&beforeSheet.data().schoolId===ctx.schoolId&&
         Array.isArray(beforeSheet.data().columns)?beforeSheet.data().columns:[];
@@ -1412,8 +1454,10 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
             deny("failed-precondition","The selected academic period or class changed. Reload before linking.");
           const original=originalTasks[i];
           const rechecked=historicalMapping({task:original.exists?original.data():null,taskId:column.taskId,
-            schoolId:ctx.schoolId,ownerUid:ctx.uid,offering:currentOffering.data(),offeringId,labels});
-          if(!rechecked||Number(original.data().maxScore)!==column.maxPoints)
+            schoolId:ctx.schoolId,ownerUid:ctx.uid,offering:currentOffering.data(),offeringId,labels,
+            sourceSectionName:mapping.sectionName,verifiedSection:mapping.identityProof==="original_student_section"});
+          if(!rechecked||rechecked.sectionName!==mapping.sectionName||
+             Number(original.data().maxScore)!==column.maxPoints)
             deny("failed-precondition","The original historical assessment changed. Reload before linking.");
           if(prior.exists&&(prior.data().schoolId!==ctx.schoolId||prior.data().offeringId!==offeringId))
             deny("failed-precondition","This historical assessment section is already mapped to another academic period. Review its original Class Record.");

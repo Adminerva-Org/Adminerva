@@ -27,19 +27,63 @@ const ms=value=>value?.toMillis?.()||(typeof value==="string"?Date.parse(value):
 function validOrigin(task,schoolId){
   return schoolId===SCHOOL_ID&&task&&(!task.schoolId||task.schoolId===schoolId);
 }
-function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,labels}){
+function historicalSections(task){
+  const sections=[...(Array.isArray(task?.sectionIds)?task.sectionIds:[]),
+    ...(Array.isArray(task?.deployments)?task.deployments.map(d=>d?.section):[])];
+  const distinct=new Map();
+  for(const raw of sections){
+    if(typeof raw!=="string"||raw.trim().length===0||raw.trim().length>160)continue;
+    const value=raw.trim(),key=canonical(value);
+    if(!distinct.has(key))distinct.set(key,value);
+  }
+  return [...distinct.values()];
+}
+function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,labels,
+  sourceSectionName="",verifiedSection=false}){
   if(!validId(taskId)||!validOrigin(task,schoolId)||task.ownerUid!==ownerUid||
      !labels.sectionName||!labels.subjectName||!labels.termName||!labels.yearName||
      !offering.termId||!offering.yearId||!offering.sectionId||!offering.subjectId||
      !historicalSubjectMatches(task.subject,labels.subjectName))return null;
-  const sections=[...(Array.isArray(task.sectionIds)?task.sectionIds:[]),
-    ...(Array.isArray(task.deployments)?task.deployments.map(d=>d?.section):[])];
-  if(!sections.some(s=>canonical(s)===canonical(labels.sectionName)))return null;
+  const sections=historicalSections(task),requested=String(sourceSectionName||labels.sectionName).trim();
+  const section=sections.find(s=>canonical(s)===canonical(requested));
+  if(!section||canonical(section)!==canonical(labels.sectionName)&&verifiedSection!==true)return null;
   const maximum=Number(task.maxScore);
   if(!Number.isFinite(maximum)||maximum<=0||maximum>10000)return null;
   return {schoolId,offeringId,yearId:offering.yearId,termId:offering.termId,
     sectionId:offering.sectionId,subjectId:offering.subjectId,
-    sectionName:labels.sectionName,subjectName:labels.subjectName,ownerUid};
+    sectionName:section,offeringSectionName:labels.sectionName,
+    subjectName:labels.subjectName,ownerUid};
+}
+/**
+ * A historical section name can differ after SIS adoption or placement changes.
+ * Never infer equivalence from similar labels. For a deliberate teacher-selected
+ * original section, require verifiable current roster identities in the original
+ * school students collection. Only the server can grant this mapping.
+ */
+async function verifiedHistoricalSectionMapping({db,schoolId,roster,resolveUsers,
+  task,taskId,ownerUid,offering,offeringId,labels,sourceSectionName}){
+  const candidate=historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,
+    labels,sourceSectionName,verifiedSection:true});
+  if(!candidate)return null;
+  if(canonical(candidate.sectionName)===canonical(labels.sectionName))return candidate;
+  if(!Array.isArray(roster)||!roster.length)return null;
+  const resolved=await resolveHistoricalRoster({db,schoolId,roster,resolveUsers});
+  const studentIds=[...resolved.keys()];
+  if(!studentIds.length||studentIds.length>300)return null;
+  const matched=new Set();
+  for(let offset=0;offset<studentIds.length;offset+=100){
+    const ids=studentIds.slice(offset,offset+100);
+    const docs=await db.getAll(...ids.map(id=>db.doc("students/"+id)));
+    docs.forEach((doc,index)=>{
+      if(!doc.exists)return;
+      const data=doc.data();
+      if(canonical(data?.section||data?.sectionName||data?.classSection)===canonical(candidate.sectionName))
+        matched.add(resolved.get(ids[index]));
+    });
+  }
+  const required=roster.length===1?1:Math.max(2,Math.ceil(roster.length/3));
+  return matched.size>=required?{...candidate,identityVerifiedCount:matched.size,
+    identityProof:"original_student_section"}:null;
 }
 function mappingMatches(mapping,schoolId,offeringId,offering){
   return !!mapping&&mapping.schoolId===schoolId&&mapping.offeringId===offeringId&&
@@ -102,7 +146,9 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
   for(const column of linked){
     const mapping=column.historicalMapping,task=await db.doc("assessments/"+column.taskId).get();
     const original=task.exists?task.data():null;
-    if(!validOrigin(original,schoolId)||original.ownerUid!==mapping.ownerUid)continue;
+    if(!validOrigin(original,schoolId)||original.ownerUid!==mapping.ownerUid||
+       !historicalSections(original).some(section=>canonical(section)===canonical(mapping.sectionName))||
+       !historicalSubjectMatches(original.subject,mapping.subjectName))continue;
     const pairs=[...students.entries()],matches=new Map(),ambiguous=new Set();
     // Exact original grade document IDs, not a school-wide legacy grade scan.
     for(let i=0;i<pairs.length;i+=100){
@@ -121,5 +167,5 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
   }
   return output;
 }
-module.exports={HISTORICAL_SOURCE,validOrigin,historicalSubjectMatches,historicalMapping,mappingMatches,projectedGrade,
+module.exports={HISTORICAL_SOURCE,validOrigin,historicalSubjectMatches,historicalSections,historicalMapping,verifiedHistoricalSectionMapping,mappingMatches,projectedGrade,
   resolveHistoricalRoster,historicalPublishedGrades};

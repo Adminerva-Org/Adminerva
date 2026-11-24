@@ -77,6 +77,7 @@ let currentOfferingId="";
 let currentOffering=null;
 let roster=[];
 let assessments=[];
+let historicalAvailability={};
 let collaborators=[];
 let permissions={primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,classRole:"co_teacher",canEditClassRecord:false};
 let columns=[];
@@ -729,14 +730,14 @@ function populateAssessmentOptions(selectedSource="",selectedTaskId=""){
   const selectedKey=selectedTaskId?assessmentKey(selectedSource,selectedTaskId):"";
   const available=assessments.filter(task=>{
     const key=assessmentKey(task.sourceType,task.taskId);
-    return (task.linkable!==false&&!used.has(key)&&(![HISTORICAL_SOURCE,PERSONALIZED_SOURCE].includes(task.sourceType)||!usedLegacy.has(task.taskId)))||key===selectedKey;
+    return ((task.linkable!==false||task.historicalSectionReview===true)&&!used.has(key)&&(![HISTORICAL_SOURCE,PERSONALIZED_SOURCE].includes(task.sourceType)||!usedLegacy.has(task.taskId)))||key===selectedKey;
   });
   assessmentSelect.add(new Option(available.length?"Choose an assessment…":"No unlinked assessments available",""));
   assessmentSelect.options[0].disabled=true;
   for(const task of available){
     const label=(task.sourceType===HISTORICAL_SOURCE?"Historical "+(task.submissionSource==="studio"?"Studio":"GitHub")+" · ":task.sourceType===PERSONALIZED_SOURCE?"Personalized Studio · ":"School · ")+
       task.title+" · "+numberText(task.maxPoints)+" pts"+
-      (task.historical?" · historical":task.published===false?" · unpublished":"");
+      (task.historicalSectionReview?" · original section needs verification":task.historical?" · historical":task.published===false?" · unpublished":"");
     assessmentSelect.add(new Option(label,assessmentKey(task.sourceType,task.taskId)));
   }
   assessmentSelect.value=selectedTaskId?assessmentKey(selectedSource,selectedTaskId):"";
@@ -758,22 +759,41 @@ function policyCategorySuggestion(task){
 function syncAssessmentSourceNote(){
   const note=el("cr-assessment-source-note"),task=selectedAssessment();
   const confirm=el("cr-historical-confirm"),checkbox=el("cr-historical-period");
+  const sectionPanel=el("cr-historical-section-panel"),sectionSelect=el("cr-historical-source-section");
   const needsConfirmation=task?.sourceType===HISTORICAL_SOURCE&&!editingColumnId&&columnKind.value==="assessment";
+  const needsSection=needsConfirmation&&task?.historicalSectionReview===true;
   confirm.hidden=!needsConfirmation;checkbox.disabled=!needsConfirmation;checkbox.required=needsConfirmation;
+  sectionPanel.hidden=!needsSection;sectionSelect.disabled=!needsSection;sectionSelect.required=needsSection;
+  if(needsSection&&sectionSelect.dataset.assessment!==task.taskId){
+    sectionSelect.replaceChildren(new Option("Select the original historical section…",""));
+    sectionSelect.options[0].disabled=true;
+    for(const section of task.sourceSections||[])sectionSelect.add(new Option(section,section));
+    sectionSelect.value="";sectionSelect.dataset.assessment=task.taskId;
+  }else if(!needsSection)sectionSelect.dataset.assessment="";
   if(!needsConfirmation||checkbox.dataset.assessment!==task?.taskId)checkbox.checked=false;
   checkbox.dataset.assessment=task?.taskId||"";
   if(!task){
     const empty=columnKind.value==="assessment"&&assessmentSelect.options.length<=1;
     note.hidden=!empty;
-    note.textContent=!empty?"":assessments.length
-      ?"No additional assessments can be linked here. Existing sources may already be linked, archived, or ineligible. Review the Class Record columns and refresh the class."
-      :"No assessment matches this class yet. For older Studio/GitHub work, check the selected school, class section and original assessment owner. Historical Computer Programming assessments can match official Computer Programming 1 or 2 classes when their original section is verified. Refresh after correcting the source.";
+    if(!empty){note.textContent="";return;}
+    const stats=historicalAvailability||{},owned=Number(stats.ownedCount)||0;
+    if(stats.supported===false){
+      note.textContent="No assessment in this class is linkable. Historical Repository Management records can only be read from their verified originating school; ask School Administration to review a source-school migration instead of copying grades.";
+    }else if(owned===0){
+      note.textContent="No original historical assessments belong to this signed-in teacher login. If the assessments were created with an older login, use the verified account-recovery process; Adminerva cannot assume ownership from a matching name.";
+    }else if((Number(stats.subjectMismatchCount)||0)>0){
+      note.textContent=owned+" original historical assessment(s) found, but "+stats.subjectMismatchCount+" use a different subject. Confirm the original subject and the official class offering in School Administration or the source Assessment Library.";
+    }else{
+      note.textContent=owned+" original historical assessment(s) found, but none can be added from this class. Check the linked/archived columns, original assessment deployments and school grading configuration.";
+    }
     return;
   }
   note.hidden=false;
   const suggested=policyCategorySuggestion(task);
   if(task.sourceType===HISTORICAL_SOURCE){
-    note.textContent="Original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" grades are read in place, without copying or changing them. Only published, identity-matched grades appear. Confirm the assessment belongs to "+(task.periodLabel||currentOffering?.termName||"this selected period")+".";
+    note.textContent=task.historicalSectionReview
+      ?"This original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" assessment uses another section name. Select its original deployed section. On save, Adminerva must verify that at least one-third of the current class roster has original student records in that section. If it cannot, the link will be blocked. No grades or original records will be moved."
+      :"Original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" grades are read in place, without copying or changing them. Only published, identity-matched grades appear. Confirm the assessment belongs to "+(task.periodLabel||currentOffering?.termName||"this selected period")+".";
     el("cr-historical-period-label").textContent="I confirm this historical assessment belongs to "+(task.periodLabel||currentOffering?.termName||"the selected academic period")+".";
   }else if(task.sourceType===PERSONALIZED_SOURCE){
     note.textContent="Personalized Studio is graded from the exact learner-specific Studio submission. Class Record imports the score only after Studio grading publishes it; Repository Management is not involved.";
@@ -1720,6 +1740,7 @@ async function loadWorkspace(){
     currentOffering=result.offering||null;
     roster=result.roster||[];
     assessments=result.assessments||[];
+    historicalAvailability=result.historicalAvailability||{};
     collaborators=result.collaborators||[];
     permissions=result.permissions||{primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,classRole:"co_teacher",canEditClassRecord:false};
     columns=(result.columns||[]).map(column=>{
@@ -1884,12 +1905,14 @@ columnForm.addEventListener("submit",event=>{
     const task=selectedAssessment();
     if(!task){el("cr-column-status").textContent="Choose an assessment.";return;}
     if(task.sourceType===HISTORICAL_SOURCE&&!el("cr-historical-period").checked){el("cr-column-status").textContent="Confirm the academic period before linking.";return;}
+    const sourceSection=task.historicalSectionReview?el("cr-historical-source-section").value:"";
+    if(task.historicalSectionReview&&!sourceSection){el("cr-column-status").textContent="Choose the original historical section to verify.";return;}
     nextColumn={
       columnId:"col_"+crypto.randomUUID().replaceAll("-","").slice(0,20),
       label,category,kind:"assessment",taskId:task.taskId,
       assessmentSource:task.sourceType,maxPoints:task.maxPoints,
       sourceTitle:task.title,archived:false,studentVisibility:visibility,
-      ...(task.sourceType===HISTORICAL_SOURCE?{confirmHistoricalOffering:currentOfferingId}:{})
+      ...(task.sourceType===HISTORICAL_SOURCE?{confirmHistoricalOffering:currentOfferingId,...(sourceSection?{historicalSourceSection:sourceSection}:{})}:{})
     };
   }
   const next=existing?
