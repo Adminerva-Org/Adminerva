@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
+import {readFileSync} from "node:fs";
 const require=createRequire(import.meta.url);
-const {createPlatformAccountDiagnostics}=require("../functions/platform-account-diagnostics.js");
+const {checkedEvent,createPlatformAccountDiagnostics}=require("../functions/platform-account-diagnostics.js");
 
 const NOW=Date.UTC(2026,10,24,12),ADMIN="platform-owner",ACCOUNT_A="user-a",ACCOUNT_B="user-b";
 const stamp=ms=>({toMillis:()=>ms});
@@ -180,4 +181,40 @@ test("selected canonical backend mutations log sanitized server processes and Cl
   assert.equal(failure.phase,"failed");
   assert.equal(JSON.stringify(saved).includes("private code"),false);
   assert.equal(JSON.stringify(saved).includes("private transcript"),false);
+});
+
+
+test("client environment remains coarse, allowlisted and independent of raw user agents",()=>{
+  const details={deviceClass:"phone",browserFamily:"safari",osFamily:"ios",viewport:"sm"};
+  const clean=checkedEvent({...normal(40),...details});
+  assert.equal(clean.osFamily,"ios");
+  assert.equal(clean.deviceClass,"phone");
+  for(const [key,value] of [
+    ["userAgent","Mozilla/5.0 private string"],["screenHeight",834],
+    ["browserFamily","Safari 17.5 user agent"],["osFamily","iOS-16.1"],
+    ["viewport","1170x2532"],["deviceClass","iPhone 13 Pro"]
+  ]){
+    assert.throws(()=>checkedEvent({...normal(41),[key]:value}),/only approved metadata|environment category/);
+  }
+  const code=readFileSync(new URL("../js/core/platform-account-diagnostics.mjs",import.meta.url),"utf8");
+  assert.match(code,/const MAX_DELAYED_EVENTS=20/);
+  assert.match(code,/if\(navigator\.onLine===false\)\{queueDelayed\(event\);return;\}/);
+  assert.match(code,/function environment\(\)/);
+  assert.match(code,/return \{osFamily,browserFamily,deviceClass,viewport\}/);
+  assert.doesNotMatch(code,/userAgent:ua|userAgent,|localStorage\.setItem/);
+});
+
+test("normal activity quota leaves bounded diagnostic room for genuine failures",async()=>{
+  const {db,api}=create();
+  const quota="platform_account_diagnostics/"+ACCOUNT_A+"/daily_quotas/2026-11-24";
+  db.values.set(quota,{count:240,normalCount:240});
+  await assert.rejects(
+    api.service(request(ACCOUNT_A,{action:"record",event:normal(50)})),
+    /reserved for warnings and errors/
+  );
+  assert.deepEqual(await api.service(request(ACCOUNT_A,{action:"record",event:error(51)})),
+    {recorded:true,duplicate:false});
+  const count=db.values.get(quota);
+  assert.equal(count.count,241);
+  assert.equal(count.normalCount,240);
 });
