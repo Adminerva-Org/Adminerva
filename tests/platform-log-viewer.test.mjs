@@ -16,6 +16,7 @@ const backend=read("functions/platform-account-diagnostics.js");
 test("log inspection is a separate read-only page and no longer embedded in Users",()=>{
   assert.doesNotMatch(users,/id="pu-diagnostic-(?:load|events|audit|next|reason|status)"/);
   assert.doesNotMatch(usersClient,/function loadDiagnostics\(/);
+  assert.doesNotMatch(usersClient,/resetDiagnostics|pu-diagnostic-/);
   assert.doesNotMatch(usersClient,/platformAccountDiagnostics/);
   assert.match(users,/id="pu-open-logs"[^>]*href="platform-logs.html"/);
   assert.match(usersClient,/el\("pu-open-logs"\)\.href="platform-logs\.html\?uid="/);
