@@ -8,6 +8,19 @@
 const {legacyStudentRecordsForAccount,SCHOOL_ID}=require("./legacy-student-identity.js");
 const HISTORICAL_SOURCE="legacy_historical";
 const canonical=value=>String(value||"").trim().toLocaleLowerCase("en");
+const courseName=value=>canonical(value).replace(/\\s+/g," ").trim();
+/**
+ * Earlier Repository Management assessments were recorded under the generic
+ * subject "Computer Programming", before the official SIS catalog split it
+ * into Computer Programming 1 and Computer Programming 2. This is a *narrow*
+ * historical catalog alias, not a prefix or fuzzy subject match. Ownership,
+ * migration origin and original section still must match independently.
+ */
+function historicalSubjectMatches(originalSubject,offeringSubject){
+  const source=courseName(originalSubject),target=courseName(offeringSubject);
+  return !!source&&!!target&&(source===target||
+    (source==="computer programming"&&/^computer programming (?:1|2|i|ii)$/.test(target)));
+}
 const validId=value=>typeof value==="string"&&value.length>0&&value.length<=220&&
   value!=="."&&value!==".."&&!/[\\/\u0000-\u001f\u007f]/.test(value)&&!/^__.*__$/.test(value);
 const ms=value=>value?.toMillis?.()||(typeof value==="string"?Date.parse(value):Number(value))||0;
@@ -18,7 +31,7 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
   if(!validId(taskId)||!validOrigin(task,schoolId)||task.ownerUid!==ownerUid||
      !labels.sectionName||!labels.subjectName||!labels.termName||!labels.yearName||
      !offering.termId||!offering.yearId||!offering.sectionId||!offering.subjectId||
-     canonical(task.subject)!==canonical(labels.subjectName))return null;
+     !historicalSubjectMatches(task.subject,labels.subjectName))return null;
   const sections=[...(Array.isArray(task.sectionIds)?task.sectionIds:[]),
     ...(Array.isArray(task.deployments)?task.deployments.map(d=>d?.section):[])];
   if(!sections.some(s=>canonical(s)===canonical(labels.sectionName)))return null;
@@ -108,5 +121,5 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
   }
   return output;
 }
-module.exports={HISTORICAL_SOURCE,validOrigin,historicalMapping,mappingMatches,projectedGrade,
+module.exports={HISTORICAL_SOURCE,validOrigin,historicalSubjectMatches,historicalMapping,mappingMatches,projectedGrade,
   resolveHistoricalRoster,historicalPublishedGrades};
