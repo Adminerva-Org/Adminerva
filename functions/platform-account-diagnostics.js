@@ -6,7 +6,7 @@
  * passwords, tokens, code, grades, private notifications or request bodies.
  */
 const {platformAuthority,TenantAccessError}=require("./tenant-access.js");
-const {randomUUID}=require("node:crypto");
+const {randomUUID,createHash}=require("node:crypto");
 const RETENTION_DAYS=60,PER_ACCOUNT_DAILY_LIMIT=300,MAX_PAGE=75,DAY_MS=86400000;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UID=/^[A-Za-z0-9_-]{1,128}$/;
@@ -69,6 +69,10 @@ function serverErrorCode(error){
   const value=String(error?.code||"internal").replace(/^functions\//,"");
   return /^[-A-Za-z0-9_./]{1,64}$/.test(value)?value:"internal";
 }
+function deliveryId(ownerUid,notificationId){
+  const hash=createHash("sha256").update(ownerUid+"|"+notificationId).digest("hex");
+  return hash.slice(0,8)+"-"+hash.slice(8,12)+"-4"+hash.slice(13,16)+"-a"+hash.slice(17,20)+"-"+hash.slice(20,32);
+}
 function createdAtNumber(value){
   return typeof value?.toMillis==="function"?value.toMillis():
     typeof value==="number"?value:0;
@@ -122,9 +126,9 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     try{return await insert(ownerUid,synthetic,{source:"backend",service:service+"."+safeAction});}
     catch(writeError){console.warn("Account diagnostic write skipped",{code:writeError?.code||"unknown"});}
   }
-  async function recordNotificationDelivered(ownerUid){
-    if(!UID.test(String(ownerUid||"")))return;
-    const event={eventId:randomUUID(),sessionId:randomUUID(),kind:"notification",
+  async function recordNotificationDelivered(ownerUid,notificationId){
+    if(!UID.test(String(ownerUid||""))||typeof notificationId!=="string"||!notificationId||notificationId.length>160)return;
+    const event={eventId:deliveryId(ownerUid,notificationId),sessionId:randomUUID(),kind:"notification",
       module:"notifications",action:"notification_delivered",state:"ok",
       errorCode:"",route:"",release:""};
     try{return await insert(ownerUid,event,{source:"backend"});}
@@ -178,8 +182,10 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     if(action==="record"){
       if(request?.auth?.token?.email_verified!==true||!request?.auth?.uid)
         deny("unauthenticated","Sign in with a verified account.");
-      const ownerUid=uid(request.auth.uid);
-      return insert(ownerUid,checkedEvent(input.event));
+      const ownerUid=uid(request.auth.uid),event=checkedEvent(input.event);
+      if(event.action==="notification_delivered")
+        deny("permission-denied","Notification delivery records come from the server, not the browser.");
+      return insert(ownerUid,event);
     }
     if(action==="list")return list(request,input);
     deny("invalid-argument","Unknown diagnostic operation.");
