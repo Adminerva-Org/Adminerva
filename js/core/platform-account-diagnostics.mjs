@@ -11,7 +11,7 @@ let activeUid="",sessionId="",enabled=false,eventsSent=0,epoch=0;
 let errors=new Map();
 const MAX_PAGE_EVENTS=90;
 const ID=()=>crypto.randomUUID();
-const allowedRoutes=/^\/[A-Za-z0-9_/-]{0,100}(?:\.html)?$/;
+const allowedRoutes=/(?:^\/$|^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]{1,80}\.html$)/;
 const allowedCodes=/^[-a-zA-Z0-9_./]{1,64}$/;
 const release="v20261124"; // Identifies the diagnostic emitter, not the full app release.
 function route(){
