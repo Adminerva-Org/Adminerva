@@ -1,7 +1,7 @@
 /** Shared, role-aware navigation. Page guards remain responsible for access. */
 // Lightweight internal diagnostics use the authenticated session only; writes are
 // server validated and available to Platform Administrators through audited reads.
-import("./platform-account-diagnostics.mjs?v=20261124-account-diagnostics-1").catch(()=>{});
+import("./platform-account-diagnostics.mjs?v=20261124-global-operations-1").catch(()=>{});
 if(!document.getElementById("adminerva-analytics-script")){
   const analytics=document.createElement("script");
   analytics.id="adminerva-analytics-script";
@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   const platformTestMode = root.dataset.platformTestMode === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=3bc029269047");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=7fe6ab08fd82");
   if(turn!==navigationEpoch)return;
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isRegistrar,isPlatformOwner,
@@ -367,7 +367,7 @@ document.addEventListener("DOMContentLoaded", () => {
     import("./notifications.mjs?v=20261124-account-diagnostics-1").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
-  import("./account-context-switcher.mjs?v=3bc029269047")
+  import("./account-context-switcher.mjs?v=7fe6ab08fd82")
     .then(module=>module.mountAccountContextSwitcher(root))
     .catch(error=>console.warn("Account context switcher unavailable:",error));
   };
