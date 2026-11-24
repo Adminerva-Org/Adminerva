@@ -470,7 +470,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
         else if(level==="warning")service.warning++;
         else if(row.action==="api_succeeded")service.success++;
       }
-      if(level!=="failure")continue;
+      if(level!=="failure"||provenance!=="clientObserved")continue;
       const browser=row.browserFamily||"unknown";
       if(!browserFailures.has(browser))browserFailures.set(browser,{
         browser,events:0,accounts:new Set()
