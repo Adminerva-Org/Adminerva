@@ -193,6 +193,32 @@ function eventRow(record,ownerUid,overview){
   tr.append(color,when,owner,event,context);
   return tr;
 }
+
+function renderFilterSummary(visibleCount,totalCount){
+  const view=state.view;
+  const severityFilter=$("pl-level").value,module=$("pl-module").value;
+  const search=$("pl-event-search").value.trim(),fingerprint=state.fingerprint;
+  const filters=[severityFilter&&"flag: "+severityFilter,module&&"module: "+module,
+    search&&"text: "+search,(view==="global"&&fingerprint)&&"error signature: "+fingerprint].filter(Boolean);
+  $("pl-clear-filters").disabled=!filters.length;
+  const scope=view==="global"
+    ?"Flag/module/error signature are queried on the server. Text search affects loaded rows only."
+    :view==="live"
+      ?"The watch still collects all events; filters affect visible console lines only."
+      :"Filters affect loaded rows only; older events are available through pagination.";
+  $("pl-filter-status").textContent=visibleCount+" visible / "+totalCount+
+    " loaded · "+(filters.length?filters.join(" · "):"No filters active")+". "+scope;
+}
+function clearInvestigationFilters(){
+  $("pl-level").value="";$("pl-module").value="";
+  $("pl-event-search").value="";state.fingerprint="";
+  if(state.view==="global"){
+    resetRead();renderEvents();
+    if($("pl-reason").value.trim().length>=12)void loadGlobal();
+  }else if(state.view==="live")renderLive();
+  else renderEvents();
+}
+
 function renderEvents(){
   updateHead();renderTrends();
   const rows=state.view==="user"?state.events:state.view==="recent"?state.recent:state.view==="live"?state.live.rows:state.global;
@@ -208,6 +234,7 @@ function renderEvents(){
     $("pl-audit-wrap").hidden=true;$("pl-impact").hidden=true;
     renderLive();return;
   }
+  renderFilterSummary(filtered.length,rows.length);
   const host=$("pl-events");host.replaceChildren();
   for(const row of filtered)host.append(eventRow(row,state.view==="user"?state.selectedUid:row.ownerUid,state.view!=="user"));
   if(!filtered.length){
@@ -634,6 +661,7 @@ function renderLive({append=[]}={}){
   if(!host.children.length)host.append(make("p","pl-live-empty",live.running?
     "Waiting for matching recorded events. The watch remains active for all accounts.":
     "No watch running. Enter a reason and start live monitoring."));
+  renderFilterSummary(live.rows.filter(liveMatches).length,live.rows.length);
   liveStats();
   if(shouldFollow)host.scrollTop=host.scrollHeight;
 }
@@ -768,6 +796,7 @@ async function loadDirectory(user,epoch){
     $("pl-log-status").textContent="Access denied or identity directory unavailable. No user logs were loaded.";
   }
 }
+$("pl-clear-filters").addEventListener("click",clearInvestigationFilters);
 $("pl-search").addEventListener("input",renderAccounts);
 $("pl-level").addEventListener("change",()=>{
   state.fingerprint="";
