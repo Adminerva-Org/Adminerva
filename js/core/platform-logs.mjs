@@ -136,8 +136,9 @@ function renderAudit(){
   const host=$("pl-audit-records");host.replaceChildren();
   for(const item of state.audit){
     const card=make("article");
+    const actor=item.actorUid?labelFor(item.actorUid)+" ("+item.actorUid+")":"Not recorded";
     card.append(make("strong","",humanize(item.action)),
-      make("span","", " · "+time(item.at)+" · Actor ID: "+(item.actorUid||"not recorded")));
+      make("span","", " · "+time(item.at)+" · Performed by: "+actor));
     host.append(card);
   }
   if(!state.audit.length)host.append(make("p","pl-empty","No account administration records found in the bounded audit sample."));
@@ -364,7 +365,9 @@ function renderTrends(){
     ["Recorded warnings",summary.warning||0],
     ["Backend-recorded events",summary.serverConfirmed||0],
     ["Client-observed events",summary.clientObserved||0],
-    ["Backend P95",data.backendDurationP95Ms===null?"Not recorded":data.backendDurationP95Ms+" ms"]
+    ["Backend P50",data.backendDurationP50Ms===null?"Not recorded":data.backendDurationP50Ms+" ms"],
+    ["Backend P95",data.backendDurationP95Ms===null?"Not recorded":data.backendDurationP95Ms+" ms"],
+    ["Timed backend events",data.backendDurationSample||0]
   ];
   for(const [name,value] of metricRows){
     const card=make("div","pl-trend-metric");
