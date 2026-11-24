@@ -11,7 +11,7 @@ const $=id=>document.getElementById(id);
 const functions=getFunctions(app,"asia-southeast1");
 const getUsers=httpsCallable(functions,"platformUsers");
 const getLogs=httpsCallable(functions,"platformAccountDiagnostics");
-const LIMIT=35;
+const LIMIT=35,LIVE_LIMIT=60,LIVE_INTERVAL_MS=3000,LIVE_MAX_LINES=240;
 const flags=["normal","warning","failure","unknown"];
 const deepLink=new URLSearchParams(location.search).get("uid")||"";
 const initialUid=/^[A-Za-z0-9_-]{1,128}$/.test(deepLink)?deepLink:"";
@@ -19,7 +19,10 @@ const state={
   accounts:[],byUid:new Map(),directoryReady:false,eligible:false,selectedUid:initialUid,
   view:initialUid?"user":"global",global:[],globalNext:null,fingerprint:"",
   recent:[],events:[],audit:[],auditCapped:false,impact:null,impactBusy:false,loading:false,
-  recentNext:null,eventNext:null,canMore:false,epoch:0,readEpoch:0
+  recentNext:null,eventNext:null,canMore:false,epoch:0,readEpoch:0,
+  live:{running:false,paused:false,busy:false,reason:"",cursor:"",baseline:false,
+    generation:0,timer:null,rows:[],seen:new Set(),highlighted:new Map(),
+    added:0,lastBatch:0,lastChecked:0,errors:0,status:"Enter a reason to start."}
 };
 const make=(tag,className="",value)=>{
   const element=document.createElement(tag);
@@ -70,6 +73,7 @@ function flag(level){
   return element;
 }
 function resetRead({clearRecent=false}={}){
+  stopLive();
   state.readEpoch++;state.loading=false;state.canMore=false;state.eventNext=null;
   state.events=[];state.audit=[];state.auditCapped=false;
   state.globalNext=null;state.global=[];state.impact=null;state.impactBusy=false;
@@ -81,17 +85,22 @@ function resetRead({clearRecent=false}={}){
   $("pl-audit-records").replaceChildren();
 }
 function updateHead(){
-  const individual=state.view==="user",latest=state.view==="recent";
-  $("pl-view-eyebrow").textContent=individual?"Account timeline":latest?"Latest account summaries":"All accounts · chronological";
-  $("pl-view-title").textContent=individual?labelFor(state.selectedUid):latest
+  const individual=state.view==="user",latest=state.view==="recent",live=state.view==="live";
+  $("pl-view-eyebrow").textContent=individual?"Account timeline":live?"Live · every 3 seconds":latest?"Latest account summaries":"All accounts · chronological";
+  $("pl-view-title").textContent=individual?labelFor(state.selectedUid):live?"Platform Live Console":latest
     ?"Latest event per account":"Global Event Stream";
   $("pl-view-description").textContent=individual
     ?"A paginated timeline of recorded browser activity and backend outcomes for this account."
+    :live?"Three-second near-live checks across accounts, presented in chronological console lines. Recorded diagnostic events only."
     :latest?"One newest recorded event per account. Open a user for more history."
     :"Server-received browser, notification, and selected backend process events across accounts. Newest first; this stream covers events indexed since the global feed was enabled.";
   $("pl-show-recent").setAttribute("aria-pressed",String(latest));
   $("pl-show-global").setAttribute("aria-pressed",String(state.view==="global"));
+  $("pl-show-live").setAttribute("aria-pressed",String(live));
   $("pl-window").disabled=state.view!=="global";
+  $("pl-live").hidden=!live;
+  document.querySelector(".pl-table-wrap").hidden=live;
+  $("pl-more").hidden=live||!state.canMore;
 }
 function renderAccounts(){
   const host=$("pl-accounts");host.replaceChildren();
@@ -172,7 +181,7 @@ function eventRow(record,ownerUid,overview){
 }
 function renderEvents(){
   updateHead();
-  const rows=state.view==="user"?state.events:state.view==="recent"?state.recent:state.global;
+  const rows=state.view==="user"?state.events:state.view==="recent"?state.recent:state.view==="live"?state.live.rows:state.global;
   const summary={normal:0,warning:0,failure:0,unknown:0};
   for(const row of rows)summary[severity(row.severity)]++;
   for(const key of flags)$(["pl",key,"count"].join("-")).textContent=summary[key];
@@ -181,6 +190,10 @@ function renderEvents(){
   const filtered=rows.filter(row=>(state.view==="global"||(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
     (!search||[row.ownerUid,state.selectedUid,row.action,row.errorCode,row.fingerprint,
       row.traceId,row.service,row.sessionId,row.module].some(value=>String(value||"").toLowerCase().includes(search))));
+  if(state.view==="live"){
+    $("pl-audit-wrap").hidden=true;$("pl-impact").hidden=true;
+    renderLive();return;
+  }
   const host=$("pl-events");host.replaceChildren();
   for(const row of filtered)host.append(eventRow(row,state.view==="user"?state.selectedUid:row.ownerUid,state.view!=="user"));
   if(!filtered.length){
@@ -196,6 +209,7 @@ function refreshEnabled(){
   $("pl-load-recent").disabled=!state.eligible||state.loading;
   $("pl-more").disabled=state.loading||!state.canMore;
   $("pl-show-global").disabled=!state.eligible||state.loading;
+  $("pl-show-live").disabled=!state.eligible||state.loading;
   $("pl-impact-refresh").disabled=!state.eligible||state.impactBusy||state.view!=="global";
 }
 async function loadRecent({older=false}={}){
@@ -387,6 +401,230 @@ function chooseGlobal(){
   else $("pl-log-status").textContent="Enter an investigation reason, then load events across all accounts.";
 }
 
+
+// This is bounded near-live polling, not a new event store or a client
+// Firestore listener. The callable verifies Platform Admin on every request.
+function stopLive(){
+  const live=state.live;
+  if(live.timer!==null)clearTimeout(live.timer);
+  live.timer=null;live.running=false;live.paused=false;live.busy=false;
+  live.generation++;
+}
+function liveStatus(message,{error=false}={}){
+  const live=state.live;
+  live.status=message;
+  $("pl-live-status").textContent=message;
+  const lamp=$("pl-live-lamp");
+  lamp.dataset.status=error?"error":!live.running?"idle":live.paused||document.hidden||navigator.onLine===false
+    ?"paused":"watching";
+  lamp.textContent=error?"Connection error":!live.running?"Stopped":live.paused
+    ?"Paused":document.hidden?"Background pause":navigator.onLine===false
+    ?"Offline":"Watching";
+  $("pl-live-toggle").textContent=!live.running?"Start live watch":live.paused?"Resume live":"Pause live";
+  $("pl-live-toggle").disabled=!state.eligible;
+  $("pl-live-stop").disabled=!live.running;
+}
+function liveTime(at){
+  if(!Number.isFinite(at)||at<=0)return "No timestamp";
+  try{return new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date(at));}
+  catch{return "Unknown time";}
+}
+function liveMatches(row){
+  const level=$("pl-level").value,module=$("pl-module").value;
+  const search=$("pl-event-search").value.trim().toLowerCase();
+  return (!level||severity(row.severity)===level)&&(!module||row.module===module)&&
+    (!search||[row.ownerUid,labelFor(row.ownerUid),row.action,row.module,
+      row.errorCode,row.service,row.traceId,row.operationId,row.sessionId,
+      row.fingerprint].some(value=>String(value||"").toLowerCase().includes(search)));
+}
+function liveLine(row){
+  const line=make("div","pl-live-line");
+  line.dataset.severity=severity(row.severity);
+  line.dataset.key=row.ownerUid+"|"+row.id;
+  if((state.live.highlighted.get(line.dataset.key)||0)>Date.now()-7000)
+    line.classList.add("pl-live-new");
+  const when=make("time","",liveTime(row.at));
+  if(Number.isFinite(row.at))when.dateTime=new Date(row.at).toISOString();
+  const label=make("span","pl-live-severity",severity(row.severity)==="failure"?"FAIL":
+    severity(row.severity)==="warning"?"WARN":severity(row.severity)==="normal"?"OK":"INFO");
+  const actor=make("button","pl-live-actor",labelFor(row.ownerUid));
+  actor.type="button";actor.title="Open this account's diagnostic timeline";
+  actor.addEventListener("click",()=>chooseAccount(row.ownerUid));
+  const content=make("div","pl-live-content");
+  content.append(make("span","pl-live-action",humanize(row.action||"unknown event")));
+  const descriptors=[row.module||"other",row.phase||row.state||"observed",
+    row.source||"",row.service||"",row.errorCode?"error: "+row.errorCode:"",
+    Number.isInteger(row.durationMs)?row.durationMs+"ms":""].filter(Boolean);
+  content.append(make("div","pl-live-meta",descriptors.join(" · ")));
+  const details=make("details");
+  details.append(make("summary","","Diagnostic context"));
+  const fields=make("dl");
+  const info=[
+    ["Account ID",row.ownerUid],["Server timestamp",time(row.at)],
+    ["Event ID",row.id],["Session ID",row.sessionId],
+    ["Operation ID",row.operationId],["Cloud trace",row.traceId],
+    ["Error signature",row.fingerprint],["Module",row.module],
+    ["Action",row.action],["Phase",row.phase],["State",row.state],
+    ["Service",row.service],["Error code",row.errorCode],
+    ["Duration (ms)",row.durationMs],["Source",row.source],
+    ["Page",row.route],["Release",row.release],
+    ["Device class",row.deviceClass],["Browser",row.browserFamily],
+    ["Operating system",row.osFamily],["Viewport",row.viewport]
+  ];
+  for(const [key,value] of info){
+    if(value===null||value===undefined||value==="")continue;
+    const field=make("div");field.append(make("dt","",key),make("dd","",value));
+    fields.append(field);
+  }
+  details.append(fields);content.append(details);
+  line.append(when,label,actor,content);
+  return line;
+}
+function liveStats(){
+  const counts={normal:0,warning:0,failure:0,unknown:0};
+  for(const row of state.live.rows)counts[severity(row.severity)]++;
+  for(const name of flags)$("pl-"+name+"-count").textContent=counts[name];
+  $("pl-live-batch").textContent="+"+state.live.lastBatch;
+  $("pl-live-batch").dataset.arrived=String(state.live.lastBatch>0);
+  $("pl-live-total").textContent=state.live.added;
+  $("pl-live-last").textContent=state.live.lastChecked?
+    liveTime(state.live.lastChecked)+" PHT":"—";
+}
+function renderLive({append=[]}={}){
+  if(state.view!=="live")return;
+  const host=$("pl-live-console"),live=state.live;
+  const shouldFollow=$("pl-live-follow").checked;
+  // Append new entries without resetting expanded developer details.
+  const hasFilters=Boolean($("pl-level").value||$("pl-module").value||
+    $("pl-event-search").value.trim());
+  if(!append.length){
+    host.replaceChildren();
+    for(const row of live.rows)if(liveMatches(row))host.append(liveLine(row));
+  }else{
+    if(host.querySelector(".pl-live-empty"))host.replaceChildren();
+    for(const row of append)if(liveMatches(row))host.append(liveLine(row));
+    // At most LIVE_MAX_LINES can remain in DOM; the history is not a permanent cache.
+    const visibleIds=new Set(live.rows.map(row=>row.ownerUid+"|"+row.id));
+    for(const child of [...host.children])if(child.dataset.key&&!visibleIds.has(child.dataset.key))
+      child.remove();
+    if(hasFilters&&host.querySelector(".pl-live-empty"))host.querySelector(".pl-live-empty").remove();
+  }
+  if(!host.children.length)host.append(make("p","pl-live-empty",live.running?
+    "Waiting for matching recorded events. The watch remains active for all accounts.":
+    "No watch running. Enter a reason and start live monitoring."));
+  liveStats();
+  if(shouldFollow)host.scrollTop=host.scrollHeight;
+}
+function scheduleLive(delay=LIVE_INTERVAL_MS){
+  const live=state.live;
+  if(live.timer!==null)clearTimeout(live.timer);
+  live.timer=null;
+  if(!live.running||live.paused||state.view!=="live")return;
+  if(document.hidden){liveStatus("Live polling paused while this tab is in the background.");return;}
+  if(navigator.onLine===false){liveStatus("Browser offline. Polling resumes after reconnection.");return;}
+  const generation=live.generation;
+  live.timer=setTimeout(()=>{
+    live.timer=null;
+    if(generation===live.generation)void pollLive(generation);
+  },delay);
+}
+async function pollLive(generation){
+  const live=state.live;
+  if(generation!==live.generation||!live.running||live.paused||live.busy||
+    state.view!=="live"||document.hidden||navigator.onLine===false)return;
+  live.busy=true;
+  let nextDelay=LIVE_INTERVAL_MS;
+  try{
+    const result=(await getLogs({action:"global_live",reason:live.reason,
+      ...(live.cursor?{cursor:live.cursor}:{}),limit:LIVE_LIMIT})).data;
+    if(generation!==live.generation||state.view!=="live"||!live.running||live.paused)return;
+    if(result.scope!=="live_indexed_account_events")
+      throw Error("Unexpected live feed response");
+    const first=!live.baseline;
+    const additions=[];
+    for(const row of Array.isArray(result.events)?result.events:[]){
+      if(typeof row.ownerUid!=="string"||typeof row.id!=="string")continue;
+      const key=row.ownerUid+"|"+row.id;
+      if(live.seen.has(key))continue;
+      live.seen.add(key);
+      const sanitized={...row,severity:severity(row.severity)};
+      live.rows.push(sanitized);additions.push(sanitized);
+      if(!first)live.highlighted.set(key,Date.now());
+    }
+    while(live.rows.length>LIVE_MAX_LINES){
+      const removed=live.rows.shift();
+      const key=removed.ownerUid+"|"+removed.id;
+      live.seen.delete(key);live.highlighted.delete(key);
+    }
+    for(const [key,at] of live.highlighted)if(Date.now()-at>7000)live.highlighted.delete(key);
+    live.cursor=typeof result.cursor==="string"?result.cursor:live.cursor;
+    live.baseline=true;
+    live.lastBatch=first?0:additions.length;
+    if(!first)live.added+=additions.length;
+    live.lastChecked=Number(result.serverAt)||Date.now();
+    live.errors=0;
+    if(additions.length)renderLive({append:additions});
+    else liveStats();
+    liveStatus(result.hasMore?"Catching up with queued events; more records are available.":
+      additions.length&&!first?"+"+additions.length+" new recorded event"+
+      (additions.length===1?"":"s")+" since the previous check.":
+      first?"Loaded the latest recorded events. Watching for additions every 3 seconds.":
+      "No new recorded events on the last check.");
+    // Drain batches when the platform is busier than a single three-second page.
+    nextDelay=result.hasMore?150:LIVE_INTERVAL_MS;
+  }catch(error){
+    if(generation!==live.generation||state.view!=="live")return;
+    live.errors++;
+    const code=String(error?.code||"");
+    if(/permission-denied|unauthenticated|failed-precondition/.test(code)){
+      stopLive();
+      liveStatus(permissionError(error)+" Restart the watch after resolving access or cursor issues.",{error:true});
+      return;
+    }
+    liveStatus("Live check failed: "+permissionError(error)+" Retrying automatically.",{error:true});
+    nextDelay=Math.min(30000,LIVE_INTERVAL_MS*Math.pow(2,Math.min(live.errors,3)));
+  }finally{
+    if(generation===live.generation){
+      live.busy=false;
+      scheduleLive(nextDelay);
+    }
+  }
+}
+function startLive(){
+  const reason=requiredReason();if(!reason)return;
+  stopLive();
+  const live=state.live;
+  live.reason=reason;live.cursor="";live.baseline=false;
+  live.seen.clear();live.rows=[];live.highlighted.clear();
+  live.added=0;live.lastBatch=0;live.lastChecked=0;live.errors=0;
+  live.running=true;live.paused=false;
+  liveStatus("Connecting to the authorized global diagnostic stream…");
+  renderLive();
+  scheduleLive(0);
+}
+function toggleLive(){
+  const live=state.live;
+  if(!live.running){startLive();return;}
+  if(live.paused){
+    if(!requiredReason())return;
+    live.reason=$("pl-reason").value.trim();
+    live.paused=false;live.generation++;
+    liveStatus("Resuming from the last recorded event…");scheduleLive(0);
+  }else{
+    live.paused=true;live.generation++;live.busy=false;
+    if(live.timer!==null)clearTimeout(live.timer);
+    live.timer=null;liveStatus("Paused by Platform Administrator. Resume to retrieve new events.");
+  }
+}
+function chooseLive(){
+  state.selectedUid="";state.view="live";state.fingerprint="";
+  resetRead();renderAccounts();renderEvents();
+  try{history.replaceState(null,"","platform-logs.html");}catch{}
+  liveStatus("Enter a reason, then begin a three-second near-live watch.");
+  if($("pl-reason").value.trim().length>=12)startLive();
+}
+
 async function loadDirectory(user,epoch){
   $("pl-purpose-status").textContent="Loading the authorized account directory…";
   try{
@@ -396,7 +634,7 @@ async function loadDirectory(user,epoch){
     state.accounts.sort((a,b)=>(a.displayName||a.email||a.uid||"").localeCompare(b.displayName||b.email||b.uid||""));
     state.byUid=new Map(state.accounts.filter(a=>a.uid).map(a=>[a.uid,a]));
     state.directoryReady=true;state.eligible=true;
-    $("pl-search").disabled=false;$("pl-show-recent").disabled=false;$("pl-show-global").disabled=false;
+    $("pl-search").disabled=false;$("pl-show-recent").disabled=false;$("pl-show-global").disabled=false;$("pl-show-live").disabled=false;
     $("pl-load-recent").disabled=false;$("pl-refresh").disabled=false;
     $("pl-purpose-status").textContent="Platform Administrator directory ready. Enter a reason before requesting diagnostic records.";
     renderAccounts();updateHead();
@@ -414,17 +652,24 @@ $("pl-level").addEventListener("change",()=>{
   state.fingerprint="";
   if(state.view==="global"&&$("pl-reason").value.trim().length>=12){
     resetRead();void loadGlobal();
-  }else renderEvents();
+  }else if(state.view==="live")renderLive();
+  else renderEvents();
 });
 $("pl-module").addEventListener("change",()=>{
   state.fingerprint="";
   if(state.view==="global"&&$("pl-reason").value.trim().length>=12){
     resetRead();void loadGlobal();
-  }else renderEvents();
+  }else if(state.view==="live")renderLive();
+  else renderEvents();
 });
 $("pl-show-recent").addEventListener("click",chooseOverview);
 $("pl-show-global").addEventListener("click",chooseGlobal);
-$("pl-event-search").addEventListener("input",renderEvents);
+$("pl-show-live").addEventListener("click",chooseLive);
+$("pl-live-toggle").addEventListener("click",toggleLive);
+$("pl-live-stop").addEventListener("click",()=>{
+  stopLive();liveStatus("Live watch stopped. Earlier events remain in Global event history.");
+});
+$("pl-event-search").addEventListener("input",()=>state.view==="live"?renderLive():renderEvents());
 $("pl-window").addEventListener("change",()=>{if(state.view==="global"){
   resetRead();renderImpact();if($("pl-reason").value.trim().length>=12)void loadGlobal();
 }});
@@ -432,14 +677,34 @@ $("pl-impact-refresh").addEventListener("click",()=>{if(state.view==="global"){
   const reason=requiredReason();if(reason)void loadImpact(reason,state.epoch,state.readEpoch);
 }});
 $("pl-load-recent").addEventListener("click",chooseGlobal);
-$("pl-refresh").addEventListener("click",()=>state.view==="user"?loadAccount():state.view==="recent"?loadRecent():loadGlobal());
+$("pl-refresh").addEventListener("click",()=>state.view==="user"?loadAccount():state.view==="recent"?loadRecent():state.view==="live"?(state.live.running&&!state.live.paused?scheduleLive(0):toggleLive()):loadGlobal());
 $("pl-more").addEventListener("click",()=>state.view==="user"?loadAccount({older:true}):state.view==="recent"?loadRecent({older:true}):loadGlobal({older:true}));
+document.addEventListener("visibilitychange",()=>{
+  if(state.view!=="live"||!state.live.running||state.live.paused)return;
+  if(document.hidden){
+    if(state.live.timer!==null)clearTimeout(state.live.timer);
+    state.live.timer=null;
+    liveStatus("Live monitoring paused while the tab is hidden.");
+  }else{liveStatus("Tab visible. Resuming the live stream.");scheduleLive(0);}
+});
+window.addEventListener("offline",()=>{
+  if(state.view!=="live"||!state.live.running)return;
+  if(state.live.timer!==null)clearTimeout(state.live.timer);
+  state.live.timer=null;liveStatus("Offline. Listening resumes after reconnection.");
+});
+window.addEventListener("online",()=>{
+  if(state.view==="live"&&state.live.running&&!state.live.paused)
+    scheduleLive(0);
+});
 onAuthStateChanged(auth,user=>{
   state.epoch++;resetRead({clearRecent:true});
+  state.live.rows=[];state.live.seen.clear();state.live.highlighted.clear();
+  state.live.cursor="";state.live.reason="";state.live.baseline=false;
   state.accounts=[];state.byUid.clear();state.directoryReady=false;state.eligible=false;
-  $("pl-search").disabled=true;$("pl-show-recent").disabled=true;$("pl-show-global").disabled=true;$("pl-load-recent").disabled=true;
+  $("pl-search").disabled=true;$("pl-show-recent").disabled=true;$("pl-show-global").disabled=true;$("pl-show-live").disabled=true;$("pl-load-recent").disabled=true;
   $("pl-refresh").disabled=true;$("pl-reason").value="";
   $("pl-purpose-status").textContent=user?"Checking Platform Administrator access…":"Sign in with an authorized Platform Administrator account.";
+  liveStatus(user?"Monitoring stopped while Platform Administrator access is rechecked.":"Signed out. Live monitoring is stopped.");
   renderAccounts();renderEvents();
   if(user)void loadDirectory(user,state.epoch);
 });
