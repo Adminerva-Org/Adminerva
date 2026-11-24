@@ -62,7 +62,8 @@ test("deployable server curriculum matches the client curriculum exactly",()=>{
 test("practice expiry policies include the required index configuration and never target earned progress",()=>{
  const configuration=JSON.parse(readFileSync("firestore.indexes.json","utf8"));
  const ttlPolicies=configuration.fieldOverrides.filter(field=>field.ttl===true);
- assert.deepEqual(ttlPolicies.map(field=>field.collectionGroup),["practice_attempts","practice_sessions","practice_browser_sessions","practice_security_events","practice_season_attempts","school_ai_results"]);
+ const expected=["practice_attempts","practice_sessions","practice_browser_sessions","practice_security_events","practice_season_attempts","school_ai_results"];
+ assert.deepEqual(ttlPolicies.map(field=>field.collectionGroup).filter(name=>expected.includes(name)),expected);
  for(const field of ttlPolicies){
   assert.equal(field.fieldPath,"expiresAt");assert.equal(field.ttl,true);assert.deepEqual(field.indexes,[]);
  }

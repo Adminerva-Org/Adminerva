@@ -117,3 +117,11 @@ test("browser authorization UI never inserts an OS credential into query strings
  assert.doesNotMatch(html,/auth-guard/);
  assert.match(html,/adminerva-loader\.js/);
 });
+
+test("native handoff records have TTL, and are denied to every browser role",()=>{
+ const indexes=JSON.parse(readFileSync(new URL("../firestore.indexes.json",import.meta.url),"utf8"));
+ assert.deepEqual(indexes.fieldOverrides.filter(row=>row.collectionGroup==="native_client_handoffs"),
+  [{collectionGroup:"native_client_handoffs",fieldPath:"expiresAt",ttl:true,indexes:[]}]);
+ const rules=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
+ assert.match(rules,/match \/native_client_handoffs\/\{handoffId\} \{ allow read, write: if false; \}/);
+});
