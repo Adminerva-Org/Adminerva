@@ -90,8 +90,8 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
     if(!snapshot.exists)return "not-found";
     const row=snapshot.data();
     if(row.expiresAtMs<=clock)return "expired";
+    if(row.status==="locked"||row.attempts>=MAX_CODE_ATTEMPTS)return "locked";
     if(row.status!=="waiting")return "not-pending";
-    if(row.attempts>=MAX_CODE_ATTEMPTS)return "locked";
     const match=equalDigest(row.confirmationDigest,
       digest(flowId+"."+data.confirmationCode).toString("hex"));
     if(!match){
