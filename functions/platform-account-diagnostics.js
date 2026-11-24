@@ -90,10 +90,20 @@ function createdAtNumber(value){
   return typeof value?.toMillis==="function"?value.toMillis():
     typeof value==="number"?value:0;
 }
+function diagnosticSeverity(row){
+  // Only server-interpreted outcomes are flagged; an observed button click
+  // is a normal event, not evidence that its requested operation succeeded.
+  if(row?.kind==="error"||row?.state==="error"||
+    ["api_failed","studio_run_failed","cloud_save_failed","javascript_error","promise_error","resource_error"].includes(row?.action))
+    return "failure";
+  if(row?.action==="network_offline"||row?.state==="unavailable")
+    return "warning";
+  return "normal";
+}
 function serialize(doc,source="client"){
   const row=doc.data()||{};
   return {
-    id:doc.id,at:createdAtNumber(row.createdAt),
+    id:doc.id,at:createdAtNumber(row.createdAt),severity:diagnosticSeverity(row),
     kind:String(row.kind||"system").slice(0,30),module:String(row.module||"other").slice(0,30),
     action:String(row.action||"").slice(0,48),state:String(row.state||"info").slice(0,24),
     errorCode:String(row.errorCode||"").slice(0,64),
@@ -115,7 +125,12 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       if(count>=PER_ACCOUNT_DAILY_LIMIT)
         deny("resource-exhausted","Account diagnostic collection reached its daily safety limit.");
       const expiry=Timestamp.fromMillis(at+RETENTION_DAYS*DAY_MS);
-      tx.set(account,{ownerUid,updatedAt:FieldValue.serverTimestamp()},{merge:true});
+      tx.set(account,{
+        ownerUid,updatedAt:FieldValue.serverTimestamp(),
+        lastSeverity:diagnosticSeverity(event),
+        lastKind:event.kind,lastAction:event.action,lastModule:event.module,
+        lastState:event.state,lastErrorCode:event.errorCode||""
+      },{merge:true});
       tx.set(quota,{count:count+1,expiresAt:expiry});
       tx.create(entry,{...event,ownerUid,source,...(service?{service}:{}),
         createdAt:FieldValue.serverTimestamp(),expiresAt:expiry});
@@ -190,6 +205,39 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       retentionDays:RETENTION_DAYS,
       note:"Best-effort diagnostics plus preserved existing platform lifecycle audit records. No historical browser events can be reconstructed."};
   }
+  async function recentAccounts(request,input){
+    const authority=await platformAuthority({db,request});
+    if(!authority.platformAdmin)deny("permission-denied","Platform Administrator authority is required.");
+    const purpose=reason(input.reason);
+    const limit=Number.isInteger(input.limit)&&input.limit>=1?Math.min(MAX_PAGE,input.limit):30;
+    const cursor=input.cursor===undefined||input.cursor===null||input.cursor===""?"":uid(input.cursor);
+    let query=db.collection("platform_account_diagnostics")
+      .orderBy("updatedAt","desc").limit(limit+1);
+    if(cursor){
+      const previous=await root(cursor).get();
+      if(!previous.exists)deny("failed-precondition","Activity list changed; reload recent accounts.");
+      query=query.startAfter(previous);
+    }
+    const response=await query.get(),page=response.docs.slice(0,limit);
+    const accounts=page.map(doc=>{
+      const row=doc.data()||{},severity=["normal","warning","failure"].includes(row.lastSeverity)
+        ?row.lastSeverity:"unknown";
+      return {
+        ownerUid:doc.id,at:createdAtNumber(row.updatedAt),severity,
+        action:typeof row.lastAction==="string"?row.lastAction.slice(0,48):"",
+        module:typeof row.lastModule==="string"?row.lastModule.slice(0,30):"",
+        state:typeof row.lastState==="string"?row.lastState.slice(0,24):"",
+        errorCode:typeof row.lastErrorCode==="string"?row.lastErrorCode.slice(0,64):""
+      };
+    }).filter(row=>UID.test(row.ownerUid));
+    await db.collection("platform_audit").add({
+      actorUid:authority.uid,action:"platform_user_diagnostics_recent_viewed",
+      reason:purpose,returned:accounts.length,createdAt:FieldValue.serverTimestamp()
+    });
+    return {accounts,hasMore:response.size>limit,
+      cursor:response.size>limit?page.at(-1)?.id:null,scope:"account_activity_index",
+      note:"Recently observed account activity only; accounts without recorded events are available in Platform Users and the account directory."};
+  }
   async function service(request){
     const input=request.data||{},action=String(input.action||"record");
     if(action==="record"){
@@ -201,6 +249,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       return insert(ownerUid,event);
     }
     if(action==="list")return list(request,input);
+    if(action==="recent_accounts")return recentAccounts(request,input);
     deny("invalid-argument","Unknown diagnostic operation.");
   }
   async function cleanup({maxAccounts=50,maxPerAccount=200}={}){
@@ -230,4 +279,4 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
   }
   return {service,writeServerFailure,recordNotificationDelivered,cleanup};
 }
-module.exports={RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,createPlatformAccountDiagnostics};
+module.exports={RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics};
