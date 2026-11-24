@@ -10,7 +10,7 @@
   <script defer src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=3bc029269047">
   <link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1">
-  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-shared-nav-fix-1">
+  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-global-event-stream-1">
 </head>
 <body id="pageBody" class="hidden">
   <div id="adminerva-nav" data-module="admin" data-page="platform-logs"></div>
@@ -19,7 +19,7 @@
       <div>
         <p class="pl-eyebrow">System Administration · Observability</p>
         <h1>User Action &amp; System Logs</h1>
-        <p>Read-only operational logs for all Adminerva accounts, including students, staff, and administrators. Choose an account to inspect its recorded activity and error history. This is not the School Admin directory or a student monitoring screen.</p>
+        <p>A developer-level timeline of recorded user interactions and backend operations across Adminerva. Follow shared errors across accounts, inspect request traces, or open a specific login’s history. Read-only and Platform Administrator-only.</p>
       </div>
       <a class="pl-link" href="system-users.html">Platform Users</a>
     </header>
@@ -37,7 +37,7 @@
         <label for="pl-reason">Reason for reviewing logs <span aria-hidden="true">*</span></label>
         <textarea id="pl-reason" rows="2" minlength="12" maxlength="300" placeholder="Example: Investigating missing Studio cloud-save confirmation"></textarea>
         <div class="pl-actions">
-          <button id="pl-load-recent" class="pl-button pl-primary" type="button" disabled>Load recent account activity</button>
+          <button id="pl-load-recent" class="pl-button pl-primary" type="button" disabled>Load global event stream</button>
           <span id="pl-purpose-status" role="status" aria-live="polite">Verifying Platform Administrator access…</span>
         </div>
       </div>
@@ -52,7 +52,8 @@
         <label for="pl-search">Search by name, email or account ID</label>
         <input id="pl-search" type="search" autocomplete="off" placeholder="Search all platform users…" disabled>
         <div class="pl-directory-actions">
-          <button id="pl-show-recent" class="pl-button pl-secondary" type="button" disabled>All-account activity overview</button>
+          <button id="pl-show-global" class="pl-button pl-primary" type="button" disabled>Global event stream</button>
+          <button id="pl-show-recent" class="pl-button pl-secondary" type="button" disabled>Latest event per account</button>
         </div>
         <div id="pl-accounts" class="pl-account-list" aria-label="Accounts"></div>
         <p class="pl-footnote">Accounts with no recorded diagnostic events still appear here. Their history may be empty. This list is loaded from the global identity directory.</p>
@@ -60,8 +61,8 @@
 
       <section class="pl-view pl-card" aria-labelledby="pl-view-title">
         <div class="pl-card-heading pl-view-heading">
-          <div><p id="pl-view-eyebrow" class="pl-eyebrow">Recent account activity</p><h2 id="pl-view-title">Activity overview</h2>
-            <p id="pl-view-description">Load the recent-account overview, or select a user to view their detailed diagnostic timeline.</p>
+          <div><p id="pl-view-eyebrow" class="pl-eyebrow">All accounts · chronological</p><h2 id="pl-view-title">Global Event Stream</h2>
+            <p id="pl-view-description">Individual user and backend events across Adminerva, ordered by server receipt time. Select any event’s account for its longer diagnostic history.</p>
           </div>
           <button id="pl-refresh" class="pl-button pl-secondary" type="button" disabled>Refresh</button>
         </div>
@@ -73,6 +74,9 @@
           <div><span>Unclassified</span><strong id="pl-unknown-count">—</strong></div>
         </div>
         <div class="pl-filters">
+          <label for="pl-window">Window
+            <select id="pl-window"><option value="24">Past 24 hours</option><option value="168">Past 7 days</option><option value="720">Past 30 days</option><option value="1440">Past 60 days</option></select>
+          </label>
           <label for="pl-level">Flag
             <select id="pl-level"><option value="">All flags</option><option value="normal">Green · Normal</option><option value="warning">Yellow · Warning</option><option value="failure">Red · Failure</option><option value="unknown">Not yet classified</option></select>
           </label>
@@ -80,6 +84,18 @@
             <select id="pl-module"><option value="">All modules</option><option value="auth">Authentication</option><option value="home">Home</option><option value="studio">Studio</option><option value="assessments">Assessments</option><option value="classroom">Classroom</option><option value="school">School</option><option value="games">Games</option><option value="grades">Grades</option><option value="notifications">Notifications</option><option value="settings">Settings</option><option value="platform">Platform</option><option value="api">API</option><option value="other">Other</option></select>
           </label>
         </div>
+        <label class="pl-log-search" for="pl-event-search">Filter loaded events by account, action, error or trace
+          <input id="pl-event-search" type="search" autocomplete="off" placeholder="Filter the loaded page of events…">
+        </label>
+        <section id="pl-impact" class="pl-impact" aria-labelledby="pl-impact-heading" hidden>
+          <div class="pl-impact-head">
+            <div><h3 id="pl-impact-heading">Cross-account failure patterns</h3>
+              <p id="pl-impact-description">A bounded sample of recently indexed events, grouped by failure signature. Correlation is a diagnostic lead, not proof of a shared outage.</p>
+            </div>
+            <button id="pl-impact-refresh" type="button" class="pl-button pl-secondary">Analyze sample</button>
+          </div>
+          <div id="pl-impact-results" class="pl-impact-results"></div>
+        </section>
         <p id="pl-log-status" class="pl-status" role="status" aria-live="polite">No logs loaded. Enter a reason above before inspecting account activity.</p>
         <div class="pl-table-wrap">
           <table class="pl-table">
@@ -95,14 +111,14 @@
           <p>Account lifecycle actions remain in the original platform audit store; this viewer does not copy or edit those records.</p>
           <div id="pl-audit-records"></div>
         </details>
-        <p class="pl-footnote">Flags classify the recorded event or outcome, not a user's intent or conduct. A normal click means it was observed, not that a save or submission succeeded. Activity is best-effort; filters apply to the currently loaded recent records, and older events require another page. Diagnostic events expire after 60 days; historical unrecorded activity cannot be reconstructed.</p>
+        <p class="pl-footnote">This log is for authorized system debugging, not student misconduct findings. A normal click means it was observed, not that a save or submission succeeded. Severity and module filters are applied server-side in the Global Event Stream; text search filters the currently loaded rows only. Events are recorded at server receipt time and may arrive late or be missing. No password, student source code, private notification body, full URL, raw stack trace, grade, screenshot or arbitrary typed input is collected. Previously recorded per-user events remain accessible under the original account timeline; the new global index starts with newly recorded events. Diagnostic records expire after 60 days. Global error-pattern counts are a bounded sample, not an exact platform-wide census.</p>
       </section>
     </div>
   </main>
   <script src="js/core/adminerva-loader.js?v=3bc029269047"></script>
   <script defer src="js/core/adminerva-nav.js?v=3bc029269047"></script>
   <script type="module" src="js/core/auth-guard-v4-pilot.js?v=3bc029269047"></script>
-  <script type="module" src="js/core/platform-logs.mjs?v=20261124-1"></script>
+  <script type="module" src="js/core/platform-logs.mjs?v=20261124-global-feed-1"></script>
   <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script>
   <script defer src="js/core/release-footer.js?v=3bc029269047"></script>
 </body>
