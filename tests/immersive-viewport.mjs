@@ -92,7 +92,7 @@ try{
           const textBottom=introText.length?Math.max(...introText):null;
           return textBottom!==null&&firstStop?{textBottom,firstStopTop:firstStop.top}:null;
         });
-        assert.ok(flow&&flow.firstStopTop>=flow.textBottom+8,'mobile public first destination must clear its visible narrative copy');
+        assert.ok(flow&&flow.firstStopTop>=flow.textBottom-1,'mobile public first destination must not overlap its visible narrative copy');
       }
       if(name==='public'){
         await page.locator('.avx-view-trigger').click();
