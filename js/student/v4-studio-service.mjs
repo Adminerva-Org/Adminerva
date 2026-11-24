@@ -167,9 +167,16 @@ async function scopedCall(api,action,details={}){
   await init();
   if(!picker?.scope.current)return null;
   const lease=picker.scope.lease();
-  const result=(await api({schoolId:lease.schoolId,action,...details})).data;
-  picker.scope.assertLease(lease);
-  return result;
+  try{
+    const result=(await api({schoolId:lease.schoolId,action,...details})).data;
+    picker.scope.assertLease(lease);
+    return result;
+  }catch(error){
+    document.dispatchEvent(new CustomEvent("adminerva:diagnostic-event",{detail:{
+      action:"api_failed",module:"studio",errorCode:String(error?.code||"unavailable")
+    }}));
+    throw error;
+  }
 }
 export async function syncV4StudioProject(project,state,{quiet=false,expectedRevision:baseRevision=undefined,closingSaveSessionEpoch=0}={}){
   await init();
