@@ -7,7 +7,7 @@
  */
 const {platformAuthority,TenantAccessError}=require("./tenant-access.js");
 const {randomUUID,createHash}=require("node:crypto");
-const RETENTION_DAYS=60,PER_ACCOUNT_DAILY_LIMIT=300,MAX_PAGE=75,DAY_MS=86400000;
+const RETENTION_DAYS=60,PER_ACCOUNT_DAILY_LIMIT=300,NORMAL_DAILY_LIMIT=240,MAX_PAGE=75,DAY_MS=86400000;
 const GLOBAL_SCOPE="platform_account_diagnostic";
 const GLOBAL_SAMPLE_LIMIT=400;
 const GLOBAL_WINDOWS={24:1,168:7,720:30,1440:60};
@@ -22,6 +22,10 @@ const ACTIONS=["session_started","auth_session_observed","session_ended","page_o
   "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested"];
 const STATES=["info","ok","error","unavailable"];
 const PHASES=["observed","started","completed","failed","interrupted"];
+const DEVICE_CLASSES=["desktop","tablet","phone","unknown"];
+const BROWSERS=["chrome","edge","firefox","safari","other"];
+const OPERATING_SYSTEMS=["windows","macos","ios","android","linux","other"];
+const VIEWPORTS=["xs","sm","md","lg","xl","unknown"];
 function deny(code,message){throw new TenantAccessError(code,message);}
 function uid(value){if(typeof value!=="string"||!UID.test(value))deny("invalid-argument","A valid account ID is required.");return value;}
 function reason(value){
@@ -50,7 +54,7 @@ function checkedEvent(input){
   if(!input||typeof input!=="object"||Array.isArray(input))
     deny("invalid-argument","A diagnostic event is required.");
   const keys=Object.keys(input);
-  if(keys.some(key=>!["eventId","sessionId","kind","module","action","state","errorCode","route","release","operationId","phase"].includes(key)))
+  if(keys.some(key=>!["eventId","sessionId","kind","module","action","state","errorCode","route","release","operationId","phase","deviceClass","browserFamily","osFamily","viewport"].includes(key)))
     deny("invalid-argument","Diagnostic events accept only approved metadata.");
   if(typeof input.eventId!=="string"||!UUID.test(input.eventId)||
      typeof input.sessionId!=="string"||!UUID.test(input.sessionId))
@@ -77,12 +81,19 @@ function checkedEvent(input){
     deny("invalid-argument","Operation correlation ID must be a UUID.");
   if(input.phase!==undefined&&!PHASES.includes(input.phase))
     deny("invalid-argument","Diagnostic process phase is invalid.");
+  for(const [key,allow] of [["deviceClass",DEVICE_CLASSES],["browserFamily",BROWSERS],
+    ["osFamily",OPERATING_SYSTEMS],["viewport",VIEWPORTS]]){
+    if(input[key]!==undefined&&!allow.includes(input[key]))
+      deny("invalid-argument","Diagnostic client environment category is invalid.");
+  }
   return {
     eventId:input.eventId.toLowerCase(),sessionId:input.sessionId.toLowerCase(),
     kind:input.kind,module:input.module,action:input.action,state:input.state,
     errorCode:code(input.errorCode),route:route(input.route),release:release(input.release),
     ...(input.operationId?{operationId:input.operationId.toLowerCase()}:{}),
-    ...(input.phase?{phase:input.phase}:{})
+    ...(input.phase?{phase:input.phase}:{}),
+    ...Object.fromEntries(["deviceClass","browserFamily","osFamily","viewport"]
+      .filter(key=>input[key]!==undefined).map(key=>[key,input[key]]))
   };
 }
 function safeService(value){
@@ -130,6 +141,10 @@ function serialize(doc,source="client"){
     phase:String(row.phase||(row.state==="error"?"failed":row.state==="unavailable"?"interrupted":"observed")).slice(0,16),sessionId:String(row.sessionId||"").slice(0,40),
     operationId:String(row.operationId||"").slice(0,40),traceId:String(row.traceId||"").slice(0,40),
     durationMs:Number.isInteger(row.durationMs)?row.durationMs:null,
+    deviceClass:String(row.deviceClass||"").slice(0,16),
+    browserFamily:String(row.browserFamily||"").slice(0,16),
+    osFamily:String(row.osFamily||"").slice(0,16),
+    viewport:String(row.viewport||"").slice(0,8),
     fingerprint:String(row.fingerprint||fingerprint(row)).slice(0,24),
     kind:String(row.kind||"system").slice(0,30),module:String(row.module||"other").slice(0,30),
     action:String(row.action||"").slice(0,48),state:String(row.state||"info").slice(0,24),
@@ -151,6 +166,10 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       const counter=await tx.get(quota),count=Number(counter.data()?.count)||0;
       if(count>=PER_ACCOUNT_DAILY_LIMIT)
         deny("resource-exhausted","Account diagnostic collection reached its daily safety limit.");
+      const isNormal=diagnosticSeverity(event)==="normal";
+      const normalCount=Number(counter.data()?.normalCount)||0;
+      if(isNormal&&normalCount>=NORMAL_DAILY_LIMIT)
+        deny("resource-exhausted","Normal event budget is full; diagnostic slots are reserved for warnings and errors.");
       const expiry=Timestamp.fromMillis(at+RETENTION_DAYS*DAY_MS);
       tx.set(account,{
         ownerUid,updatedAt:FieldValue.serverTimestamp(),
@@ -158,7 +177,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
         lastKind:event.kind,lastAction:event.action,lastModule:event.module,
         lastState:event.state,lastErrorCode:event.errorCode||""
       },{merge:true});
-      tx.set(quota,{count:count+1,expiresAt:expiry});
+      tx.set(quota,{count:count+1,normalCount:normalCount+(isNormal?1:0),expiresAt:expiry});
       const sanitized={...event,ownerUid,source,...(service?{service}:{}),
         diagnosticScope:GLOBAL_SCOPE,
         phase:event.phase||(event.state==="error"?"failed":event.state==="unavailable"?"interrupted":
