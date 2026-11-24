@@ -32,7 +32,7 @@ function code(value){
 }
 function route(value){
   if(value===undefined||value===null||value==="")return "";
-  if(typeof value!=="string"||!/^\/[A-Za-z0-9_/-]{0,100}(?:\.html)?$/.test(value))
+  if(typeof value!=="string"||!/(?:^\/$|^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]{1,80}\.html$)/.test(value))
     deny("invalid-argument","Page paths may not include parameters or personal information.");
   return value;
 }
