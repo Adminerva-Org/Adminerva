@@ -11,7 +11,7 @@ const $=id=>document.getElementById(id);
 const functions=getFunctions(app,"asia-southeast1");
 const getUsers=httpsCallable(functions,"platformUsers");
 const getLogs=httpsCallable(functions,"platformAccountDiagnostics");
-const LIMIT=35;
+const LIMIT=35,LIVE_LIMIT=60,LIVE_INTERVAL_MS=3000,LIVE_MAX_LINES=240;
 const flags=["normal","warning","failure","unknown"];
 const deepLink=new URLSearchParams(location.search).get("uid")||"";
 const initialUid=/^[A-Za-z0-9_-]{1,128}$/.test(deepLink)?deepLink:"";
@@ -19,7 +19,10 @@ const state={
   accounts:[],byUid:new Map(),directoryReady:false,eligible:false,selectedUid:initialUid,
   view:initialUid?"user":"global",global:[],globalNext:null,fingerprint:"",
   recent:[],events:[],audit:[],auditCapped:false,impact:null,impactBusy:false,loading:false,
-  recentNext:null,eventNext:null,canMore:false,epoch:0,readEpoch:0
+  recentNext:null,eventNext:null,canMore:false,epoch:0,readEpoch:0,
+  live:{running:false,paused:false,busy:false,reason:"",cursor:"",baseline:false,
+    generation:0,timer:null,rows:[],seen:new Set(),highlighted:new Map(),
+    added:0,lastBatch:0,lastChecked:0,errors:0,status:"Enter a reason to start."}
 };
 const make=(tag,className="",value)=>{
   const element=document.createElement(tag);
@@ -70,6 +73,7 @@ function flag(level){
   return element;
 }
 function resetRead({clearRecent=false}={}){
+  stopLive();
   state.readEpoch++;state.loading=false;state.canMore=false;state.eventNext=null;
   state.events=[];state.audit=[];state.auditCapped=false;
   state.globalNext=null;state.global=[];state.impact=null;state.impactBusy=false;
@@ -81,17 +85,22 @@ function resetRead({clearRecent=false}={}){
   $("pl-audit-records").replaceChildren();
 }
 function updateHead(){
-  const individual=state.view==="user",latest=state.view==="recent";
-  $("pl-view-eyebrow").textContent=individual?"Account timeline":latest?"Latest account summaries":"All accounts · chronological";
-  $("pl-view-title").textContent=individual?labelFor(state.selectedUid):latest
+  const individual=state.view==="user",latest=state.view==="recent",live=state.view==="live";
+  $("pl-view-eyebrow").textContent=individual?"Account timeline":live?"Live · every 3 seconds":latest?"Latest account summaries":"All accounts · chronological";
+  $("pl-view-title").textContent=individual?labelFor(state.selectedUid):live?"Platform Live Console":latest
     ?"Latest event per account":"Global Event Stream";
   $("pl-view-description").textContent=individual
     ?"A paginated timeline of recorded browser activity and backend outcomes for this account."
+    :live?"Three-second near-live checks across accounts, presented in chronological console lines. Recorded diagnostic events only."
     :latest?"One newest recorded event per account. Open a user for more history."
     :"Server-received browser, notification, and selected backend process events across accounts. Newest first; this stream covers events indexed since the global feed was enabled.";
   $("pl-show-recent").setAttribute("aria-pressed",String(latest));
   $("pl-show-global").setAttribute("aria-pressed",String(state.view==="global"));
+  $("pl-show-live").setAttribute("aria-pressed",String(live));
   $("pl-window").disabled=state.view!=="global";
+  $("pl-live").hidden=!live;
+  document.querySelector(".pl-table-wrap").hidden=live;
+  $("pl-more").hidden=live||!state.canMore;
 }
 function renderAccounts(){
   const host=$("pl-accounts");host.replaceChildren();
@@ -172,7 +181,7 @@ function eventRow(record,ownerUid,overview){
 }
 function renderEvents(){
   updateHead();
-  const rows=state.view==="user"?state.events:state.view==="recent"?state.recent:state.global;
+  const rows=state.view==="user"?state.events:state.view==="recent"?state.recent:state.view==="live"?state.live.rows:state.global;
   const summary={normal:0,warning:0,failure:0,unknown:0};
   for(const row of rows)summary[severity(row.severity)]++;
   for(const key of flags)$(["pl",key,"count"].join("-")).textContent=summary[key];
@@ -181,6 +190,10 @@ function renderEvents(){
   const filtered=rows.filter(row=>(state.view==="global"||(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
     (!search||[row.ownerUid,state.selectedUid,row.action,row.errorCode,row.fingerprint,
       row.traceId,row.service,row.sessionId,row.module].some(value=>String(value||"").toLowerCase().includes(search))));
+  if(state.view==="live"){
+    $("pl-audit-wrap").hidden=true;$("pl-impact").hidden=true;
+    renderLive();return;
+  }
   const host=$("pl-events");host.replaceChildren();
   for(const row of filtered)host.append(eventRow(row,state.view==="user"?state.selectedUid:row.ownerUid,state.view!=="user"));
   if(!filtered.length){
@@ -196,6 +209,7 @@ function refreshEnabled(){
   $("pl-load-recent").disabled=!state.eligible||state.loading;
   $("pl-more").disabled=state.loading||!state.canMore;
   $("pl-show-global").disabled=!state.eligible||state.loading;
+  $("pl-show-live").disabled=!state.eligible||state.loading;
   $("pl-impact-refresh").disabled=!state.eligible||state.impactBusy||state.view!=="global";
 }
 async function loadRecent({older=false}={}){
@@ -396,7 +410,7 @@ async function loadDirectory(user,epoch){
     state.accounts.sort((a,b)=>(a.displayName||a.email||a.uid||"").localeCompare(b.displayName||b.email||b.uid||""));
     state.byUid=new Map(state.accounts.filter(a=>a.uid).map(a=>[a.uid,a]));
     state.directoryReady=true;state.eligible=true;
-    $("pl-search").disabled=false;$("pl-show-recent").disabled=false;$("pl-show-global").disabled=false;
+    $("pl-search").disabled=false;$("pl-show-recent").disabled=false;$("pl-show-global").disabled=false;$("pl-show-live").disabled=false;
     $("pl-load-recent").disabled=false;$("pl-refresh").disabled=false;
     $("pl-purpose-status").textContent="Platform Administrator directory ready. Enter a reason before requesting diagnostic records.";
     renderAccounts();updateHead();
@@ -437,7 +451,7 @@ $("pl-more").addEventListener("click",()=>state.view==="user"?loadAccount({older
 onAuthStateChanged(auth,user=>{
   state.epoch++;resetRead({clearRecent:true});
   state.accounts=[];state.byUid.clear();state.directoryReady=false;state.eligible=false;
-  $("pl-search").disabled=true;$("pl-show-recent").disabled=true;$("pl-show-global").disabled=true;$("pl-load-recent").disabled=true;
+  $("pl-search").disabled=true;$("pl-show-recent").disabled=true;$("pl-show-global").disabled=true;$("pl-show-live").disabled=true;$("pl-load-recent").disabled=true;
   $("pl-refresh").disabled=true;$("pl-reason").value="";
   $("pl-purpose-status").textContent=user?"Checking Platform Administrator access…":"Sign in with an authorized Platform Administrator account.";
   renderAccounts();renderEvents();
