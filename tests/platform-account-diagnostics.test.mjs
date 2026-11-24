@@ -80,7 +80,7 @@ test("operational events reject user content, URL queries, tokens and arbitrary 
   }
   assert.throws(()=>checkedEvent(event({route:"/student-playground.html?token=secret"})),/parameters or personal information/);
   assert.throws(()=>checkedEvent(event({kind:"error",state:"error",action:"api_failed",errorCode:"secret@example.com"})),/error codes/);
-  assert.throws(()=>checkedEvent(event({kind:"error",state:"ok"})),/must declare/);
+  assert.throws(()=>checkedEvent(event({kind:"error",action:"api_failed",state:"ok"})),/must declare/);
 });
 
 test("verified subject can append only own events, with idempotent retry and bounded expiry",async()=>{
