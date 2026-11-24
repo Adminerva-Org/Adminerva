@@ -150,6 +150,39 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      if(grade&&(grade.studentId!==studentId||grade.taskId!==id))
        deny("failed-precondition","Historical grade belongs to a different learner or assessment.");
    }
+   if(input.action==="legacy_github_bulk_publish"){
+     // Publish only teacher-reviewed, non-zero original grade drafts whose
+     // immutable student-submitted SHA receipt still passes the *same*
+     // transactional checks used by publishing a single learner. Pagination
+     // is bounded and idempotent: already published scores remain untouched.
+     const cursor=input.cursor?legacyDocumentId(input.cursor,"Historical publication cursor"):null;
+     const base=db.collection("assessment_evidence").where("assessmentId","==",id)
+       .orderBy(FieldPath.documentId());
+     const page=await (cursor?base.startAfter(cursor).limit(40):base.limit(40)).get();
+     let published=0,failed=0,zeroSkipped=0,unverifiedSkipped=0;
+     for(const row of page.docs){
+       let evidence;
+       try{evidence=approvedEvidence(row.data(),id,row.id,{requireSubmitted:true});}
+       catch{unverifiedSkipped++;continue;}
+       const current=await gradeRef(row.id).get();
+       if(!current.exists||current.data().published===true)continue;
+       const grade=current.data();
+       if(grade.studentId!==evidence.studentId||grade.taskId!==id){failed++;continue;}
+       if(Number(grade.score)===0){zeroSkipped++;continue;}
+       try{
+         await review({ctx,input:{
+           action:"legacy_github_publish",legacyAssessmentId:id,legacyEvidenceId:row.id,
+           expectedEvidenceRevision:evidence.revision,
+           expectedCheckpointSha:evidence.checkpointSha,
+           expectedGradeRevision:Number(grade.gradeVersion||0)
+         }});
+         published++;
+       }catch{failed++;}
+     }
+     return {published,failed,zeroSkipped,unverifiedSkipped,
+       nextCursor:page.size===40?page.docs[page.docs.length-1].id:null,
+       hasMore:page.size===40};
+   }
    if(input.action==="legacy_github_inbox"){
      const queryBase=db.collection("assessment_evidence").where("assessmentId","==",id)
        .orderBy(FieldPath.documentId());

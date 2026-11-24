@@ -77,7 +77,7 @@ function createSchoolAssessmentMigrationService({db}){
   const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["teacher"]});
   if(/^legacy_review_(?:inbox|inspect|save_draft|publish|bulk_publish)$/.test(String(input.action||"")))
    return legacyStudioReview({ctx,input});
-  if(/^legacy_github_(?:inbox|inspect|save_draft|publish)$/.test(String(input.action||"")))
+  if(/^legacy_github_(?:inbox|inspect|save_draft|publish|bulk_publish)$/.test(String(input.action||"")))
    return legacyGithubReview({ctx,input});
   if(input.action==="preview_evidence_migration")
    return previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId:String(input.legacyAssessmentId||"")});
