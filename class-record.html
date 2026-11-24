@@ -154,6 +154,57 @@
       .cr-table-wrap{max-height:calc(100dvh - 255px);min-height:360px}
       .cr-table .cr-student{min-width:160px;max-width:190px}
     }
+
+    /* The activity grid is the primary canvas; supporting calculations are opt-in. */
+    .cr-table thead th.cr-activity-heading{min-width:112px;width:126px;max-width:164px;padding:.38rem .4rem}
+    .cr-table td.cr-score-cell{min-width:106px;width:126px;padding:.62rem .95rem!important}
+    .cr-table .cr-student{min-width:205px;max-width:240px}
+    .cr-column-top{display:flex;align-items:center;gap:.15rem;justify-content:center}
+    .cr-column-title{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:850;font-size:.82rem}
+    .cr-column-shortmeta{display:block;font-size:.65rem;font-weight:650;color:#64748b;line-height:1.35}
+    .cr-activity-heading:has(.cr-column-options[open]){z-index:19}
+    .cr-column-options{position:relative;flex:0 0 auto}
+    .cr-column-options>summary{display:flex;align-items:center;justify-content:center;list-style:none;cursor:pointer;border-radius:.4rem;color:#475569;min-width:28px;min-height:32px;font-size:1.1rem}
+    .cr-column-options>summary::-webkit-details-marker{display:none}
+    .cr-column-options>summary:hover,.cr-column-options>summary:focus-visible,.cr-column-options[open]>summary{background:#e2e8f0;outline-offset:1px}
+    .cr-column-actions{position:absolute;right:-.3rem;top:calc(100% + .2rem);z-index:28;display:grid;gap:.12rem;min-width:190px;width:max-content;max-width:min(80vw,240px);border:1px solid #cbd5e1;border-radius:.7rem;padding:.32rem;background:#fff;box-shadow:0 12px 30px #0f172a30;text-align:left}
+    .cr-column-actions button,.cr-column-actions a{display:block;box-sizing:border-box;border:0;background:#fff;border-radius:.4rem;color:#0f172a;font-size:.75rem;text-align:left;font-weight:650;padding:.55rem .6rem;min-height:36px;width:100%;text-decoration:none}
+    .cr-column-actions button:hover:not(:disabled),.cr-column-actions a:hover,.cr-column-actions button:focus-visible,.cr-column-actions a:focus-visible{background:#eff6ff;color:#1d4ed8}
+    .cr-column-actions button:disabled{opacity:.45;cursor:not-allowed}
+    .cr-column-actions .cr-column-delete{color:#a16207}
+    .cr-column-actions .cr-column-hint{padding:.4rem .6rem;font-size:.65rem;color:#64748b;border-bottom:1px solid #e2e8f0;white-space:normal}
+    .cr-score{max-width:78px;min-height:34px;width:100%}
+    .cr-view-options{position:relative}
+    .cr-view-options>summary{list-style:none;cursor:pointer;white-space:nowrap;min-height:36px;padding:.42rem .65rem;font-size:.77rem}
+    .cr-view-options>summary::-webkit-details-marker{display:none}
+    .cr-view-options[open]>summary{background:#eff6ff;border-color:#93c5fd}
+    .cr-view-options-menu{position:absolute;top:calc(100% + .35rem);right:0;z-index:27;display:grid;gap:.55rem;width:min(90vw,245px);border:1px solid #cbd5e1;border-radius:.85rem;padding:.8rem;background:#fff;box-shadow:0 12px 35px #0f172a20}
+    .cr-view-options-menu label{display:flex;align-items:center;gap:.55rem;font-size:.78rem;color:#334155;cursor:pointer}
+    .cr-view-options-menu input{width:17px;height:17px;accent-color:#1d4ed8}
+    .cr-view-options-menu p{font-size:.68rem;color:#64748b;line-height:1.35}
+    .cr-table th.cr-derived{min-width:114px;width:124px;max-width:145px}
+    .cr-empty-state{display:grid;justify-items:center;align-content:center;gap:.6rem;min-height:280px;padding:1.8rem 1rem;text-align:center}
+    .cr-empty-state .cr-empty-symbol{display:grid;place-items:center;width:58px;height:58px;border-radius:1rem;background:#eaf2ff;color:#1d4ed8;font-size:1.65rem;font-weight:850}
+    .cr-empty-state h2{font-size:1.03rem;font-weight:850;color:#0f172a}
+    .cr-empty-state p{max-width:480px;line-height:1.5;font-size:.85rem;color:#64748b}
+    .cr-empty-actions{display:flex;justify-content:center;flex-wrap:wrap;gap:.55rem;margin-top:.5rem}
+    .cr-source-finder{margin-top:.75rem;border:1px solid #dbe3ef;border-radius:.75rem;background:#f8fafc;padding:.7rem}
+    .cr-source-finder summary{cursor:pointer;font-weight:750;color:#1d4ed8;font-size:.83rem}
+    .cr-source-search-row{display:flex;align-items:end;gap:.55rem;flex-wrap:wrap;margin-top:.55rem}
+    .cr-source-search-row label{flex:1 1 210px;margin-top:0}
+    .cr-source-search-results{display:grid;gap:.45rem;margin-top:.55rem}
+    .cr-source-search-results article{border:1px solid #dbe3ef;border-radius:.65rem;background:#fff;padding:.55rem;text-align:left}
+    .cr-source-search-results strong{display:block;font-size:.78rem;color:#0f172a}
+    .cr-source-search-results p{font-size:.73rem;line-height:1.35;color:#475569;margin-top:.18rem}
+    @media(max-width:720px){
+      .cr-table .cr-student{min-width:154px;max-width:190px}
+      .cr-table thead th.cr-activity-heading{min-width:102px;width:118px}
+      .cr-table td.cr-score-cell{min-width:104px;width:118px}
+      .cr-sheetbar{align-items:flex-start}
+      .cr-sheet-state{align-items:flex-end;flex-direction:column}
+      .cr-column-options>summary{min-width:32px}
+    }
+    @media(max-width:360px){.cr-sheet-state{gap:.25rem}.cr-view-options>summary{font-size:.7rem}}
 </style>
 </head>
 <body id="pageBody" class="hidden av-teacher-refresh bg-slate-50 min-h-screen text-slate-900">
@@ -216,6 +267,16 @@
       <div class="cr-sheet-state">
         <span id="cr-finalization-banner" class="cr-muted" hidden></span>
         <span id="cr-unsaved" class="cr-unsaved"></span>
+        <details id="cr-view-options" class="cr-view-options">
+          <summary class="cr-button subtle" aria-label="Choose Class Record display columns">Columns ▾</summary>
+          <div class="cr-view-options-menu" role="group" aria-label="Optional grade columns">
+            <strong class="text-xs text-slate-800">Show additional columns</strong>
+            <label><input type="checkbox" id="cr-show-category"> Category totals</label>
+            <label><input type="checkbox" id="cr-show-computed"> Computed grades</label>
+            <label><input type="checkbox" id="cr-show-final"> Final grades</label>
+            <p>Hidden by default. These are display preferences only; saved scores, grade calculations, exports and students' published records are unaffected.</p>
+          </div>
+        </details>
       </div>
     </div>
     <div id="cr-table-wrap" class="cr-table-wrap">
@@ -278,6 +339,17 @@
       </label>
       
       <div id="cr-assessment-source-note" class="cr-source-note mt-3" hidden></div>
+      <details id="cr-source-finder" class="cr-source-finder">
+        <summary>Can't find an earlier assessment? Search my sources</summary>
+        <p class="cr-help">Search original assessments, school deployments and imported blueprints belonging to your current teacher account. This does not copy or publish grades.</p>
+        <div class="cr-source-search-row">
+          <label class="cr-field">Assessment title
+            <input id="cr-source-search" type="search" class="cr-input mt-1" maxlength="80" placeholder="Mini PETA 1, UI or XML" autocomplete="off">
+          </label>
+          <button id="cr-find-source" class="cr-button" type="button">Find assessment</button>
+        </div>
+        <div id="cr-source-search-results" class="cr-source-search-results" role="status" aria-live="polite"></div>
+      </details>
       <div id="cr-historical-section-panel" class="cr-source-note mt-3" hidden>
         <label class="cr-field">Original historical section
           <select id="cr-historical-source-section" class="cr-select mt-1" disabled>
@@ -518,6 +590,6 @@
 <script src="js/core/adminerva-loader.js?v=3bc029269047"></script>
 <script defer src="js/core/adminerva-nav.js?v=3bc029269047"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=3bc029269047"></script>
-<script type="module" src="js/class-record/class-record.mjs?v=20261124-historical-subject-review4"></script>
+<script type="module" src="js/class-record/class-record.mjs?v=20261124-compact-cols-sourcefinder1"></script>
 </body>
 </html>
