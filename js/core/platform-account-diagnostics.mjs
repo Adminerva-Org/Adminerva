@@ -101,6 +101,7 @@ document.addEventListener("adminerva:role-ready",event=>{
   if(event?.detail?.schoolId)emit("school_switched",{kind:"action",module:"school",state:"ok"});
 });
 document.addEventListener("adminerva:v4-project-synced",()=>emit("cloud_save_confirmed",{module:"studio",state:"ok"}));
+document.addEventListener("adminerva:studio-cloud-confirmed",()=>emit("cloud_save_confirmed",{module:"studio",state:"ok"}));
 document.addEventListener("adminerva:notification-opened",()=>emit("notification_opened",{kind:"notification",module:"notifications",state:"ok"}));
 document.addEventListener("adminerva:studio-submitted",()=>emit("assessment_submitted",{module:"assessments",state:"ok"}));
 window.addEventListener("adminerva:studio-run-recorded",event=>{
