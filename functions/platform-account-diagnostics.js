@@ -345,7 +345,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       filters:{severity,module,windowHours,pattern},createdAt:FieldValue.serverTimestamp()
     });
     return {events,hasMore:result.size>limit,
-      cursor:result.size>limit?page.at(-1)?.ref?.path||null,
+      cursor:result.size>limit?(page.at(-1)?.ref?.path||null):null,
       scope:"all_recorded_account_events",windowHours,activePattern:pattern,
       coverage:"Globally indexed events only. Earlier per-user diagnostics remain in account history; anonymous and unrecorded actions are not reconstructed."};
   }
