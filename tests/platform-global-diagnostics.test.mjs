@@ -257,6 +257,13 @@ test("Platform Admin live tail is chronological, incrementally cursor-paged and 
   assert.equal(watchAudit.length,1);
   assert.equal(watchAudit[0][1].reason,reason);
   assert.equal(watchAudit[0][1].windowMinutes,10);
+  await api.service(request(ADMIN,{
+    action:"global_live",reason:"Investigating a different platform incident",
+    cursor:second.cursor,limit:10
+  }));
+  const separatePurposeAudits=[...db.values.keys()].filter(
+    key=>key.startsWith("platform_audit/diagnostic_live_"));
+  assert.equal(separatePurposeAudits.length,2);
   await assert.rejects(api.service(request(ADMIN,{
     action:"global_live",reason,cursor:"other_school/user/entries/"+id(101)
   })),/cursor/);
