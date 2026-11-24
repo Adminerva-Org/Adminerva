@@ -152,6 +152,7 @@ async function markRead(item){
   state.read.add(item.key);storeRead();render();
   if(item.saved&&state.user)try{
     await updateDoc(doc(db,"notifications",state.user.uid,"items",item.id),{readAt:serverTimestamp()});
+    document.dispatchEvent(new CustomEvent("adminerva:notification-opened"));
   }catch(err){console.warn("Read state could not sync",err)}
 }
 async function markAllRead(){
