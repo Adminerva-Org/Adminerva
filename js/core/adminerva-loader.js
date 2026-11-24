@@ -262,7 +262,7 @@ document.addEventListener("DOMContentLoaded", () => {
     skip.href = "#" + content.id; skip.textContent = "Skip to main content";
     document.body.prepend(skip);
   }
-  import("../help/page-help.mjs?v=72f4544d581a").then(module => module.mountHelp()).catch(() => {});
+  import("../help/page-help.mjs?v=fff9d893855d").then(module => module.mountHelp()).catch(() => {});
   bindBugReporterLogic();
 });
 
