@@ -85,6 +85,9 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
    if(person.disabled||person.emailVerified!==true||
       !person.email||person.email.toLowerCase()!==String(token.email).toLowerCase())
     refuse("permission-denied","This verified account is not available for device sign-in.");
+   const revokedAfter=Date.parse(person.tokensValidAfterTime||"")||0;
+   if(revokedAfter>signedInAt)
+    refuse("unauthenticated","This account session was revoked. Sign in again.");
    const outcome=await db.runTransaction(async tx=>{
     const snapshot=await tx.get(ref);
     if(!snapshot.exists)return "not-found";
@@ -99,7 +102,7 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
      tx.update(ref,{attempts:count,status:count>=MAX_CODE_ATTEMPTS?"locked":"waiting"});
      return "wrong-code";
     }
-    tx.update(ref,{status:"approved",authorizedUid:uid,approvedAtMs:clock});
+    tx.update(ref,{status:"approved",authorizedUid:uid,approvedAuthTimeMs:signedInAt,approvedAtMs:clock});
     return "approved";
    });
    if(outcome==="approved")return {state:"approved"};
@@ -145,6 +148,11 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
   const person=await auth.getUser(row.authorizedUid);
   if(person.disabled||person.emailVerified!==true||!person.email)
    refuse("permission-denied","The approving account is no longer eligible.");
+  // Revoking provider sessions after browser approval must also invalidate
+  // a still-unredeemed pairing. A custom token must not restore a revoked login.
+  const revokedAfter=Date.parse(person.tokensValidAfterTime||"")||0;
+  if(revokedAfter>Number(row.approvedAuthTimeMs||0))
+   refuse("unauthenticated","The approved browser session was revoked.");
   const outcome=await db.runTransaction(async tx=>{
    const snapshot=await tx.get(ref);
    if(!snapshot.exists)return null;

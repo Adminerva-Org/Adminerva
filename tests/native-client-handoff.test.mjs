@@ -125,3 +125,30 @@ test("native handoff records have TTL, and are denied to every browser role",()=
  const rules=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
  assert.match(rules,/match \/native_client_handoffs\/\{handoffId\} \{ allow read, write: if false; \}/);
 });
+
+test("account disable and provider token revocation prevent credential issuance",async()=>{
+ now=1700000000000;
+ signed.auth.token.auth_time=Math.floor(now/1000);
+ const db=fakeDb(),h=service(db),p=generatePairing();
+ await h(request(p,"begin",{clientKind:"desktop",challenge:p.challenge,confirmationCode:p.confirmationCode}));
+ await h(request(p,"authorize",{confirmationCode:p.confirmationCode},true));
+ const account=users.get("student-uid");
+ try{
+  account.disabled=true;
+  await assert.rejects(h(request(p,"redeem",{verifier:p.verifier})),{code:"permission-denied"});
+  account.disabled=false;
+  account.tokensValidAfterTime=new Date(now+1000).toUTCString();
+  await assert.rejects(h(request(p,"redeem",{verifier:p.verifier})),{code:"unauthenticated"});
+  assert.equal(db.data.get("native_client_handoffs/"+p.flowId).status,"approved");
+ }finally{
+  account.disabled=false;
+  delete account.tokensValidAfterTime;
+ }
+ const second=generatePairing();
+ await h(request(second,"begin",{clientKind:"desktop",challenge:second.challenge,confirmationCode:second.confirmationCode}));
+ const account2=users.get("student-uid");
+ try{
+  account2.tokensValidAfterTime=new Date(now+1000).toUTCString();
+  await assert.rejects(h(request(second,"authorize",{confirmationCode:second.confirmationCode},true)),{code:"unauthenticated"});
+ }finally{delete account2.tokensValidAfterTime;}
+});
