@@ -1,4 +1,4 @@
-import {watchPreferences, savePreferences} from "../analytics/activity-client.mjs?v=9dc90ac0f1c0";
+import {watchPreferences, savePreferences} from "../analytics/activity-client.mjs?v=3bc029269047";
 
 export function mountActivityPreferences() {
   if (document.getElementById("activity-preferences-dialog")) return;
