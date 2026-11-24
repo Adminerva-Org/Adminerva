@@ -117,6 +117,11 @@ function syncViewChecks(){
   for(const [name,check] of Object.entries(viewChecks))check.checked=view[name]===true;
 }
 function changeView(name,visible){
+  if(dirtyColumns.size){
+    syncViewChecks();
+    say("Save manual score changes before switching display columns, so no unsaved scores are lost.");
+    return;
+  }
   const view={...currentView(),[name]:visible===true};
   viewByOffering.set(currentOfferingId,view);
   render();
@@ -689,12 +694,13 @@ function render(){
   });
 
   for(const category of categories){
-    const th=make("th");
+    const th=make("th","cr-derived");
     th.scope="col";
-    th.append(make("span","cr-category","Category"));
     th.append(make("span","cr-column-label",category));
     const weight=weights.get(category.toLocaleLowerCase("en"));
-    th.append(make("span","cr-column-meta",weight===undefined?"Weight not set":numberText(weight)+"% weight"));
+    th.append(make("span","cr-column-shortmeta",
+      weight===undefined?"Weight not set":numberText(weight)+"%"));
+    th.title="Category subtotal · "+category;
     headRow.append(th);
   }
   if(view.computed){
