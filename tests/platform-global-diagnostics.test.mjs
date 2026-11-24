@@ -268,3 +268,97 @@ test("Platform Admin live tail is chronological, incrementally cursor-paged and 
     action:"global_live",reason,cursor:"other_school/user/entries/"+id(101)
   })),/cursor/);
 });
+
+test("only server-owned actions can assert API success or notification delivery",async()=>{
+  const {api}=create();
+  for(const [kind,module,action] of [
+    ["action","api","api_succeeded"],
+    ["session","auth","signed_in"],
+    ["session","auth","signed_out"],
+    ["notification","notifications","notification_delivered"]
+  ]){
+    await assert.rejects(api.service(request(ACCOUNT_A,{
+      action:"record",event:{...normal(650),kind,module,action,state:"ok"}
+    })),/Server-confirmed outcomes cannot be submitted from the browser/);
+  }
+  assert.equal((await api.service(request(ACCOUNT_A,{
+    action:"record",event:normal(651)
+  }))).recorded,true);
+});
+
+test("audited diagnostic trends separate backend evidence from client observations",async()=>{
+  const {db,api}=create();
+  await api.service(request(ACCOUNT_A,{action:"record",event:normal(700)}));
+  await api.service(request(ACCOUNT_A,{action:"record",event:{
+    ...error(701),browserFamily:"chrome",deviceClass:"desktop",osFamily:"windows"
+  }}));
+  await api.service(request(ACCOUNT_B,{action:"record",event:{
+    ...error(702),browserFamily:"safari",deviceClass:"phone",osFamily:"ios"
+  }}));
+  await api.recordServerProcess(request(ACCOUNT_A,{action:"save"}),{
+    service:"schoolStudioProjects",startedAt:NOW-350
+  });
+  await api.writeServerFailure(request(ACCOUNT_B,{action:"submit"}),{
+    code:"unavailable",message:"private student output"
+  },NOW-180);
+  await assert.rejects(api.service(request(ACCOUNT_A,{
+    action:"global_trends",reason:"Investigating platform-wide save performance"
+  })),/Platform Administrator/);
+  await assert.rejects(api.service(request(ADMIN,{
+    action:"global_trends",reason:"short"
+  })),/12–300/);
+  const result=await api.service(request(ADMIN,{
+    action:"global_trends",reason:"Investigating platform-wide save performance",
+    windowHours:24
+  }));
+  assert.equal(result.scope,"bounded_global_diagnostic_trends");
+  assert.equal(result.eventsSampled,5);
+  assert.equal(result.observedAccounts,2);
+  assert.equal(result.truncated,false);
+  assert.equal(result.summary.normal,2);
+  assert.equal(result.summary.failure,3);
+  assert.equal(result.summary.serverConfirmed,2);
+  assert.equal(result.summary.clientObserved,3);
+  assert.equal(result.series.length,24);
+  assert.equal(result.series.reduce((sum,bin)=>sum+bin.failure,0),3);
+  assert.equal(result.backendDurationSample,2);
+  assert.equal(result.backendDurationP50Ms,180);
+  assert.equal(result.backendDurationP95Ms,350);
+  assert.equal(result.backendServices.length,2);
+  assert.ok(result.backendServices.find(x=>x.service==="schoolStudioProjects.save"&&x.success===1));
+  assert.deepEqual(new Set(result.clientErrorBrowsers.map(x=>x.browser)),new Set(["chrome","safari"]));
+  assert.equal(db.audit.at(-1).action,"platform_user_diagnostics_trends_viewed");
+  assert.equal(JSON.stringify(result).includes("private student output"),false);
+  const events=await api.service(request(ADMIN,{
+    action:"global_feed",reason:"Investigating backend evidence and client errors",
+    windowHours:24
+  }));
+  assert.equal(events.events.find(x=>x.action==="api_succeeded").provenance,"server_confirmed");
+  assert.equal(events.events.find(x=>x.action==="cloud_save_failed").provenance,"client_observed");
+  assert.equal(events.events.find(x=>x.action==="api_failed").provenance,"server_confirmed");
+  const studio=await api.service(request(ADMIN,{
+    action:"global_trends",reason:"Investigating Studio-specific client failures",
+    windowHours:24,module:"studio"
+  }));
+  assert.equal(studio.eventsSampled,3);
+  assert.equal(studio.summary.serverConfirmed,0);
+});
+
+test("trends disclose truncation rather than pretending the sampled period is complete",async()=>{
+  const {db,api}=create();
+  for(let i=0;i<801;i++){
+    db.values.set("platform_account_diagnostics/"+ACCOUNT_A+"/entries/"+id(10000+i),{
+      eventId:id(10000+i),ownerUid:ACCOUNT_A,diagnosticScope:"platform_account_diagnostic",
+      kind:"error",module:"studio",action:"cloud_save_failed",errorCode:"unavailable",
+      state:"error",source:"browser",createdAt:stamp(NOW-i*1000)
+    });
+  }
+  const result=await api.service(request(ADMIN,{
+    action:"global_trends",reason:"Investigating repeated save errors during assessment"
+  }));
+  assert.equal(result.eventsSampled,800);
+  assert.equal(result.truncated,true);
+  assert.equal(result.sampleCap,800);
+  assert.equal(result.summary.failure,800);
+  assert.ok(result.oldestSampleAt>NOW-801000);
+});
