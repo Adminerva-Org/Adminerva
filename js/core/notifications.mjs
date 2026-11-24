@@ -150,6 +150,9 @@ function mergeCachedHistory(items,record){
 async function markRead(item){
   if(!unread(item))return;
   state.read.add(item.key);storeRead();render();
+  // The user opened this notice even if its optional cloud read-state sync fails.
+  // No notification subject, body or link is included in the diagnostic.
+  document.dispatchEvent(new CustomEvent("adminerva:notification-opened"));
   if(item.saved&&state.user)try{
     await updateDoc(doc(db,"notifications",state.user.uid,"items",item.id),{readAt:serverTimestamp()});
   }catch(err){console.warn("Read state could not sync",err)}

@@ -16,6 +16,8 @@ const {createMonitoringService}=require("./monitoring-service.js");
 const {legacyStudentRecordsForAccount}=require("./legacy-student-identity.js");
 initializeApp();
 const db=getFirestore();
+const {createPlatformAccountDiagnostics}=require("./platform-account-diagnostics.js");
+const platformAccountDiagnostics=createPlatformAccountDiagnostics({db,FieldValue,Timestamp});
 const messaging=getMessaging();
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
 const {createSchoolPracticeSeasonService}=require("./school-practice-season-service.js");
@@ -52,7 +54,8 @@ function safeCallable(handler,options={}){return async request=>{try{
     }).catch(error=>console.warn("System Admin assist audit write failed",{code:error.code||"unknown"}));
   }
   return result;
-}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+}catch(error){await platformAccountDiagnostics.writeServerFailure(request,error);
+  const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
 async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
   return !school.exists||school.data().compatibilityMode!=="v4_only";
@@ -201,6 +204,11 @@ const {createPlatformSchoolService}=require("./platform-schools.js");
 exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db}),{allowPlatformSchoolWrites:true}));
 const {createPlatformUserService}=require("./platform-users.js");
 exports.platformUsers=onCall(callOptions,safeCallable(createPlatformUserService({db,auth:getAuth()})));
+// Platform-only timeline reads; individual users may append bounded, code-free diagnostics.
+exports.platformAccountDiagnostics=onCall(callOptions,safeCallable(platformAccountDiagnostics.service));
+exports.platformNotificationDiagnostics=onDocumentCreated({
+  document:"notifications/{uid}/items/{notificationId}",region:"asia-southeast1",maxInstances:2,concurrency:10
+},async event=>platformAccountDiagnostics.recordNotificationDelivered(event.params.uid,event.params.notificationId));
 
 const {createMcsPilotControlService}=require("./mcs-pilot-control.js");
 exports.mcsPilotControl=onCall(callOptions,safeCallable(createMcsPilotControlService({db,auth:getAuth()})));
@@ -418,6 +426,9 @@ exports.practicePlatformLeaderboard=onCall(practiceOptions,async()=>{
   }
 });
 // Dedicated test-only observational data has independent, bounded retention.
+exports.platformDiagnosticRetention=onSchedule({
+  region:"asia-southeast1",schedule:"20 3 * * *",timeZone:"Etc/UTC",timeoutSeconds:300,maxInstances:1,concurrency:1,retryCount:0
+},async()=>platformAccountDiagnostics.cleanup());
 exports.pilotResearchRetention=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>cleanupPilotResearch({db,Timestamp}));
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
 exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>{
