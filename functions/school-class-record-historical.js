@@ -8,7 +8,7 @@
 const {legacyStudentRecordsForAccount,SCHOOL_ID}=require("./legacy-student-identity.js");
 const HISTORICAL_SOURCE="legacy_historical";
 const canonical=value=>String(value||"").trim().toLocaleLowerCase("en");
-const courseName=value=>canonical(value).replace(/\\s+/g," ").trim();
+const courseName=value=>canonical(value).replace(/\s+/g," ").trim();
 /**
  * Earlier Repository Management assessments were recorded under the generic
  * subject "Computer Programming", before the official SIS catalog split it
