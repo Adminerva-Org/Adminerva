@@ -737,7 +737,9 @@ function populateAssessmentOptions(selectedSource="",selectedTaskId=""){
   for(const task of available){
     const label=(task.sourceType===HISTORICAL_SOURCE?"Historical "+(task.submissionSource==="studio"?"Studio":"GitHub")+" · ":task.sourceType===PERSONALIZED_SOURCE?"Personalized Studio · ":"School · ")+
       task.title+" · "+numberText(task.maxPoints)+" pts"+
-      (task.historicalSectionReview?" · original section needs verification":task.historical?" · historical":task.published===false?" · unpublished":"");
+      (task.historicalSubjectReview?" · original subject requires confirmation":
+       task.historicalSectionReview?" · original section needs verification":
+       task.historical?" · historical":task.published===false?" · unpublished":"");
     assessmentSelect.add(new Option(label,assessmentKey(task.sourceType,task.taskId)));
   }
   assessmentSelect.value=selectedTaskId?assessmentKey(selectedSource,selectedTaskId):"";
@@ -760,8 +762,17 @@ function syncAssessmentSourceNote(){
   const note=el("cr-assessment-source-note"),task=selectedAssessment();
   const confirm=el("cr-historical-confirm"),checkbox=el("cr-historical-period");
   const sectionPanel=el("cr-historical-section-panel"),sectionSelect=el("cr-historical-source-section");
+  const subjectPanel=el("cr-historical-subject-panel"),subjectCheckbox=el("cr-historical-subject");
   const needsConfirmation=task?.sourceType===HISTORICAL_SOURCE&&!editingColumnId&&columnKind.value==="assessment";
   const needsSection=needsConfirmation&&task?.historicalSectionReview===true;
+  const needsSubject=needsConfirmation&&task?.historicalSubjectReview===true;
+  subjectPanel.hidden=!needsSubject;subjectCheckbox.disabled=!needsSubject;subjectCheckbox.required=needsSubject;
+  if(!needsSubject||subjectCheckbox.dataset.assessment!==task?.taskId)subjectCheckbox.checked=false;
+  subjectCheckbox.dataset.assessment=needsSubject?task.taskId:"";
+  if(needsSubject)
+    el("cr-historical-subject-label").textContent="I confirm the original assessment subject “"+
+      (task.originalSubjectName||"(unlabeled)")+"” belongs in the selected "+
+      (currentOffering?.subjectName||"school course")+" for this academic period.";
   confirm.hidden=!needsConfirmation;checkbox.disabled=!needsConfirmation;checkbox.required=needsConfirmation;
   sectionPanel.hidden=!needsSection;sectionSelect.disabled=!needsSection;sectionSelect.required=needsSection;
   if(needsSection&&sectionSelect.dataset.assessment!==task.taskId){
@@ -791,7 +802,10 @@ function syncAssessmentSourceNote(){
   note.hidden=false;
   const suggested=policyCategorySuggestion(task);
   if(task.sourceType===HISTORICAL_SOURCE){
-    note.textContent=task.historicalSectionReview
+    note.textContent=task.historicalSubjectReview
+      ?"The original assessment uses subject “"+(task.originalSubjectName||"unlabeled")+
+        "” but the current course is “"+(currentOffering?.subjectName||"unknown")+"”. Select the original deployed section and explicitly confirm this course mapping. Adminerva will require verified matching student identities from that original section before linking, even if the two sections have the same name. Grades remain in their original records."
+      :task.historicalSectionReview
       ?"This original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" assessment uses another section name. Select its original deployed section. On save, Adminerva must verify that at least one-third of the current class roster has original student records in that section. If it cannot, the link will be blocked. No grades or original records will be moved."
       :"Original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" grades are read in place, without copying or changing them. Only published, identity-matched grades appear. Confirm the assessment belongs to "+(task.periodLabel||currentOffering?.termName||"this selected period")+".";
     el("cr-historical-period-label").textContent="I confirm this historical assessment belongs to "+(task.periodLabel||currentOffering?.termName||"the selected academic period")+".";
@@ -1907,12 +1921,18 @@ columnForm.addEventListener("submit",event=>{
     if(task.sourceType===HISTORICAL_SOURCE&&!el("cr-historical-period").checked){el("cr-column-status").textContent="Confirm the academic period before linking.";return;}
     const sourceSection=task.historicalSectionReview?el("cr-historical-source-section").value:"";
     if(task.historicalSectionReview&&!sourceSection){el("cr-column-status").textContent="Choose the original historical section to verify.";return;}
+    if(task.historicalSubjectReview&&!el("cr-historical-subject").checked){
+      el("cr-column-status").textContent="Confirm the original subject belongs in this course before linking.";
+      return;
+    }
     nextColumn={
       columnId:"col_"+crypto.randomUUID().replaceAll("-","").slice(0,20),
       label,category,kind:"assessment",taskId:task.taskId,
       assessmentSource:task.sourceType,maxPoints:task.maxPoints,
       sourceTitle:task.title,archived:false,studentVisibility:visibility,
-      ...(task.sourceType===HISTORICAL_SOURCE?{confirmHistoricalOffering:currentOfferingId,...(sourceSection?{historicalSourceSection:sourceSection}:{})}:{})
+      ...(task.sourceType===HISTORICAL_SOURCE?{confirmHistoricalOffering:currentOfferingId,
+        ...(sourceSection?{historicalSourceSection:sourceSection}:{}),
+        ...(task.historicalSubjectReview?{confirmOriginalSubject:task.originalSubjectName}:{})}:{})
     };
   }
   const next=existing?
