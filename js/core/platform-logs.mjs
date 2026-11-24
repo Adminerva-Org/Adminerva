@@ -18,7 +18,7 @@ const initialUid=/^[A-Za-z0-9_-]{1,128}$/.test(deepLink)?deepLink:"";
 const state={
   accounts:[],byUid:new Map(),directoryReady:false,eligible:false,selectedUid:initialUid,
   view:initialUid?"user":"global",global:[],globalNext:null,fingerprint:"",
-  recent:[],events:[],audit:[],auditCapped:false,impact:null,impactBusy:false,loading:false,
+  recent:[],events:[],audit:[],auditCapped:false,impact:null,impactBusy:false,trends:null,trendsBusy:false,loading:false,
   recentNext:null,eventNext:null,canMore:false,epoch:0,readEpoch:0,
   live:{running:false,paused:false,busy:false,reason:"",cursor:"",baseline:false,
     generation:0,timer:null,rows:[],seen:new Set(),highlighted:new Map(),
@@ -77,7 +77,9 @@ function resetRead({clearRecent=false}={}){
   state.readEpoch++;state.loading=false;state.canMore=false;state.eventNext=null;
   state.events=[];state.audit=[];state.auditCapped=false;
   state.globalNext=null;state.global=[];state.impact=null;state.impactBusy=false;
+  state.trends=null;state.trendsBusy=false;
   $("pl-impact").hidden=true;$("pl-impact-results").replaceChildren();
+  $("pl-trends").hidden=true;
   if(clearRecent){state.recent=[];state.recentNext=null;}
   $("pl-more").hidden=true;$("pl-more").disabled=true;
   $("pl-refresh").disabled=!state.eligible;
@@ -153,7 +155,8 @@ function eventRow(record,ownerUid,overview){
     Number.isInteger(record.durationMs)?"Duration: "+record.durationMs+" ms":"",
     record.service?"Service: "+record.service:"",
     record.route?"Page: "+record.route:"",
-    record.source?"Source: "+record.source:""
+    record.source?"Source: "+record.source:"",
+    record.provenance?"Evidence: "+(record.provenance==="server_confirmed"?"Server-confirmed":"Client-observed"):""
   ].filter(Boolean);
   context.append(make("span","",pieces.join(" · ")||"No additional diagnostic metadata"));
   const details=make("details","pl-event-detail");
@@ -163,7 +166,7 @@ function eventRow(record,ownerUid,overview){
     ["Event ID",record.id],["Session ID",record.sessionId],
     ["Operation ID",record.operationId],["Cloud trace",record.traceId],
     ["Error signature",record.fingerprint],["Release",record.release],
-    ["Module",record.module],["Source",record.source],
+    ["Module",record.module],["Source",record.source],["Provenance",record.provenance],
     ["Service",record.service],["Error code",record.errorCode],
     ["Phase",record.phase],["Duration (ms)",record.durationMs],
     ["Device class",record.deviceClass],["Browser family",record.browserFamily],
@@ -180,7 +183,7 @@ function eventRow(record,ownerUid,overview){
   return tr;
 }
 function renderEvents(){
-  updateHead();
+  updateHead();renderTrends();
   const rows=state.view==="user"?state.events:state.view==="recent"?state.recent:state.view==="live"?state.live.rows:state.global;
   const summary={normal:0,warning:0,failure:0,unknown:0};
   for(const row of rows)summary[severity(row.severity)]++;
@@ -211,6 +214,7 @@ function refreshEnabled(){
   $("pl-show-global").disabled=!state.eligible||state.loading;
   $("pl-show-live").disabled=!state.eligible||state.loading;
   $("pl-impact-refresh").disabled=!state.eligible||state.impactBusy||state.view!=="global";
+  $("pl-trends-refresh").disabled=!state.eligible||state.trendsBusy||state.view!=="global";
 }
 async function loadRecent({older=false}={}){
   if(state.loading||!state.eligible||state.view!=="recent")return;
@@ -291,6 +295,107 @@ function chooseOverview(){
   try{history.replaceState(null,"","platform-logs.html");}catch{}
   if($("pl-reason").value.trim().length>=12)void loadRecent();
   else $("pl-log-status").textContent="Enter an investigation reason, then load recent account activity.";
+}
+
+
+function renderTrends(){
+  const visible=state.view==="global";
+  $("pl-trends").hidden=!visible;
+  if(!visible)return;
+  const data=state.trends;
+  const metricHost=$("pl-trends-metrics"),chart=$("pl-trends-chart");
+  const services=$("pl-trends-services"),browsers=$("pl-trends-browsers");
+  metricHost.replaceChildren();chart.replaceChildren();services.replaceChildren();browsers.replaceChildren();
+  if(!data){
+    if(!state.trendsBusy)$("pl-trends-status").textContent=
+      "Select a time period, then choose Analyze recorded trends. Analysis is manual to control backend reads.";
+    return;
+  }
+  const total=data.eventsSampled||0,summary=data.summary||{};
+  const metricRows=[
+    ["Observed events",total],
+    ["Distinct observed accounts",data.observedAccounts||0],
+    ["Recorded failures",summary.failure||0],
+    ["Recorded warnings",summary.warning||0],
+    ["Server-confirmed outcomes",summary.serverConfirmed||0],
+    ["Client-observed events",summary.clientObserved||0],
+    ["Backend P95",data.backendDurationP95Ms===null?"Not recorded":data.backendDurationP95Ms+" ms"]
+  ];
+  for(const [name,value] of metricRows){
+    const card=make("div","pl-trend-metric");
+    card.append(make("span","",name),make("strong","",value));
+    metricHost.append(card);
+  }
+  const caveat=data.truncated
+    ?"Sample capped at "+data.sampleCap+" newest events. Older buckets can be incomplete or absent; totals are lower bounds."
+    :"Sample not capped. Missing telemetry and client reports still prevent exact fleet-wide counts.";
+  const from=data.oldestSampleAt?time(data.oldestSampleAt):"None";
+  $("pl-trends-status").textContent="Period: past "+data.windowHours+
+    " hours · "+total+" recorded events · Oldest observed: "+from+
+    " · Backend latency sample: "+data.backendDurationSample+". "+caveat;
+  const series=Array.isArray(data.series)?data.series:[];
+  const maximum=Math.max(1,...series.map(item=>
+    (Number(item.normal)||0)+(Number(item.warning)||0)+(Number(item.failure)||0)));
+  for(const item of series){
+    const bucket=make("div","pl-trend-bucket");
+    const counts=[
+      ["normal",Math.max(0,Number(item.normal)||0)],
+      ["warning",Math.max(0,Number(item.warning)||0)],
+      ["failure",Math.max(0,Number(item.failure)||0)]
+    ];
+    const sum=counts.reduce((acc,[,n])=>acc+n,0);
+    bucket.title=time(item.at)+": "+sum+" observed; normal "+
+      counts[0][1]+", warning "+counts[1][1]+", failure "+counts[2][1];
+    bucket.setAttribute("aria-label",bucket.title);
+    const stack=make("div","pl-trend-bar");
+    stack.style.height=Math.max(sum?3:0,sum/maximum*108)+"px";
+    for(const [level,n] of counts){
+      if(!n)continue;
+      const portion=make("span","pl-trend-segment");
+      portion.dataset.level=level;portion.style.flexGrow=String(n);portion.title=level+": "+n;
+      stack.append(portion);
+    }
+    bucket.append(stack,make("span","pl-trend-time",new Date(item.at).toLocaleString("en-PH",{
+      timeZone:"Asia/Manila",month:"short",day:"numeric",hour:"2-digit",hour12:false})));
+    chart.append(bucket);
+  }
+  const breakdown=(host,items,format)=>{
+    if(!items?.length){host.append(make("p","pl-empty","No matching recorded outcomes in this bounded sample."));return;}
+    for(const item of items){
+      const line=make("div","pl-trend-breakdown");
+      line.append(make("strong","",format(item)[0]),make("span","",format(item)[1]));
+      host.append(line);
+    }
+  };
+  breakdown(services,data.backendServices,item=>[
+    item.service,(item.failure||0)+" failed · "+(item.success||0)+" succeeded · "+
+    (item.affectedAccounts||0)+" accounts"]);
+  breakdown(browsers,data.clientErrorBrowsers,item=>[
+    item.browser,(item.events||0)+" reported failures · "+(item.affectedAccounts||0)+" accounts"]);
+}
+async function loadTrends(){
+  if(state.view!=="global"||state.trendsBusy)return;
+  const reason=requiredReason();if(!reason)return;
+  const epoch=state.epoch,token=state.readEpoch;
+  state.trendsBusy=true;$("pl-trends-status").textContent="Analyzing bounded recent diagnostic records…";
+  refreshEnabled();
+  try{
+    const data=(await getLogs({
+      action:"global_trends",reason,windowHours:Number($("pl-window").value),
+      module:$("pl-module").value||""
+    })).data;
+    if(epoch!==state.epoch||token!==state.readEpoch||state.view!=="global")return;
+    if(data.scope!=="bounded_global_diagnostic_trends")
+      throw Error("Unexpected trend analysis response");
+    state.trends=data;
+  }catch(error){
+    if(epoch===state.epoch&&token===state.readEpoch)
+      $("pl-trends-status").textContent=permissionError(error);
+  }finally{
+    if(epoch===state.epoch&&token===state.readEpoch){
+      state.trendsBusy=false;renderTrends();refreshEnabled();
+    }
+  }
 }
 
 function renderImpact(){
@@ -454,7 +559,8 @@ function liveLine(row){
   const content=make("div","pl-live-content");
   content.append(make("span","pl-live-action",humanize(row.action||"unknown event")));
   const descriptors=[row.module||"other",row.phase||row.state||"observed",
-    row.source||"",row.service||"",row.errorCode?"error: "+row.errorCode:"",
+    row.source||"",row.provenance==="server_confirmed"?"server-confirmed":"client-observed",
+    row.service||"",row.errorCode?"error: "+row.errorCode:"",
     Number.isInteger(row.durationMs)?row.durationMs+"ms":""].filter(Boolean);
   content.append(make("div","pl-live-meta",descriptors.join(" · ")));
   const details=make("details");
@@ -467,7 +573,7 @@ function liveLine(row){
     ["Error signature",row.fingerprint],["Module",row.module],
     ["Action",row.action],["Phase",row.phase],["State",row.state],
     ["Service",row.service],["Error code",row.errorCode],
-    ["Duration (ms)",row.durationMs],["Source",row.source],
+    ["Duration (ms)",row.durationMs],["Source",row.source],["Provenance",row.provenance],
     ["Page",row.route],["Release",row.release],
     ["Device class",row.deviceClass],["Browser",row.browserFamily],
     ["Operating system",row.osFamily],["Viewport",row.viewport]
@@ -673,6 +779,7 @@ $("pl-event-search").addEventListener("input",()=>state.view==="live"?renderLive
 $("pl-window").addEventListener("change",()=>{if(state.view==="global"){
   resetRead();renderImpact();if($("pl-reason").value.trim().length>=12)void loadGlobal();
 }});
+$("pl-trends-refresh").addEventListener("click",()=>void loadTrends());
 $("pl-impact-refresh").addEventListener("click",()=>{if(state.view==="global"){
   const reason=requiredReason();if(reason)void loadImpact(reason,state.epoch,state.readEpoch);
 }});
