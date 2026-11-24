@@ -109,7 +109,7 @@ function traceFromRequest(request){
   return /^[0-9a-f]{32}$/i.test(raw)?raw.toLowerCase():"";
 }
 function fingerprint(row){
-  if(diagnosticSeverity(row)!=="failure")return "";
+  if(!["failure","warning"].includes(diagnosticSeverity(row)))return "";
   const values=[row.module||"other",row.service||"",row.action||"",row.errorCode||"unknown"];
   return createHash("sha256").update(values.join("|")).digest("hex").slice(0,20);
 }
@@ -291,14 +291,17 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     try{return await insert(ownerUid,event,{source:"backend",service:safeServiceName+"."+safeAction});}
     catch(error){console.warn("Diagnostic server completion skipped",{code:error?.code||"unknown"});}
   }
-  function globalQuery({severity="",module="",windowHours=24}={}){
+  function globalQuery({severity="",module="",fingerprint:pattern="",windowHours=24}={}){
     if(severity&&!["normal","warning","failure"].includes(severity))
       deny("invalid-argument","Unsupported log flag filter.");
     if(module&&!MODULES.includes(module))
       deny("invalid-argument","Unsupported log module filter.");
+    if(pattern&&(!/^[0-9a-f]{20}$/.test(pattern)||severity||module))
+      deny("invalid-argument","Fingerprint investigation cannot be combined with other event filters.");
     if(!Object.hasOwn(GLOBAL_WINDOWS,String(windowHours)))
       deny("invalid-argument","Unsupported log time window.");
     let query=db.collectionGroup("entries").where("diagnosticScope","==",GLOBAL_SCOPE);
+    if(pattern)query=query.where("fingerprint","==",pattern);
     if(severity)query=query.where("severity","==",severity);
     if(module)query=query.where("module","==",module);
     // No reliance on the caller's clock. Data entered before the global index
@@ -319,9 +322,9 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     if(!authority.platformAdmin)deny("permission-denied","Platform Administrator authority is required.");
     const purpose=reason(input.reason);
     const windowHours=input.windowHours===undefined?24:Number(input.windowHours);
-    const severity=input.severity||"",module=input.module||"";
+    const severity=input.severity||"",module=input.module||"",pattern=input.fingerprint||"";
     const limit=Number.isInteger(input.limit)&&input.limit>=1?Math.min(MAX_PAGE,input.limit):35;
-    let query=globalQuery({severity,module,windowHours});
+    let query=globalQuery({severity,module,fingerprint:pattern,windowHours});
     if(input.cursor!==undefined&&input.cursor!==null&&input.cursor!==""){
       const parts=String(input.cursor).split("/");
       if(parts.length!==4||parts[0]!=="platform_account_diagnostics"||!UID.test(parts[1])||
@@ -339,11 +342,11 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     await db.collection("platform_audit").add({
       actorUid:authority.uid,action:"platform_user_diagnostics_global_viewed",
       reason:purpose,returned:events.length,
-      filters:{severity,module,windowHours},createdAt:FieldValue.serverTimestamp()
+      filters:{severity,module,windowHours,pattern},createdAt:FieldValue.serverTimestamp()
     });
     return {events,hasMore:result.size>limit,
       cursor:result.size>limit?page.at(-1)?.ref?.path||null,
-      scope:"all_recorded_account_events",windowHours,
+      scope:"all_recorded_account_events",windowHours,activePattern:pattern,
       coverage:"Globally indexed events only. Earlier per-user diagnostics remain in account history; anonymous and unrecorded actions are not reconstructed."};
   }
   async function globalImpact(request,input){
