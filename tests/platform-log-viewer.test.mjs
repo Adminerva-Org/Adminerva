@@ -36,6 +36,24 @@ test("Log Viewer loads the shared Tailwind navigation and safely contains notifi
   assert.match(css,/@media\(max-width:640px\)\{[\s\S]*?#adminerva-nav #av-alert-panel/);
 });
 
+test("Platform-only diagnostic analytics distinguish server results from browser observations",()=>{
+  assert.match(page,/id="pl-trends"/);
+  assert.match(page,/id="pl-trends-refresh"/);
+  assert.match(page,/id="pl-trends-metrics"/);
+  assert.match(page,/id="pl-trends-chart"/);
+  assert.match(page,/id="pl-trends-services"/);
+  assert.match(page,/id="pl-trends-browsers"/);
+  assert.match(viewer,/action:"global_trends"/);
+  assert.match(viewer,/function loadTrends\(/);
+  assert.match(viewer,/function renderTrends\(/);
+  assert.match(viewer,/record\.provenance/);
+  assert.match(viewer,/row\.provenance==="server_confirmed"/);
+  assert.match(page,/A truncated sample understates event volume/);
+  assert.match(css,/\.pl-trend-segment\[data-level=failure\]/);
+  assert.match(css,/@media\(max-width:700px\)/);
+  assert.doesNotMatch(page,/download.*\.csv/i);
+});
+
 test("live console is separate from historical views with three-second polling and bounded rendering",()=>{
   assert.match(page,/id="pl-show-live"/);
   assert.match(page,/id="pl-live"/);
