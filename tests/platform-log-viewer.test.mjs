@@ -54,6 +54,29 @@ test("Platform-only diagnostic analytics distinguish server results from browser
   assert.doesNotMatch(page,/download.*\.csv/i);
 });
 
+test("investigation UI reports filter scope and never treats unseen time buckets as recorded zeros",()=>{
+  assert.match(page,/id="pl-filter-status"/);
+  assert.match(page,/id="pl-clear-filters"/);
+  assert.match(page,/id="pl-trends-table"/);
+  assert.match(page,/View exact recorded event counts by time/);
+  assert.match(page,/A truncated sample understates event volume/);
+  assert.match(page,/a durable database write/);
+  assert.match(viewer,/function renderFilterSummary\(/);
+  assert.match(viewer,/function clearInvestigationFilters\(/);
+  assert.match(viewer,/renderFilterSummary\(filtered\.length,rows\.length\)/);
+  assert.match(viewer,/renderFilterSummary\(live\.rows\.filter\(liveMatches\)\.length,live\.rows\.length\)/);
+  assert.match(viewer,/coverage==="unsampled"\?"—":value/);
+  assert.match(viewer,/coverage==="unsampled"\?"Not covered"/);
+  assert.match(viewer,/state\.trendsRendered===data/);
+  assert.match(viewer,/function diagnosticActionLabel\(/);
+  assert.match(viewer,/api_succeeded"\)return "Backend callable returned"/);
+  assert.match(viewer,/Callable returned without throwing; not proof of a committed record/);
+  assert.match(css,/pl-trend-bucket\[data-coverage=unsampled\]/);
+  assert.match(css,/pl-trends-table-wrap/);
+  assert.match(css,/pl-filter-feedback/);
+  assert.match(css,/@media\(max-width:560px\)/);
+});
+
 test("live console is separate from historical views with three-second polling and bounded rendering",()=>{
   assert.match(page,/id="pl-show-live"/);
   assert.match(page,/id="pl-live"/);
