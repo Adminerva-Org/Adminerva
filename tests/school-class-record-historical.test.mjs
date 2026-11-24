@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
-const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,projectedGrade,
+const {HISTORICAL_SOURCE,historicalSubjectMatches,historicalMapping,mappingMatches,projectedGrade,
   resolveHistoricalRoster,historicalPublishedGrades}=require("../functions/school-class-record-historical.js");
 const {cleanColumns}=require("../functions/school-class-record.js");
 const schoolId="mcs-manila",offeringId="offering-q3",ownerUid="teacher1";
@@ -24,6 +24,20 @@ test("historical link needs the original owner, verified school, section, subjec
   assert.equal(historicalMapping({...args,labels:{...labels,termName:""}}),null);
   assert.equal(mappingMatches(mapping,schoolId,offeringId,{...offering,termId:"q2"}),false);
 });
+test("historical generic course title maps narrowly to official Computer Programming 1/2",()=>{
+  for(const subject of ["Computer Programming","Computer Programming 1","Computer Programming 2","computer programming i"," COMPUTER   PROGRAMMING II "])
+    assert.equal(historicalSubjectMatches("Computer Programming",subject),true,subject);
+  for(const subject of ["Computer Science","Computer Programming 3","Computer Programming Advanced","Computer Programming 2 Laboratory","Computer Programming 2 / Science",""])
+    assert.equal(historicalSubjectMatches("Computer Programming",subject),false,subject);
+  assert.equal(historicalSubjectMatches("Computer Programming 1","Computer Programming 2"),false);
+  assert.equal(historicalSubjectMatches("Science","Computer Programming 2"),false);
+  const officialCourse={...args,labels:{...labels,subjectName:"Computer Programming 2"}};
+  assert.ok(historicalMapping(officialCourse),"verified owner/section may use the known legacy catalog alias");
+  assert.equal(historicalMapping({...officialCourse,ownerUid:"unrelated-owner"}),null);
+  assert.equal(historicalMapping({...officialCourse,schoolId:"unrelated-school"}),null);
+  assert.equal(historicalMapping({...officialCourse,labels:{...officialCourse.labels,sectionName:"another section"}}),null);
+});
+
 test("layout stores only server-generated mapping and rejects unconfirmed or duplicate historical links",()=>{
   const available=new Map([[HISTORICAL_SOURCE+":legacy-task",{sourceType:HISTORICAL_SOURCE,taskId:"legacy-task",
     title:"Original task",maxPoints:20,linkable:true,historicalMapping:mapping}]]);
