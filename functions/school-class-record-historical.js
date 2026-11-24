@@ -39,11 +39,16 @@ function historicalSections(task){
   return [...distinct.values()];
 }
 function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,labels,
-  sourceSectionName="",verifiedSection=false}){
+  sourceSectionName="",verifiedSection=false,verifiedSubject=false}){
+  // A subject mismatch must be acknowledged against the exact original
+  // assessment and independently verified through source student identities.
+  // Caller-supplied flags alone never authorize a save.
+  const matchesSubject=historicalSubjectMatches(task?.subject,labels?.subjectName);
   if(!validId(taskId)||!validOrigin(task,schoolId)||task.ownerUid!==ownerUid||
      !labels.sectionName||!labels.subjectName||!labels.termName||!labels.yearName||
      !offering.termId||!offering.yearId||!offering.sectionId||!offering.subjectId||
-     !historicalSubjectMatches(task.subject,labels.subjectName))return null;
+     (!matchesSubject&&!(verifiedSubject===true&&typeof task.subject==="string"&&
+       task.subject.trim().length>0&&task.subject.trim().length<=120)))return null;
   const sections=historicalSections(task),requested=String(sourceSectionName||labels.sectionName).trim();
   const section=sections.find(s=>canonical(s)===canonical(requested));
   if(!section||canonical(section)!==canonical(labels.sectionName)&&verifiedSection!==true)return null;
@@ -52,7 +57,8 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
   return {schoolId,offeringId,yearId:offering.yearId,termId:offering.termId,
     sectionId:offering.sectionId,subjectId:offering.subjectId,
     sectionName:section,offeringSectionName:labels.sectionName,
-    subjectName:labels.subjectName,ownerUid};
+    subjectName:labels.subjectName,ownerUid,
+    ...(matchesSubject?{}:{originalSubjectName:task.subject.trim()})};
 }
 /**
  * A historical section name can differ after SIS adoption or placement changes.
@@ -61,11 +67,17 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
  * school students collection. Only the server can grant this mapping.
  */
 async function verifiedHistoricalSectionMapping({db,schoolId,roster,resolveUsers,
-  task,taskId,ownerUid,offering,offeringId,labels,sourceSectionName}){
+  task,taskId,ownerUid,offering,offeringId,labels,sourceSectionName,
+  confirmOriginalSubject=""}){
+  const needsSubjectReview=!historicalSubjectMatches(task?.subject,labels?.subjectName);
+  // The teacher must explicitly acknowledge the exact original subject before
+  // attempting a different-subject source link; a guessed label cannot pass.
+  if(needsSubjectReview&&(!task?.subject||confirmOriginalSubject!==task.subject.trim()))return null;
   const candidate=historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,
-    labels,sourceSectionName,verifiedSection:true});
+    labels,sourceSectionName,verifiedSection:true,verifiedSubject:needsSubjectReview});
   if(!candidate)return null;
-  if(canonical(candidate.sectionName)===canonical(labels.sectionName))return candidate;
+  if(!needsSubjectReview&&canonical(candidate.sectionName)===canonical(labels.sectionName))
+    return candidate;
   if(!Array.isArray(roster)||!roster.length)return null;
   const resolved=await resolveHistoricalRoster({db,schoolId,roster,resolveUsers});
   const studentIds=[...resolved.keys()];
@@ -83,7 +95,8 @@ async function verifiedHistoricalSectionMapping({db,schoolId,roster,resolveUsers
   }
   const required=roster.length===1?1:Math.max(2,Math.ceil(roster.length/3));
   return matched.size>=required?{...candidate,identityVerifiedCount:matched.size,
-    identityProof:"original_student_section"}:null;
+    identityProof:"original_student_section",
+    ...(needsSubjectReview?{subjectProof:"teacher_confirmed_original_subject_with_roster"}:{})}:null;
 }
 function mappingMatches(mapping,schoolId,offeringId,offering){
   return !!mapping&&mapping.schoolId===schoolId&&mapping.offeringId===offeringId&&
@@ -146,9 +159,14 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
   for(const column of linked){
     const mapping=column.historicalMapping,task=await db.doc("assessments/"+column.taskId).get();
     const original=task.exists?task.data():null;
+    const verifiedSubjectReview=!!original&&mapping.subjectProof===
+      "teacher_confirmed_original_subject_with_roster"&&
+      mapping.identityProof==="original_student_section"&&
+      Number(mapping.identityVerifiedCount)>0&&
+      mapping.originalSubjectName===String(original.subject||"").trim();
     if(!validOrigin(original,schoolId)||original.ownerUid!==mapping.ownerUid||
        !historicalSections(original).some(section=>canonical(section)===canonical(mapping.sectionName))||
-       !historicalSubjectMatches(original.subject,mapping.subjectName))continue;
+       !(historicalSubjectMatches(original.subject,mapping.subjectName)||verifiedSubjectReview))continue;
     const pairs=[...students.entries()],matches=new Map(),ambiguous=new Set();
     // Exact original grade document IDs, not a school-wide legacy grade scan.
     for(let i=0;i<pairs.length;i+=100){

@@ -99,6 +99,65 @@ test("section-verified historical grades still read only the original publicatio
   assert.deepEqual(await historicalPublishedGrades(input),[]);
 });
 
+test("a different original subject requires explicit teacher attestation AND verified original students",async()=>{
+  const original={...task,subject:"Legacy Computer Programming II"};
+  const previous={...args,task:original};
+  assert.equal(historicalMapping(previous),null,"a mismatched subject cannot auto-link");
+  assert.equal(await verifiedHistoricalSectionMapping({
+    db:{},schoolId,roster:[],task:original,taskId:"legacy-task",ownerUid,
+    offering,offeringId,labels,sourceSectionName:"Section A"}),null);
+  const roster=[{personId:"p1",authUid:"u1",legacyStudentIds:["old1"]},
+    {personId:"p2",authUid:"u2",legacyStudentIds:["old2"]},
+    {personId:"p3",authUid:"u3",legacyStudentIds:["old3"]}];
+  const rows=new Map([["old1",{section:"Section A"}],["old2",{section:"Section A"}]]);
+  const db={doc:path=>({path}),getAll:async(...refs)=>refs.map(ref=>{
+    const data=rows.get(ref.path.split("/").at(-1));
+    return {exists:Boolean(data),data:()=>data};
+  })};
+  const options={db,schoolId,roster,task:original,taskId:"legacy-task",ownerUid,
+    offering,offeringId,labels,sourceSectionName:"Section A"};
+  assert.equal(await verifiedHistoricalSectionMapping(options),null);
+  assert.equal(await verifiedHistoricalSectionMapping({...options,confirmOriginalSubject:"Another Subject"}),null);
+  assert.equal(await verifiedHistoricalSectionMapping({...options,ownerUid:"other",confirmOriginalSubject:original.subject}),null);
+  assert.equal(await verifiedHistoricalSectionMapping({...options,schoolId:"other-school",confirmOriginalSubject:original.subject}),null);
+  const mapped=await verifiedHistoricalSectionMapping({...options,confirmOriginalSubject:original.subject});
+  assert.equal(mapped.subjectProof,"teacher_confirmed_original_subject_with_roster");
+  assert.equal(mapped.originalSubjectName,original.subject);
+  assert.equal(mapped.identityVerifiedCount,2);
+  const padded={...original,subject:"  "+original.subject+"  "};
+  const paddedMap=await verifiedHistoricalSectionMapping({
+    ...options,task:padded,confirmOriginalSubject:original.subject
+  });
+  assert.equal(paddedMap?.originalSubjectName,original.subject,
+    "whitespace in legacy subject labels does not invalidate an explicit exact confirmation");
+  rows.delete("old2");
+  assert.equal(await verifiedHistoricalSectionMapping({...options,confirmOriginalSubject:original.subject}),null,
+    "one student among three is below the minimum verified-person threshold");
+});
+test("subject-reviewed grades remain restricted to the original source subject, student and publication",async()=>{
+  const original={...task,subject:"Legacy Computer Programming II"};
+  const mapped={...historicalMapping({...args,task:original,verifiedSubject:true}),
+    identityProof:"original_student_section",identityVerifiedCount:2,
+    subjectProof:"teacher_confirmed_original_subject_with_roster"};
+  const sourceColumn={...column,historicalMapping:mapped};
+  const records=new Map([["assessments/legacy-task",original],["student_grades/old_student_legacy-task",row]]);
+  const db={doc:path=>({path,get:async()=>({exists:records.has(path),data:()=>records.get(path)})}),
+    getAll:async(...refs)=>Promise.all(refs.map(ref=>ref.get()))};
+  const roster=[{personId:"p1",authUid:"u1",legacyStudentIds:["old_student"]}];
+  const input={db,schoolId,offeringId,offering,columns:[sourceColumn],roster};
+  assert.equal((await historicalPublishedGrades(input))[0].awarded,17);
+  records.set("assessments/legacy-task",{...original,subject:"Changed after assignment"});
+  assert.deepEqual(await historicalPublishedGrades(input),[]);
+  records.set("assessments/legacy-task",original);
+  records.set("student_grades/old_student_legacy-task",{...row,published:false});
+  assert.deepEqual(await historicalPublishedGrades(input),[]);
+  records.set("student_grades/old_student_legacy-task",{...row,section:"Foreign Section"});
+  assert.deepEqual(await historicalPublishedGrades(input),[]);
+  const fakeMapping={...mapped,subjectProof:null};
+  records.set("student_grades/old_student_legacy-task",row);
+  assert.deepEqual(await historicalPublishedGrades({...input,columns:[{...sourceColumn,historicalMapping:fakeMapping}]}),[]);
+});
+
 test("layout stores only server-generated mapping and rejects unconfirmed or duplicate historical links",()=>{
   const available=new Map([[HISTORICAL_SOURCE+":legacy-task",{sourceType:HISTORICAL_SOURCE,taskId:"legacy-task",
     title:"Original task",maxPoints:20,linkable:true,historicalMapping:mapping}]]);
