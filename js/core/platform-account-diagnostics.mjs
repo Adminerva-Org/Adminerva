@@ -102,6 +102,20 @@ document.addEventListener("adminerva:role-ready",event=>{
 });
 document.addEventListener("adminerva:v4-project-synced",()=>emit("cloud_save_confirmed",{module:"studio",state:"ok"}));
 document.addEventListener("adminerva:notification-opened",()=>emit("notification_opened",{kind:"notification",module:"notifications",state:"ok"}));
+document.addEventListener("adminerva:studio-submitted",()=>emit("assessment_submitted",{module:"assessments",state:"ok"}));
+const buttonActions={
+  runBtn:["studio_run_requested","studio"],
+  studioConfirmSubmit:["assessment_submit_requested","assessments"],
+  evidenceSubmit:["assessment_submit_requested","assessments"],
+  evidenceWithdraw:["assessment_withdraw_requested","assessments"],
+  manualReviewAnalyze:["assessment_evaluate_requested","assessments"]
+};
+document.addEventListener("click",event=>{
+  const button=event.target?.closest?.("button");
+  if(!event.isTrusted||!button||button.disabled||!buttonActions[button.id])return;
+  const [action,module]=buttonActions[button.id];
+  emit(action,{module,state:"info"});
+},true);
 document.addEventListener("adminerva:diagnostic-event",event=>{
   const data=event?.detail||{};
   if(data.action==="api_failed")diagnosticError("api_failed",data.errorCode||"unavailable",
