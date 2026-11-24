@@ -218,3 +218,46 @@ test("normal activity quota leaves bounded diagnostic room for genuine failures"
   assert.equal(count.count,241);
   assert.equal(count.normalCount,240);
 });
+
+
+test("Platform Admin live tail is chronological, incrementally cursor-paged and audit-window bounded",async()=>{
+  const {db,api}=create(),reason="Investigating save and assessment events across active users";
+  await api.service(request(ACCOUNT_A,{action:"record",event:normal(101)}));
+  await api.service(request(ACCOUNT_B,{action:"record",event:offline(102)}));
+  db.values.get("platform_account_diagnostics/"+ACCOUNT_A+"/entries/"+id(101)).createdAt=stamp(NOW-20000);
+  db.values.get("platform_account_diagnostics/"+ACCOUNT_B+"/entries/"+id(102)).createdAt=stamp(NOW-10000);
+  const start=await api.service(request(ADMIN,{action:"global_live",reason,limit:10}));
+  assert.equal(start.scope,"live_indexed_account_events");
+  assert.equal(start.initial,true);
+  assert.equal(start.pollAfterMs,3000);
+  assert.equal(start.events.length,2);
+  assert.equal(start.events[0].id,id(101));
+  assert.equal(start.events[1].id,id(102));
+  assert.match(start.cursor,/^platform_account_diagnostics\/user-b\/entries\//);
+  await assert.rejects(api.service(request(ACCOUNT_A,{action:"global_live",reason})),/Platform Administrator/);
+  await assert.rejects(api.service(request(ADMIN,{action:"global_live",reason:"short"})),/12–300/);
+  await api.service(request(ACCOUNT_A,{action:"record",event:error(103)}));
+  await api.service(request(ACCOUNT_B,{action:"record",event:normal(104)}));
+  const first=await api.service(request(ADMIN,{action:"global_live",reason,cursor:start.cursor,limit:1}));
+  assert.equal(first.initial,false);
+  assert.equal(first.events.length,1);
+  assert.equal(first.hasMore,true);
+  assert.equal(first.events[0].severity,"failure");
+  const second=await api.service(request(ADMIN,{action:"global_live",reason,cursor:first.cursor,limit:1}));
+  assert.equal(second.events.length,1);
+  assert.equal(second.hasMore,false);
+  assert.equal(second.events[0].ownerUid,ACCOUNT_B);
+  assert.notEqual(second.events[0].id,first.events[0].id);
+  const idle=await api.service(request(ADMIN,{action:"global_live",reason,cursor:second.cursor,limit:10}));
+  assert.equal(idle.events.length,0);
+  assert.equal(idle.cursor,second.cursor);
+  const audits=db.audit.filter(a=>a.action==="platform_user_diagnostics_live_viewed");
+  assert.equal(audits.length,0); // Deterministic live-audit documents are not add() records.
+  const watchAudit=[...db.values.entries()].filter(([key])=>key.startsWith("platform_audit/diagnostic_live_"));
+  assert.equal(watchAudit.length,1);
+  assert.equal(watchAudit[0][1].reason,reason);
+  assert.equal(watchAudit[0][1].windowMinutes,10);
+  await assert.rejects(api.service(request(ADMIN,{
+    action:"global_live",reason,cursor:"other_school/user/entries/"+id(101)
+  })),/cursor/);
+});
