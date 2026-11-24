@@ -408,10 +408,18 @@ async function loadDirectory(user,epoch){
   }
 }
 $("pl-search").addEventListener("input",renderAccounts);
-$("pl-level").addEventListener("change",()=>state.view==="global"&&$("pl-reason").value.trim().length>=12
-  ? (resetRead(),void loadGlobal()) : renderEvents());
-$("pl-module").addEventListener("change",()=>state.view==="global"&&$("pl-reason").value.trim().length>=12
-  ? (resetRead(),void loadGlobal()) : renderEvents());
+$("pl-level").addEventListener("change",()=>{
+  state.fingerprint="";
+  if(state.view==="global"&&$("pl-reason").value.trim().length>=12){
+    resetRead();void loadGlobal();
+  }else renderEvents();
+});
+$("pl-module").addEventListener("change",()=>{
+  state.fingerprint="";
+  if(state.view==="global"&&$("pl-reason").value.trim().length>=12){
+    resetRead();void loadGlobal();
+  }else renderEvents();
+});
 $("pl-show-recent").addEventListener("click",chooseOverview);
 $("pl-show-global").addEventListener("click",chooseGlobal);
 $("pl-event-search").addEventListener("input",renderEvents);
