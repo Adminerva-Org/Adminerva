@@ -89,6 +89,22 @@ test('platform test-student designations are backend-only even for legacy browse
   }
 });
 
+test('platform diagnostic timelines are server-only for students, teachers and legacy browser admins',async()=>{
+  await env.withSecurityRulesDisabled(async ctx=>setDoc(
+    doc(ctx.firestore(),'platform_account_diagnostics','alice','entries','event-1'),
+    {kind:'error',action:'javascript_error',ownerUid:'alice',errorCode:'TypeError'}
+  ));
+  for(const database of [client('alice',EMAIL_A),client('staff',TEACHER),client('admin',ADMIN)]){
+    const target=doc(database,'platform_account_diagnostics','alice','entries','event-1');
+    await assertFails(getDoc(target));
+    await assertFails(getDocs(collection(database,'platform_account_diagnostics','alice','entries')));
+    await assertFails(setDoc(doc(database,'platform_account_diagnostics','bob','entries','forged'),
+      {ownerUid:'bob',kind:'error',action:'api_failed'}));
+    await assertFails(updateDoc(target,{errorCode:'none'}));
+    await assertFails(deleteDoc(target));
+  }
+});
+
 test('home reminder suppression is private, typed and independent of activity consent',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
   await assertSucceeds(setDoc(doc(alice,'activity_preferences','alice'),{...activityPreference(false),promptDismissed:true}));
