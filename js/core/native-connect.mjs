@@ -5,7 +5,7 @@
  */
 import {app,auth} from "./firebase-core.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {onAuthStateChanged,GoogleAuthProvider,GithubAuthProvider,signInWithPopup,reauthenticateWithPopup,signOut} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {onAuthStateChanged,GoogleAuthProvider,GithubAuthProvider,signInWithPopup,reauthenticateWithPopup} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {validFlowId} from "./native-connect-model.mjs";
 const flowId=new URLSearchParams(location.search).get("flow");
 const status=document.getElementById("native-connect-status");
@@ -14,7 +14,6 @@ const providerSelection=document.getElementById("native-provider-selection");
 const accountLabel=document.getElementById("native-account");
 const approveButton=document.getElementById("native-approve");
 const codeInput=document.getElementById("native-pair-code");
-const switchButton=document.getElementById("native-switch-account");
 let busy=false,approved=false,reauthenticatedUid=null,proofAtMs=0;
 function showStatus(message){status.textContent=message;}
 function freshProof(user){
@@ -32,7 +31,6 @@ function render(){
  const verified=freshProof(user);
  identity.hidden=!verified||approved;
  providerSelection.hidden=approved;
- switchButton.hidden=!user||approved;
  approveButton.disabled=busy||!verified||approved;
  if(approved){showStatus("Desktop approved. Return to the application to finish signing in.");return;}
  if(user){
@@ -80,16 +78,6 @@ document.getElementById("native-github").addEventListener("click",()=>{
  const provider=new GithubAuthProvider();
  provider.addScope("read:user");provider.addScope("user:email");
  void authenticate(provider);
-});
-switchButton.addEventListener("click",async()=>{
- if(busy||approved)return;
- busy=true;
- try{
-  reauthenticatedUid=null;proofAtMs=0;
-  codeInput.value="";
-  await signOut(auth);
- }catch{showStatus("Could not switch accounts. Retry after checking your connection.");}
- finally{busy=false;render();}
 });
 approveButton.addEventListener("click",async()=>{
  const user=auth.currentUser;

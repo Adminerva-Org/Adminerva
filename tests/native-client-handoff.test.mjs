@@ -169,7 +169,7 @@ test("browser approval requires explicit recent OAuth reauthentication",()=>{
  assert.match(js,/getIdTokenResult\(true\)/);
  assert.match(js,/freshProof\(user\)/);
  assert.match(js,/user\.uid===reauthenticatedUid/);
- assert.match(js,/signOut\(auth\)/);
- assert.match(html,/id="native-switch-account"/);
+ assert.doesNotMatch(js,/signOut\(auth\)/);
+ assert.match(html,/separate browser profile or private window/);
  assert.doesNotMatch(js,/localStorage\.setItem|sessionStorage\.setItem|signInWithCustomToken/);
 });

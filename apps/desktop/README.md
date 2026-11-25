@@ -29,7 +29,7 @@ The dependency is pinned to a current supported Electron release; an immutable l
 
 ## Abuse control and reauthorization
 
-The unreleased callable now requires a **minimum 32-byte server-only `ADMINERVA_NATIVE_HANDOFF_RATE_SECRET`** and reads the Firebase/Express raw request IP to count 10-minute server-side quota windows. It refuses sign-in when the secret or source IP is unavailable. It never trusts an IP supplied in JSON and stores only keyed HMAC identifiers; records expire by Firestore TTL. The browser requires explicit fresh Google/GitHub reauthentication even when a previous Adminerva session is still active. Verify proxy trust and deploy edge protection before ever enabling the rollout flag; shared school laboratory IPs may require tuning with a documented policy. Do not put secrets in source control.
+The unreleased callable now requires a **minimum 32-byte server-only `ADMINERVA_NATIVE_HANDOFF_RATE_SECRET`** and reads the Firebase/Express raw request IP to count 10-minute server-side quota windows. It refuses sign-in when the secret or source IP is unavailable. It never trusts an IP supplied in JSON and stores only keyed HMAC identifiers; records expire by Firestore TTL. The browser requires explicit fresh Google/GitHub reauthentication even when a previous Adminerva session is still active. The pairing page cannot sign the existing browser account out: doing so could interrupt an examination in another browser tab. Use a separate browser profile to authorize a different account. Verify proxy trust and deploy edge protection before ever enabling the rollout flag; shared school laboratory IPs may require tuning with a documented policy. Do not put secrets in source control.
 
 ## Native-client release gate
 
