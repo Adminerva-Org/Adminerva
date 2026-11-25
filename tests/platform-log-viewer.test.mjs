@@ -77,6 +77,35 @@ test("investigation UI reports filter scope and never treats unseen time buckets
   assert.match(css,/@media\(max-width:560px\)/);
 });
 
+test("wide-screen compact workspace retains canonical log controls and responsive disclosures",()=>{
+  assert.match(page,/class="pl-hero-main"/);
+  assert.match(page,/id="pl-directory-disclosure" class="pl-directory-disclosure" open/);
+  assert.match(page,/class="pl-mode-bar" aria-label="Diagnostic views"/);
+  assert.match(page,/id="pl-show-live"/);
+  assert.match(page,/id="pl-show-global"/);
+  assert.match(page,/id="pl-show-recent"/);
+  assert.match(page,/id="pl-filter-disclosure" class="pl-filter-disclosure" open/);
+  assert.match(page,/id="pl-analysis-drawer" class="pl-analysis-drawer" hidden/);
+  assert.match(page,/class="pl-analysis-content"/);
+  assert.match(page,/id="pl-reason" rows="1" minlength="12" maxlength="300"/);
+  assert.match(viewer,/function syncCompactDisclosures\(/);
+  assert.match(viewer,/compactViewport=window\.matchMedia\("\(max-width: 780px\)"\)/);
+  assert.match(viewer,/compactViewport\.addEventListener\("change",syncCompactDisclosures\)/);
+  assert.match(viewer,/\$\("pl-analysis-drawer"\)\.hidden=state\.view!=="global"/);
+  assert.match(viewer,/cell\.dataset\.label=label;cell\.classList\.add\(cssName\)/);
+  assert.match(viewer,/\["Account ID",ownerUid\]/);
+  assert.match(css,/1940px/);
+  assert.match(css,/grid-template-columns:clamp\(210px,19vw,276px\) minmax\(0,1fr\)/);
+  assert.match(css,/@media\(max-width:780px\)/);
+  assert.match(css,/\.pl-table tbody tr\{display:grid;grid-template-columns:/);
+  assert.match(css,/\.pl-live-line\{grid-template-columns:77px 48px minmax\(0,1fr\)/);
+  assert.match(css,/\.pl-analysis-drawer>summary/);
+  assert.match(css,/\.pl-filter-bar\{display:flex;flex-direction:column/);
+  assert.match(page,/css\/platform-logs\.css\?v=20261125-compact-workspace-1/);
+  assert.match(page,/js\/core\/platform-logs\.mjs\?v=20261125-compact-workspace-1/);
+  assert.doesNotMatch(viewer,/setDoc|updateDoc|deleteDoc/);
+});
+
 test("live console is separate from historical views with three-second polling and bounded rendering",()=>{
   assert.match(page,/id="pl-show-live"/);
   assert.match(page,/id="pl-live"/);
