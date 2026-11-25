@@ -102,7 +102,8 @@ let manualScores=new Map();
 let manualScoreMeta=new Map();
 let publishedGrades=new Map();
 let historicalGradeDiagnostics=new Map();
-const historicalStatusText={published:"Published",private_draft:"Private draft (not counted)",missing_grade:"No saved grade found",identity_unmapped:"Student identity not matched",section_mismatch:"Original grade belongs to a different or unverified section",source_unavailable:"Original assessment mapping cannot be verified",invalid_grade:"Original grade is invalid",ambiguous_grade:"Multiple possible original grades; review required",maximum_mismatch:"Score maximum differs from this column",lookup_limit:"Historical source requires a narrower lookup"};
+let acceptSavedLegacy=false;
+const historicalStatusText={published:"Published",legacy_accepted:"Accepted legacy score",unresolved_points:"Unresolved grade points",private_draft:"Private draft (not counted)",missing_grade:"No saved grade found",identity_unmapped:"Student identity not matched",section_mismatch:"Original grade belongs to a different or unverified section",source_unavailable:"Original assessment mapping cannot be verified",invalid_grade:"Original grade is invalid",ambiguous_grade:"Multiple possible original grades; review required",maximum_mismatch:"Score maximum differs from this column",lookup_limit:"Historical source requires a narrower lookup"};
 let cellStates=new Map();
 let dirtyColumns=new Set();
 let editingColumnId=null;
@@ -610,7 +611,7 @@ function appendColumnHeader(headRow,column,index,visibleColumns){
     ?sourceName(column.assessmentSource||SCHOOL_SOURCE):"Manual";
   menu.append(make("div","cr-column-hint",
     (column.category||"Uncategorized")+" · "+source+" · "+numberText(column.maxPoints)+" pts"));
-  const diagnostics=column.assessmentSource===HISTORICAL_SOURCE?
+  const diagnostics=[HISTORICAL_SOURCE,PERSONALIZED_SOURCE].includes(column.assessmentSource)?
     [...historicalGradeDiagnostics.values()].filter(item=>item.columnId===column.columnId):[];
   const breakdown=new Map();
   for(const item of diagnostics)breakdown.set(item.status,(breakdown.get(item.status)||0)+1);
@@ -652,8 +653,8 @@ function appendColumnHeader(headRow,column,index,visibleColumns){
     (visibility==="released"?"Released to students":"Hidden from students");
   th.append(meta);
   if(diagnostics.length){
-    const published=breakdown.get("published")||0,drafts=breakdown.get("private_draft")||0;
-    const progress=make("span","cr-column-shortmeta",published+"/"+diagnostics.length+" published"+(drafts?" · "+drafts+" draft":""));
+    const published=breakdown.get("published")||0,accepted=breakdown.get("legacy_accepted")||0,drafts=breakdown.get("private_draft")||0;
+    const progress=make("span","cr-column-shortmeta",(published+accepted)+"/"+diagnostics.length+" "+(acceptSavedLegacy?"accepted":"published")+(drafts?" · "+drafts+" draft":""));
     progress.title=[...breakdown].map(([state,count])=>count+" "+(historicalStatusText[state]||state)).join("; ");
     th.append(progress);
   }
@@ -772,23 +773,25 @@ function render(){
         const personalized=(column.assessmentSource||SCHOOL_SOURCE)===PERSONALIZED_SOURCE;
         const value=make("span","cr-linked"+(personalized?" personalized":"")+
           (grade&&!state.valid?" invalid":"")+(draft?" draft":""),grade?numberText(grade.awarded)+(state.valid?"":" ⚠"):draft?numberText(diagnostic.awarded)+" · Draft":"—");
-        if(draft){
+        if(grade?.legacyAccepted&&state.valid){
+          value.title="Accepted saved legacy score: "+numberText(grade.awarded)+" / "+numberText(grade.total)+". Counts in Class Record under legacy compatibility. Original publication status is unchanged.";
+        }else if(draft){
           value.title="Saved private grade: "+numberText(diagnostic.awarded)+" / "+numberText(diagnostic.total)+". Publish it in Historical Review & Grade to include it in official computations. Not visible to students.";
         }else if(grade&&state.valid){
           value.title="Published "+sourceName(column.assessmentSource||SCHOOL_SOURCE)+" result: "+
             numberText(grade.awarded)+" / "+numberText(grade.total);
         }else if(grade&&state.reason==="maximum_mismatch"){
-          value.title="Published result is "+numberText(grade.awarded)+" / "+numberText(grade.total)+
+          value.title="Linked result is "+numberText(grade.awarded)+" / "+numberText(grade.total)+
             ", but this Class Record column is locked to "+numberText(column.maxPoints)+
             " points. Archive this old column and add the assessment again with its current maximum.";
         }else if(grade){
-          value.title="This published result is outside the valid score range for the Class Record column and is excluded from live grade calculations.";
+          value.title="This linked result is outside the valid score range for the Class Record column and is excluded from live grade calculations.";
         }else if(diagnostic){
           value.title=historicalStatusText[diagnostic.status]||"Historical grade requires review.";
         }else{
           value.title=personalized
             ?"No published Personalized Studio grade yet. Review the Studio submission, save the grade draft, and publish it from Studio grading."
-            :(column.assessmentSource===HISTORICAL_SOURCE?"No verified published historical grade for this learner. Check the original grade, class section and identity mapping.":"No published school Gradebook result yet.");
+            :(column.assessmentSource===HISTORICAL_SOURCE?"No verified eligible historical grade for this learner. Check the original grade, class section and identity mapping.":"No published school Gradebook result yet.");
         }
         td.append(value);
       }
@@ -901,10 +904,10 @@ function syncAssessmentSourceNote(){
         "” but the current course is “"+(currentOffering?.subjectName||"unknown")+"”. Select the original deployed section and explicitly confirm this course mapping. Adminerva will require verified matching student identities from that original section before linking, even if the two sections have the same name. Grades remain in their original records."
       :task.historicalSectionReview
       ?"This original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" assessment uses another section name. Select its original deployed section. On save, Adminerva must verify that at least one-third of the current class roster has original student records in that section. If it cannot, the link will be blocked. No grades or original records will be moved."
-      :"Original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" grades are read in place, without copying or changing them. Only published, identity-matched grades appear. Confirm the assessment belongs to "+(task.periodLabel||currentOffering?.termName||"this selected period")+".";
+      :"Original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" grades are read in place, without copying or changing them. "+(acceptSavedLegacy?"Saved, identity-matched legacy scores count regardless of publication status.":"Only published, identity-matched grades count.")+" Confirm the assessment belongs to "+(task.periodLabel||currentOffering?.termName||"this selected period")+".";
     el("cr-historical-period-label").textContent="I confirm this historical assessment belongs to "+(task.periodLabel||currentOffering?.termName||"the selected academic period")+".";
   }else if(task.sourceType===PERSONALIZED_SOURCE){
-    note.textContent="Personalized Studio is graded from the exact learner-specific Studio submission. Class Record imports the score only after Studio grading publishes it; Repository Management is not involved.";
+    note.textContent="Personalized Studio is graded from the exact learner-specific Studio submission. Class Record reads the original score under the applicable legacy compatibility policy; Repository Management is not involved.";
   }else{
     note.textContent="This school assessment uses the school Gradebook. Class Record shows only its published score.";
   }
@@ -1866,7 +1869,8 @@ async function loadWorkspace(){
     syncFinalizationBanner();
     manualScores=new Map((result.manualScores||[]).map(item=>[key(item.columnId,item.personId),item.score]));
     manualScoreMeta=new Map((result.manualScores||[]).map(item=>[key(item.columnId,item.personId),item]));
-    publishedGrades=new Map((result.publishedGrades||[]).map(item=>[
+    acceptSavedLegacy=result.acceptSavedLegacy===true;
+    publishedGrades=new Map([...(result.publishedGrades||[]),...(result.legacyAcceptedGrades||[])].map(item=>[
       gradeKey(item.sourceType||SCHOOL_SOURCE,item.taskId,item.personId),item
     ]));
     historicalGradeDiagnostics=new Map((result.historicalGradeDiagnostics||[]).map(item=>[key(item.columnId,item.personId),item]));
@@ -1928,7 +1932,7 @@ offeringSelect.addEventListener("change",async()=>{
   finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
   settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
   gradingPolicy=null;pendingSchemeSnapshot=null;
-  manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();historicalGradeDiagnostics.clear();cellStates.clear();dirtyColumns.clear();
+  manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();historicalGradeDiagnostics.clear();acceptSavedLegacy=false;cellStates.clear();dirtyColumns.clear();
   if(next)await loadWorkspace();else render();
 });
 addButton.addEventListener("click",()=>openColumnDialog());
@@ -2175,7 +2179,7 @@ picker=createTenantSchoolPicker({
     pendingSchemeSnapshot=null;
     settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
     gradingPolicy=null;
-    manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();historicalGradeDiagnostics.clear();cellStates.clear();dirtyColumns.clear();
+    manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();historicalGradeDiagnostics.clear();acceptSavedLegacy=false;cellStates.clear();dirtyColumns.clear();
     offeringSelect.replaceChildren(new Option("Choose a class…",""));
     offeringSelect.disabled=true;panel.hidden=true;kpis.replaceChildren();
   },
