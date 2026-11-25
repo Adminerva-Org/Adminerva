@@ -1,6 +1,7 @@
 const routes=[
   {file:"owner-schools.html",label:"School Registry"},
   {file:"system-users.html",label:"Platform Users"},
+  {file:"platform-logs.html",label:"User Action & System Logs"},
   {file:"admin-analytics.html",label:"Monitoring & Maintenance"},
   {file:"patch-notes.html",label:"Releases"}
 ];

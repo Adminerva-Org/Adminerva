@@ -9,17 +9,27 @@ const academicsApi=httpsCallable(functions,"schoolAcademics");
 
 const SCHOOL_SOURCE="school";
 const PERSONALIZED_SOURCE="legacy_personalized";
+const HISTORICAL_SOURCE="legacy_historical";
 const initialParams=new URLSearchParams(location.search);
 const deepLinkOfferingId=String(initialParams.get("offering")||"");
 let pendingAssessmentDeepLink=initialParams.get("assessment")?{
   taskId:String(initialParams.get("assessment")||""),
-  source:[SCHOOL_SOURCE,PERSONALIZED_SOURCE].includes(initialParams.get("source"))?
+  source:[SCHOOL_SOURCE,PERSONALIZED_SOURCE,HISTORICAL_SOURCE].includes(initialParams.get("source"))?
     initialParams.get("source"):SCHOOL_SOURCE
 }:null;
 const offeringSelect=el("cr-offering");
 const status=el("cr-status");
 const panel=el("cr-record-panel");
 const tableWrap=el("cr-table-wrap");
+const viewOptions=el("cr-view-options");
+const viewChecks={
+  category:el("cr-show-category"),
+  computed:el("cr-show-computed"),
+  final:el("cr-show-final")
+};
+const sourceSearchInput=el("cr-source-search");
+const sourceSearchResults=el("cr-source-search-results");
+const sourceSearchButton=el("cr-find-source");
 const addButton=el("cr-add-column");
 const setupButton=el("cr-grade-setup");
 const saveScoresButton=el("cr-save-scores");
@@ -76,6 +86,7 @@ let currentOfferingId="";
 let currentOffering=null;
 let roster=[];
 let assessments=[];
+let historicalAvailability={};
 let collaborators=[];
 let permissions={primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,classRole:"co_teacher",canEditClassRecord:false};
 let columns=[];
@@ -95,6 +106,39 @@ let dirtyColumns=new Set();
 let editingColumnId=null;
 let scoreStatusTarget=null;
 let busy=false;
+// Display choices are temporary and local to each class; they never affect the
+// saved score ledger, finalized grades, exports or the student portal.
+const viewByOffering=new Map();
+function currentView(){
+  return viewByOffering.get(currentOfferingId)||{category:false,computed:false,final:false};
+}
+function syncViewChecks(){
+  const view=currentView();
+  for(const [name,check] of Object.entries(viewChecks))check.checked=view[name]===true;
+}
+function changeView(name,visible){
+  if(dirtyColumns.size){
+    syncViewChecks();
+    say("Save manual score changes before switching display columns, so no unsaved scores are lost.");
+    return;
+  }
+  const view={...currentView(),[name]:visible===true};
+  viewByOffering.set(currentOfferingId,view);
+  render();
+}
+function makeEmptyRecord({symbol,title,description,actions=[]}){
+  const root=make("div","cr-empty-state");
+  root.append(make("div","cr-empty-symbol",symbol),make("h2","",title),make("p","",description));
+  if(actions.length){
+    const toolbar=make("div","cr-empty-actions");
+    for(const {title:caption,primary=false,handler} of actions){
+      const button=make("button","cr-button"+(primary?" primary":""),caption);
+      button.type="button";button.addEventListener("click",handler);toolbar.append(button);
+    }
+    root.append(toolbar);
+  }
+  return root;
+}
 
 function key(columnId,personId){return columnId+"::"+personId}
 function gradeKey(sourceType,taskId,personId){return (sourceType||SCHOOL_SOURCE)+"::"+taskId+"::"+personId}
@@ -162,7 +206,7 @@ function schemeScopeSummary(scheme){
   return parts.length?parts.join(" · "):"school-wide";
 }
 function sourceName(source){
-  return source===PERSONALIZED_SOURCE?"Personalized Studio":"School assessment";
+  return source===PERSONALIZED_SOURCE?"Personalized Studio":source===HISTORICAL_SOURCE?"Historical assessment":"School assessment";
 }
 function studentVisibility(column){return column?.studentVisibility==="released"?"released":"hidden"}
 function activeColumns(){return columns.filter(column=>column.archived!==true)}
@@ -540,11 +584,71 @@ async function saveScoreStatus(){
     el("cr-score-status-message").textContent=error?.message||"Score status was not saved.";
   }finally{button.disabled=false;}
 }
+function columnOptionButton(parent,label,onClick,{disabled=false,warning=false}={}){
+  const button=make("button",warning?"cr-column-delete":"",label);
+  button.type="button";button.disabled=disabled;
+  button.addEventListener("click",onClick);
+  parent.append(button);
+  return button;
+}
+function appendColumnHeader(headRow,column,index,visibleColumns){
+  const th=make("th","cr-activity-heading");
+  th.scope="col";th.dataset.columnId=column.columnId;
+  const header=make("div","cr-column-top");
+  const title=make("span","cr-column-title",column.label);
+  title.title=column.label;
+  header.append(title);
+  const details=make("details","cr-column-options");
+  const summary=make("summary","","⋯");
+  summary.setAttribute("aria-label","Options for "+column.label);
+  summary.title="Options for "+column.label;
+  details.append(summary);
+  const menu=make("div","cr-column-actions");
+  const source=column.kind==="assessment"
+    ?sourceName(column.assessmentSource||SCHOOL_SOURCE):"Manual";
+  menu.append(make("div","cr-column-hint",
+    (column.category||"Uncategorized")+" · "+source+" · "+numberText(column.maxPoints)+" pts"));
+  const editing=canEditClassRecord();
+  columnOptionButton(menu,"Edit activity",()=>openColumnDialog(column),{disabled:!editing});
+  const visibility=studentVisibility(column);
+  columnOptionButton(menu,visibility==="released"?"Hide from students":"Release to students",
+    ()=>void toggleColumnVisibility(column),{disabled:!editing});
+  if(index>0)columnOptionButton(menu,"Move left",()=>moveColumn(column.columnId,-1),{disabled:!editing});
+  if(index<visibleColumns.length-1)
+    columnOptionButton(menu,"Move right",()=>moveColumn(column.columnId,1),{disabled:!editing});
+  const task=column.kind==="assessment"?columnTask(column):null;
+  if(task?.gradeRoute||task?.reviewRoute){
+    const link=make("a","",
+      task.sourceType===PERSONALIZED_SOURCE?"Open Studio grading":
+      task.sourceType===HISTORICAL_SOURCE?"Open historical Review & Grade":"Open Gradebook");
+    link.href=task.sourceType===PERSONALIZED_SOURCE
+      ?(task.reviewRoute||task.gradeRoute):task.gradeRoute;
+    menu.append(link);
+  }
+  columnOptionButton(menu,"Archive activity",()=>archiveColumn(column),
+    {disabled:!editing,warning:true});
+  details.append(menu);
+  details.addEventListener("click",event=>{
+    if(event.target.closest(".cr-column-actions")&&
+       event.target.closest("button,a"))details.open=false;
+  });
+  details.addEventListener("keydown",event=>{
+    if(event.key==="Escape"){details.open=false;summary.focus();event.stopPropagation();}
+  });
+  header.append(details);
+  th.append(header);
+  const meta=make("span","cr-column-shortmeta",numberText(column.maxPoints)+" pts");
+  meta.title=source+" · "+(column.category||"Uncategorized")+" · "+
+    (visibility==="released"?"Released to students":"Hidden from students");
+  th.append(meta);
+  th.title=column.label+" — "+(column.category||"Uncategorized")+" — "+source;
+  headRow.append(th);
+}
 function render(){
+  syncViewChecks();
   updateKpis();
   tableWrap.replaceChildren();
   if(!currentOfferingId){
-    tableWrap.append(make("div","cr-empty","Choose a class to load its record."));
     panel.hidden=true;
     return;
   }
@@ -552,17 +656,31 @@ function render(){
   el("cr-record-title").textContent=offeringSelect.selectedOptions[0]?.textContent||"Class record";
   const setup=gradeSetupState();
   if(!roster.length){
-    tableWrap.append(make("div","cr-empty","No active students are enrolled in this class."));
+    tableWrap.append(makeEmptyRecord({
+      symbol:"◎",title:"No active class roster yet",
+      description:"Students will appear here from their official registration and class placement. Confirm the school's enrollment and section assignments before recording scores."
+    }));
     return;
   }
   const visibleColumns=activeColumns();
   if(!visibleColumns.length){
-    tableWrap.append(make("div","cr-empty","No active Class Record columns yet. Add a column or restore one from Archived."));
+    const actions=canEditClassRecord()?[
+      {title:"Add a manual activity",primary:true,handler:()=>openColumnDialog()},
+      {title:"Link an assessment",handler:()=>openColumnDialog(null,"assessment")},
+      ...(archivedColumns().length?[{title:"Restore archived activity",handler:openArchived}]:[])
+    ]:[];
+    tableWrap.append(makeEmptyRecord({
+      symbol:"＋",title:"Start this class record",
+      description:roster.length+" enrolled students are ready. Add a manual score activity or link an Adminerva assessment; published scores will appear here automatically. "+
+        (canEditClassRecord()?"":"Only the Primary Teacher can change the formal record."),
+      actions
+    }));
     updateDirtyState();
     return;
   }
 
-  const categories=usedCategories();
+  const view=currentView();
+  const categories=view.category?usedCategories():[];
   const weights=weightMap();
   const table=make("table","cr-table");
   const thead=document.createElement("thead");
@@ -572,89 +690,41 @@ function render(){
   headRow.append(studentHead);
 
   visibleColumns.forEach((column,index)=>{
-    const th=make("th");
-    th.scope="col";
-    th.dataset.columnId=column.columnId;
-    th.append(make("span","cr-category",column.category||"Uncategorized"));
-    th.append(make("span","cr-column-label",column.label));
-    const source=column.kind==="assessment"
-      ?sourceName(column.assessmentSource||SCHOOL_SOURCE)+" · "+numberText(column.maxPoints)+" pts"
-      :"Manual · "+numberText(column.maxPoints)+" pts";
-    th.append(make("span","cr-column-meta",source));
-    const actions=make("div","mt-2 flex items-center justify-center gap-2 flex-wrap");
-    if(index>0){
-      const left=make("button","text-xs font-bold text-slate-600 underline","←");
-      left.type="button";left.title="Move column left";left.disabled=!canEditClassRecord();
-      left.addEventListener("click",()=>moveColumn(column.columnId,-1));actions.append(left);
-    }
-    if(index<visibleColumns.length-1){
-      const right=make("button","text-xs font-bold text-slate-600 underline","→");
-      right.type="button";right.title="Move column right";right.disabled=!canEditClassRecord();
-      right.addEventListener("click",()=>moveColumn(column.columnId,1));actions.append(right);
-    }
-    const visibility=studentVisibility(column);
-    const visibilityButton=make("button",
-      "text-xs font-bold underline "+(visibility==="released"?"text-emerald-700":"text-slate-600"),
-      visibility==="released"?"Visible":"Hidden");
-    visibilityButton.type="button";visibilityButton.disabled=!canEditClassRecord();
-    visibilityButton.title=visibility==="released"?
-      "Released in students' My Grades view":"Hidden from students' My Grades view";
-    visibilityButton.addEventListener("click",()=>void toggleColumnVisibility(column));
-    actions.append(visibilityButton);
-    const edit=make("button","text-xs font-bold text-blue-700 underline","Edit");
-    edit.type="button";edit.disabled=!canEditClassRecord();edit.addEventListener("click",()=>openColumnDialog(column));actions.append(edit);
-    const archive=make("button","text-xs font-bold text-amber-700 underline","Archive");
-    archive.type="button";archive.disabled=!canEditClassRecord();archive.addEventListener("click",()=>archiveColumn(column));actions.append(archive);
-    if(column.kind==="assessment"){
-      const task=columnTask(column);
-      if(task?.gradeRoute||task?.reviewRoute){
-        const link=make("a","text-xs font-bold text-indigo-700 underline",
-          task.sourceType===PERSONALIZED_SOURCE?"Studio grading":"Gradebook");
-        link.href=task.sourceType===PERSONALIZED_SOURCE?(task.reviewRoute||task.gradeRoute):task.gradeRoute;
-        actions.append(link);
-      }
-    }
-    if(column.kind==="assessment"){
-      const task=columnTask(column);
-      th.title=task?.historical
-        ?"Historical assessment link retained for this Class Record column."
-        :String(task?.title||column.sourceTitle||"");
-    }
-    th.append(actions);
-    headRow.append(th);
+    appendColumnHeader(headRow,column,index,visibleColumns);
   });
 
   for(const category of categories){
-    const th=make("th");
+    const th=make("th","cr-derived");
     th.scope="col";
-    th.append(make("span","cr-category","Category"));
     th.append(make("span","cr-column-label",category));
     const weight=weights.get(category.toLocaleLowerCase("en"));
-    th.append(make("span","cr-column-meta",weight===undefined?"Weight not set":numberText(weight)+"% weight"));
+    th.append(make("span","cr-column-shortmeta",
+      weight===undefined?"Weight not set":numberText(weight)+"%"));
+    th.title="Category subtotal · "+category;
     headRow.append(th);
   }
-  const initialHead=make("th");
-  initialHead.scope="col";
-  initialHead.append(make("span","cr-category","Computed"));
-  initialHead.append(make("span","cr-column-label","Initial Grade"));
-  initialHead.append(make("span","cr-column-meta","weighted 0–100"));
-  headRow.append(initialHead);
+  if(view.computed){
+    const initialHead=make("th","cr-derived");
+    initialHead.scope="col";
+    initialHead.append(make("span","cr-column-label","Initial"));
+    initialHead.title="Computed initial grade · weighted 0–100";
+    headRow.append(initialHead);
 
-  const periodHead=make("th");
-  periodHead.scope="col";
-  periodHead.append(make("span","cr-category","Computed · 2 decimals"));
-  periodHead.append(make("span","cr-column-label",
-    settings.gradeComputation==="deped_60_100"?"Transmuted Grade":"Weighted Grade"));
-  periodHead.append(make("span","cr-column-meta",
-    settings.gradeComputation==="deped_60_100"?"60–100 transmutation":"weighted grade"));
-  headRow.append(periodHead);
-
-  const finalHead=make("th");
-  finalHead.scope="col";
-  finalHead.append(make("span","cr-category","Official"));
-  finalHead.append(make("span","cr-column-label","Final Grade"));
-  finalHead.append(make("span","cr-column-meta","nearest whole number"));
-  headRow.append(finalHead);
+    const periodHead=make("th","cr-derived");
+    periodHead.scope="col";
+    periodHead.append(make("span","cr-column-label",
+      settings.gradeComputation==="deped_60_100"?"Transmuted":"Weighted"));
+    periodHead.title=settings.gradeComputation==="deped_60_100"?
+      "Computed 60–100 grade transmutation":"Computed weighted period grade";
+    headRow.append(periodHead);
+  }
+  if(view.final){
+    const finalHead=make("th","cr-derived");
+    finalHead.scope="col";
+    finalHead.append(make("span","cr-column-label","Final"));
+    finalHead.title="Official final grade · nearest whole number";
+    headRow.append(finalHead);
+  }
 
   thead.append(headRow);table.append(thead);
   const tbody=document.createElement("tbody");
@@ -696,7 +766,7 @@ function render(){
         }else{
           value.title=personalized
             ?"No published Personalized Studio grade yet. Review the Studio submission, save the grade draft, and publish it from Studio grading."
-            :"No published school Gradebook result yet.";
+            :(column.assessmentSource===HISTORICAL_SOURCE?"No verified published historical grade for this learner. Check the original grade, class section and identity mapping.":"No published school Gradebook result yet.");
         }
         td.append(value);
       }
@@ -708,12 +778,16 @@ function render(){
       const td=make("td","cr-summary");
       td.dataset.summaryPerson=student.personId;td.dataset.category=category;tr.append(td);
     }
-    const initial=make("td","cr-summary");
-    initial.dataset.summaryPerson=student.personId;initial.dataset.summaryKind="initial";tr.append(initial);
-    const period=make("td","cr-summary");
-    period.dataset.summaryPerson=student.personId;period.dataset.summaryKind="period";tr.append(period);
-    const final=make("td","cr-summary");
-    final.dataset.summaryPerson=student.personId;final.dataset.summaryKind="final";tr.append(final);
+    if(view.computed){
+      const initial=make("td","cr-summary");
+      initial.dataset.summaryPerson=student.personId;initial.dataset.summaryKind="initial";tr.append(initial);
+      const period=make("td","cr-summary");
+      period.dataset.summaryPerson=student.personId;period.dataset.summaryKind="period";tr.append(period);
+    }
+    if(view.final){
+      const final=make("td","cr-summary");
+      final.dataset.summaryPerson=student.personId;final.dataset.summaryKind="final";tr.append(final);
+    }
     tbody.append(tr);
   }
   table.append(tbody);tableWrap.append(table);
@@ -724,17 +798,20 @@ function populateAssessmentOptions(selectedSource="",selectedTaskId=""){
   const used=new Set(columns.filter(column=>column.kind==="assessment"&&column.archived!==true&&
       column.columnId!==editingColumnId)
     .map(column=>assessmentKey(column.assessmentSource||SCHOOL_SOURCE,column.taskId)));
+  const usedLegacy=new Set(columns.filter(column=>column.kind==="assessment"&&column.archived!==true&&column.columnId!==editingColumnId&&[PERSONALIZED_SOURCE,HISTORICAL_SOURCE].includes(column.assessmentSource)).map(column=>column.taskId));
   const selectedKey=selectedTaskId?assessmentKey(selectedSource,selectedTaskId):"";
   const available=assessments.filter(task=>{
     const key=assessmentKey(task.sourceType,task.taskId);
-    return (task.linkable!==false&&!used.has(key))||key===selectedKey;
+    return ((task.linkable!==false||task.historicalSectionReview===true)&&!used.has(key)&&(![HISTORICAL_SOURCE,PERSONALIZED_SOURCE].includes(task.sourceType)||!usedLegacy.has(task.taskId)))||key===selectedKey;
   });
   assessmentSelect.add(new Option(available.length?"Choose an assessment…":"No unlinked assessments available",""));
   assessmentSelect.options[0].disabled=true;
   for(const task of available){
-    const label=(task.sourceType===PERSONALIZED_SOURCE?"Personalized Studio · ":"School · ")+
+    const label=(task.sourceType===HISTORICAL_SOURCE?"Historical "+(task.submissionSource==="studio"?"Studio":"GitHub")+" · ":task.sourceType===PERSONALIZED_SOURCE?"Personalized Studio · ":"School · ")+
       task.title+" · "+numberText(task.maxPoints)+" pts"+
-      (task.historical?" · historical":task.published===false?" · unpublished":"");
+      (task.historicalSubjectReview?" · original subject requires confirmation":
+       task.historicalSectionReview?" · original section needs verification":
+       task.historical?" · historical":task.published===false?" · unpublished":"");
     assessmentSelect.add(new Option(label,assessmentKey(task.sourceType,task.taskId)));
   }
   assessmentSelect.value=selectedTaskId?assessmentKey(selectedSource,selectedTaskId):"";
@@ -755,10 +832,56 @@ function policyCategorySuggestion(task){
 }
 function syncAssessmentSourceNote(){
   const note=el("cr-assessment-source-note"),task=selectedAssessment();
-  if(!task){note.hidden=true;note.textContent="";return;}
+  const confirm=el("cr-historical-confirm"),checkbox=el("cr-historical-period");
+  const sectionPanel=el("cr-historical-section-panel"),sectionSelect=el("cr-historical-source-section");
+  const subjectPanel=el("cr-historical-subject-panel"),subjectCheckbox=el("cr-historical-subject");
+  const needsConfirmation=task?.sourceType===HISTORICAL_SOURCE&&!editingColumnId&&columnKind.value==="assessment";
+  const needsSection=needsConfirmation&&task?.historicalSectionReview===true;
+  const needsSubject=needsConfirmation&&task?.historicalSubjectReview===true;
+  subjectPanel.hidden=!needsSubject;subjectCheckbox.disabled=!needsSubject;subjectCheckbox.required=needsSubject;
+  if(!needsSubject||subjectCheckbox.dataset.assessment!==task?.taskId)subjectCheckbox.checked=false;
+  subjectCheckbox.dataset.assessment=needsSubject?task.taskId:"";
+  if(needsSubject)
+    el("cr-historical-subject-label").textContent="I confirm the original assessment subject “"+
+      (task.originalSubjectName||"(unlabeled)")+"” belongs in the selected "+
+      (currentOffering?.subjectName||"school course")+" for this academic period.";
+  confirm.hidden=!needsConfirmation;checkbox.disabled=!needsConfirmation;checkbox.required=needsConfirmation;
+  sectionPanel.hidden=!needsSection;sectionSelect.disabled=!needsSection;sectionSelect.required=needsSection;
+  if(needsSection&&sectionSelect.dataset.assessment!==task.taskId){
+    sectionSelect.replaceChildren(new Option("Select the original historical section…",""));
+    sectionSelect.options[0].disabled=true;
+    for(const section of task.sourceSections||[])sectionSelect.add(new Option(section,section));
+    sectionSelect.value="";sectionSelect.dataset.assessment=task.taskId;
+  }else if(!needsSection)sectionSelect.dataset.assessment="";
+  if(!needsConfirmation||checkbox.dataset.assessment!==task?.taskId)checkbox.checked=false;
+  checkbox.dataset.assessment=task?.taskId||"";
+  if(!task){
+    const empty=columnKind.value==="assessment"&&assessmentSelect.options.length<=1;
+    note.hidden=!empty;
+    if(!empty){note.textContent="";return;}
+    const stats=historicalAvailability||{},owned=Number(stats.ownedCount)||0;
+    if(stats.supported===false){
+      note.textContent="No assessment in this class is linkable. Historical Repository Management records can only be read from their verified originating school; ask School Administration to review a source-school migration instead of copying grades.";
+    }else if(owned===0){
+      note.textContent="No original historical assessments belong to this signed-in teacher login. If the assessments were created with an older login, use the verified account-recovery process; Adminerva cannot assume ownership from a matching name.";
+    }else if((Number(stats.subjectMismatchCount)||0)>0){
+      note.textContent=owned+" original historical assessment(s) found, but "+stats.subjectMismatchCount+" use a different subject. Confirm the original subject and the official class offering in School Administration or the source Assessment Library.";
+    }else{
+      note.textContent=owned+" original historical assessment(s) found, but none can be added from this class. Check the linked/archived columns, original assessment deployments and school grading configuration.";
+    }
+    return;
+  }
   note.hidden=false;
   const suggested=policyCategorySuggestion(task);
-  if(task.sourceType===PERSONALIZED_SOURCE){
+  if(task.sourceType===HISTORICAL_SOURCE){
+    note.textContent=task.historicalSubjectReview
+      ?"The original assessment uses subject “"+(task.originalSubjectName||"unlabeled")+
+        "” but the current course is “"+(currentOffering?.subjectName||"unknown")+"”. Select the original deployed section and explicitly confirm this course mapping. Adminerva will require verified matching student identities from that original section before linking, even if the two sections have the same name. Grades remain in their original records."
+      :task.historicalSectionReview
+      ?"This original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" assessment uses another section name. Select its original deployed section. On save, Adminerva must verify that at least one-third of the current class roster has original student records in that section. If it cannot, the link will be blocked. No grades or original records will be moved."
+      :"Original "+(task.submissionSource==="studio"?"Studio":"GitHub")+" grades are read in place, without copying or changing them. Only published, identity-matched grades appear. Confirm the assessment belongs to "+(task.periodLabel||currentOffering?.termName||"this selected period")+".";
+    el("cr-historical-period-label").textContent="I confirm this historical assessment belongs to "+(task.periodLabel||currentOffering?.termName||"the selected academic period")+".";
+  }else if(task.sourceType===PERSONALIZED_SOURCE){
     note.textContent="Personalized Studio is graded from the exact learner-specific Studio submission. Class Record imports the score only after Studio grading publishes it; Repository Management is not involved.";
   }else{
     note.textContent="This school assessment uses the school Gradebook. Class Record shows only its published score.";
@@ -776,7 +899,7 @@ function syncColumnFields(){
   el("cr-assessment-fields").hidden=kind!=="assessment";
   columnForm.elements.maxPoints.required=kind==="manual";
   assessmentSelect.required=kind==="assessment";
-  if(kind==="assessment")syncAssessmentSourceNote();
+  syncAssessmentSourceNote();
 }
 function closeColumnDialog(){
   if(busy)return;
@@ -919,18 +1042,19 @@ async function saveStudentVisibility(){
     el("cr-visibility-status").textContent=error?.message||"Student visibility was not saved.";
   }finally{button.disabled=false;}
 }
-function openColumnDialog(column=null){
+function openColumnDialog(column=null,preferredKind="manual"){
   if(!canEditClassRecord()){say("Only the Primary Teacher may change the formal Class Record layout.");return;}
   if(column?.archived===true)return;
   editingColumnId=column?.columnId||null;
   columnForm.reset();
+  sourceSearchResults.replaceChildren();
   el("cr-column-heading").textContent=column?"Edit column":"Add column";
   el("cr-column-save").textContent=column?"Save column details":"Add column";
   el("cr-column-lock-note").hidden=!column;
   columnForm.elements.label.value=column?.label||"";
   columnForm.elements.category.value=column?.category||"";
   columnForm.elements.studentVisibility.value=studentVisibility(column);
-  columnKind.value=column?.kind||"manual";
+  columnKind.value=column?.kind||preferredKind;
   columnForm.elements.maxPoints.value=column?.kind==="manual"?String(column.maxPoints):"10";
   populateAssessmentOptions(column?.assessmentSource||SCHOOL_SOURCE,column?.kind==="assessment"?column.taskId:"");
   columnKind.disabled=Boolean(column);
@@ -983,6 +1107,8 @@ async function saveLayout(nextColumns,nextSettings=settings,success="Class Recor
   if(!canEditClassRecord())throw Error("Only the Primary Teacher may change the formal Class Record.");
   if(busy||!currentOfferingId)throw Error("Finish the current Class Record operation first.");
   if(dirtyColumns.size)throw Error("Save manual score changes before changing the Class Record layout.");
+  const existingIds=new Set(columns.map(column=>column.columnId));
+  const addedAssessment=nextColumns.some(column=>column.kind==="assessment"&&!existingIds.has(column.columnId));
   setBusy(true,"Saving Class Record…");
   try{
     const result=await scoped(classRecordApi,"save_layout",{
@@ -992,7 +1118,12 @@ async function saveLayout(nextColumns,nextSettings=settings,success="Class Recor
     columns=Array.isArray(result.columns)?result.columns:nextColumns;
     settings=result.settings||nextSettings;
     sheetRevision=Number(result.revision)||sheetRevision+1;
-    render();say(success);return result;
+    render();
+    if(addedAssessment){
+      const refreshed=await loadWorkspace();
+      say(refreshed?success:"Column saved. Refresh Class Record to load its published grades.");
+    }else say(success);
+    return result;
   }finally{
     setBusy(false);syncColumnFields();
   }
@@ -1696,6 +1827,7 @@ async function loadWorkspace(){
     currentOffering=result.offering||null;
     roster=result.roster||[];
     assessments=result.assessments||[];
+    historicalAvailability=result.historicalAvailability||{};
     collaborators=result.collaborators||[];
     permissions=result.permissions||{primaryTeacherUid:"",primarySource:"none",primaryNeedsReview:false,classRole:"co_teacher",canEditClassRecord:false};
     columns=(result.columns||[]).map(column=>{
@@ -1806,6 +1938,14 @@ document.querySelector(".cr-more")?.addEventListener("click",event=>{
   if(event.target instanceof HTMLButtonElement)event.currentTarget.removeAttribute("open");
 });
 window.addEventListener("afterprint",cleanupPrint);
+for(const [name,check] of Object.entries(viewChecks)){
+  check.addEventListener("change",()=>changeView(name,check.checked));
+}
+document.addEventListener("click",event=>{
+  for(const menu of tableWrap.querySelectorAll(".cr-column-options[open]")){
+    if(!menu.contains(event.target))menu.open=false;
+  }
+});
 columnKind.addEventListener("change",syncColumnFields);
 el("cr-import-file").addEventListener("change",async event=>{
   const file=event.target.files?.[0];if(!file)return;
@@ -1814,6 +1954,91 @@ el("cr-import-file").addEventListener("change",async event=>{
   el("cr-import-status").textContent="File loaded. Stage the scores to preview changes in the record.";
 });
 el("cr-import-template").addEventListener("click",downloadImportTemplate);
+async function findEarlierAssessment(){
+  if(!currentOfferingId||sourceSearchButton.disabled)return;
+  const query=sourceSearchInput.value.trim();
+  sourceSearchResults.replaceChildren();
+  if(query.length<2){
+    sourceSearchResults.append(make("p","cr-muted","Enter at least two characters from the assessment title."));
+    return;
+  }
+  sourceSearchButton.disabled=true;
+  sourceSearchButton.textContent="Searching…";
+  try{
+    const result=await scoped(classRecordApi,"find_assessment_source",{
+      offeringId:currentOfferingId,query
+    });
+    const candidates=Array.isArray(result.results)?result.results:[];
+    const inspected=result.checked||{};
+    const checked=(Number(inspected.originalAssessments)||0)+
+      (Number(inspected.schoolAssessments)||0)+(Number(inspected.importedBlueprints)||0);
+    sourceSearchResults.append(make("p","cr-help",
+      "Checked "+checked+" sources belonging to your verified teacher account. "+
+      candidates.length+" match"+(candidates.length===1?"":"es")+" found."));
+    const legacyCandidates=Array.isArray(result.legacyRepositoryCandidates)?
+      result.legacyRepositoryCandidates:[];
+    if(!candidates.length&&!legacyCandidates.length){
+      sourceSearchResults.append(make("p","cr-help",
+        "No matching assessment was found under this teacher identity in the current school. "+
+        "The missing work may belong to an earlier login, another school, or a source outside "+
+        "the original assessment library. Ask School Administration to verify the original "+
+        "assessment owner and recovery mapping; do not recreate the grade or submission."));
+    }
+    for(const item of candidates){
+      const card=make("article");
+      const type=item.sourceType==="original_assessment"?"Historical original":
+        item.sourceType==="imported_blueprint"?"Imported school blueprint":"School assessment";
+      card.append(make("strong","",item.title||"Unnamed assessment"));
+      card.append(make("p","",type+
+        (item.subject?" · Subject: "+item.subject:"")+
+        (item.status?" · "+item.status:"")));
+      card.append(make("p","",item.summary||""));
+      if(item.sourceType==="imported_blueprint"&&item.originalAssessmentId)
+        card.append(make("p","","Original source reference: "+item.originalAssessmentId));
+      if(item.sourceType==="school_assessment"&&item.inSelectedOffering){
+        card.append(make("p","","This class is its current offering. If it is not linkable, "+
+          "check its deployment and lifecycle in the Assessment Library."));
+      }
+      sourceSearchResults.append(card);
+    }
+    if(legacyCandidates.length){
+      sourceSearchResults.append(make("p","cr-help",
+        legacyCandidates.length+" earlier Repository Management assessment"+
+        (legacyCandidates.length===1?"":"s")+
+        " found in a verified original class section, but ownership requires review:"));
+      for(const item of legacyCandidates){
+        const card=make("article");
+        card.append(make("strong","",item.title||"Legacy assessment"));
+        card.append(make("p","",
+          "Legacy source reference: "+item.assessmentId+
+          (item.subject?" · Original subject: "+item.subject:"")+
+          (item.originalSections?.length?" · Original section: "+item.originalSections.join(", "):"")+
+          (item.maximum?" · Max score: "+item.maximum:" · Original maximum not recorded")));
+        card.append(make("p","",
+          item.originalOwnerStatus==="owner_not_recorded"?
+            "This assessment predates teacher ownership fields. Its historical section matches verified student identities, but the original owner must still be reviewed.":
+            "This assessment belongs to a different historical login or teacher identity. It cannot be reassigned from this screen."));
+        card.append(make("p","",
+          "NOT LINKABLE / NOT GRADABLE YET — ask School Administration to review original author, deployed section and account history. No scores were copied, published or created."));
+        sourceSearchResults.append(card);
+      }
+    }
+    if(result.legacyRepositoryDiagnostic)
+      sourceSearchResults.append(make("p","cr-help",result.legacyRepositoryDiagnostic));
+    if(result.truncated)
+      sourceSearchResults.append(make("p","cr-help",
+        "Showing the first 30 matches. Narrow the title to refine the search."));
+  }catch(error){
+    sourceSearchResults.append(make("p","cr-help",
+      error?.message||"The source search could not be completed."));
+  }finally{
+    sourceSearchButton.disabled=false;sourceSearchButton.textContent="Find assessment";
+  }
+}
+sourceSearchButton.addEventListener("click",()=>void findEarlierAssessment());
+sourceSearchInput.addEventListener("keydown",event=>{
+  if(event.key==="Enter"){event.preventDefault();void findEarlierAssessment();}
+});
 assessmentSelect.addEventListener("change",syncAssessmentSourceNote);
 el("cr-column-close").addEventListener("click",closeColumnDialog);
 el("cr-column-cancel").addEventListener("click",closeColumnDialog);
@@ -1858,12 +2083,22 @@ columnForm.addEventListener("submit",event=>{
     };
   }else{
     const task=selectedAssessment();
-    if(!task){el("cr-column-status").textContent="Choose a deployed assessment.";return;}
+    if(!task){el("cr-column-status").textContent="Choose an assessment.";return;}
+    if(task.sourceType===HISTORICAL_SOURCE&&!el("cr-historical-period").checked){el("cr-column-status").textContent="Confirm the academic period before linking.";return;}
+    const sourceSection=task.historicalSectionReview?el("cr-historical-source-section").value:"";
+    if(task.historicalSectionReview&&!sourceSection){el("cr-column-status").textContent="Choose the original historical section to verify.";return;}
+    if(task.historicalSubjectReview&&!el("cr-historical-subject").checked){
+      el("cr-column-status").textContent="Confirm the original subject belongs in this course before linking.";
+      return;
+    }
     nextColumn={
       columnId:"col_"+crypto.randomUUID().replaceAll("-","").slice(0,20),
       label,category,kind:"assessment",taskId:task.taskId,
       assessmentSource:task.sourceType,maxPoints:task.maxPoints,
-      sourceTitle:task.title,archived:false,studentVisibility:visibility
+      sourceTitle:task.title,archived:false,studentVisibility:visibility,
+      ...(task.sourceType===HISTORICAL_SOURCE?{confirmHistoricalOffering:currentOfferingId,
+        ...(sourceSection?{historicalSourceSection:sourceSection}:{}),
+        ...(task.historicalSubjectReview?{confirmOriginalSubject:task.originalSubjectName}:{})}:{})
     };
   }
   const next=existing?
@@ -1912,6 +2147,7 @@ picker=createTenantSchoolPicker({
     if(busy)throw new Error("Finish the current Class Record operation before switching schools.");
     if(dirtyColumns.size)throw new Error("Save or discard manual score changes before switching schools.");
     currentOfferingId="";currentOffering=null;offerings=[];periodRecords=[];roster=[];assessments=[];collaborators=[];columns=[];gradingSchemes=[];
+    viewByOffering.clear();
     finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
     pendingSchemeSnapshot=null;
     settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};

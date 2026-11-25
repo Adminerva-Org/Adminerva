@@ -16,6 +16,8 @@ const {createMonitoringService}=require("./monitoring-service.js");
 const {legacyStudentRecordsForAccount}=require("./legacy-student-identity.js");
 initializeApp();
 const db=getFirestore();
+const {createPlatformAccountDiagnostics}=require("./platform-account-diagnostics.js");
+const platformAccountDiagnostics=createPlatformAccountDiagnostics({db,FieldValue,Timestamp});
 const messaging=getMessaging();
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
 const {createSchoolPracticeSeasonService}=require("./school-practice-season-service.js");
@@ -42,9 +44,22 @@ async function rejectPlatformPreviewMutation(request,{allowPlatformSchoolWrites=
   throw new HttpsError("failed-precondition",
     "System Admin role preview is temporary. This school change was not saved. Choose Assist school for real, audited administrative changes.");
 }
-function safeCallable(handler,options={}){return async request=>{try{
+const DIAGNOSTIC_WRITE_ACTION=/^(?:save|sync|submit|finalize|create|update|upsert|deploy|grant|retire|suspend|restore|withdraw|close|open|mark|assign|publish|enable|disable|accept|approve|reconcile|enroll|grade|record|complete|finish|remove|archive|activate|register|revoke|reset)(?:$|[_A-Z-])/i;
+function safeCallable(handler,options={}){return async request=>{
+  const startedAt=Date.now();
+  try{
   const platformContext=await rejectPlatformPreviewMutation(request,options);
   const result=await handler(request);
+  if(options.diagnosticsService&&DIAGNOSTIC_WRITE_ACTION.test(String(request?.data?.action||""))){
+    // Diagnostics are best-effort and never block an academic save, assessment,
+    // identity change or financial transaction.
+    // This write is an operational side effect AFTER the canonical mutation.
+    // The diagnostic service contains its own errors so an unavailable log
+    // sink cannot turn an already-successful student save into a failed call.
+    await platformAccountDiagnostics.recordServerProcess(request,{
+      service:options.diagnosticsService,startedAt,status:"ok"
+    });
+  }
   if(platformContext?.assist){
     db.collection("platform_admin_assistance_audit").add({
       actorUid:platformContext.uid,schoolId:platformContext.schoolId,action:platformContext.action,
@@ -52,7 +67,8 @@ function safeCallable(handler,options={}){return async request=>{try{
     }).catch(error=>console.warn("System Admin assist audit write failed",{code:error.code||"unknown"}));
   }
   return result;
-}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+}catch(error){await platformAccountDiagnostics.writeServerFailure(request,error,startedAt);
+  const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
 async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
   return !school.exists||school.data().compatibilityMode!=="v4_only";
@@ -102,9 +118,9 @@ const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("
 const {createSchoolRosterActivationService}=require("./school-roster-activation.js");
 const {createSchoolEnrollmentService}=require("./school-enrollment.js");
 const {createPublicSchoolEnrollmentService}=require("./public-school-enrollment.js");
-exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db})));
+exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db}),{diagnosticsService:"peopleDirectory"}));
 exports.activateSchoolRosterAccess=onCall(callOptions,safeCallable(createSchoolRosterActivationService({db})));
-exports.schoolEnrollment=onCall(callOptions,safeCallable(createSchoolEnrollmentService({db})));
+exports.schoolEnrollment=onCall(callOptions,safeCallable(createSchoolEnrollmentService({db}),{diagnosticsService:"schoolEnrollment"}));
 const {createSchoolProfileService}=require("./school-profile.js");
 exports.schoolProfile=onCall(callOptions,safeCallable(createSchoolProfileService({db})));
 
@@ -121,12 +137,10 @@ const {createSchoolAttendanceService}=require("./school-attendance.js");
 exports.schoolAttendance=onCall(callOptions,safeCallable(createSchoolAttendanceService({db})));
 
 const {createSchoolAssessmentService}=require("./school-assessments.js");
-exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db})));
+exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db}),{diagnosticsService:"schoolAssessments"}));
 const {createNativeClientHandoffService}=require("./native-client-handoff.js");
 const {createNativeHandoffLimiter}=require("./native-handoff-rate-limit.js");
-// Credential issuance is DISABLED by default, even if this callable deploys.
-// Do not set the rollout flag until official native signing, throttling,
-// approved session UX, and school/identity acceptance tests are complete.
+// Inert until specifically authorized for official signed clients.
 exports.nativeClientHandoff=onCall(
  {...callOptions,maxInstances:1,concurrency:5,timeoutSeconds:20},
  safeCallable(createNativeClientHandoffService({
@@ -157,8 +171,8 @@ const {createSchoolStudioProjectService}=require("./school-studio-projects.js");
 const {createSchoolStudioSubmissionService}=require("./school-studio-submissions.js");
 const {createStudioAssessmentVariantService}=require("./studio-assessment-variants.js");
 const {createSchoolStudioAssessmentVariantService}=require("./school-studio-assessment-variants.js");
-exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioProjectService({db})));
-exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db})));
+exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioProjectService({db}),{diagnosticsService:"schoolStudioProjects"}));
+exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db}),{diagnosticsService:"schoolStudioSubmissions"}));
 exports.studioAssessmentVariant=onCall(callOptions,safeCallable(createStudioAssessmentVariantService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)})));
 exports.schoolStudioAssessmentVariant=onCall(callOptions,safeCallable(createSchoolStudioAssessmentVariantService({db})));
 const {createStudioAutoVerification}=require("./studio-auto-verification.js");
@@ -202,12 +216,12 @@ exports.schoolStudentClassRecord=onCall(callOptions,safeCallable(createSchoolStu
 const {createSchoolClassRecordAdminService}=require("./school-class-record-admin.js");
 exports.schoolClassRecordAdmin=onCall(callOptions,safeCallable(createSchoolClassRecordAdminService({db})));
 const {createSchoolGradebookService}=require("./school-gradebook.js");
-exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db})));
+exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db}),{diagnosticsService:"schoolGradebook"}));
 const {createSchoolAssessmentConversationService}=require("./school-assessment-conversation.js");
 exports.schoolAssessmentConversation=onCall(callOptions,safeCallable(createSchoolAssessmentConversationService({db})));
 
 const {createSchoolAssessmentSubmissionService}=require("./school-assessment-submissions.js");
-exports.schoolAssessmentSubmissions=onCall(callOptions,safeCallable(createSchoolAssessmentSubmissionService({db})));
+exports.schoolAssessmentSubmissions=onCall(callOptions,safeCallable(createSchoolAssessmentSubmissionService({db}),{diagnosticsService:"schoolAssessmentSubmissions"}));
 const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");
 exports.schoolGithubEvidence=onCall(callOptions,safeCallable(createSchoolGithubEvidenceService({db})));
 const {createSchoolReclaimService}=require("./school-reclaims.js");
@@ -216,7 +230,12 @@ exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationA
 const {createPlatformSchoolService}=require("./platform-schools.js");
 exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db}),{allowPlatformSchoolWrites:true}));
 const {createPlatformUserService}=require("./platform-users.js");
-exports.platformUsers=onCall(callOptions,safeCallable(createPlatformUserService({db,auth:getAuth()})));
+exports.platformUsers=onCall(callOptions,safeCallable(createPlatformUserService({db,auth:getAuth()}),{diagnosticsService:"platformUsers"}));
+// Platform-only timeline reads; individual users may append bounded, code-free diagnostics.
+exports.platformAccountDiagnostics=onCall(callOptions,safeCallable(platformAccountDiagnostics.service));
+exports.platformNotificationDiagnostics=onDocumentCreated({
+  document:"notifications/{uid}/items/{notificationId}",region:"asia-southeast1",maxInstances:2,concurrency:10
+},async event=>platformAccountDiagnostics.recordNotificationDelivered(event.params.uid,event.params.notificationId));
 
 const {createMcsPilotControlService}=require("./mcs-pilot-control.js");
 exports.mcsPilotControl=onCall(callOptions,safeCallable(createMcsPilotControlService({db,auth:getAuth()})));
@@ -434,6 +453,9 @@ exports.practicePlatformLeaderboard=onCall(practiceOptions,async()=>{
   }
 });
 // Dedicated test-only observational data has independent, bounded retention.
+exports.platformDiagnosticRetention=onSchedule({
+  region:"asia-southeast1",schedule:"20 3 * * *",timeZone:"Etc/UTC",timeoutSeconds:300,maxInstances:1,concurrency:1,retryCount:0
+},async()=>platformAccountDiagnostics.cleanup());
 exports.pilotResearchRetention=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>cleanupPilotResearch({db,Timestamp}));
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
 exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>{

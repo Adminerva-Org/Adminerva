@@ -117,7 +117,7 @@ function selectedTestSchool(){
 }
 async function suspendTestSchoolAccess(membership){
   if(busy||!currentAccount||!membership?.testStudentAccess||membership.status!=="active")return;
-  const reason=administrativeReason();if(!reason)return;
+  const reason=testStudentReason();if(!reason)return;
   if(!confirm("Suspend this test student's access to “"+membership.schoolName+"”? Historical school records and the test person will be preserved."))return;
   const uid=currentAccount.uid;
   setBusy(true,"Suspending test student school access…");
@@ -143,7 +143,10 @@ function renderTestControls(){
     :"Not designated as a test student";
   toggle.textContent=active?"Retire test designation":"Designate as test student";
   toggle.className="pu-btn "+(active?"warn":"");
-  toggle.disabled=busy||Boolean(account?.disabled)||Boolean(account?.platformAdmin);
+  toggle.disabled=busy||Boolean(account?.disabled)||Boolean(account?.platformAdmin)||(!active&&!account?.emailVerified);
+  if(!active&&!account?.emailVerified)state.textContent+=" · Verify the login email before designation.";
+  if(account?.disabled)state.textContent+=" · Restore the login account first.";
+  if(account?.platformAdmin)state.textContent+=" · Platform Administrator accounts are ineligible.";
 
   const previous=select.value;
   select.replaceChildren(new Option(testSchoolTargets?"Choose target school":"Loading schools…",""));
@@ -187,6 +190,7 @@ function populateDetail(result){
   currentTestAccount=result.testAccount&&typeof result.testAccount==="object"?result.testAccount:{active:false,status:"none",revision:0};
   el("pu-detail-title").textContent=account.displayName||account.email||"User account";
   el("pu-detail-meta").textContent=(account.email||"No email")+" · "+account.uid;
+  el("pu-open-logs").href="platform-logs.html?uid="+encodeURIComponent(account.uid);
   el("pu-detail-account").replaceChildren(
     detailTile("Account state",accountState(account)),
     detailTile("Platform role",account.platformAdminStatus==="active"?"Platform Administrator":
@@ -250,6 +254,8 @@ async function openDetail(item){
   if(busy)return;
   const run=++detailRun;
   currentAccount=null;currentMemberships=[];currentTestAccount={active:false,status:"none",revision:0};
+  el("pu-test-reason").value="";
+  el("pu-test-status").textContent="";
   el("pu-detail-title").textContent=item.displayName||item.email||"User account";
   el("pu-detail-meta").textContent=item.email||item.uid;
   el("pu-detail-account").replaceChildren(detailTile("Account","Loading…"));
@@ -270,6 +276,15 @@ function administrativeReason(){
   if(value.length<12){
     el("pu-action-status").textContent="Enter an administrative reason of at least 12 characters.";
     el("pu-reason").focus();return null;
+  }
+  return value;
+}
+function testStudentReason(){
+  const input=el("pu-test-reason"),value=input.value.trim();
+  if(value.length<12){
+    el("pu-test-status").textContent="Enter a reason of at least 12 characters in Test student mobility before making this change.";
+    input.focus();
+    return null;
   }
   return value;
 }
@@ -327,7 +342,7 @@ el("pu-create-close").addEventListener("click",()=>createDialog.close());
 el("pu-test-school").addEventListener("change",renderTestControls);
 el("pu-test-toggle").addEventListener("click",async()=>{
   if(busy||!currentAccount)return;
-  const reason=administrativeReason();if(!reason)return;
+  const reason=testStudentReason();if(!reason)return;
   const action=currentTestAccount.active?"retire_test_student":"mark_test_student",uid=currentAccount.uid;
   if(!currentTestAccount.active&&!confirm("Designate this login as a TEST STUDENT? Use this only for a controlled test account. Existing school history will remain intact."))return;
   setBusy(true,currentTestAccount.active?"Retiring test-student designation…":"Designating test student…");
@@ -343,7 +358,9 @@ el("pu-test-toggle").addEventListener("click",async()=>{
 });
 el("pu-test-grant").addEventListener("click",async()=>{
   if(busy||!currentAccount||!currentTestAccount.active)return;
-  const target=selectedTestSchool(),reason=administrativeReason();if(!target||!reason)return;
+  const target=selectedTestSchool();
+  if(!target){el("pu-test-status").textContent="Select a target school first.";el("pu-test-school").focus();return;}
+  const reason=testStudentReason();if(!reason)return;
   if(target.productionAuthorized&&!confirm("Add this explicitly designated test student to the production school “"+target.name+"”? The action is audited and existing school history is preserved."))return;
   const uid=currentAccount.uid;
   setBusy(true,"Adding test student school access…");

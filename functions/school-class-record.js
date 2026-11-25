@@ -6,7 +6,8 @@
  * - manual columns are entered here;
  * - school assessment columns project only published V4 Gradebook results;
  * - the MCS compatibility bridge can project published legacy/schema-v3
- *   Personalized Studio grades while that legacy assessment system is active.
+ *   Personalized Studio grades while that legacy assessment system is active;
+ * - verified historical assessments project original published grades even after cutover.
  *
  * Linked grades are corrected/published in their owning grading workflow.
  */
@@ -14,6 +15,7 @@ const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
+const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
 
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
@@ -27,6 +29,72 @@ const LEGACY_PERSONALIZED_SOURCE="legacy_personalized";
 const CELL_STATUSES=new Set(["normal","incomplete","exempt","not_applicable"]);
 const STUDENT_VISIBILITIES=new Set(["hidden","released"]);
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
+const assessmentSearchWords=value=>String(value||"").toLocaleLowerCase("en")
+  .replace(/[^a-z0-9]+/g," ").trim().split(/\s+/).filter(Boolean);
+function matchesAssessmentTitle(query,title){
+  const terms=assessmentSearchWords(query),words=assessmentSearchWords(title);
+  return terms.length>0&&words.length>0&&
+    terms.every(term=>words.some(word=>/^[0-9]+$/.test(term)?word===term:word.startsWith(term)));
+}
+function canDiscloseAssessmentSource(scope,data,schoolId,uid){
+  if(!data||!schoolId||!uid)return false;
+  if(scope==="school_assessment")
+    return data.schoolId===schoolId&&
+      (data.ownerUid===uid||data.reviewerUid===uid);
+  if(scope==="imported_blueprint")
+    return data.schoolId===schoolId&&data.ownerUid===uid;
+  if(scope==="original_assessment")
+    return data.ownerUid===uid&&validOrigin(data,schoolId);
+  return false;
+}
+
+
+/**
+ * Some October 2026 Repository Management assessments preceded ownerUid,
+ * schemaVersion, sectionIds and maxScore. They must not be silently assigned
+ * to a teacher. A limited source-title diagnostic may reveal an *already
+ * deployed* legacy task only when this offering has verified original student
+ * identities in the original section. This is NOT a permission to grade/link.
+ */
+function legacyRepositoryDeploymentSections(data){
+  const raw=[
+    ...(Array.isArray(data?.deployments)?data.deployments.map(item=>item?.section):[]),
+    ...(Array.isArray(data?.targetSections)?data.targetSections:[])
+  ];
+  const sections=new Map();
+  for(const section of raw){
+    if(typeof section!=="string"||!section.trim()||section.trim().length>160)continue;
+    const normalized=section.trim().toLocaleLowerCase("en").replace(/\s+/g," ");
+    if(!sections.has(normalized))sections.set(normalized,section.trim());
+  }
+  return [...sections.values()];
+}
+function legacyRepositoryMetadataCandidate({
+  task,schoolId,titleQuery,originalSectionPeople,rosterSize,currentTeacherUid
+}){
+  if(!validOrigin(task,schoolId)||task?.ownerUid===currentTeacherUid||
+     (task?.ownerUid!==undefined&&task?.ownerUid!==null&&
+       typeof task.ownerUid!=="string"))return null;
+  if(!matchesAssessmentTitle(titleQuery,task.title)||task.schemaVersion===2||
+     task.schemaVersion===3)return null;
+  // An undeployed teacher preparation resource remains private.
+  const sections=legacyRepositoryDeploymentSections(task);
+  const required=rosterSize===1?1:2;
+  const proven=sections.filter(section=>{
+    const key=section.trim().toLocaleLowerCase("en").replace(/\s+/g," ");
+    return (originalSectionPeople.get(key)?.size||0)>=required;
+  });
+  if(!proven.length)return null;
+  return {
+    title:String(task.title||"").trim().slice(0,160),
+    subject:String(task.subject||"").trim().slice(0,120),
+    originalSections:proven.slice(0,12),
+    originalOwnerStatus:typeof task.ownerUid==="string"&&task.ownerUid.trim()?
+      "different_account":"owner_not_recorded",
+    maximum:Number.isFinite(Number(task.maxScore))&&Number(task.maxScore)>0?
+      Number(task.maxScore):null
+  };
+}
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function text(value,label,max){
@@ -378,12 +446,13 @@ function cleanColumns(raw,assessmentMap,previousColumns=[]){
       return {columnId,label,category,kind,maxPoints,archived,studentVisibility};
     }
     const taskId=checkId(String(item?.taskId||""),"Assessment task ID",160);
-    const assessmentSource=[SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE].includes(item?.assessmentSource)
+    const assessmentSource=[SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE,HISTORICAL_SOURCE].includes(item?.assessmentSource)
       ?item.assessmentSource:SCHOOL_SOURCE;
     const unique=assessmentKey(assessmentSource,taskId);
-    if(!archived&&linkedActiveTasks.has(unique))
+    const duplicateKey=assessmentSource===SCHOOL_SOURCE?unique:"legacy:"+taskId;
+    if(!archived&&linkedActiveTasks.has(duplicateKey))
       deny("invalid-argument","The same assessment cannot appear in more than one active Class Record column.");
-    if(!archived)linkedActiveTasks.add(unique);
+    if(!archived)linkedActiveTasks.add(duplicateKey);
     const task=assessmentMap.get(unique),previous=previousById.get(columnId);
     const sameHistoricalSource=previous&&previous.kind==="assessment"&&
       assessmentKey(previous.assessmentSource||SCHOOL_SOURCE,previous.taskId)===unique;
@@ -396,7 +465,16 @@ function cleanColumns(raw,assessmentMap,previousColumns=[]){
       deny("failed-precondition","The linked assessment has no gradeable maximum score.");
     const sourceTitle=String(sameHistoricalSource?
       (previous?.sourceTitle||task?.title||label):(task?.title||label)).trim().slice(0,160);
-    return {columnId,label,category,kind,taskId,assessmentSource,maxPoints,sourceTitle,archived,studentVisibility};
+    let mapping;
+    if(assessmentSource===HISTORICAL_SOURCE){
+      mapping=sameHistoricalSource?previous.historicalMapping:task?.historicalMapping;
+      if(!mapping)deny("failed-precondition","The original assessment has no verified class mapping.");
+      if(!sameHistoricalSource&&archived)deny("invalid-argument","New historical assessment columns must be active.");
+      if(!sameHistoricalSource&&item?.confirmHistoricalOffering!==mapping.offeringId)
+        deny("failed-precondition","Confirm the selected academic year and period for this historical assessment before linking.");
+    }
+    return {columnId,label,category,kind,taskId,assessmentSource,maxPoints,sourceTitle,archived,studentVisibility,
+      ...(mapping?{historicalMapping:mapping}:{})};
   });
 }
 
@@ -731,14 +809,59 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         reviewRoute:"studio-submissions.html?"+new URLSearchParams({assessment:task.id,section:sectionName}).toString()
       })).filter(task=>Number.isFinite(task.maxPoints)&&task.maxPoints>0);
     }
+    async function ownedHistoricalAssessments(offering,labels){
+      // Read only original assessments owned by this verified teacher, and only
+      // from the confirmed legacy origin. Never enumerate another tenant.
+      const stats={supported:ctx.schoolId===LEGACY_BRIDGE_SCHOOL,ownedCount:0,
+        availableCount:0,sectionReviewCount:0,subjectReviewCount:0,subjectMismatchCount:0,
+        noSectionCount:0,invalidScoreCount:0,originMismatchCount:0};
+      if(!stats.supported)return {items:[],stats};
+      const snap=await db.collection("assessments").where("ownerUid","==",ctx.uid).limit(501).get();
+      if(snap.size===501)
+        deny("resource-exhausted","Historical assessment library exceeds the bounded picker capacity.");
+      stats.ownedCount=snap.size;
+      const items=[];
+      for(const doc of snap.docs){
+        const task=doc.data(),sections=historicalSections(task);
+        if(!validOrigin(task,ctx.schoolId)){stats.originMismatchCount++;continue;}
+        const matchesSubject=historicalSubjectMatches(task.subject,labels.subjectName);
+        if(!matchesSubject)stats.subjectMismatchCount++;
+        const maximum=Number(task.maxScore);
+        if(!Number.isFinite(maximum)||maximum<=0||maximum>10000){stats.invalidScoreCount++;continue;}
+        if(!sections.length){stats.noSectionCount++;continue;}
+        const mapping=historicalMapping({task,taskId:doc.id,schoolId:ctx.schoolId,
+          ownerUid:ctx.uid,offering,offeringId,labels});
+        if(mapping)stats.availableCount++;
+        else if(!matchesSubject)stats.subjectReviewCount++;
+        else stats.sectionReviewCount++;
+        const studio=task.schemaVersion===3||task.submissionSource==="studio"||task.assessmentFormat==="studio_code";
+        items.push({
+          sourceType:HISTORICAL_SOURCE,taskId:doc.id,title:String(task.title||"Historical assessment").slice(0,160),
+          submissionSource:studio?"studio":"github",lifecycle:"historical",
+          maxPoints:maximum,categorySuggestion:String(task.type||"").trim().slice(0,60),
+          published:task.published!==false,linkable:Boolean(mapping),
+          historicalSectionReview:!mapping,historicalSubjectReview:!matchesSubject,
+          originalSubjectName:typeof task.subject==="string"?task.subject.trim().slice(0,120):"",
+          sourceSections:!mapping?sections.slice(0,40):[],
+          historical:true,historicalMapping:mapping,
+          periodLabel:labels.yearName+" · "+labels.termName,
+          gradeRoute:"school-gradebook.html?view=review&task="+encodeURIComponent("legacy:"+doc.id)
+        });
+      }
+      return {items,stats};
+    }
     async function availableAssessments(offering,labels){
-      const [school,legacy]=await Promise.all([
+      const [school,legacy,historical]=await Promise.all([
         ownedSchoolAssessments(),
-        ownedLegacyPersonalizedAssessments(labels.sectionName)
+        ownedLegacyPersonalizedAssessments(labels.sectionName),
+        ownedHistoricalAssessments(offering,labels)
       ]);
-      return [...school,...legacy].sort((a,b)=>
+      const historicalIds=new Set(historical.items.map(task=>task.taskId));
+      const items=[...school,...legacy.map(task=>historicalIds.has(task.taskId)?{...task,linkable:false}:task),
+        ...historical.items].sort((a,b)=>
         a.title.localeCompare(b.title,undefined,{sensitivity:"base"})||
         a.sourceType.localeCompare(b.sourceType));
+      return {items,historicalAvailability:historical.stats};
     }
     async function classRoster(){
       const enrollments=await db.collection(prefix+"enrollments")
@@ -752,7 +875,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         return {
           enrollmentId:row.id,personId:row.data().personId,
           name:data?String(data.displayName||"Student"):"Unlinked student record",
-          authUid:data&&typeof data.authUid==="string"?data.authUid:""
+          authUid:data&&typeof data.authUid==="string"?data.authUid:"",
+          legacyStudentIds:data&&data.kind==="student"&&data.status==="active"&&Array.isArray(data.legacyStudentIds)?data.legacyStudentIds:[]
         };
       }).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
       return internal;
@@ -821,7 +945,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         db,prefix,schoolId:ctx.schoolId,offering,periodType:labels.periodType
       });
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
-      const [roster,assessments,sheet,gradeSnap,manualSnap,cellStateSnap,finalizationDoc,collaboratorState]=await Promise.all([
+      const [roster,discovery,sheet,gradeSnap,manualSnap,cellStateSnap,finalizationDoc,collaboratorState]=await Promise.all([
         classRoster(),
         availableAssessments(offering,labels),
         sheetRef.get(),
@@ -831,6 +955,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         finalizationRef.get(),
         activeOfferingTeachers(offering)
       ]);
+      const assessments=discovery.items;
       if(gradeSnap.size>MAX_SCORE_CELLS)
         deny("resource-exhausted","Published school grade cells exceed the bounded Class Record capacity.");
       if(manualSnap.size>MAX_SCORE_CELLS)
@@ -871,7 +996,10 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         awarded:Number(data.awarded)||0,total:Number(data.total)||0,
         revision:Number(data.revision)||1,publishedAt:millis(data.publishedAt)
       }));
-      const legacyGrades=await legacyPublishedGrades(columns,roster,labels.sectionName,assessments);
+      const [legacyGrades,historicalGrades]=await Promise.all([
+        legacyPublishedGrades(columns,roster,labels.sectionName,assessments),
+        historicalPublishedGrades({db,schoolId:ctx.schoolId,offeringId,offering,columns,roster,resolveUsers})
+      ]);
       const manualIds=new Set(columns.filter(column=>column.kind==="manual").map(column=>column.columnId));
       const manualScores=manualSnap.docs.map(doc=>doc.data()).filter(data=>
         data.schoolId===ctx.schoolId&&manualIds.has(data.columnId)&&personIds.has(data.personId)
@@ -890,7 +1018,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         previousStatus:CELL_STATUSES.has(String(data.previousStatus||""))?String(data.previousStatus):"normal",
         revision:Number(data.revision)||1,updatedAt:millis(data.updatedAt),updatedByUid:data.updatedByUid||null
       }));
-      const publishedGrades=[...schoolGrades,...legacyGrades];
+      const publishedGrades=[...schoolGrades,...legacyGrades,...historicalGrades];
       const snapshot=computePeriodSnapshot({columns,settings,roster,manualScores,publishedGrades,cellStates});
       const finalization=finalizationDoc.exists&&finalizationDoc.data().schoolId===ctx.schoolId?{
         status:finalizationDoc.data().status||"finalized",
@@ -906,7 +1034,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         stale:String(finalizationDoc.data().sourceDigest||"")!==snapshot.sourceDigest
       }:null;
       return {
-        offering,labels,roster,assessments,columns,settings,gradingPolicy:gradingPolicy.policy,
+        offering,labels,roster,assessments,historicalAvailability:discovery.historicalAvailability,
+        columns,settings,gradingPolicy:gradingPolicy.policy,
         manualScores,publishedGrades,cellStates,collaborators:collaboratorState.teachers,
         permissions:{
           primaryTeacherUid:collaboratorState.lead.primaryTeacherUid,
@@ -930,7 +1059,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       for(const column of columns){
         if(column.kind!=="assessment")continue;
         const source=column.assessmentSource||SCHOOL_SOURCE;
-        if(![SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE].includes(source)||!column.taskId)continue;
+        if(![SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE,HISTORICAL_SOURCE].includes(source)||!column.taskId)continue;
         links.push({
           taskId:String(column.taskId),sourceType:source,
           status:column.archived===true?"archived":"linked",
@@ -985,6 +1114,144 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       };
     }
 
+    if(input.action==="find_assessment_source"){
+      // Read-only teacher-owned source discovery. Never enumerate another
+      // teacher's work, student submissions, grades, or another school's data.
+      await verifyOffering();
+      if(!teacher&&!ctx.platformOverride)
+        deny("permission-denied","Only an assigned teacher can search their assessment sources.");
+      const query=text(input.query,"Assessment search",80).toLocaleLowerCase("en");
+      if(query.length<2)deny("invalid-argument","Use at least two characters to search.");
+      if(!assessmentSearchWords(query).length)
+        deny("invalid-argument","Enter a descriptive assessment title.");
+      const matches=value=>matchesAssessmentTitle(query,value);
+      const max=201;
+      const queries=[
+        db.collection(prefix+"assessments").where("ownerUid","==",ctx.uid).limit(max).get(),
+        db.collection(prefix+"assessments").where("reviewerUid","==",ctx.uid).limit(max).get(),
+        db.collection(prefix+"assessment_blueprints").where("ownerUid","==",ctx.uid).limit(max).get(),
+        ...(ctx.schoolId===LEGACY_BRIDGE_SCHOOL?
+          [db.collection("assessments").where("ownerUid","==",ctx.uid).limit(max).get()]:[])
+      ];
+      const sources=await Promise.all(queries);
+      if(sources.some(snapshot=>snapshot.size>=max))
+        deny("resource-exhausted","This account has more assessment sources than the bounded search can inspect. Contact School Administration for an indexed lookup.");
+      const found=new Map(),counts={schoolAssessments:0,importedBlueprints:0,originalAssessments:0};
+      const add=(scope,doc,data)=>{
+        const title=String(data?.title||data?.name||"").trim();
+        if(!title||!matches(title))return;
+        const recordKey=scope+":"+doc.id;
+        if(found.has(recordKey))return;
+        found.set(recordKey,{
+          sourceType:scope,taskId:doc.id,title:title.slice(0,160),
+          subject:String(data?.subject||"").slice(0,120),
+          originalAssessmentId:scope==="imported_blueprint"?
+            String(data?.legacyImport?.assessmentId||"").slice(0,128):"",
+          offeringId:scope==="school_assessment"?String(data?.offeringId||"").slice(0,330):"",
+          status:String(data?.lifecycle||data?.status||"").slice(0,60),
+          inSelectedOffering:scope==="school_assessment"&&data?.offeringId===offeringId,
+          summary:scope==="original_assessment"?
+            "Original teacher-owned historical assessment; use Class Record source mapping.":
+            scope==="imported_blueprint"?
+            "School blueprint or imported resource; this is not itself a graded deployment.":
+            data?.offeringId===offeringId?
+            "School assessment in this class.":"School assessment in another course offering."
+        });
+      };
+      const schoolDocs=new Map();
+      for(const snapshot of sources.slice(0,2))
+        for(const doc of snapshot.docs)schoolDocs.set(doc.id,doc);
+      for(const doc of schoolDocs.values()){
+        const data=doc.data();
+        if(!canDiscloseAssessmentSource("school_assessment",data,ctx.schoolId,ctx.uid))continue;
+        counts.schoolAssessments++;
+        add("school_assessment",doc,data);
+      }
+      for(const doc of sources[2].docs){
+        const data=doc.data();
+        if(!canDiscloseAssessmentSource("imported_blueprint",data,ctx.schoolId,ctx.uid))continue;
+        counts.importedBlueprints++;
+        add("imported_blueprint",doc,data);
+      }
+      if(ctx.schoolId===LEGACY_BRIDGE_SCHOOL){
+        for(const doc of sources[3].docs){
+          const data=doc.data();
+          if(!canDiscloseAssessmentSource("original_assessment",data,ctx.schoolId,ctx.uid))continue;
+          counts.originalAssessments++;
+          add("original_assessment",doc,data);
+        }
+      }
+      // The old Repository Management route listed all assessments and did
+      // not depend on ownerUid. Never silently grant that legacy-wide scope to
+      // Class Record, but inspect early, already-deployed records for an
+      // owner-reconciliation lead. Only this teacher's active assigned course
+      // may reveal minimal metadata from a verified original student cohort.
+      let legacyRepositoryCandidates=[],legacyRepositoryDiagnostic="";
+      if(ctx.schoolId===LEGACY_BRIDGE_SCHOOL&&
+         ![...found.values()].some(item=>item.sourceType==="original_assessment")){
+        const activeGrant=await grantRef.get();
+        if(activeGrant.exists&&activeGrant.data().schoolId===ctx.schoolId&&
+           activeGrant.data().teacherUid===ctx.uid&&
+           activeGrant.data().offeringId===offeringId&&
+           activeGrant.data().status==="active"){
+          const legacy=await db.collection("assessments").limit(501).get();
+          if(legacy.size>=501){
+            legacyRepositoryDiagnostic="Legacy Repository Management has more than 500 assessment records; a School Administrator must review the historical archive with pagination.";
+          }else{
+            const possible=legacy.docs.filter(doc=>{
+              const data=doc.data();
+              return data.ownerUid!==ctx.uid&&validOrigin(data,ctx.schoolId)&&
+                matchesAssessmentTitle(query,data.title)&&
+                legacyRepositoryDeploymentSections(data).length>0;
+            });
+            if(possible.length){
+              const roster=await classRoster();
+              const identities=await resolveHistoricalRoster({
+                db,schoolId:ctx.schoolId,roster,resolveUsers
+              });
+              const originalSectionPeople=new Map();
+              const originalIds=[...identities.keys()];
+              for(let offset=0;offset<originalIds.length;offset+=100){
+                const ids=originalIds.slice(offset,offset+100);
+                const records=await db.getAll(...ids.map(id=>db.doc("students/"+id)));
+                records.forEach((doc,index)=>{
+                  if(!doc.exists)return;
+                  const data=doc.data(),section=String(data?.section||
+                    data?.sectionName||data?.classSection||"").trim()
+                    .toLocaleLowerCase("en").replace(/\s+/g," ");
+                  if(!section)return;
+                  if(!originalSectionPeople.has(section))
+                    originalSectionPeople.set(section,new Set());
+                  originalSectionPeople.get(section).add(identities.get(ids[index]));
+                });
+              }
+              for(const doc of possible){
+                const metadata=legacyRepositoryMetadataCandidate({
+                  task:doc.data(),schoolId:ctx.schoolId,titleQuery:query,
+                  originalSectionPeople,rosterSize:roster.length,
+                  currentTeacherUid:ctx.uid
+                });
+                if(!metadata)continue;
+                legacyRepositoryCandidates.push({
+                  assessmentId:doc.id,...metadata,
+                  status:"ownership_review_required",
+                  canLink:false,canGrade:false
+                });
+              }
+              legacyRepositoryCandidates.sort((a,b)=>a.title.localeCompare(b.title));
+              legacyRepositoryCandidates=legacyRepositoryCandidates.slice(0,15);
+              if(!legacyRepositoryCandidates.length)
+                legacyRepositoryDiagnostic="No owner-unverified original assessment could be verified against this class's preserved student identities. The assessment may use another original section or an earlier account, or its original record may be missing.";
+            }
+          }
+        }
+      }
+      return {query:String(input.query).trim(),checked:counts,
+        results:[...found.values()].sort((a,b)=>a.title.localeCompare(b.title)||
+          a.sourceType.localeCompare(b.sourceType)).slice(0,30),
+        truncated:found.size>30,legacyRepositoryCandidates,
+        legacyRepositoryDiagnostic};
+    }
     if(input.action==="workspace"){
       const data=await buildWorkspaceData();
       return {
@@ -993,8 +1260,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           programName:data.labels.programName,yearName:data.labels.yearName,
           termName:data.labels.termName,periodType:data.labels.periodType,
           sectionName:data.labels.sectionName,subjectName:data.labels.subjectName},
-        roster:data.roster.map(({authUid,...row})=>row),
-        assessments:data.assessments,columns:data.columns,settings:data.settings,
+        roster:data.roster.map(({authUid,legacyStudentIds,...row})=>row),
+        assessments:data.assessments,historicalAvailability:data.historicalAvailability,
+        columns:data.columns,settings:data.settings,
         gradingPolicy:data.gradingPolicy,
         manualScores:data.manualScores,publishedGrades:data.publishedGrades,cellStates:data.cellStates,
         collaborators:data.collaborators,permissions:data.permissions,
@@ -1042,7 +1310,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           }else{
             const source=column.assessmentSource||SCHOOL_SOURCE;
             const row=gradeMap.get(source+"::"+column.taskId+"::"+personId);
-            if(row&&Number.isFinite(Number(row.awarded)))score=Number(row.awarded);
+            if(row&&Number.isFinite(Number(row.awarded))&&
+               (source!==HISTORICAL_SOURCE||Math.abs(Number(row.total)-Number(column.maxPoints))<0.0001))score=Number(row.awarded);
           }
         }
         return {
@@ -1333,14 +1602,44 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const gradingPolicy=await resolveSchoolGradingPolicy({
         db,prefix,schoolId:ctx.schoolId,offering,periodType:labels.periodType
       });
-      const assessmentRows=await availableAssessments(offering,labels);
-      const assessmentMap=new Map(assessmentRows.map(task=>[
+      const discovery=await availableAssessments(offering,labels);
+      const assessmentMap=new Map(discovery.items.map(task=>[
         assessmentKey(task.sourceType,task.taskId),task
       ]));
+      // A historical section label is not an identity. If a teacher explicitly
+      // selects a different original section, prove it against canonical person
+      // lineage + original school student sections before permitting a link.
+      const reviewRequests=(Array.isArray(input.columns)?input.columns:[]).filter(column=>
+        column?.kind==="assessment"&&column.assessmentSource===HISTORICAL_SOURCE&&
+        typeof column.historicalSourceSection==="string"&&column.historicalSourceSection.trim());
+      if(reviewRequests.length>10)
+        deny("resource-exhausted","Link up to ten verified historical sections per layout save.");
+      if(reviewRequests.length){
+        const roster=await classRoster();
+        for(const item of reviewRequests){
+          const taskId=checkId(String(item.taskId||""),"Historical assessment ID",160);
+          const available=assessmentMap.get(assessmentKey(HISTORICAL_SOURCE,taskId));
+          if(!available||!available.historicalSectionReview)
+            deny("failed-precondition","This historical source cannot use section remapping. Reload Class Record.");
+          const original=await db.doc("assessments/"+taskId).get();
+          const mapping=await verifiedHistoricalSectionMapping({db,schoolId:ctx.schoolId,roster,
+            resolveUsers,task:original.exists?original.data():null,taskId,ownerUid:ctx.uid,
+            offering,offeringId,labels,sourceSectionName:item.historicalSourceSection,
+            confirmOriginalSubject:item.confirmOriginalSubject});
+          if(!mapping)
+            deny("failed-precondition","The selected original section could not be verified against enough enrolled students' historical school identities. Check the original section, identity recovery, or ask School Administration to reconcile the legacy roster.");
+          available.historicalMapping=mapping;available.linkable=true;
+        }
+      }
       const beforeSheet=await sheetRef.get();
       const previousColumns=beforeSheet.exists&&beforeSheet.data().schoolId===ctx.schoolId&&
         Array.isArray(beforeSheet.data().columns)?beforeSheet.data().columns:[];
       const columns=cleanColumns(input.columns,assessmentMap,previousColumns);
+      const previousIds=new Set(previousColumns.map(column=>column.columnId));
+      const newHistorical=columns.filter(column=>column.assessmentSource===HISTORICAL_SOURCE&&
+        !previousIds.has(column.columnId));
+      const mappingRefs=newHistorical.map(column=>db.doc(prefix+"class_record_historical_links/"+
+        hash(column.taskId,String(column.historicalMapping.sectionName).trim().toLowerCase())));
       const settings=gradingPolicy.settings;
       const expectedRevision=Number(input.expectedRevision);
       if(!Number.isInteger(expectedRevision)||expectedRevision<0)
@@ -1348,14 +1647,35 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       let revision;
       await db.runTransaction(async tx=>{
-        const [grant,currentOffering,current]=await Promise.all([
-          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef)
+        const [grant,currentOffering,current,priorMappings,originalTasks]=await Promise.all([
+          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),
+          Promise.all(mappingRefs.map(ref=>tx.get(ref))),
+          Promise.all(newHistorical.map(column=>tx.get(db.doc("assessments/"+column.taskId))))
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
            grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
            !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
           deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
         await requirePrimaryInTransaction(tx,currentOffering.data());
+        for(let i=0;i<newHistorical.length;i++){
+          const column=newHistorical[i],mapping=column.historicalMapping,prior=priorMappings[i];
+          if(!mappingMatches(mapping,ctx.schoolId,offeringId,currentOffering.data()))
+            deny("failed-precondition","The selected academic period or class changed. Reload before linking.");
+          const original=originalTasks[i];
+          const rechecked=historicalMapping({task:original.exists?original.data():null,taskId:column.taskId,
+            schoolId:ctx.schoolId,ownerUid:ctx.uid,offering:currentOffering.data(),offeringId,labels,
+            sourceSectionName:mapping.sectionName,verifiedSection:mapping.identityProof==="original_student_section",
+            verifiedSubject:mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"});
+          if(!rechecked||rechecked.sectionName!==mapping.sectionName||
+             (mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"&&
+               (mapping.identityProof!=="original_student_section"||
+                !Number.isInteger(mapping.identityVerifiedCount)||mapping.identityVerifiedCount<1||
+                mapping.originalSubjectName!==String(original.data().subject||"").trim()))||
+             Number(original.data().maxScore)!==column.maxPoints)
+            deny("failed-precondition","The original historical assessment changed. Reload before linking.");
+          if(prior.exists&&(prior.data().schoolId!==ctx.schoolId||prior.data().offeringId!==offeringId))
+            deny("failed-precondition","This historical assessment section is already mapped to another academic period. Review its original Class Record.");
+        }
         const previous=current.exists&&current.data().schoolId===ctx.schoolId?current.data():null;
         const priorRevision=previous?Number(previous.revision)||0:0;
         if(priorRevision!==expectedRevision)
@@ -1367,6 +1687,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         const nextById=new Map(columns.map(column=>[column.columnId,column]));
         const auditShape=column=>({
           label:String(column?.label||""),category:String(column?.category||""),
+          ...(column?.historicalMapping?{historicalMapping:column.historicalMapping,taskId:column.taskId}:{}),
           archived:column?.archived===true,
           studentVisibility:cleanStudentVisibility(column?.studentVisibility),
           kind:String(column?.kind||"")
@@ -1388,6 +1709,13 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
             deny("failed-precondition","Existing Class Record columns cannot be deleted yet. Rename or reorder them instead.");
           if(sourceKey(next)!==sourceKey(normalizedOld))
             deny("failed-precondition","An existing column cannot change score source or maximum. Add a new column for a different source.");
+        }
+        for(let i=0;i<newHistorical.length;i++){
+          const column=newHistorical[i];
+          if(!priorMappings[i].exists)tx.create(mappingRefs[i],{
+            ...column.historicalMapping,taskId:column.taskId,
+            confirmedByUid:ctx.uid,confirmedAt:FieldValue.serverTimestamp()
+          });
         }
         revision=priorRevision+1;
         const values={schoolId:ctx.schoolId,offeringId,columns,settings,revision,
@@ -1555,5 +1883,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
 module.exports={
   createSchoolClassRecordService,cleanColumns,cleanSettings,
   schemeMatchesOffering,schemeSpecificity,schemeScopesOverlap,
-  SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE
+  matchesAssessmentTitle,canDiscloseAssessmentSource,
+  legacyRepositoryDeploymentSections,legacyRepositoryMetadataCandidate,
+  SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE,HISTORICAL_SOURCE
 };

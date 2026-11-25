@@ -7,7 +7,7 @@
   <title>Users · System Admin · Adminerva</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=fff9d893855d">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=7fe6ab08fd82">
   <script defer src="https://cdn.tailwindcss.com"></script>
   <style>
     .pu-shell{max-width:1280px;margin:auto;padding:1rem}
@@ -70,6 +70,7 @@
     <div class="flex items-center justify-between gap-3 mb-3">
       <div>
         <h2 class="font-extrabold text-lg">Account directory</h2>
+        <p class="text-xs text-slate-500">For read-only troubleshooting timelines, use the separate <a class="underline font-semibold" href="platform-logs.html">Platform Log Viewer</a>.</p>
         <p class="text-xs text-slate-500">The full Firebase Auth directory is loaded into this System Admin workspace, then searched and filtered locally.</p>
       </div>
       <span id="pu-count" class="pu-chip">—</span>
@@ -86,7 +87,10 @@
         <h2 id="pu-detail-title" class="text-xl font-extrabold mt-1 break-words">User account</h2>
         <p id="pu-detail-meta" class="text-sm text-slate-600 mt-1 break-words"></p>
       </div>
-      <button id="pu-detail-close" class="pu-btn shrink-0" type="button">Close</button>
+      <div class="flex flex-wrap gap-2 shrink-0">
+        <a id="pu-open-logs" class="pu-btn" href="platform-logs.html">View account logs</a>
+        <button id="pu-detail-close" class="pu-btn" type="button">Close</button>
+      </div>
     </div>
 
     <div id="pu-detail-account" class="grid sm:grid-cols-2 gap-3 mt-4"></div>
@@ -129,6 +133,10 @@
         <button id="pu-test-toggle" class="pu-btn shrink-0" type="button">Designate as test student</button>
       </div>
       <p id="pu-test-state" class="text-xs font-bold text-indigo-950 mt-3">Checking test designation…</p>
+      <label class="text-sm font-bold text-indigo-950 block mt-3" for="pu-test-reason">Reason for test-student designation or school access
+        <textarea id="pu-test-reason" class="pu-input mt-1" minlength="12" maxlength="500" rows="2" placeholder="For example: Controlled student login and school placement testing"></textarea>
+      </label>
+      <p class="text-xs text-indigo-900 mt-1">Required for designation, retirement, school access and suspension (at least 12 characters). This reason is recorded in the relevant audit trail. You do not need to fill in the reason under Login account lifecycle.</p>
       <div class="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end mt-3">
         <label class="text-sm font-bold text-indigo-950">Target school
           <select id="pu-test-school" class="pu-input mt-1">
@@ -185,10 +193,10 @@
   </form>
 </dialog>
 
-<script defer src="js/core/release-footer.js?v=fff9d893855d"></script>
-<script src="js/core/adminerva-loader.js?v=fff9d893855d"></script>
-<script defer src="js/core/adminerva-nav.js?v=fff9d893855d"></script>
-<script type="module" src="js/core/auth-guard-v4-pilot.js?v=fff9d893855d"></script>
-<script type="module" src="js/core/platform-users.mjs?v=20261123-test-student-mobility1"></script>
-<script type="module" src="js/core/platform-admin-workflow.mjs?v=20261121-platform-flow1"></script></body>
+<script defer src="js/core/release-footer.js?v=7fe6ab08fd82"></script>
+<script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
+<script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
+<script type="module" src="js/core/platform-users.mjs?v=20261124-dedicated-logs-1"></script>
+<script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script></body>
 </html>
