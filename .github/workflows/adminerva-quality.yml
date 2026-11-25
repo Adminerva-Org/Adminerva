@@ -28,7 +28,7 @@ jobs:
       - name: Validate native-client preview security and shared compatibility
         run: node --test tests/cross-platform-client.test.mjs
       - name: Validate gated native sign-in and source throttling
-        run: node --test tests/native-client-handoff.test.mjs tests/native-handoff-rate-limit.test.mjs
+        run: node --test tests/native-client-handoff.test.mjs tests/native-handoff-rate-limit.test.mjs tests/native-desktop-ipc.test.mjs
 
       - name: Test grading evidence and feedback regressions
         run: |
