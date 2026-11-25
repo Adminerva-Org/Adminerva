@@ -101,3 +101,17 @@ test("native app stays public until the paired session completes in the trusted 
  assert.equal(classifyNavigation("https://evil.example/Adminerva/student-playground.html",{allowPrivate:true}).action,"block");
  assert.equal(classifyNavigation("https://adminerva-org.github.io/Adminerva/login.html",{allowPrivate:true}).action,"external");
 });
+
+test("desktop sign-in is one-shot and cannot switch accounts during unfinished Studio work",()=>{
+ assert.match(source,/let tokenConsumedForBootstrap=false/);
+ assert.match(source,/tokenConsumedForBootstrap\)return null/);
+ assert.match(source,/!tokenConsumedForBootstrap\)return false/);
+ assert.match(source,/tokenConsumedForBootstrap=true/);
+ assert.match(source,/if\(allowPrivate\)\{/);
+ assert.match(source,/Finish saving your Studio work/);
+ assert.match(source,/did-start-navigation/);
+ const bootstrap=readFileSync(new URL("../js/core/desktop-session.mjs",import.meta.url),"utf8");
+ assert.match(bootstrap,/const schoolAccess=Boolean/);
+ assert.match(bootstrap,/if\(!schoolAccess/);
+ assert.match(bootstrap,/resolveAccountAccess\(credential\.user\)/);
+});

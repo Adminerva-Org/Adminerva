@@ -19,6 +19,7 @@ let pendingPairing=null;
 let pendingToken=null;
 let allowPrivate=false;
 let pairingSequence=0;
+let tokenConsumedForBootstrap=false;
 function currentWindow(sender){
  return activeWindow&&!activeWindow.isDestroyed()&&sender===activeWindow.webContents;
 }
@@ -27,14 +28,16 @@ function currentBootstrap(sender){
 }
 ipcMain.handle("adminerva:consume-signin-token",event=>{
  if(!DEV_SIGNIN||!currentBootstrap(event.sender)||
-    event.senderFrame!==event.sender.mainFrame)return null;
+    event.senderFrame!==event.sender.mainFrame||tokenConsumedForBootstrap)return null;
  const token=pendingToken;
  pendingToken=null;
+ if(typeof token==="string")tokenConsumedForBootstrap=true;
  return typeof token==="string"?token:null;
 });
 ipcMain.handle("adminerva:confirm-signin",event=>{
  if(!DEV_SIGNIN||!currentBootstrap(event.sender)||
-    event.senderFrame!==event.sender.mainFrame)return false;
+    event.senderFrame!==event.sender.mainFrame||!tokenConsumedForBootstrap)return false;
+ tokenConsumedForBootstrap=false;
  allowPrivate=true;
  return true;
 });
@@ -48,9 +51,22 @@ function navigation(target){
 }
 async function startDesktopSignIn(){
  if(!DEV_SIGNIN||!activeWindow||activeWindow.isDestroyed())return;
+ if(allowPrivate){
+  // Do not switch school accounts while Studio might contain unsynced code
+  // or an active teacher-controlled assessment; use the canonical safe
+  // save/sign-out workflow before opening a new device authorization.
+  void dialog.showMessageBox(activeWindow,{
+   type:"info",title:"Finish your current Adminerva session",
+   message:"You already have a connected school session.",
+   detail:"Finish saving your Studio work, close any active examination appropriately, and sign out in Adminerva before connecting another school account.",
+   buttons:["OK"]
+  }).catch(()=>{});
+  return;
+ }
  const sequence=++pairingSequence;
  pendingPairing=null;
  pendingToken=null;
+ tokenConsumedForBootstrap=false;
  const pairing=generatePairing();
  try{
   await sendHandoff("begin",pairing);
@@ -103,7 +119,7 @@ function setupMenu(){
    {label:"Cancel pending sign-in",click:()=>{
     ++pairingSequence;
     if(pendingPairing)void sendHandoff("cancel",pendingPairing).catch(()=>{});
-    pendingPairing=null;pendingToken=null;
+    pendingPairing=null;pendingToken=null;tokenConsumedForBootstrap=false;
    }},
    {type:"separator"},{role:"quit"}
   ]},
@@ -123,6 +139,12 @@ function createWindow(){
  activeWindow=win;
  const contents=win.webContents;
  const ses=contents.session;
+ // Clear unconfirmed pairing state whenever the main frame reloads or
+ // leaves the protected one-shot Firebase bootstrap. A canceled flow cannot
+ // later grant private navigation through a stale IPC confirmation.
+ contents.on("did-start-navigation",(_event,_url,_inPlace,isMainFrame)=>{
+  if(isMainFrame)tokenConsumedForBootstrap=false;
+ });
  // No camera, microphone, desktop capture, notifications or other OS access.
  ses.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
  ses.setPermissionCheckHandler(()=>false);
@@ -132,6 +154,9 @@ function createWindow(){
   return {action:"deny"};
  });
  contents.on("will-navigate",(event,url)=>{
+  if(url===APP_ORIGIN+APP_PREFIX+"login.html"||url.startsWith(APP_ORIGIN+APP_PREFIX+"login.html?")){
+   allowPrivate=false;tokenConsumedForBootstrap=false;
+  }
   const decision=navigation(url);
   if(decision.action==="internal")return;
   event.preventDefault();
@@ -139,7 +164,7 @@ function createWindow(){
  });
  win.on("page-title-updated",event=>event.preventDefault());
  contents.once("did-finish-load",()=>{if(!win.isDestroyed())win.show();});
- win.on("closed",()=>{if(activeWindow===win){++pairingSequence;pendingPairing=null;pendingToken=null;allowPrivate=false;activeWindow=null;}});
+ win.on("closed",()=>{if(activeWindow===win){++pairingSequence;pendingPairing=null;pendingToken=null;tokenConsumedForBootstrap=false;allowPrivate=false;activeWindow=null;}});
  void win.loadURL(START_URL).catch(()=>{if(!win.isDestroyed())win.show();});
  return win;
 }

@@ -27,9 +27,12 @@ async function bootstrap(){
   if(!credential.user.emailVerified||!credential.user.email)
    throw Error("Verified account required.");
   const access=await resolveAccountAccess(credential.user);
-  if(access.staffLookupUnavailable&&!access.platformAdmin&&!access.schoolAdmin&&
-     !access.schoolTeacher&&!access.schoolStudent)
-   throw Error("Your school access could not be verified.");
+  const schoolAccess=Boolean(access.platformAdmin||access.schoolAdmin||
+   access.schoolRegistrar||access.schoolTeacher||access.schoolStudent||
+   access.role==="admin"||access.role==="teacher"||
+   access.legacyRole||access.students?.length);
+  if(!schoolAccess||access.staffLookupUnavailable&&!schoolAccess)
+   throw Error("A verified, active school relationship is required.");
   if(auth.currentUser?.uid!==credential.user.uid)
    throw Error("Your signed-in account changed.");
   const destination=sessionDestination("",access);
