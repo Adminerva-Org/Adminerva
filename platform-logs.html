@@ -10,32 +10,36 @@
   <script defer src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=7fe6ab08fd82">
   <link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1">
-  <link rel="stylesheet" href="css/platform-logs.css?v=20261124-log-investigation-ux-1">
+  <link rel="stylesheet" href="css/platform-logs.css?v=20261125-compact-workspace-1">
 </head>
 <body id="pageBody" class="hidden">
   <div id="adminerva-nav" data-module="admin" data-page="platform-logs"></div>
   <main class="pl-shell">
     <header class="pl-hero">
-      <div>
-        <p class="pl-eyebrow">System Administration · Observability</p>
+      <div class="pl-hero-main">
+        <p class="pl-eyebrow">System Administration / Observability</p>
         <h1>User Action &amp; System Logs</h1>
-        <p>A developer-level timeline of recorded user interactions and backend operations across Adminerva. Follow shared errors across accounts, inspect request traces, or open a specific login’s history. Read-only and Platform Administrator-only.</p>
+        <p class="pl-hero-description">Investigate recorded activity, backend outcomes, and shared failures across Adminerva. Platform Administrator-only · read-only.</p>
       </div>
       <a class="pl-link" href="system-users.html">Platform Users</a>
     </header>
     <div class="pl-legend" role="group" aria-label="Diagnostic severity legend">
-      <span class="pl-flag" data-level="normal"><span aria-hidden="true" class="pl-dot"></span>Green · Normal events</span>
-      <span class="pl-flag" data-level="warning"><span aria-hidden="true" class="pl-dot"></span>Yellow · Warnings / interruptions</span>
-      <span class="pl-flag" data-level="failure"><span aria-hidden="true" class="pl-dot"></span>Red · Failures</span>
+      <span class="pl-flag" data-level="normal"><span aria-hidden="true" class="pl-dot"></span>Normal</span>
+      <span class="pl-flag" data-level="warning"><span aria-hidden="true" class="pl-dot"></span>Warning</span>
+      <span class="pl-flag" data-level="failure"><span aria-hidden="true" class="pl-dot"></span>Failure</span>
+      <span class="pl-legend-note">Flag = recorded outcome, not user conduct.</span>
     </div>
     <section class="pl-purpose pl-card" aria-labelledby="pl-purpose-title">
-      <div>
+      <div class="pl-purpose-intro">
         <h2 id="pl-purpose-title">Investigation access</h2>
-        <p>Each activity-log request is audited. Enter a concrete support or security reason before loading user events or recent-account activity. Do not include passwords or private student work.</p>
+        <details class="pl-purpose-help">
+          <summary>Access &amp; audit policy</summary>
+          <p>Every diagnostic read requires an investigation reason and Platform Administrator access. Do not include passwords, student work, or private messages.</p>
+        </details>
       </div>
       <div class="pl-purpose-form">
-        <label for="pl-reason">Reason for reviewing logs <span aria-hidden="true">*</span></label>
-        <textarea id="pl-reason" rows="2" minlength="12" maxlength="300" placeholder="Example: Investigating missing Studio cloud-save confirmation"></textarea>
+        <label for="pl-reason">Audit reason <span aria-hidden="true">*</span></label>
+        <textarea id="pl-reason" rows="1" minlength="12" maxlength="300" placeholder="Why are you investigating these logs? (12+ characters)"></textarea>
         <div class="pl-actions">
           <button id="pl-load-recent" class="pl-button pl-primary" type="button" disabled>Load global event stream</button>
           <span id="pl-purpose-status" role="status" aria-live="polite">Verifying Platform Administrator access…</span>
@@ -45,22 +49,27 @@
 
     <div class="pl-main">
       <aside class="pl-directory pl-card" aria-labelledby="pl-directory-heading">
-        <div class="pl-card-heading">
-          <div><p class="pl-eyebrow">Account directory</p><h2 id="pl-directory-heading">Find a user</h2></div>
-          <span id="pl-account-count" class="pl-count">—</span>
-        </div>
-        <label for="pl-search">Search by name, email or account ID</label>
-        <input id="pl-search" type="search" autocomplete="off" placeholder="Search all platform users…" disabled>
-        <div class="pl-directory-actions">
-          <button id="pl-show-live" class="pl-button pl-primary" type="button" disabled>Live console · 3s</button>
-          <button id="pl-show-global" class="pl-button pl-secondary" type="button" disabled>Global event history</button>
-          <button id="pl-show-recent" class="pl-button pl-secondary" type="button" disabled>Latest event per account</button>
-        </div>
+        <details id="pl-directory-disclosure" class="pl-directory-disclosure" open>
+          <summary class="pl-directory-summary">
+            <span><strong id="pl-directory-heading">Account directory</strong><small>Search / select a user</small></span>
+            <span id="pl-account-count" class="pl-count">—</span>
+          </summary>
+          <div class="pl-directory-body">
+            <label for="pl-search">Name, email, or account ID</label>
+            <input id="pl-search" type="search" autocomplete="off" placeholder="Find an account…" disabled>
+
         <div id="pl-accounts" class="pl-account-list" aria-label="Accounts"></div>
-        <p class="pl-footnote">Accounts with no recorded diagnostic events still appear here. Their history may be empty. This list is loaded from the global identity directory.</p>
+        <p class="pl-directory-note">All platform login accounts, including those without recorded diagnostics.</p>
+          </div>
+        </details>
       </aside>
 
       <section class="pl-view pl-card" aria-labelledby="pl-view-title">
+        <nav class="pl-mode-bar" aria-label="Diagnostic views">
+          <button id="pl-show-live" class="pl-button pl-primary" type="button" disabled>Live · 3s</button>
+          <button id="pl-show-global" class="pl-button pl-secondary" type="button" disabled>Event history</button>
+          <button id="pl-show-recent" class="pl-button pl-secondary" type="button" disabled>Account overview</button>
+        </nav>
         <div class="pl-card-heading pl-view-heading">
           <div><p id="pl-view-eyebrow" class="pl-eyebrow">All accounts · chronological</p><h2 id="pl-view-title">Global Event Stream</h2>
             <p id="pl-view-description">Individual user and backend events across Adminerva, ordered by server receipt time. Select any event’s account for its longer diagnostic history.</p>
@@ -74,7 +83,10 @@
           <div><span>Failures</span><strong id="pl-failure-count">—</strong></div>
           <div><span>Unclassified</span><strong id="pl-unknown-count">—</strong></div>
         </div>
-        <div class="pl-filters">
+        <div class="pl-filter-bar">
+          <details id="pl-filter-disclosure" class="pl-filter-disclosure" open>
+            <summary>Time / severity / module filters</summary>
+            <div class="pl-filters">
           <label for="pl-window">Window
             <select id="pl-window"><option value="24">Past 24 hours</option><option value="168">Past 7 days</option><option value="720">Past 30 days</option><option value="1440">Past 60 days</option></select>
           </label>
@@ -84,10 +96,12 @@
           <label for="pl-module">Module
             <select id="pl-module"><option value="">All modules</option><option value="auth">Authentication</option><option value="home">Home</option><option value="studio">Studio</option><option value="assessments">Assessments</option><option value="classroom">Classroom</option><option value="school">School</option><option value="games">Games</option><option value="grades">Grades</option><option value="notifications">Notifications</option><option value="settings">Settings</option><option value="platform">Platform</option><option value="api">API</option><option value="other">Other</option></select>
           </label>
+            </div>
+          </details>
+          <label class="pl-log-search" for="pl-event-search">Search loaded events
+            <input id="pl-event-search" type="search" autocomplete="off" placeholder="Account, action, error, trace…">
+          </label>
         </div>
-        <label class="pl-log-search" for="pl-event-search">Filter loaded events by account, action, error or trace
-          <input id="pl-event-search" type="search" autocomplete="off" placeholder="Filter the loaded page of events…">
-        </label>
         <div class="pl-filter-feedback">
           <p id="pl-filter-status" class="pl-filter-status" role="status" aria-live="polite">Select a view and load recorded activity. Server and local filters have different scopes.</p>
           <button id="pl-clear-filters" class="pl-button pl-secondary" type="button">Clear filters</button>
@@ -118,6 +132,9 @@
           </div>
           <p class="pl-live-footnote">Color and severity identify the recorded outcome. New lines are highlighted briefly; you can pause, inspect details, and resume from the last received event. Severity and module filters affect visible console lines, not which events are fetched. Polling is bounded and audited in ten-minute viewing windows.</p>
         </section>
+        <details id="pl-analysis-drawer" class="pl-analysis-drawer" hidden>
+          <summary>Analytics &amp; failure patterns <span>On-demand · sample-based</span></summary>
+          <div class="pl-analysis-content">
         <section id="pl-trends" class="pl-trends" aria-labelledby="pl-trends-heading" hidden>
           <div class="pl-trends-heading">
             <div>
@@ -160,6 +177,8 @@
           </div>
           <div id="pl-impact-results" class="pl-impact-results"></div>
         </section>
+          </div>
+        </details>
         <p id="pl-log-status" class="pl-status" role="status" aria-live="polite">No logs loaded. Enter a reason above before inspecting account activity.</p>
         <div class="pl-table-wrap">
           <table class="pl-table">
@@ -182,7 +201,7 @@
   <script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
   <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
   <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
-  <script type="module" src="js/core/platform-logs.mjs?v=20261124-log-investigation-ux-1"></script>
+  <script type="module" src="js/core/platform-logs.mjs?v=20261125-compact-workspace-1"></script>
   <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script>
   <script defer src="js/core/release-footer.js?v=7fe6ab08fd82"></script>
 </body>
