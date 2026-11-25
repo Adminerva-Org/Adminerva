@@ -104,11 +104,18 @@ function mappingMatches(mapping,schoolId,offeringId,offering){
     mapping.sectionId===offering.sectionId&&mapping.subjectId===offering.subjectId&&
     !!mapping.sectionName&&!!mapping.subjectName&&validId(mapping.ownerUid);
 }
-function projectedGrade(data,{taskId,studentId,sectionName}){
-  if(!data||data.published!==true||data.taskId!==taskId||data.studentId!==studentId||
-     canonical(data.section)!==canonical(sectionName))return null;
-  if(data.score===null||data.score===undefined||data.maxScore===null||data.maxScore===undefined)return null;
-  const awarded=Number(data.score),total=Number(data.maxScore);
+function legacySavedScoreEligible(data){
+  // The school has accepted its saved legacy scores; a positive unresolved
+  // points balance still cannot be treated as a completed numeric result.
+  const pending=Number(data?.pending??0);
+  return Number.isFinite(pending)&&pending===0;
+}
+function projectedGrade(data,{taskId,studentId,sectionName,allowDraft=false,originalMaximum=null,verifiedReceiptSection=""}){
+  if(!data||(!allowDraft&&data.published!==true)||data.taskId!==taskId||data.studentId!==studentId||
+     canonical(data.section||verifiedReceiptSection)!==canonical(sectionName))return null;
+  const maximum=data.maxScore??originalMaximum;
+  if(data.score===null||data.score===undefined||data.score===""||maximum===null||maximum===undefined||maximum==="")return null;
+  const awarded=Number(data.score),total=Number(maximum);
   if(!Number.isFinite(awarded)||!Number.isFinite(total)||total<=0||awarded<0||awarded>total)return null;
   return {awarded,total,revision:Number(data.gradeVersion)||1,
     publishedAt:ms(data.publishedAt)||ms(data.updatedAt)||ms(data.gradedAt)};
@@ -116,7 +123,7 @@ function projectedGrade(data,{taskId,studentId,sectionName}){
 async function resolveHistoricalRoster({db,schoolId,roster,resolveUsers}){
   const mapped=new Map(),conflicts=new Set();
   if(schoolId!==SCHOOL_ID)return mapped;
-  const pending=roster.filter(row=>row.authUid&&(!Array.isArray(row.legacyStudentIds)||!row.legacyStudentIds.length));
+  const pending=roster.filter(row=>row.authUid&&(!Array.isArray(row.legacyStudentIds)||!row.legacyStudentIds.some(validId)));
   let users=[];
   if(pending.length&&typeof resolveUsers==="function"){
     try{users=await resolveUsers([...new Set(pending.map(row=>row.authUid))]);}catch{
@@ -128,10 +135,10 @@ async function resolveHistoricalRoster({db,schoolId,roster,resolveUsers}){
     const found=await resolveUsers([uid]);
     return found?.find(u=>u.uid===uid)||null;
   }:null;
-  for(const row of roster){
-    if(!row.personId||!row.authUid)continue;
+  const resolved=await Promise.all(roster.map(async row=>{
+    if(!row.personId||!row.authUid)return {row,ids:[]};
     let ids=Array.isArray(row.legacyStudentIds)?[...new Set(row.legacyStudentIds.filter(validId))]:[];
-    if(!ids.length&&(!Array.isArray(row.legacyStudentIds)||!row.legacyStudentIds.length)){
+    if(!ids.length){
       const user=byUid.get(row.authUid);
       try{
         const result=await legacyStudentRecordsForAccount({db,schoolId,uid:row.authUid,
@@ -139,8 +146,34 @@ async function resolveHistoricalRoster({db,schoolId,roster,resolveUsers}){
         if(["canonical_person","canonical_previous_access","canonical_account_history"].includes(result.source)||
            (result.source==="canonical_email_fallback"&&result.records.length===1))
           ids=result.records.map(record=>record.id).filter(validId);
+        // The existing server-owned access projection may retain legacy IDs
+        // whose document names are not accepted by the older login resolver.
+        // Require the exact active canonical membership and owner binding;
+        // a recovered account cannot fall back to a current-email projection.
+        if(!ids.length&&result.source.startsWith("canonical_")&&result.source!=="canonical_invalid"){
+          const [membership,person,access]=await Promise.all([
+            db.doc("schools/"+schoolId+"/memberships/"+row.authUid).get(),
+            db.doc("schools/"+schoolId+"/people/"+row.personId).get(),
+            db.doc("student_access/"+row.authUid).get()
+          ]);
+          const m=membership.exists?membership.data():null,p=person.exists?person.data():null,
+            a=access.exists?access.data():null;
+          const recovered=Array.isArray(p?.previousAuthUids)&&p.previousAuthUids.length>0;
+          const recoverySafe=["canonical_person","canonical_previous_access","canonical_account_history"].includes(a?.identitySource);
+          if(m?.schoolId===schoolId&&m.personId===row.personId&&m.status==="active"&&m.roles?.includes("student")&&
+             p?.schoolId===schoolId&&p.kind==="student"&&p.status==="active"&&p.authUid===row.authUid&&
+             a?.ownerUid===row.authUid&&(!a.schoolId||a.schoolId===schoolId)&&
+             (recoverySafe||(!recovered&&a.identitySource==="canonical_email_fallback"&&
+              user?.emailVerified===true&&canonical(a.email)===canonical(user.email)&&
+              Array.isArray(a.studentIds)&&a.studentIds.length===1))){
+            ids=Array.isArray(a.studentIds)?a.studentIds.filter(validId).slice(0,50):[];
+          }
+        }
       }catch{/* Unverified account history never creates a guessed grade. */}
     }
+    return {row,ids};
+  }));
+  for(const {row,ids} of resolved){
     for(const id of new Set(ids)){
       if(mapped.has(id)&&mapped.get(id)!==row.personId)conflicts.add(id);
       else mapped.set(id,row.personId);
@@ -149,15 +182,29 @@ async function resolveHistoricalRoster({db,schoolId,roster,resolveUsers}){
   for(const id of conflicts)mapped.delete(id);
   return mapped;
 }
-async function historicalPublishedGrades({db,schoolId,offeringId,offering,columns,roster,resolveUsers}){
-  const linked=columns.filter(c=>c.kind==="assessment"&&c.assessmentSource===HISTORICAL_SOURCE&&
-    validId(c.taskId)&&mappingMatches(c.historicalMapping,schoolId,offeringId,offering));
+/**
+ * Student views default to published grades. The teacher Class Record can
+ * accept saved historical scores during legacy_allowed migration; that policy
+ * is supplied only by the verified server-side school context, never a client.
+ * The original grade publication flag is never changed.
+ */
+async function historicalPublishedGrades({db,schoolId,offeringId,offering,columns,roster,resolveUsers,
+  diagnosticRows=null,viewerUid="",acceptSavedLegacy=false}){
+  const linked=columns.filter(c=>c.kind==="assessment"&&c.assessmentSource===HISTORICAL_SOURCE);
   if(!linked.length||schoolId!==SCHOOL_ID)return [];
   const students=await resolveHistoricalRoster({db,schoolId,roster,resolveUsers});
-  if(!students.size)return [];
-  const output=[];
+  const mappedPeople=new Set(students.values()),output=[];
   for(const column of linked){
-    const mapping=column.historicalMapping,task=await db.doc("assessments/"+column.taskId).get();
+    const states=new Map(roster.map(person=>[person.personId,{
+      columnId:column.columnId,personId:person.personId,status:mappedPeople.has(person.personId)?"missing_grade":"identity_unmapped"
+    }]));
+    const finish=()=>{if(Array.isArray(diagnosticRows))diagnosticRows.push(...states.values());};
+    const mapping=column.historicalMapping;
+    if(!validId(column.taskId)||!mappingMatches(mapping,schoolId,offeringId,offering)){
+      for(const state of states.values())state.status="source_unavailable";
+      finish();continue;
+    }
+    const task=await db.doc("assessments/"+column.taskId).get();
     const original=task.exists?task.data():null;
     const verifiedSubjectReview=!!original&&mapping.subjectProof===
       "teacher_confirmed_original_subject_with_roster"&&
@@ -166,24 +213,83 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
       mapping.originalSubjectName===String(original.subject||"").trim();
     if(!validOrigin(original,schoolId)||original.ownerUid!==mapping.ownerUid||
        !historicalSections(original).some(section=>canonical(section)===canonical(mapping.sectionName))||
-       !(historicalSubjectMatches(original.subject,mapping.subjectName)||verifiedSubjectReview))continue;
-    const pairs=[...students.entries()],matches=new Map(),ambiguous=new Set();
-    // Exact original grade document IDs, not a school-wide legacy grade scan.
-    for(let i=0;i<pairs.length;i+=100){
-      const batch=pairs.slice(i,i+100);
-      const snapshots=await db.getAll(...batch.map(([studentId])=>db.doc("student_grades/"+studentId+"_"+column.taskId)));
-      snapshots.forEach((snapshot,index)=>{
-        if(!snapshot.exists)return;
-        const [studentId,personId]=batch[index];
-        const grade=projectedGrade(snapshot.data(),{taskId:column.taskId,studentId,sectionName:mapping.sectionName});
-        if(!grade)return;
-        if(matches.has(personId))ambiguous.add(personId);
-        else matches.set(personId,{...grade,sourceType:HISTORICAL_SOURCE,taskId:column.taskId,personId});
-      });
+       !(historicalSubjectMatches(original.subject,mapping.subjectName)||verifiedSubjectReview)){
+      for(const state of states.values())state.status="source_unavailable";
+      finish();continue;
     }
-    for(const [personId,grade] of matches)if(!ambiguous.has(personId))output.push(grade);
+    const pairs=[...students.entries()],matches=new Map(),ambiguous=new Set(),missing=[];
+    const showDraft=Array.isArray(diagnosticRows)&&viewerUid===original.ownerUid;
+    const assess=async (data,studentId,personId)=>{
+      const state=states.get(personId);
+      if(!state)return;
+      if(data?.taskId!==column.taskId||data?.studentId!==studentId){
+        state.status="invalid_grade";return;
+      }
+      let verifiedReceiptSection="";
+      // Early rows can omit their section. Only an exact original submission
+      // receipt can supply it; never substitute a student's current section.
+      if(!canonical(data.section)){
+        const id=studentId+"_"+column.taskId;
+        if(Buffer.byteLength(id,"utf8")<=1500){
+          const collection=original.schemaVersion===3||original.submissionSource==="studio"||
+            original.assessmentFormat==="studio_code"?"studio_submissions":"assessment_evidence";
+          const receipt=await db.doc(collection+"/"+id).get();
+          const evidence=receipt.exists?receipt.data():null;
+          if(evidence?.assessmentId===column.taskId&&evidence.studentId===studentId)
+            verifiedReceiptSection=String(evidence.section||"");
+        }
+      }
+      if(canonical(data.section||verifiedReceiptSection)!==canonical(mapping.sectionName)){
+        if(!matches.has(personId))state.status="section_mismatch";return;
+      }
+      const grade=projectedGrade(data,{taskId:column.taskId,studentId,sectionName:mapping.sectionName,
+        allowDraft:true,originalMaximum:original.maxScore??null,verifiedReceiptSection});
+      if(!grade){if(!matches.has(personId))state.status="invalid_grade";return;}
+      if(matches.has(personId)){ambiguous.add(personId);return;}
+      matches.set(personId,{grade:{...grade,sourceType:HISTORICAL_SOURCE,taskId:column.taskId,personId},
+        published:data.published===true,savedEligible:legacySavedScoreEligible(data)});
+    };
+    // Prefer the canonical original grade document. Historical Gradebook also
+    // queries by taskId; use that same bounded lookup only for missing IDs.
+    for(let i=0;i<pairs.length;i+=100){
+      const batch=pairs.slice(i,i+100).filter(([id])=>Buffer.byteLength(id+"_"+column.taskId,"utf8")<=1500);
+      if(!batch.length)continue;
+      const snapshots=await db.getAll(...batch.map(([studentId])=>db.doc("student_grades/"+studentId+"_"+column.taskId)));
+      for(let index=0;index<batch.length;index++){
+        const [studentId,personId]=batch[index],snapshot=snapshots[index];
+        if(snapshot?.exists)await assess(snapshot.data(),studentId,personId);
+        else missing.push([studentId,personId]);
+      }
+    }
+    if(missing.length&&typeof db.collection==="function"){
+      const fallback=await db.collection("student_grades").where("taskId","==",column.taskId).limit(1001).get();
+      if(fallback.size>=1001){
+        for(const [,personId] of missing)if(!matches.has(personId))states.get(personId).status="lookup_limit";
+      }else{
+        const missingIds=new Map(missing);
+        for(const doc of fallback.docs){
+          const data=doc.data(),personId=missingIds.get(data.studentId);
+          if(personId)await assess(data,data.studentId,personId);
+        }
+      }
+    }
+    for(const [personId,{grade,published,savedEligible}] of matches){
+      const state=states.get(personId);
+      if(ambiguous.has(personId)){state.status="ambiguous_grade";continue;}
+      if(published){
+        state.status=Math.abs(grade.total-Number(column.maxPoints))<0.0001?"published":"maximum_mismatch";
+        output.push(grade);
+      }else if(acceptSavedLegacy===true&&savedEligible){
+        state.status=Math.abs(grade.total-Number(column.maxPoints))<0.0001?"legacy_accepted":"maximum_mismatch";
+        output.push({...grade,legacyAccepted:true});
+      }else if(showDraft){
+        state.status=!savedEligible?"unresolved_points":Math.abs(grade.total-Number(column.maxPoints))<0.0001?"private_draft":"maximum_mismatch";
+        if(state.status==="private_draft"){state.awarded=grade.awarded;state.total=grade.total;}
+      }
+    }
+    finish();
   }
   return output;
 }
 module.exports={HISTORICAL_SOURCE,validOrigin,historicalSubjectMatches,historicalSections,historicalMapping,verifiedHistoricalSectionMapping,mappingMatches,projectedGrade,
-  resolveHistoricalRoster,historicalPublishedGrades};
+  resolveHistoricalRoster,historicalPublishedGrades,legacySavedScoreEligible};
