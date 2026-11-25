@@ -104,6 +104,12 @@ function mappingMatches(mapping,schoolId,offeringId,offering){
     mapping.sectionId===offering.sectionId&&mapping.subjectId===offering.subjectId&&
     !!mapping.sectionName&&!!mapping.subjectName&&validId(mapping.ownerUid);
 }
+function legacySavedScoreEligible(data){
+  // The school has accepted its saved legacy scores; a positive unresolved
+  // points balance still cannot be treated as a completed numeric result.
+  const pending=Number(data?.pending??0);
+  return Number.isFinite(pending)&&pending===0;
+}
 function projectedGrade(data,{taskId,studentId,sectionName,allowDraft=false,originalMaximum=null,verifiedReceiptSection=""}){
   if(!data||(!allowDraft&&data.published!==true)||data.taskId!==taskId||data.studentId!==studentId||
      canonical(data.section||verifiedReceiptSection)!==canonical(sectionName))return null;
@@ -177,11 +183,13 @@ async function resolveHistoricalRoster({db,schoolId,roster,resolveUsers}){
   return mapped;
 }
 /**
- * Published scores alone feed formal computations and student views. Optional
- * teacher diagnostics are separate, and draft values require source ownership.
+ * Student views default to published grades. The teacher Class Record can
+ * accept saved historical scores during legacy_allowed migration; that policy
+ * is supplied only by the verified server-side school context, never a client.
+ * The original grade publication flag is never changed.
  */
 async function historicalPublishedGrades({db,schoolId,offeringId,offering,columns,roster,resolveUsers,
-  diagnosticRows=null,viewerUid=""}){
+  diagnosticRows=null,viewerUid="",acceptSavedLegacy=false}){
   const linked=columns.filter(c=>c.kind==="assessment"&&c.assessmentSource===HISTORICAL_SOURCE);
   if(!linked.length||schoolId!==SCHOOL_ID)return [];
   const students=await resolveHistoricalRoster({db,schoolId,roster,resolveUsers});
@@ -239,7 +247,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
       if(!grade){if(!matches.has(personId))state.status="invalid_grade";return;}
       if(matches.has(personId)){ambiguous.add(personId);return;}
       matches.set(personId,{grade:{...grade,sourceType:HISTORICAL_SOURCE,taskId:column.taskId,personId},
-        published:data.published===true});
+        published:data.published===true,savedEligible:legacySavedScoreEligible(data)});
     };
     // Prefer the canonical original grade document. Historical Gradebook also
     // queries by taskId; use that same bounded lookup only for missing IDs.
@@ -265,14 +273,17 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
         }
       }
     }
-    for(const [personId,{grade,published}] of matches){
+    for(const [personId,{grade,published,savedEligible}] of matches){
       const state=states.get(personId);
       if(ambiguous.has(personId)){state.status="ambiguous_grade";continue;}
       if(published){
         state.status=Math.abs(grade.total-Number(column.maxPoints))<0.0001?"published":"maximum_mismatch";
         output.push(grade);
+      }else if(acceptSavedLegacy===true&&savedEligible){
+        state.status=Math.abs(grade.total-Number(column.maxPoints))<0.0001?"legacy_accepted":"maximum_mismatch";
+        output.push({...grade,legacyAccepted:true});
       }else if(showDraft){
-        state.status=Math.abs(grade.total-Number(column.maxPoints))<0.0001?"private_draft":"maximum_mismatch";
+        state.status=!savedEligible?"unresolved_points":Math.abs(grade.total-Number(column.maxPoints))<0.0001?"private_draft":"maximum_mismatch";
         if(state.status==="private_draft"){state.awarded=grade.awarded;state.total=grade.total;}
       }
     }
@@ -281,4 +292,4 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
   return output;
 }
 module.exports={HISTORICAL_SOURCE,validOrigin,historicalSubjectMatches,historicalSections,historicalMapping,verifiedHistoricalSectionMapping,mappingMatches,projectedGrade,
-  resolveHistoricalRoster,historicalPublishedGrades};
+  resolveHistoricalRoster,historicalPublishedGrades,legacySavedScoreEligible};
