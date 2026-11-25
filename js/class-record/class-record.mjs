@@ -101,6 +101,8 @@ let finalizationPreview=null;
 let manualScores=new Map();
 let manualScoreMeta=new Map();
 let publishedGrades=new Map();
+let historicalGradeDiagnostics=new Map();
+const historicalStatusText={published:"Published",private_draft:"Private draft (not counted)",missing_grade:"No saved grade found",identity_unmapped:"Student identity not matched",section_mismatch:"Original grade belongs to a different or unverified section",source_unavailable:"Original assessment mapping cannot be verified",invalid_grade:"Original grade is invalid",ambiguous_grade:"Multiple possible original grades; review required",maximum_mismatch:"Score maximum differs from this column",lookup_limit:"Historical source requires a narrower lookup"};
 let cellStates=new Map();
 let dirtyColumns=new Set();
 let editingColumnId=null;
@@ -608,6 +610,14 @@ function appendColumnHeader(headRow,column,index,visibleColumns){
     ?sourceName(column.assessmentSource||SCHOOL_SOURCE):"Manual";
   menu.append(make("div","cr-column-hint",
     (column.category||"Uncategorized")+" · "+source+" · "+numberText(column.maxPoints)+" pts"));
+  const diagnostics=column.assessmentSource===HISTORICAL_SOURCE?
+    [...historicalGradeDiagnostics.values()].filter(item=>item.columnId===column.columnId):[];
+  const breakdown=new Map();
+  for(const item of diagnostics)breakdown.set(item.status,(breakdown.get(item.status)||0)+1);
+  if(diagnostics.length){
+    const detailsText=[...breakdown].map(([state,count])=>count+" "+(historicalStatusText[state]||state)).join(" · ");
+    menu.append(make("div","cr-column-hint",detailsText));
+  }
   const editing=canEditClassRecord();
   columnOptionButton(menu,"Edit activity",()=>openColumnDialog(column),{disabled:!editing});
   const visibility=studentVisibility(column);
@@ -641,6 +651,12 @@ function appendColumnHeader(headRow,column,index,visibleColumns){
   meta.title=source+" · "+(column.category||"Uncategorized")+" · "+
     (visibility==="released"?"Released to students":"Hidden from students");
   th.append(meta);
+  if(diagnostics.length){
+    const published=breakdown.get("published")||0,drafts=breakdown.get("private_draft")||0;
+    const progress=make("span","cr-column-shortmeta",published+"/"+diagnostics.length+" published"+(drafts?" · "+drafts+" draft":""));
+    progress.title=[...breakdown].map(([state,count])=>count+" "+(historicalStatusText[state]||state)).join("; ");
+    th.append(progress);
+  }
   th.title=column.label+" — "+(column.category||"Uncategorized")+" — "+source;
   headRow.append(th);
 }
@@ -751,10 +767,14 @@ function render(){
         td.append(input);
       }else{
         const state=linkedGradeState(column,student.personId),grade=state.grade;
+        const diagnostic=historicalGradeDiagnostics.get(key(column.columnId,student.personId));
+        const draft=!grade&&diagnostic?.status==="private_draft"&&Number.isFinite(diagnostic.awarded);
         const personalized=(column.assessmentSource||SCHOOL_SOURCE)===PERSONALIZED_SOURCE;
         const value=make("span","cr-linked"+(personalized?" personalized":"")+
-          (grade&&!state.valid?" invalid":""),grade?numberText(grade.awarded)+(state.valid?"":" ⚠"):"—");
-        if(grade&&state.valid){
+          (grade&&!state.valid?" invalid":"")+(draft?" draft":""),grade?numberText(grade.awarded)+(state.valid?"":" ⚠"):draft?numberText(diagnostic.awarded)+" · Draft":"—");
+        if(draft){
+          value.title="Saved private grade: "+numberText(diagnostic.awarded)+" / "+numberText(diagnostic.total)+". Publish it in Historical Review & Grade to include it in official computations. Not visible to students.";
+        }else if(grade&&state.valid){
           value.title="Published "+sourceName(column.assessmentSource||SCHOOL_SOURCE)+" result: "+
             numberText(grade.awarded)+" / "+numberText(grade.total);
         }else if(grade&&state.reason==="maximum_mismatch"){
@@ -763,6 +783,8 @@ function render(){
             " points. Archive this old column and add the assessment again with its current maximum.";
         }else if(grade){
           value.title="This published result is outside the valid score range for the Class Record column and is excluded from live grade calculations.";
+        }else if(diagnostic){
+          value.title=historicalStatusText[diagnostic.status]||"Historical grade requires review.";
         }else{
           value.title=personalized
             ?"No published Personalized Studio grade yet. Review the Studio submission, save the grade draft, and publish it from Studio grading."
@@ -1847,6 +1869,7 @@ async function loadWorkspace(){
     publishedGrades=new Map((result.publishedGrades||[]).map(item=>[
       gradeKey(item.sourceType||SCHOOL_SOURCE,item.taskId,item.personId),item
     ]));
+    historicalGradeDiagnostics=new Map((result.historicalGradeDiagnostics||[]).map(item=>[key(item.columnId,item.personId),item]));
     cellStates=new Map((result.cellStates||[]).map(item=>[key(item.columnId,item.personId),item]));
     dirtyColumns.clear();render();
     renderArchivedList();
@@ -1905,7 +1928,7 @@ offeringSelect.addEventListener("change",async()=>{
   finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
   settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
   gradingPolicy=null;pendingSchemeSnapshot=null;
-  manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();cellStates.clear();dirtyColumns.clear();
+  manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();historicalGradeDiagnostics.clear();cellStates.clear();dirtyColumns.clear();
   if(next)await loadWorkspace();else render();
 });
 addButton.addEventListener("click",()=>openColumnDialog());
@@ -2152,7 +2175,7 @@ picker=createTenantSchoolPicker({
     pendingSchemeSnapshot=null;
     settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
     gradingPolicy=null;
-    manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();cellStates.clear();dirtyColumns.clear();
+    manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();historicalGradeDiagnostics.clear();cellStates.clear();dirtyColumns.clear();
     offeringSelect.replaceChildren(new Option("Choose a class…",""));
     offeringSelect.disabled=true;panel.hidden=true;kpis.replaceChildren();
   },
