@@ -111,6 +111,7 @@ function updateHead(){
   $("pl-show-live").setAttribute("aria-pressed",String(live));
   $("pl-window").disabled=state.view!=="global";
   $("pl-live").hidden=!live;
+  $("pl-analysis-drawer").hidden=state.view!=="global";
   document.querySelector(".pl-table-wrap").hidden=live;
   $("pl-more").hidden=live||!state.canMore;
 }
@@ -191,6 +192,15 @@ function eventRow(record,ownerUid,overview){
   if(!detailGrid.childElementCount)detailGrid.append(make("p","","No further recorded metadata."));
   details.append(detailGrid);context.append(details);
   const color=make("td");color.append(flag(record.severity));
+  // On narrow screens the same semantic table rows become compact cards.
+  // Labels are explicit and developer details remain expandable.
+  for(const [cell,label,cssName] of [
+    [color,"Flag","pl-cell-flag"],[when,"Time","pl-cell-time"],
+    [owner,"Account","pl-cell-account"],[event,"Event","pl-cell-event"],
+    [context,"Context","pl-cell-context"]
+  ]){
+    cell.dataset.label=label;cell.classList.add(cssName);
+  }
   tr.append(color,when,owner,event,context);
   return tr;
 }
@@ -823,6 +833,18 @@ async function loadDirectory(user,epoch){
   }
 }
 $("pl-clear-filters").addEventListener("click",clearInvestigationFilters);
+
+// The account list and advanced filters are persistent on desktop, but
+// compact disclosures on narrow screens. Only update on breakpoint changes
+// so a manually opened mobile disclosure does not snap shut during use.
+const compactViewport=window.matchMedia("(max-width: 780px)");
+function syncCompactDisclosures(event=compactViewport){
+  $("pl-directory-disclosure").open=!event.matches;
+  $("pl-filter-disclosure").open=!event.matches;
+}
+syncCompactDisclosures();
+compactViewport.addEventListener("change",syncCompactDisclosures);
+
 $("pl-search").addEventListener("input",renderAccounts);
 $("pl-level").addEventListener("change",()=>{
   state.fingerprint="";
