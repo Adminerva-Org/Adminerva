@@ -31,7 +31,7 @@ async function bootstrap(){
    access.schoolRegistrar||access.schoolTeacher||access.schoolStudent||
    access.role==="admin"||access.role==="teacher"||
    access.legacyRole||access.students?.length);
-  if(!schoolAccess||access.staffLookupUnavailable&&!schoolAccess)
+  if(!schoolAccess)
    throw Error("A verified, active school relationship is required.");
   if(auth.currentUser?.uid!==credential.user.uid)
    throw Error("Your signed-in account changed.");

@@ -142,8 +142,9 @@ function createWindow(){
  // Clear unconfirmed pairing state whenever the main frame reloads or
  // leaves the protected one-shot Firebase bootstrap. A canceled flow cannot
  // later grant private navigation through a stale IPC confirmation.
- contents.on("did-start-navigation",(_event,_url,_inPlace,isMainFrame)=>{
-  if(isMainFrame)tokenConsumedForBootstrap=false;
+ contents.on("did-start-navigation",details=>{
+  if(details.isMainFrame&&!details.isSameDocument)
+   tokenConsumedForBootstrap=false;
  });
  // No camera, microphone, desktop capture, notifications or other OS access.
  ses.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
@@ -153,13 +154,17 @@ function createWindow(){
   if(decision.action!=="internal")launchExternalIfAllowed(url);
   return {action:"deny"};
  });
- contents.on("will-navigate",(event,url)=>{
-  if(url===APP_ORIGIN+APP_PREFIX+"login.html"||url.startsWith(APP_ORIGIN+APP_PREFIX+"login.html?")){
-   allowPrivate=false;tokenConsumedForBootstrap=false;
-  }
+ contents.on("will-navigate",details=>{
+  const url=details.url;
+  try{
+   const target=new URL(url);
+   if(target.origin===APP_ORIGIN&&target.pathname===APP_PREFIX+"login.html"){
+    allowPrivate=false;tokenConsumedForBootstrap=false;
+   }
+  }catch{}
   const decision=navigation(url);
   if(decision.action==="internal")return;
-  event.preventDefault();
+  details.preventDefault();
   launchExternalIfAllowed(url);
  });
  win.on("page-title-updated",event=>event.preventDefault());

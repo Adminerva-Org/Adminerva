@@ -115,3 +115,11 @@ test("desktop sign-in is one-shot and cannot switch accounts during unfinished S
  assert.match(bootstrap,/if\(!schoolAccess/);
  assert.match(bootstrap,/resolveAccountAccess\(credential\.user\)/);
 });
+
+test("desktop navigation hardening reads current Electron navigation details",()=>{
+ assert.match(source,/did-start-navigation",details=>/);
+ assert.match(source,/details\.isMainFrame&&!details\.isSameDocument/);
+ assert.match(source,/will-navigate",details=>/);
+ assert.match(source,/const url=details\.url/);
+ assert.match(source,/target\.pathname===APP_PREFIX\+"login\.html"/);
+});
