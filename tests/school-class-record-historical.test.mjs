@@ -330,3 +330,29 @@ test("unmapped historical learners are diagnosed without manufacturing zero scor
   assert.equal(diagnostics[0].status,"identity_unmapped");
   assert.equal(diagnostics[0].awarded,undefined);
 });
+
+test("legacy migration accepts saved historical numeric grades without changing publication",async()=>{
+  const privateRow={...row,published:false,reviewRequired:true};
+  const records=new Map([["assessments/legacy-task",task],["student_grades/old_student_legacy-task",privateRow]]);
+  const db={doc:path=>({path,get:async()=>({exists:records.has(path),data:()=>records.get(path)})}),
+    getAll:async(...refs)=>Promise.all(refs.map(ref=>ref.get()))};
+  const roster=[{personId:"p1",authUid:"u1",legacyStudentIds:["old_student"]}];
+  const input={db,schoolId,offeringId,offering,columns:[column],roster};
+  const diagnostics=[];
+  const accepted=await historicalPublishedGrades({...input,acceptSavedLegacy:true,diagnosticRows:diagnostics,viewerUid:ownerUid});
+  assert.equal(accepted[0].awarded,17);
+  assert.equal(accepted[0].legacyAccepted,true);
+  assert.equal(diagnostics[0].status,"legacy_accepted");
+  assert.equal(privateRow.published,false);
+  assert.deepEqual(await historicalPublishedGrades(input),[],"student/default path remains published-only");
+  assert.deepEqual(await historicalPublishedGrades({...input,acceptSavedLegacy:false}),[],"strict school mode");
+  assert.deepEqual(await historicalPublishedGrades({...input,schoolId:"other-school",acceptSavedLegacy:true}),[]);
+  assert.deepEqual(await historicalPublishedGrades({...input,columns:[{...column,assessmentSource:"school"}],acceptSavedLegacy:true}),[]);
+  records.set("student_grades/old_student_legacy-task",{...privateRow,pending:2});
+  assert.deepEqual(await historicalPublishedGrades({...input,acceptSavedLegacy:true}),[],"unresolved rubric points are not a completed score");
+  records.set("student_grades/old_student_legacy-task",{...privateRow,score:0});
+  assert.equal((await historicalPublishedGrades({...input,acceptSavedLegacy:true}))[0].awarded,0);
+  records.set("student_grades/old_student_legacy-task",{...privateRow,published:true});
+  const published=await historicalPublishedGrades({...input,acceptSavedLegacy:true});
+  assert.equal(published[0].legacyAccepted,undefined);
+});
