@@ -996,9 +996,11 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         awarded:Number(data.awarded)||0,total:Number(data.total)||0,
         revision:Number(data.revision)||1,publishedAt:millis(data.publishedAt)
       }));
+      const historicalGradeDiagnostics=[];
       const [legacyGrades,historicalGrades]=await Promise.all([
         legacyPublishedGrades(columns,roster,labels.sectionName,assessments),
-        historicalPublishedGrades({db,schoolId:ctx.schoolId,offeringId,offering,columns,roster,resolveUsers})
+        historicalPublishedGrades({db,schoolId:ctx.schoolId,offeringId,offering,columns,roster,resolveUsers,
+          diagnosticRows:historicalGradeDiagnostics,viewerUid:ctx.uid})
       ]);
       const manualIds=new Set(columns.filter(column=>column.kind==="manual").map(column=>column.columnId));
       const manualScores=manualSnap.docs.map(doc=>doc.data()).filter(data=>
@@ -1036,7 +1038,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       return {
         offering,labels,roster,assessments,historicalAvailability:discovery.historicalAvailability,
         columns,settings,gradingPolicy:gradingPolicy.policy,
-        manualScores,publishedGrades,cellStates,collaborators:collaboratorState.teachers,
+        manualScores,publishedGrades,cellStates,historicalGradeDiagnostics,collaborators:collaboratorState.teachers,
         permissions:{
           primaryTeacherUid:collaboratorState.lead.primaryTeacherUid,
           primarySource:collaboratorState.lead.source,
@@ -1265,6 +1267,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         columns:data.columns,settings:data.settings,
         gradingPolicy:data.gradingPolicy,
         manualScores:data.manualScores,publishedGrades:data.publishedGrades,cellStates:data.cellStates,
+        historicalGradeDiagnostics:data.historicalGradeDiagnostics,
         collaborators:data.collaborators,permissions:data.permissions,
         sheetRevision:data.sheetRevision,finalization:data.finalization,
         periodReadiness:{
