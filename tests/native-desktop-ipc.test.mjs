@@ -47,7 +47,7 @@ async function bootDesktop(){
  const ctx=vm.createContext({
   require:localRequire,__dirname:fileURLToPath(new URL("../apps/desktop/",import.meta.url)),
   process:{env:{ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI:"true"},platform:"win32"},
-  setTimeout,console
+  setTimeout,URL,console
  });
  vm.runInContext(source,ctx,{filename:path,timeout:5000});
  await new Promise(resolve=>setImmediate(resolve));
