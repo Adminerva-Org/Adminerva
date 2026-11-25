@@ -176,7 +176,7 @@ function eventRow(record,ownerUid,overview){
   details.append(make("summary","","Developer details"));
   const detailGrid=make("dl","pl-event-fields");
   for(const [label,value] of [
-    ["Event ID",record.id],["Session ID",record.sessionId],
+    ["Account ID",ownerUid],["Event ID",record.id],["Session ID",record.sessionId],
     ["Operation ID",record.operationId],["Cloud trace",record.traceId],
     ["Error signature",record.fingerprint],["Release",record.release],
     ["Module",record.module],["Source",record.source],["Provenance",record.provenance],
