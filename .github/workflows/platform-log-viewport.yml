@@ -1,0 +1,35 @@
+name: Platform Log Viewer viewport QA
+on:
+  pull_request:
+    paths:
+      - "platform-logs.html"
+      - "css/platform-logs.css"
+      - "js/core/platform-logs.mjs"
+      - "tests/platform-log-viewport.mjs"
+      - ".github/workflows/platform-log-viewport.yml"
+  workflow_dispatch:
+jobs:
+  viewport:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate focused viewport harness
+        run: node --check tests/platform-log-viewport.mjs
+      - name: Install isolated Chromium for responsive smoke test
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Inspect desktop, tablet and mobile viewport widths
+        run: node tests/platform-log-viewport.mjs
+      - name: Upload compact layout screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adminerva-platform-logs-responsive
+          path: /tmp/adminerva-platform-log-*.png
+          if-no-files-found: ignore
+          retention-days: 7
