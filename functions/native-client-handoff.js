@@ -36,12 +36,13 @@ function checkInput(data,action){
   refuse("invalid-argument","Invalid device sign-in request.");
  return validateFlowId(data.flowId);
 }
-function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),enabled=()=>false}){
+function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),enabled=()=>false,limiter}){
  if(!db||!auth||!Timestamp)throw new Error("Native handoff requires verified server dependencies.");
  return async request=>{
   // Keep the callable present but inert until an explicitly reviewed roll-out.
   // There is no deployment-time default that enables credential issuance.
   if(!enabled())refuse("failed-precondition","Native application sign-in is not enabled.");
+  if(typeof limiter!=="function")refuse("failed-precondition","Native sign-in rate controls are unavailable.");
   const data=request?.data;
   const action=data?.action;
   if(!["begin","authorize","redeem","cancel"].includes(action))
@@ -55,6 +56,7 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
     refuse("invalid-argument","Invalid native sign-in challenge.");
    // This is an unauthenticated begin: rollout must keep network-level
    // throttling/rate limits active before enabling production issuance.
+   await limiter(request,action,clock);
    const expiresAtMs=clock+HANDOFF_TTL_MS;
    try{
     await ref.create({
@@ -75,6 +77,7 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
    if(typeof uid!=="string"||!uid||token?.email_verified!==true||!token.email)
     refuse("unauthenticated","Sign in with a verified Adminerva account.");
    // A durable browser session alone must not approve an unrelated new device.
+   await limiter(request,action,clock);
    const signedInAt=Number(token.auth_time)*1000;
    if(!Number.isFinite(signedInAt)||signedInAt>clock+30000||
       clock-signedInAt>5*60*1000)
@@ -86,7 +89,7 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
       !person.email||person.email.toLowerCase()!==String(token.email).toLowerCase())
     refuse("permission-denied","This verified account is not available for device sign-in.");
    const revokedAfter=Date.parse(person.tokensValidAfterTime||"")||0;
-   if(revokedAfter>signedInAt)
+   if(revokedAfter>0&&revokedAfter>=signedInAt)
     refuse("unauthenticated","This account session was revoked. Sign in again.");
    const outcome=await db.runTransaction(async tx=>{
     const snapshot=await tx.get(ref);
@@ -122,6 +125,7 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
   const verifierBytes=Buffer.from(data.verifier,"base64url");
   if(verifierBytes.length!==32)
    refuse("invalid-argument","Invalid device verifier.");
+  await limiter(request,action,clock);
   const challenge=digestB64(verifierBytes);
   if(action==="cancel"){
    const state=await db.runTransaction(async tx=>{
@@ -151,7 +155,7 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
   // Revoking provider sessions after browser approval must also invalidate
   // a still-unredeemed pairing. A custom token must not restore a revoked login.
   const revokedAfter=Date.parse(person.tokensValidAfterTime||"")||0;
-  if(revokedAfter>Number(row.approvedAuthTimeMs||0))
+  if(revokedAfter>0&&revokedAfter>=Number(row.approvedAuthTimeMs||0))
    refuse("unauthenticated","The approved browser session was revoked.");
   const outcome=await db.runTransaction(async tx=>{
    const snapshot=await tx.get(ref);

@@ -41,7 +41,7 @@ let now=1700000000000;
 const clock=()=>now;
 const enabled=()=>true;
 const signed={auth:{uid:"student-uid",token:{email_verified:true,email:"student@example.edu",auth_time:Math.floor(now/1000)}}};
-function service(db,flag=enabled){return createNativeClientHandoffService({db,auth,Timestamp,now:clock,enabled:flag});}
+function service(db,flag=enabled){return createNativeClientHandoffService({db,auth,Timestamp,now:clock,enabled:flag,limiter:async()=>true});}
 function request(pairing,action,extra={},signedIn=false){
  return {data:{action,flowId:pairing.flowId,...extra},...(signedIn?signed:{})};
 }
@@ -151,4 +151,25 @@ test("account disable and provider token revocation prevent credential issuance"
   account2.tokensValidAfterTime=new Date(now+1000).toUTCString();
   await assert.rejects(h(request(second,"authorize",{confirmationCode:second.confirmationCode},true)),{code:"unauthenticated"});
  }finally{delete account2.tokensValidAfterTime;}
+});
+
+test("native sign-in refuses to run enabled without a server rate limiter",async()=>{
+ const db=fakeDb(),p=generatePairing();
+ const noLimiter=createNativeClientHandoffService({db,auth,Timestamp,now:clock,enabled:()=>true});
+ await assert.rejects(noLimiter(request(p,"begin",{
+  clientKind:"desktop",challenge:p.challenge,confirmationCode:p.confirmationCode
+ })),{code:"failed-precondition"});
+ assert.equal(db.data.size,0);
+});
+
+test("browser approval requires explicit recent OAuth reauthentication",()=>{
+ const js=readFileSync(new URL("../js/core/native-connect.mjs",import.meta.url),"utf8");
+ const html=readFileSync(new URL("../native-connect.html",import.meta.url),"utf8");
+ assert.match(js,/reauthenticateWithPopup\(existing,provider\)/);
+ assert.match(js,/getIdTokenResult\(true\)/);
+ assert.match(js,/freshProof\(user\)/);
+ assert.match(js,/user\.uid===reauthenticatedUid/);
+ assert.match(js,/signOut\(auth\)/);
+ assert.match(html,/id="native-switch-account"/);
+ assert.doesNotMatch(js,/localStorage\.setItem|sessionStorage\.setItem|signInWithCustomToken/);
 });

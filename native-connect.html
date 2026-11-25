@@ -45,13 +45,14 @@ button:disabled{opacity:.55;cursor:not-allowed}
 <p id="native-account" class="native-account"></p>
 <label for="native-pair-code">Code displayed on your desktop</label>
 <input id="native-pair-code" inputmode="numeric" autocomplete="off" maxlength="8" pattern="[0-9]{8}" placeholder="00000000" aria-describedby="native-code-hint">
-<p id="native-code-hint">This code must match the desktop application you control. Authorization expires in five minutes.</p>
+<p id="native-code-hint">Only authorize the device you control. The code expires in five minutes. A saved website session is not enough; fresh account verification is required.</p>
 <button id="native-approve" type="button" class="native-action">Authorize this desktop</button>
 </div>
 <div id="native-provider-selection" hidden>
-<p>Sign in using your verified Adminerva account in this system browser. This does not sign in an unapproved account or change school access.</p>
-<button type="button" class="native-provider" id="native-google">Sign in with Google</button>
-<button type="button" class="native-provider" id="native-github">Sign in with GitHub</button>
+<p>Verify your identity with Google or GitHub before approving a desktop connection. If already signed in, this will require a fresh verification with your linked provider.</p>
+<button type="button" class="native-provider" id="native-switch-account" hidden>Use a different account</button>
+<button type="button" class="native-provider" id="native-google">Verify with Google</button>
+<button type="button" class="native-provider" id="native-github">Verify with GitHub</button>
 </div>
 <p><a href="downloads.html">Download and installation information</a></p>
 </section>

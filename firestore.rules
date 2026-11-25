@@ -96,6 +96,7 @@ service cloud.firestore {
     match /system_private/{record=**} { allow read, write: if false; }
     // Short-lived device pairing and issued-token provenance are server-only.
     match /native_client_handoffs/{handoffId} { allow read, write: if false; }
+    match /native_client_handoff_rate_limits/{quotaId} { allow read, write: if false; }
     match /school_ai_results/{record=**} { allow read, write: if false; }
     match /school_ai_usage/{record=**} { allow read, write: if false; }
     // Public visibility is explicit opt-in. Only backend handlers may publish scores.
