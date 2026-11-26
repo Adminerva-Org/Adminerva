@@ -23,6 +23,12 @@ Capacitor is configured with no remote `server.url`: production distribution mus
 - Package ID `io.adminerva.preview` is temporary and must be replaced with the verified publisher's production identifier before creating or signing store builds.
 - Do not publish Apple App Store, Google Play or APK links until authorized builds, store review and tested distribution exist.
 
+## Preview update status and production mobile updates
+
+The Android public-only start page now offers **Check for updates**. It reads first-party version metadata and links testers to the official download center, but **cannot self-install an APK**. A CI debug APK can have a different signing certificate from the previous build; installing it over an older one may fail. Do not uninstall a student's device app with unsynced projects as a workaround.
+
+For official Android updates, use stable application identity, Play App Signing, approved Play in-app updates, and keep local project recovery data intact. For iPhone/iPad use Apple-signed TestFlight/App Store updates. The in-app update action should show availability and hand off to the platform store, not download or execute arbitrary app packages. Defer any install prompt/restart while an assessment or cloud-save checkpoint is unfinished.
+
 ## Android debug APK for preview testing
 
 The same GitHub Actions workflow creates an Android debug APK from canonical public-only website assets. Open its successful run, download the Android artifact ZIP and extract app-debug.apk (with its SHA256SUMS.txt). The APK is signed with a disposable development debug key, not the school's production publishing key. This is **not** a Play Store release and must not be used for logged-in student work or practical exams.

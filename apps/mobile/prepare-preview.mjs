@@ -38,6 +38,7 @@ try{
  }
  for(const page of publicPages)copyFileSync(path.join(root,page),path.join(staging,page));
  copyFileSync(path.join(here,"preview-index.html"),path.join(staging,"index.html"));
+ copyFileSync(path.join(here,"preview-update.mjs"),path.join(staging,"preview-update.mjs"));
  rmSync(output,{recursive:true,force:true});
  // renameSync is same-device and prevents accidentally syncing an incomplete tree.
  const {renameSync}=await import("node:fs");

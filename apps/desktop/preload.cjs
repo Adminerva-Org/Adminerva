@@ -5,7 +5,7 @@ const descriptor=Object.freeze({
  kind:"desktop",
  channel:"public-preview",
  protocol:1,
- shellVersion:"0.1.0",
+ shellVersion:"0.1.1",
  capabilities:Object.freeze([])
 });
 contextBridge.exposeInMainWorld("adminervaClient",descriptor);

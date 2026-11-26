@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: node --test tests/cross-platform-client.test.mjs tests/native-preview-installers.test.mjs
+      - run: node --test tests/cross-platform-client.test.mjs tests/native-preview-installers.test.mjs tests/native-app-updates.test.mjs
       - name: Install desktop build dependencies
         working-directory: apps/desktop
         run: npm install --no-audit --no-fund
@@ -54,7 +54,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: node --test tests/cross-platform-client.test.mjs tests/native-preview-installers.test.mjs
+      - run: node --test tests/cross-platform-client.test.mjs tests/native-preview-installers.test.mjs tests/native-app-updates.test.mjs
       - run: npm install --prefix apps/desktop --no-audit --no-fund
       - name: Package unsigned macOS Intel and Apple Silicon DMGs
         working-directory: apps/desktop
@@ -88,7 +88,7 @@ jobs:
           java-version: "21"
       # GitHub's Ubuntu image already carries the Android SDK and cmdline tools.
       # Avoid legacy 'tools' package resolution in setup-android@v3.
-      - run: node --test tests/cross-platform-client.test.mjs tests/native-preview-installers.test.mjs
+      - run: node --test tests/cross-platform-client.test.mjs tests/native-preview-installers.test.mjs tests/native-app-updates.test.mjs
       - name: Install Capacitor build dependencies
         working-directory: apps/mobile
         run: npm install --no-audit --no-fund
@@ -97,6 +97,7 @@ jobs:
         run: |
           npm run add:android
           npm run sync
+          npm run set:native-version
       - name: Assemble Android debug APK
         working-directory: apps/mobile/android
         run: |

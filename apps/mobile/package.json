@@ -1,6 +1,6 @@
 {
   "name": "adminerva-mobile-public-preview",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Unreleased, public-only mobile staging for the canonical Adminerva web UI",
@@ -8,7 +8,8 @@
     "prepare": "node prepare-preview.mjs",
     "sync": "npm run prepare && cap sync",
     "add:android": "cap add android",
-    "add:ios": "cap add ios"
+    "add:ios": "cap add ios",
+    "set:native-version": "node sync-native-version.mjs"
   },
   "dependencies": {
     "@capacitor/core": "8.6.2"
