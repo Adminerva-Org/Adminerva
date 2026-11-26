@@ -113,6 +113,16 @@ function createSchoolStudentRecordsService({db}){
         deny("permission-denied","An active school Registrar or School Administrator membership is required.");
     }
     if(CREDENTIAL_ACTIONS.has(input.action))return registrarCredentialAction({db,ctx,input,requireMembership:requireRegistrarMembership,student});
+    if(input.action==="find_student_by_lrn"){
+      await requireRegistrarMembership(ref=>ref.get());
+      const lrn=normalizeLrn(input.lrn);if(!lrn)deny("invalid-argument","Enter an existing 12-digit LRN.");
+      const claim=await db.doc(root+"student_lrn_claims/"+key("lrn",lrn)).get();
+      if(!claim.exists||claim.data().schoolId!==ctx.schoolId||claim.data().status!=="active")return {state:"not_found"};
+      const personId=id(claim.data().personId,"Person ID"),[profile,a]=await Promise.all([db.doc(root+"student_registrar_profiles/"+personId).get(),student(personId)]);
+      if(!profile.exists||profile.data().schoolId!==ctx.schoolId||profile.data().personId!==personId||profile.data().lrn!==lrn)
+        deny("data-loss","LRN claim requires Registrar identity review.");
+      return {state:"found",personId,displayName:a.data.displayName||"Student",studentNumber:a.data.studentNumber||""};
+    }
     if(input.action==="get_registrar_profile"||input.action==="save_registrar_profile"){
       await requireRegistrarMembership(ref=>ref.get());
       const personId=id(input.personId,"Person ID"),a=await student(personId),profileRef=db.doc(root+"student_registrar_profiles/"+personId);
