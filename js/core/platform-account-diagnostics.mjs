@@ -36,6 +36,7 @@ function environment(){
 
 const controls=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
 const processes=new Map();
+const studioReasons=new Set(["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_STATE_CHANGED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_CLOSED","STUDIO_FINAL_CHECKPOINT_REQUIRED","STUDIO_FINAL_CHECKPOINT_CONFLICT","STUDIO_FINAL_CHECKPOINT_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EMPTY_SNAPSHOT_REJECTED","STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_NOT_ARCHIVED"]);
 const processNames=new Set(["studio_cloud_save","studio_api_sync","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign"]);
 const MAX_TRACKED=24;
 const elapsed=start=>Math.min(3600000,Math.max(0,Math.round(performance.now()-start)));
@@ -47,16 +48,16 @@ function snapshotContext(extra={}){
     dialog:document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]:not([hidden])[aria-hidden="false"]')?"open":"none",
     busy:document.querySelector('[aria-busy="true"]')?"busy":"idle",active,overflow:Math.max(0,processes.size-active.length),...extra};
 }
-function beginProcess(name){
+function beginProcess(name,metadata={}){
   if(!enabled||!processNames.has(name)||processes.size>=MAX_TRACKED)return ()=>{};
   const id=ID(),start=performance.now(),turn=epoch;
   processes.set(id,{name,start});
-  try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name}});}catch{}
+  try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name,...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})}});}catch{}
   let finished=false;
-  return (success,errorCode)=>{
+  return (success,errorCode,reasonCode)=>{
     if(finished)return;finished=true;
     if(turn!==epoch)return;
-    const context={process:name,elapsedMs:elapsed(start)};
+    const context={process:name,elapsedMs:elapsed(start),...(studioReasons.has(reasonCode)?{reasonCode}:{}),...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})};
     processes.delete(id);
     emit(success===true?"process_finished":"process_failed",{module:"studio",kind:success===true?"action":"error",
       state:success===true?"ok":"error",operationId:id,phase:success===true?"completed":"failed",
@@ -133,13 +134,14 @@ function emit(action,{kind="action",module=moduleForRoute(),state="info",errorCo
     ...(operationId?{operationId}:{}),...(phase?{phase}:{})};
   void send(event);
 }
-function diagnosticError(action,value,module=moduleForRoute(),operationId=""){
+function diagnosticError(action,value,module=moduleForRoute(),operationId="",reasonCode=""){
   const errorCode=code(value)||"unknown";
-  const key=action+"|"+errorCode+"|"+route(),now=Date.now();
+  const safeReason=studioReasons.has(reasonCode)?reasonCode:"";
+  const key=action+"|"+errorCode+"|"+safeReason+"|"+route(),now=Date.now();
   if(now-(errors.get(key)||0)<60000)return;
   errors.set(key,now);
   if(errors.size>40)errors=new Map([...errors].slice(-25));
-  emit(action,{kind:"error",module,state:"error",errorCode,operationId,phase:"failed"});
+  emit(action,{kind:"error",module,state:"error",errorCode,operationId,phase:"failed",context:safeReason?{reasonCode:safeReason}:{}});
 }
 function initializeSession(user){
   const key="Adminerva_diagnostic_session_"+user.uid;
@@ -208,9 +210,9 @@ document.addEventListener("click",event=>{
 },true);
 document.addEventListener("adminerva:diagnostic-event",event=>{
   const data=event?.detail||{};
-  if(data.action==="cloud_save_failed")diagnosticError("cloud_save_failed",data.errorCode||"unavailable","studio");
+  if(data.action==="cloud_save_failed")diagnosticError("cloud_save_failed",data.errorCode||"unavailable","studio","",data.reasonCode);
   else if(data.action==="api_failed")diagnosticError("api_failed",data.errorCode||"unavailable",
-    ["studio","assessments","classroom","school","games","grades","notifications","settings","api"].includes(data.module)?data.module:"api");
+    ["studio","assessments","classroom","school","games","grades","notifications","settings","api"].includes(data.module)?data.module:"api","",data.reasonCode);
   else if(data.action==="support_report_submitted")emit("support_report_submitted",{module:"other",state:"ok"});
 });
 window.AdminervaDiagnostic=Object.freeze({emit,beginProcess,apiFailed:(error,module="api")=>{
