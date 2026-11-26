@@ -452,7 +452,13 @@ document.addEventListener("DOMContentLoaded", () => {
       try{const push=await import("./push-notifications.mjs?v=1.4.1");await push.departPushAccount();}catch{}
       await signOut(getAuth());
       try { for (const key of ["Adminerva_Role", "Adminerva_Mock_Role", "Adminerva_Impersonate"]) localStorage.removeItem(key); } catch { /* Account is already signed out. */ }
-      window.location.href = "login.html";
+      const desktopBridge=window.adminervaClient;
+      if(desktopBridge?.kind==="desktop"&&typeof desktopBridge.reportSignedOut==="function"){
+        try{await desktopBridge.reportSignedOut();}catch{}
+        // Electron clears private navigation; never leave this learner's
+        // account visible or open an external login page after sign-out.
+        window.location.replace("guest-home.html");
+      }else window.location.href = "login.html";
     } catch (error) {
       console.warn("Sign out failed; preserving the current school session.", error);
       button.textContent="Retry sign out";

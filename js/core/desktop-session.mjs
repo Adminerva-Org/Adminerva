@@ -3,12 +3,14 @@
  * a Firebase custom token in a URL, DOM attribute, browser storage or log.
  */
 import {auth} from "./firebase-core.js";
-import {signInWithCustomToken} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {signInWithCustomToken,signOut} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {eligibleNativeWorkspace} from "./native-session-admission.mjs";
 import {resolveAccountAccess} from "./staff-session-v4-pilot.mjs";
 import {sessionDestination} from "./session-destination-v4-pilot.mjs";
 const status=document.getElementById("desktop-session-status");
 function update(message){status.textContent=message;}
 async function bootstrap(){
+ let signedInUid=null;
  const native=window.adminervaClient;
  if(!native||native.kind!=="desktop"||typeof native.consumeSignInToken!=="function"||
     typeof native.confirmSignIn!=="function"){
@@ -24,14 +26,11 @@ async function bootstrap(){
   // Token is transient and is held only in this call stack until Firebase
   // establishes its standard session persistence in the isolated app partition.
   const credential=await signInWithCustomToken(auth,token);
+  signedInUid=credential.user.uid;
   if(!credential.user.emailVerified||!credential.user.email)
    throw Error("Verified account required.");
   const access=await resolveAccountAccess(credential.user);
-  const schoolAccess=Boolean(access.platformAdmin||access.schoolAdmin||
-   access.schoolRegistrar||access.schoolTeacher||access.schoolStudent||
-   access.role==="admin"||access.role==="teacher"||
-   access.legacyRole||access.students?.length);
-  if(!schoolAccess)
+  if(!eligibleNativeWorkspace(credential.user,access))
    throw Error("A verified, active school relationship is required.");
   if(auth.currentUser?.uid!==credential.user.uid)
    throw Error("Your signed-in account changed.");
@@ -41,7 +40,11 @@ async function bootstrap(){
   update("Opening your Adminerva workspace…");
   location.replace(destination);
  }catch{
-  update("Your desktop sign-in could not finish. No school record was changed. Try the sign-in process again.");
+  // Do not leave a partly authenticated learner in shared-computer storage.
+  if(signedInUid&&auth.currentUser?.uid===signedInUid){
+   try{await signOut(auth);}catch{}
+  }
+  update("Desktop sign-in could not finish. No school record was changed. Start a new device sign-in from the app.");
  }
 }
 void bootstrap();
