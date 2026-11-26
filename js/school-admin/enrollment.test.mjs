@@ -307,3 +307,12 @@ test("acceptance is blocked until admission requirements are reviewed",()=>{
   assert.equal(h.requests.length,0);
   assert.match(h.get("en-status").textContent,/Verify admission requirements/);
 });
+
+
+test("applicant checklist includes mandatory template items without overwriting verified rows",()=>{
+  const h=harness();h.context.openRequirements({applicationId:"app-review",displayName:"Applicant",reference:"APP-1",status:"submitted",requirements:[{label:"Existing",status:"verified"}],templateLabels:["Existing","New requirement"],templateRevision:2});
+  assert.equal(h.get("en-requirements-list").children.length,2);
+  assert.equal(h.get("en-requirements-list").children[0].children[2].disabled,true);
+  assert.equal(h.get("en-requirements-list").children[1].children[2].disabled,true);
+  assert.equal(h.get("en-requirements-none").disabled,true);
+});
