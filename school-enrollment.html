@@ -145,7 +145,7 @@
             <div>
               <h2 class="text-lg font-extrabold">Admissions</h2>
             </div>
-            <button id="en-refresh-applications" class="en-btn secondary" type="button">Refresh</button>
+            <div class="flex flex-wrap gap-2"><button id="en-template-open" class="en-btn secondary" type="button" hidden>Requirement templates</button><button id="en-refresh-applications" class="en-btn secondary" type="button">Refresh</button></div>
           </div>
           <div class="grid sm:grid-cols-2 gap-2 mt-3">
             <label class="text-sm font-bold">Find applicant<input id="en-application-search" class="en-input mt-1" type="search" placeholder="Name or reference"></label>
@@ -265,6 +265,18 @@
       </div>
     </div>
   </section>
+
+  <dialog id="en-template-dialog" class="en-dialog" aria-labelledby="en-template-title">
+    <form id="en-template-form" class="en-card">
+      <div class="flex items-start justify-between gap-3"><h2 id="en-template-title" class="text-lg font-extrabold">Requirement templates</h2><button id="en-template-close" class="en-btn secondary" type="button">Close</button></div>
+      <label class="block text-sm font-bold mt-3">Applicant type<select id="en-template-type" class="en-input mt-1"><option value="new">New student</option><option value="returning">Returning student</option><option value="transferee">Transferee</option></select></label>
+      <label class="block text-sm font-bold mt-3">Required documents (one per line)<textarea id="en-template-labels" class="en-input mt-1" rows="6" maxlength="2500"></textarea></label>
+      <p class="en-muted mt-1">Changes apply to applications not yet accepted. An empty list has no mandatory template items.</p>
+      <label class="block text-sm font-bold mt-3">Change reason<textarea id="en-template-reason" class="en-input mt-1" rows="2" minlength="8" maxlength="500" required></textarea></label>
+      <p id="en-template-status" class="en-muted mt-2" role="status" aria-live="polite"></p>
+      <button id="en-template-save" type="submit" class="en-btn mt-3" disabled>Save template</button>
+    </form>
+  </dialog>
 
   <dialog id="en-requirements-dialog" class="en-dialog" aria-labelledby="en-requirements-title">
     <form id="en-requirements-form" class="en-card">
@@ -416,7 +428,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar4"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar5"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
