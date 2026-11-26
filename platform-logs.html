@@ -10,25 +10,26 @@
   <script defer src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=7fe6ab08fd82">
   <link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1">
-  <link rel="stylesheet" href="css/platform-logs.css?v=20261126-inspector-2">
+  <link rel="stylesheet" href="css/platform-logs.css?v=20261126-console-3">
 </head>
 <body id="pageBody" class="hidden">
   <div id="adminerva-nav" data-module="admin" data-page="platform-logs"></div>
   <main class="pl-shell">
     <header class="pl-hero">
       <div class="pl-hero-main">
-        <p class="pl-eyebrow">System Administration / Observability</p>
         <h1>User Action &amp; System Logs</h1>
 
       </div>
       <a class="pl-link" href="system-users.html"><span class="pl-link-full">Platform Users</span><span class="pl-link-short">Users</span></a>
     </header>
-    <div class="pl-legend" role="group" aria-label="Diagnostic severity legend">
+    <div class="pl-legend pl-visually-hidden" role="group" aria-label="Diagnostic severity legend">
       <span class="pl-flag" data-level="normal"><span aria-hidden="true" class="pl-dot"></span>Normal</span>
       <span class="pl-flag" data-level="warning"><span aria-hidden="true" class="pl-dot"></span>Warning</span>
       <span class="pl-flag" data-level="failure"><span aria-hidden="true" class="pl-dot"></span>Failure</span>
       <span class="pl-legend-note">Flag = recorded outcome, not user conduct.</span>
     </div>
+    <details id="pl-access-disclosure" class="pl-access-disclosure" open>
+      <summary><strong>Investigation access</strong><span id="pl-access-summary">Reason required</span><span class="pl-access-change">Change reason</span></summary>
     <section class="pl-purpose pl-card" aria-labelledby="pl-purpose-title">
       <div class="pl-purpose-intro">
         <h2 id="pl-purpose-title">Investigation access</h2>
@@ -45,9 +46,9 @@
           <span id="pl-purpose-status" role="status" aria-live="polite">Verifying Platform Administrator access…</span>
         </div>
       </div>
-    </section>
+    </section></details>
 
-    <div class="pl-main">
+    <div class="pl-main" id="pl-workspace">
       <aside class="pl-directory pl-card" aria-labelledby="pl-directory-heading">
         <details id="pl-directory-disclosure" class="pl-directory-disclosure" open>
           <summary class="pl-directory-summary">
@@ -65,23 +66,23 @@
       </aside>
 
       <section class="pl-view pl-card" aria-labelledby="pl-view-title">
-        <nav class="pl-mode-bar" aria-label="Diagnostic views">
+        <div class="pl-console-toolbar"><nav class="pl-mode-bar" aria-label="Diagnostic views">
           <button id="pl-show-live" class="pl-button pl-primary" type="button" disabled>Live · 3s</button>
           <button id="pl-show-global" class="pl-button pl-secondary" type="button" disabled>Event history</button>
           <button id="pl-show-recent" class="pl-button pl-secondary" type="button" disabled>Account overview</button>
-        </nav>
+        </nav><button id="pl-toggle-directory" type="button" class="pl-button pl-secondary" aria-controls="pl-directory-disclosure" aria-expanded="true">Accounts</button><button id="pl-focus-mode" type="button" class="pl-button pl-secondary" aria-pressed="false">Focus view</button></div>
         <div class="pl-card-heading pl-view-heading">
           <div><p id="pl-view-eyebrow" class="pl-eyebrow">All accounts · chronological</p><h2 id="pl-view-title">Global Event Stream</h2>
-            <p id="pl-view-description">Individual user and backend events across Adminerva, ordered by server receipt time. Select any event’s account for its longer diagnostic history.</p>
+            <p id="pl-view-description" class="pl-visually-hidden">Individual user and backend events across Adminerva, ordered by server receipt time. Select any event’s account for its longer diagnostic history.</p>
           </div>
           <button id="pl-refresh" class="pl-button pl-secondary" type="button" disabled>Refresh</button>
         </div>
 
         <div class="pl-stats" aria-label="Current loaded event classification">
-          <div><span>Normal</span><strong id="pl-normal-count">—</strong></div>
-          <div><span>Warnings</span><strong id="pl-warning-count">—</strong></div>
-          <div><span>Failures</span><strong id="pl-failure-count">—</strong></div>
-          <div><span>Unclassified</span><strong id="pl-unknown-count">—</strong></div>
+          <button type="button" class="pl-quick-filter" data-filter="normal" aria-pressed="false"><span>Normal</span><strong id="pl-normal-count">—</strong></button>
+          <button type="button" class="pl-quick-filter" data-filter="warning" aria-pressed="false"><span>Warnings</span><strong id="pl-warning-count">—</strong></button>
+          <button type="button" class="pl-quick-filter" data-filter="failure" aria-pressed="false"><span>Failures</span><strong id="pl-failure-count">—</strong></button>
+          <button type="button" class="pl-quick-filter" data-filter="unknown" aria-pressed="false"><span>Unknown</span><strong id="pl-unknown-count">—</strong></button>
         </div>
         <div class="pl-filter-bar">
           <details id="pl-filter-disclosure" class="pl-filter-disclosure" open>
@@ -104,6 +105,7 @@
         </div>
         <div class="pl-filter-feedback">
           <p id="pl-filter-status" class="pl-filter-status" role="status" aria-live="polite">Select a view and load recorded activity. Server and local filters have different scopes.</p>
+          <label class="pl-time-precision"><input id="pl-milliseconds" type="checkbox" checked> ms</label>
           <button id="pl-clear-filters" class="pl-button pl-secondary" type="button">Clear filters</button>
         </div>
         <div class="pl-investigation-grid" id="pl-investigation-grid">
@@ -136,8 +138,24 @@
           <div id="pl-live-console" class="pl-live-console" role="log" aria-label="Platform-wide recorded events, chronological" aria-live="off" tabindex="0">
             <p class="pl-live-empty">No live watch started. Existing recorded events remain in Global event history.</p>
           </div>
-          <p class="pl-live-footnote">Color and severity identify the recorded outcome. New lines are highlighted briefly; you can pause, inspect details, and resume from the last received event. Severity and module filters affect visible console lines, not which events are fetched. Polling is bounded and audited in ten-minute viewing windows.</p>
+          <p class="pl-live-footnote pl-visually-hidden">Color and severity identify the recorded outcome. New lines are highlighted briefly; you can pause, inspect details, and resume from the last received event. Severity and module filters affect visible console lines, not which events are fetched. Polling is bounded and audited in ten-minute viewing windows.</p>
         </section>
+        <p id="pl-log-status" class="pl-status" role="status" aria-live="polite">No logs loaded. Enter a reason above before inspecting account activity.</p>
+        <div class="pl-table-wrap">
+          <table class="pl-table">
+            <thead><tr>
+              <th scope="col">Flag</th><th scope="col">Date / time</th><th scope="col">Account</th><th scope="col">Event / action</th><th scope="col">Outcome and context</th>
+            </tr></thead>
+            <tbody id="pl-events"></tbody>
+          </table>
+        </div>
+        <button id="pl-more" class="pl-button pl-secondary pl-more" type="button" disabled hidden>Load older events</button>
+        <details id="pl-audit-wrap" class="pl-audit" hidden>
+          <summary>Related immutable platform account administration history</summary>
+          <p>Account lifecycle actions remain in the original platform audit store; this viewer does not copy or edit those records.</p>
+          <div id="pl-audit-records"></div>
+        </details>
+        </div></div>
         <details id="pl-analysis-drawer" class="pl-analysis-drawer" hidden>
           <summary>Analytics &amp; failure patterns <span>On-demand · sample-based</span></summary>
           <div class="pl-analysis-content">
@@ -185,22 +203,6 @@
         </section>
           </div>
         </details>
-        <p id="pl-log-status" class="pl-status" role="status" aria-live="polite">No logs loaded. Enter a reason above before inspecting account activity.</p>
-        <div class="pl-table-wrap">
-          <table class="pl-table">
-            <thead><tr>
-              <th scope="col">Flag</th><th scope="col">Date / time</th><th scope="col">Account</th><th scope="col">Event / action</th><th scope="col">Outcome and context</th>
-            </tr></thead>
-            <tbody id="pl-events"></tbody>
-          </table>
-        </div>
-        <button id="pl-more" class="pl-button pl-secondary pl-more" type="button" disabled hidden>Load older events</button>
-        <details id="pl-audit-wrap" class="pl-audit" hidden>
-          <summary>Related immutable platform account administration history</summary>
-          <p>Account lifecycle actions remain in the original platform audit store; this viewer does not copy or edit those records.</p>
-          <div id="pl-audit-records"></div>
-        </details>
-        </div></div>
         <details class="pl-policy"><summary>Coverage, retention &amp; privacy</summary><p class="pl-footnote">This log is for authorized system debugging, not student misconduct findings. A backend callable returning without an exception does not independently prove that a requested school record was committed. A normal click means it was observed, not that a save or submission succeeded. The Live console is a three-second polling view, not a direct socket or a guarantee of every interaction. Severity and module filters are applied server-side in the Global Event Stream; text search filters the currently loaded rows only. Events are recorded at server receipt time and may arrive late or be missing. No password, student source code, private notification body, full URL, raw stack trace, grade, screenshot or arbitrary typed input is collected. Previously recorded per-user events remain accessible under the original account timeline; the new global index starts with newly recorded events. Diagnostic records expire after 60 days. Global error-pattern counts are a bounded sample, not an exact platform-wide census.</p></details>
       </section>
     </div>
@@ -208,7 +210,7 @@
   <script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
   <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
   <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
-  <script type="module" src="js/core/platform-logs.mjs?v=20261126-inspector-2"></script>
+  <script type="module" src="js/core/platform-logs.mjs?v=20261126-console-3"></script>
   <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script>
   <script defer src="js/core/release-footer.js?v=7fe6ab08fd82"></script>
 </body>
