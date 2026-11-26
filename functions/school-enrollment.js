@@ -552,9 +552,11 @@ function createSchoolEnrollmentService({db}){
       const cursor=input.cursor?checkId(input.cursor,"Application cursor",128):null,pageSize=80;
       let scan=db.collection(root+"enrollment_applications").orderBy(FieldPath.documentId()).limit(pageSize+1);
       if(cursor)scan=scan.startAfter(cursor);
-      const [snap,...templateDocs]=await Promise.all([scan.get(),...ADMISSION_TYPES.map(type=>templateRef(type).get())]);
+      const exactId=input.applicationId?checkId(input.applicationId,"Application ID",128):null;
+      const [snap,...templateDocs]=await Promise.all([exactId?db.doc(root+"enrollment_applications/"+exactId).get():scan.get(),...ADMISSION_TYPES.map(type=>templateRef(type).get())]);
       const templates=Object.fromEntries(ADMISSION_TYPES.map((type,index)=>[type,readTemplate(templateDocs[index],type)]));
-      const page=snap.docs.slice(0,pageSize),nextCursor=snap.size>pageSize?page.at(-1).id:null;
+      if(exactId&&(!snap.exists||snap.data().schoolId!==ctx.schoolId))deny("not-found","Application not found.");
+      const page=exactId?[snap]:snap.docs.slice(0,pageSize),nextCursor=!exactId&&snap.size>pageSize?page.at(-1).id:null;
       const items=page.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>{
         const row=doc.data(),type=ADMISSION_TYPES.includes(row.applicationType)?row.applicationType:"new",template=templates[type];
         return ({
@@ -1393,7 +1395,7 @@ function createSchoolEnrollmentService({db}){
         db.doc(root+"academic_programs/"+programId).get(),
         db.doc(root+"terms/"+termId).get(),
         db.doc(root+"sections/"+sectionId).get(),
-        db.collection(root+"course_offerings").limit(250).get(),
+        db.collection(root+"course_offerings").where("sectionId","==",sectionId).limit(251).get(),
         applicationRef?applicationRef.get():Promise.resolve(null)
       ]);
       for(const [record,label] of [[year,"academic year"],[program,"program"],[term,"academic period"],[section,"section"]]){
@@ -1434,6 +1436,7 @@ function createSchoolEnrollmentService({db}){
           deny("failed-precondition","Accepted applicant details changed. Reopen admissions review before enrollment.");
       }
 
+      if(offeringSnap.size===251)deny("resource-exhausted","Section offering history requires pagination before enrollment.");
       const offerings=offeringSnap.docs.filter(doc=>{
         const row=doc.data();
         return row.schoolId===ctx.schoolId&&row.status==="active"&&
@@ -1441,6 +1444,7 @@ function createSchoolEnrollmentService({db}){
           row.rosterMode!=="selective";
       });
 
+      if(!offerings.length||offerings.length>60)deny("failed-precondition","Configure between 1 and 60 active automatic class offerings for this placement.");
       const activationEmailHash=studentEmail?rosterEmailHash(studentEmail):null;
       const lookups=[];
       if(activationEmailHash)
@@ -1516,6 +1520,12 @@ function createSchoolEnrollmentService({db}){
           ];
         if(applicationRef)reads.push(tx.get(applicationRef));
         const records=await Promise.all(reads);
+        const [liveYear,liveProgram,liveTerm,liveSection,liveOfferings]=await Promise.all([tx.get(year.ref),tx.get(program.ref),tx.get(term.ref),tx.get(section.ref),tx.get(db.collection(root+"course_offerings").where("sectionId","==",sectionId).limit(251))]);
+        if([liveYear,liveProgram,liveTerm,liveSection].some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active")||liveTerm.data().yearId!==yearId||liveTerm.data().programId!==programId||liveSection.data().programId!==programId||String(liveSection.data().gradeLevel||"").trim().toLowerCase()!==gradeLevel||liveOfferings.size===251)
+          deny("failed-precondition","Academic placement changed. Refresh before enrolling.");
+        const liveIds=liveOfferings.docs.filter(doc=>{const row=doc.data();return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.sectionId===sectionId&&row.rosterMode!=="selective";}).map(doc=>doc.id).sort();
+        if(JSON.stringify(liveIds)!==JSON.stringify(offerings.map(doc=>doc.id).sort())||offerings.some(doc=>liveOfferings.docs.find(item=>item.id===doc.id)?.data().subjectId!==doc.data().subjectId))
+          deny("failed-precondition","The automatic class roster changed. Refresh before enrolling.");
         const placementHistory=await tx.get(db.collection(root+"student_registrations").where("personId","==",personId).limit(101));
         if(placementHistory.size===101)deny("resource-exhausted","Review the full registration history before enrolling.");
         const schoolHistory=placementHistory.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>doc.data());
