@@ -9,6 +9,7 @@ const {historicalMapping,mappingMatches}=require("../functions/school-class-reco
 const schoolId="mcs-manila",assessmentId="legacy-ui-xml",offeringId="grade11-programming",
   teacherUid="original-teacher",adminUid="school-admin",oldOwner="historical-custodian";
 const task={title:"Mini PETA 1 — UI/XML",ownerUid:oldOwner,maxScore:20,subject:"Computer Programming",
+  ownershipBasis:"legacy-administrator-custody-not-original-author",
   deployments:[{section:"St. Carlo Acutis"}]};
 const grant={schoolId,assessmentId,offeringId,teacherUid,
   originalOwnerUid:oldOwner,originalTitle:task.title,originalSubject:task.subject,
@@ -36,6 +37,8 @@ test("historical custody is deterministic and restricted to the original pilot s
 test("school custody must be explicitly approved and preserve unchanged original source metadata",()=>{
   const args={schoolId,assessmentId,offeringId,teacherUid,task,section:grant.originalSection};
   assert.equal(validCustody(grant,args),true);
+  assert.equal(validCustody(grant,{...args,task:{...task,ownershipBasis:""}}),false,
+    "an ordinary private teacher-created assessment can never be delegated administratively");
   for(const [key,val] of [
     ["status","revoked"],["schoolId","other-school"],["teacherUid","another-teacher"],
     ["originalOwnerUid","different-owner"],["originalTitle","Different task"],
