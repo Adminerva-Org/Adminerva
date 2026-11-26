@@ -220,7 +220,8 @@
   </dialog>
   <dialog id="sr-certificate-settings-dialog" class="sr-dialog" aria-labelledby="sr-certificate-settings-title">
     <form id="sr-certificate-settings-form" class="sr-card grid gap-2">
-      <div class="flex justify-between gap-2"><h2 id="sr-certificate-settings-title" class="text-lg font-extrabold">Enrollment certificate settings</h2><button id="sr-certificate-settings-close" class="sr-btn secondary" type="button">Close</button></div>
+      <div class="flex justify-between gap-2"><h2 id="sr-certificate-settings-title" class="text-lg font-extrabold">Institutional certificate settings</h2><button id="sr-certificate-settings-close" class="sr-btn secondary" type="button">Close</button></div>
+      <label class="text-sm font-bold">Certificate type<select name="type" id="sr-certificate-type" class="sr-input mt-1"><option value="certificate_of_enrollment">Enrollment</option><option value="graduation_certificate">Graduation</option><option value="transfer_certificate">Transfer-out</option><option value="good_moral_certificate">Good Moral Character</option></select></label>
       <label class="text-sm font-bold">Authorized signatory name<input name="signatoryName" class="sr-input mt-1" maxlength="160" required></label>
       <label class="text-sm font-bold">Signatory title<input name="signatoryTitle" class="sr-input mt-1" maxlength="100" required></label>
       <label class="text-sm font-bold">School letterhead address<input name="schoolAddress" class="sr-input mt-1" maxlength="220"></label>
@@ -231,10 +232,11 @@
   </dialog>
   <dialog id="sr-certificate-dialog" class="sr-dialog" aria-labelledby="sr-certificate-title">
     <div class="sr-card">
-      <div class="flex justify-between gap-2"><h2 id="sr-certificate-title" class="text-lg font-extrabold">Enrollment certificate</h2><button id="sr-certificate-close" class="sr-btn secondary" type="button">Close</button></div>
+      <div class="flex justify-between gap-2"><h2 id="sr-certificate-title" class="text-lg font-extrabold">Institutional certificate</h2><button id="sr-certificate-close" class="sr-btn secondary" type="button">Close</button></div>
       <form id="sr-certificate-prepare-form" class="grid gap-2 mt-3" hidden>
         <label class="text-sm font-bold">Official registration<select id="sr-certificate-registration" class="sr-input mt-1" required></select></label>
         <button type="submit" class="sr-btn">Prepare draft</button>
+        <div id="sr-good-moral-approval" class="grid gap-2" hidden><p id="sr-good-moral-state" class="sr-muted"></p><button id="sr-good-moral-attest" type="button" class="sr-btn secondary" hidden>Record office approval</button></div>
       </form>
       <div id="sr-certificate-preview" class="sr-list mt-3"></div><p id="sr-certificate-status" class="sr-muted mt-2" role="status" aria-live="polite"></p>
       <div class="flex gap-2 flex-wrap mt-3">
@@ -253,9 +255,9 @@
   </dialog>
   <dialog id="sr-request-dialog" class="sr-dialog" aria-labelledby="sr-request-title">
     <form id="sr-request-form" class="sr-card">
-      <div class="flex justify-between items-start gap-3"><div><h2 id="sr-request-title" class="text-xl font-extrabold">New document request</h2><p class="sr-muted mt-1">Enrollment certificates can be prepared here. Other credentials are tracked for external preparation.</p></div><button id="sr-request-close" type="button" class="sr-btn secondary">Close</button></div>
+      <div class="flex justify-between items-start gap-3"><div><h2 id="sr-request-title" class="text-xl font-extrabold">New document request</h2><p class="sr-muted mt-1">Institutional certificates or external record requests.</p></div><button id="sr-request-close" type="button" class="sr-btn secondary">Close</button></div>
       <label class="block text-sm font-bold mt-4">Record / credential
-        <select name="type" class="sr-input mt-1" required><option value="">Choose request type</option><option value="certificate_of_enrollment">Certificate of Enrollment</option><option value="report_card">Report Card</option><option value="transcript_of_records">Transcript of Records</option><option value="student_record_copy">Student Record Copy</option><option value="graduation_certificate">Graduation Certificate</option><option value="other">Other school record</option></select>
+        <select name="type" class="sr-input mt-1" required><option value="">Choose request type</option><option value="certificate_of_enrollment">Certificate of Enrollment</option><option value="report_card">Report Card</option><option value="transcript_of_records">Transcript of Records</option><option value="student_record_copy">Student Record Copy</option><option value="graduation_certificate">Certificate of Graduation</option><option value="transfer_certificate">Certificate of Transfer-out</option><option value="good_moral_certificate">Certificate of Good Moral Character</option><option value="other">Other school record</option></select>
       </label>
       <label class="block text-sm font-bold mt-3">Purpose<textarea name="purpose" class="sr-input mt-1" rows="2" maxlength="300" required></textarea></label>
       <label class="block text-sm font-bold mt-3">Notes<textarea name="notes" class="sr-input mt-1" rows="2" maxlength="500"></textarea></label>
@@ -277,7 +279,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar9"></script>
+<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar10"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-student-records1"></script>
 </body>
 </html>
