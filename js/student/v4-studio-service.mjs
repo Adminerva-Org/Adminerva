@@ -208,15 +208,25 @@ export async function syncV4StudioProject(project,state,{quiet=false,expectedRev
       // A fresh browser may not know a project already exists. Adopt its
       // server revision only if the complete checksum matches; never overwrite.
       if(closingSaveSessionEpoch||!isStudioRevisionRecovery(error))throw error;
-      const existing=await scopedCall(projectsApi,"get",{projectId:payload.projectId});
-      if(!existing)throw error;
-      const localDigest=await digestPayload(payload);
-      if(existing.contentDigest!==localDigest||existing.title!==payload.title||existing.language!==payload.language)
-        throw Error("This project has a different school-saved revision. Export your current work, then reload the school copy before overwriting it.");
-      expectedRevision=existing.revision;
-      setRevision(uid,schoolId,payload.projectId,existing.revision);
-      result={projectId:payload.projectId,revision:existing.revision,
-        contentDigest:existing.contentDigest,created:false,unchanged:true};
+      let finishRecovery;
+      try{finishRecovery=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_revision_recovery");}catch{}
+      let recovery="lookup_failed";
+      try{
+        const existing=await scopedCall(projectsApi,"get",{projectId:payload.projectId});
+        if(!existing)throw error;
+        const localDigest=await digestPayload(payload);
+        if(existing.contentDigest!==localDigest||existing.title!==payload.title||existing.language!==payload.language){
+          recovery="mismatch";
+          throw Error("This project has a different school-saved revision. Export your current work, then reload the school copy before overwriting it.");
+        }
+        expectedRevision=existing.revision;
+        setRevision(uid,schoolId,payload.projectId,existing.revision);
+        result={projectId:payload.projectId,revision:existing.revision,
+          contentDigest:existing.contentDigest,created:false,unchanged:true};
+        recovery="matched";
+      }finally{
+        try{finishRecovery?.(recovery==="matched","failed-precondition",error?.details?.diagnosticReason,{recovery});}catch{}
+      }
     }
     if(closingSaveSessionEpoch&&!result.examFinalized)
       throw Error("The final exam checkpoint did not receive a server confirmation.");
