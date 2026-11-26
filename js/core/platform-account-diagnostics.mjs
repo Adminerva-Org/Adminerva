@@ -13,9 +13,10 @@ let errors=new Map();
 const MAX_PAGE_EVENTS=90,MAX_PAGE_FAILURE_EVENTS=30;
 let failureEventsSent=0;
 const ID=()=>crypto.randomUUID();
+let pageInstanceId="";
 const allowedRoutes=/(?:^\/$|^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]{1,80}\.html$)/;
 const allowedCodes=/^[-a-zA-Z0-9_./]{1,64}$/;
-const release="v20261126-trace-5"; // The emitter revision, not the full app release.
+const release="v20261126-trace-6"; // The emitter revision, not the full app release.
 function environment(){
   // Convert the browser environment to coarse allowlisted categories; never
   // transmit a full user-agent string, fingerprint, IP address or screen size.
@@ -43,7 +44,7 @@ const saveStages=new Set(["scope_verification","school_sync","legacy_transaction
 const elapsed=start=>Math.min(3600000,Math.max(0,Math.round(performance.now()-start)));
 function snapshotContext(extra={}){
   const active=[...processes].slice(0,6).map(([id,p])=>({name:p.name,id,ageMs:elapsed(p.start)}));
-  return {clientAt:Date.now(),visibility:["visible","hidden"].includes(document.visibilityState)?document.visibilityState:"other",
+  return {clientAt:Date.now(),...(pageInstanceId?{pageInstanceId}:{}),visibility:["visible","hidden"].includes(document.visibilityState)?document.visibilityState:"other",
     network:navigator.onLine===false?"offline":"online",focus:document.hasFocus()?"focused":"unfocused",
     ready:["loading","interactive","complete"].includes(document.readyState)?document.readyState:"other",
     dialog:document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]:not([hidden])[aria-hidden="false"]')?"open":"none",
@@ -181,7 +182,7 @@ function initializeSession(user){
 onAuthStateChanged(auth,user=>{
   epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;failureEventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();for(const p of processes.values())clearTimeout(p.timer);processes.clear();
   if(!user?.emailVerified)return;
-  activeUid=user.uid;enabled=true;
+  activeUid=user.uid;enabled=true;pageInstanceId=ID();
   initializeSession(user);
   emit("auth_session_observed",{kind:"session",module:"auth",state:"ok",phase:"observed"});
   emit("page_open",{kind:"navigation",state:"ok",phase:"observed"});
