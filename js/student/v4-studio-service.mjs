@@ -171,18 +171,18 @@ function isStudioRevisionRecovery(error){
   const message=callableMessage(error,"");
   return ["This project already exists in school storage. Reload its school revision before saving.","Project changed in school storage. Reload before overwriting it."].includes(message);
 }
-async function scopedCall(api,action,details={}){
+async function scopedCall(api,action,details={},parentOperationId=""){
   await init();
   if(!picker?.scope.current)return null;
   const lease=picker.scope.lease();
   // Only fixed, known write callables; no request fields or project data enter diagnostics.
-  const processName=api===projectsApi&&["sync","archive","restore"].includes(action)?"studio_api_"+action:
+  const processName=api===projectsApi&&["sync","archive","restore"].includes(action)||api===projectsApi&&action==="get"&&parentOperationId?"studio_api_"+action:
     api===submissionsApi&&action==="submit"?"studio_api_submit":api===variantApi&&action==="assign"?"studio_api_variant_assign":"";
   let finishDiagnostic;
-  try{if(processName)finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.(processName);}catch{}
+  try{if(processName)finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.(processName,{parentOperationId});}catch{}
   const reportDiagnostic=(ok,error)=>{try{finishDiagnostic?.(ok,error?.code||"unavailable",error?.details?.diagnosticReason);}catch{}};
   try{
-    const result=(await api({schoolId:lease.schoolId,action,...details})).data;
+    const result=(await api({schoolId:lease.schoolId,action,...details,...(finishDiagnostic?.correlation?{_diagnostic:finishDiagnostic.correlation}:{})})).data;
     picker.scope.assertLease(lease);
     reportDiagnostic(true);
     return result;
@@ -194,7 +194,7 @@ async function scopedCall(api,action,details={}){
     throw error;
   }
 }
-export async function syncV4StudioProject(project,state,{quiet=false,expectedRevision:baseRevision=undefined,closingSaveSessionEpoch=0}={}){
+export async function syncV4StudioProject(project,state,{quiet=false,expectedRevision:baseRevision=undefined,closingSaveSessionEpoch=0,diagnosticParentOperationId=""}={}){
   await init();
   if(!activeSchool||!auth.currentUser)return null;
   const payload=projectPayload(project,state);
@@ -203,16 +203,16 @@ export async function syncV4StudioProject(project,state,{quiet=false,expectedRev
   try{
     let result;
     try{
-      result=await scopedCall(projectsApi,"sync",{...payload,expectedRevision,closingSaveSessionEpoch});
+      result=await scopedCall(projectsApi,"sync",{...payload,expectedRevision,closingSaveSessionEpoch},diagnosticParentOperationId);
     }catch(error){
       // A fresh browser may not know a project already exists. Adopt its
       // server revision only if the complete checksum matches; never overwrite.
       if(closingSaveSessionEpoch||!isStudioRevisionRecovery(error))throw error;
       let finishRecovery;
-      try{finishRecovery=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_revision_recovery");}catch{}
+      try{finishRecovery=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_revision_recovery",{parentOperationId:diagnosticParentOperationId});}catch{}
       let recovery="lookup_failed";
       try{
-        const existing=await scopedCall(projectsApi,"get",{projectId:payload.projectId});
+        const existing=await scopedCall(projectsApi,"get",{projectId:payload.projectId},finishRecovery?.correlation?.operationId||diagnosticParentOperationId);
         if(!existing)throw error;
         const localDigest=await digestPayload(payload);
         if(existing.contentDigest!==localDigest||existing.title!==payload.title||existing.language!==payload.language){
