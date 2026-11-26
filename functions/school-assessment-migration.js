@@ -11,6 +11,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {createSchoolLegacyStudioReview}=require("./school-legacy-studio-review.js");
 const {createSchoolLegacyGithubReview}=require("./school-legacy-github-review.js");
+const {authorizedTeacherCustody}=require("./school-legacy-custody.js");
 const {previewLegacyEvidenceMigration}=require("./school-legacy-migration-readiness.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -98,10 +99,30 @@ function createSchoolAssessmentMigrationService({db}){
   if(input.action==="list_legacy_deployments"){
     const snap=await db.collection("assessments").where("ownerUid","==",ctx.uid).limit(101).get();
     if(snap.size===101)deny("resource-exhausted","Legacy deployment list requires pagination.");
-    const items=snap.docs.filter(doc=>Array.isArray(doc.data()?.deployments)&&doc.data().deployments.length>0)
-      .map(doc=>legacySummary(doc,true))
-      .sort((a,b)=>a.title.localeCompare(b.title));
-    return {items};
+    const owned=snap.docs.filter(doc=>Array.isArray(doc.data()?.deployments)&&doc.data().deployments.length>0)
+      .map(doc=>legacySummary(doc,true));
+    // Delegated original assessments remain the historical source of truth.
+    // Only the active Primary Teacher of a School Admin-verified offering may
+    // see the original grades and submissions; no grade duplication.
+    const grants=await db.collection(prefix+"legacy_assessment_custody")
+      .where("teacherUid","==",ctx.uid).limit(51).get();
+    if(grants.size>=51)
+      deny("resource-exhausted","Historical custody sources require pagination.");
+    const delegated=[];
+    for(const ref of grants.docs){
+      const grant=ref.data();
+      if(grant.status!=="active"||grant.schoolId!==ctx.schoolId)continue;
+      const source=await db.doc("assessments/"+grant.assessmentId).get();
+      if(!source.exists)continue;
+      const authorized=await authorizedTeacherCustody({
+        db,schoolId:ctx.schoolId,teacherUid:ctx.uid,
+        assessmentId:grant.assessmentId,offeringId:grant.offeringId,task:source.data()
+      });
+      if(!authorized||legacySubmissionSource(source.data())!=="github")continue;
+      delegated.push({...legacySummary(source,true),legacyOfferingId:grant.offeringId,
+        custodyApproved:true,originalSection:grant.originalSection,deploymentCount:1});
+    }
+    return {items:[...owned,...delegated].sort((a,b)=>a.title.localeCompare(b.title))};
   }
   if(input.action==="import_legacy"){
     const id=legacyId(input.legacyAssessmentId),sourceRef=db.doc("assessments/"+id),
