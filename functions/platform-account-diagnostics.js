@@ -21,7 +21,7 @@ const ACTIONS=["session_started","auth_session_observed","session_ended","page_o
   "cloud_save_confirmed","notification_delivered","notification_opened","network_offline","network_online",
   "javascript_error","promise_error","resource_error","api_failed","api_succeeded","support_report_submitted",
   "studio_run_requested","studio_run_completed","studio_run_failed","cloud_save_failed",
-  "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished","process_failed"];
+  "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished","process_failed","process_progress","process_prolonged"];
 const STATES=["info","ok","error","unavailable"];
 const PHASES=["observed","started","completed","failed","interrupted"];
 const DEVICE_CLASSES=["desktop","tablet","phone","unknown"];
@@ -58,9 +58,10 @@ const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_g
 const CONTEXT_ENUMS={visibility:["visible","hidden","other"],network:["online","offline"],focus:["focused","unfocused"],ready:["loading","interactive","complete","other"],dialog:["open","none"],busy:["busy","idle"]};
 function checkedContext(value){
   if(!value||typeof value!=="object"||Array.isArray(value))deny("invalid-argument","Invalid diagnostic context.");
-  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery","deviceBackup","retryState","parentOperationId"];
+  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery","deviceBackup","retryState","parentOperationId","saveStage","retryAttempt","waitingRequests"];
   if(Object.keys(value).some(k=>!allowed.includes(k)))deny("invalid-argument","Diagnostic context accepts only approved metadata.");
   const out={};
+  if(value.saveStage!==undefined){if(!["scope_verification","school_sync","legacy_transaction","cloud_confirmed","newer_snapshot_pending","save_failed"].includes(value.saveStage))deny("invalid-argument","Invalid diagnostic save stage.");out.saveStage=value.saveStage;}
   if(value.parentOperationId!==undefined){if(typeof value.parentOperationId!=="string"||!UUID.test(value.parentOperationId))deny("invalid-argument","Invalid diagnostic parent operation.");out.parentOperationId=value.parentOperationId.toLowerCase();}
   for(const [key,options] of [["reasonCode",STUDIO_REASONS],["projectCategory",new Set(["personal","assessment","unknown"])],["recovery",new Set(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"])],["deviceBackup",new Set(["available","unavailable","unknown"])],["retryState",new Set(["scheduled","not_scheduled"])]] ){
     if(value[key]!==undefined){if(!options.has(value[key]))deny("invalid-argument","Invalid diagnostic context category.");out[key]=value[key];}
@@ -81,7 +82,7 @@ function checkedContext(value){
       seen.add(p.id.toLowerCase());return {name:p.name,id:p.id.toLowerCase(),ageMs:p.ageMs};
     });
   }
-  for(const [key,max] of [["overflow",100],["clientAt",8640000000000000],["elapsedMs",3600000]]){
+  for(const [key,max] of [["overflow",100],["retryAttempt",4],["waitingRequests",100],["clientAt",8640000000000000],["elapsedMs",3600000]]){
     if(value[key]!==undefined){if(!Number.isSafeInteger(value[key])||value[key]<0||value[key]>max)deny("invalid-argument","Invalid diagnostic timing or count.");out[key]=value[key];}
   }
   return out;
@@ -102,14 +103,16 @@ function checkedEvent(input){
   const kindActions={
     session:["session_started","auth_session_observed","session_ended","signed_in","signed_out"],
     navigation:["page_open"],notification:["notification_delivered","notification_opened"],
-    system:["network_offline","network_online"],
+    system:["network_offline","network_online","process_prolonged"],
     error:["javascript_error","promise_error","resource_error","api_failed","studio_run_failed","cloud_save_failed","process_failed"],
     action:["school_switched","cloud_save_confirmed","api_succeeded","support_report_submitted",
       "studio_run_requested","studio_run_completed","assessment_submit_requested","assessment_submitted",
-      "assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished"]
+      "assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished","process_progress"]
   };
   if(!kindActions[input.kind].includes(input.action))
     deny("invalid-argument","Diagnostic category and action must agree.");
+  if(input.action==="process_prolonged"&&(input.state!=="unavailable"||input.phase!=="observed"||!input.operationId||!input.context?.process||!Number.isInteger(input.context.elapsedMs)||input.context.elapsedMs<60000))deny("invalid-argument","Invalid prolonged process observation.");
+  if(input.action==="process_progress"&&(input.state!=="info"||input.phase!=="observed"||!input.operationId||input.context?.process!=="studio_cloud_save"||!input.context.saveStage))deny("invalid-argument","Invalid save progress observation.");
   if(input.kind==="error"&&input.state!=="error"&&input.state!=="unavailable")
     deny("invalid-argument","Error events must declare an error or unavailable state.");
   if(input.kind!=="error"&&input.errorCode)
