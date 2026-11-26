@@ -190,6 +190,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        try{
          await review({ctx,input:{
            action:"legacy_github_publish",legacyAssessmentId:id,legacyEvidenceId:row.id,
+           ...(custody?{legacyOfferingId}:{}),
            expectedEvidenceRevision:evidence.revision,
            expectedCheckpointSha:evidence.checkpointSha,
            expectedGradeRevision:Number(grade.gradeVersion||0)
