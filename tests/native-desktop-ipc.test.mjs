@@ -171,3 +171,15 @@ test("unsigned packaged application cannot enable the developer credential bridg
  assert.equal(bundle.build.files.includes("native-handoff-client.cjs"),false);
  assert.equal(bundle.build.files.includes("native-auth-protocol.cjs"),false);
 });
+
+test("a failed school-role bootstrap also leaves its isolated account partition",async()=>{
+ const h=await bootDesktop();
+ h.win.webContents.url=BOOT;
+ const report=h.ipc.get("adminerva:session-ended");
+ assert.equal(await report(h.top),false);
+ const guest=h.windows.at(-1);
+ assert.notEqual(guest,h.win);
+ assert.equal(guest.webContents.url,"https://adminerva-org.github.io/Adminerva/guest-home.html");
+ assert.equal(guest.options.webPreferences.partition,"persist:adminerva-public-preview");
+ assert.equal(h.win.isDestroyed(),true);
+});

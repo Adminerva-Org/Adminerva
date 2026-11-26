@@ -100,6 +100,7 @@ ipcMain.handle("adminerva:session-ended",event=>{
  // credentials, role elevation, capture, or access to another school.
  if(!officialRenderer(event))return false;
  const hadSession=allowPrivate;
+ const hadUnfinishedBootstrap=currentBootstrap(event.sender);
  allowPrivate=false;
  tokenConsumedForBootstrap=false;
  pendingToken=null;
@@ -107,7 +108,7 @@ ipcMain.handle("adminerva:session-ended",event=>{
  const pairing=pendingPairing;
  pendingPairing=null;
  if(pairing)void sendHandoff("cancel",pairing).catch(()=>{});
- if(hadSession&&activeWindow&&!activeWindow.isDestroyed()){
+ if((hadSession||hadUnfinishedBootstrap)&&activeWindow&&!activeWindow.isDestroyed()){
   // Public home opens in an entirely different partition. Keep UID-keyed
   // recovery drafts in the student's own partition for their next sign-in.
   const oldWindow=activeWindow;
