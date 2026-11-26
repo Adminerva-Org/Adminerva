@@ -153,6 +153,7 @@
             <label class="text-sm font-bold">Find applicant<input id="en-application-search" class="en-input mt-1" type="search" placeholder="Name or reference"></label>
             <label class="text-sm font-bold">Status<select id="en-application-status" class="en-input mt-1"><option value="pending">Pending enrollment</option><option value="submitted">Submitted</option><option value="needs_information">Needs information</option><option value="accepted">Accepted</option><option value="enrolled">Enrolled</option><option value="rejected">Rejected</option><option value="all">All</option></select></label>
           </div>
+          <div class="flex gap-2 flex-wrap items-center mt-3"><button id="en-applications-more" class="en-btn secondary" type="button" hidden>Load more</button><span id="en-applications-count" class="en-muted" aria-live="polite"></span></div>
           <div id="en-application-list" class="en-list" role="list" aria-live="polite"></div>
         </section>
 
@@ -268,6 +269,22 @@
     </div>
   </section>
 
+  <dialog id="en-correction-dialog" class="en-dialog" aria-labelledby="en-correction-title">
+    <form id="en-correction-form" class="en-card">
+      <div class="flex justify-between gap-2"><div><h2 id="en-correction-title" class="text-lg font-extrabold">Correct application</h2><p id="en-correction-target" class="en-muted"></p></div><button id="en-correction-close" class="en-btn secondary" type="button">Close</button></div>
+      <div class="grid gap-2 mt-3">
+        <label class="text-sm font-bold">Guardian name<input id="en-correction-guardian" class="en-input mt-1" required maxlength="140"></label>
+        <label class="text-sm font-bold">Relationship<input id="en-correction-relationship" class="en-input mt-1" required maxlength="60"></label>
+        <label class="text-sm font-bold">Guardian mobile<input id="en-correction-mobile" class="en-input mt-1" maxlength="40"></label>
+        <label id="en-correction-email-label" class="text-sm font-bold">Student email<input id="en-correction-email" type="email" class="en-input mt-1" maxlength="254"></label>
+        <label id="en-correction-email-type-label" class="text-sm font-bold">Email type<select id="en-correction-email-type" class="en-input mt-1"><option value="personal">Personal</option><option value="institutional">Institutional</option></select></label>
+        <label class="text-sm font-bold">Preferred program<select id="en-correction-program" class="en-input mt-1"></select></label>
+        <label class="text-sm font-bold">Correction reason<textarea id="en-correction-reason" class="en-input mt-1" required minlength="8" maxlength="500" rows="2"></textarea></label>
+      </div>
+      <p class="en-muted mt-2">Identity-key fields and school year stay unchanged. Requirements must be reviewed again.</p>
+      <p id="en-correction-status" class="en-muted" role="status"></p><button type="submit" class="en-btn mt-3">Save correction</button>
+    </form>
+  </dialog>
   <dialog id="en-documents-dialog" class="en-dialog" aria-labelledby="en-documents-title">
     <div class="en-card">
       <div class="flex justify-between gap-2"><div><h2 id="en-documents-title" class="text-lg font-extrabold">Admission documents</h2><p id="en-documents-target" class="en-muted"></p></div><button id="en-documents-close" class="en-btn secondary" type="button">Close</button></div>
@@ -443,7 +460,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar7"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar8"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
