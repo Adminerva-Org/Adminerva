@@ -235,3 +235,22 @@ test("save stages and prolonged observations are bounded and cannot claim comple
  assert.throws(()=>checkedEvent({...slow,context:{...slow.context,elapsedMs:59999}}),/prolonged/);
  assert.throws(()=>checkedEvent({...slow,state:"ok"}),/prolonged/);
 });
+
+test("backend transaction metrics cannot be forged by browser events or request payloads",async()=>{
+ const metrics={transactionAttempts:2,transactionMs:125,transactionOutcome:"returned"};
+ assert.throws(()=>checkedEvent(event({context:metrics})),/Backend transaction/);
+ const db=fakeDb(),collector=service(db);
+ await collector.recordServerProcess(request(USER,{action:"sync",...metrics}),{service:"schoolStudioProjects",startedAt:T});
+ await collector.recordServerProcess(request(USER,{action:"sync"}),{service:"schoolStudioProjects",startedAt:T,transactionObservation:metrics});
+ const rows=[...db.values.values()].filter(row=>row.action==="api_succeeded");
+ assert.equal(rows.length,2);
+ assert.equal(rows.filter(row=>row.context?.transactionAttempts===2).length,1);
+ assert.deepEqual(rows.find(row=>row.context?.transactionAttempts===2).context,metrics);
+});
+test("peer marker observations are bounded, client-only and cannot assert success",()=>{
+ const peer=event({kind:"system",module:"studio",action:"studio_peer_marker_changed",state:"unavailable",phase:"observed",context:{peerMarker:"pending",localSaveState:"writing",pageInstanceId:SESSION}});
+ assert.equal(diagnosticSeverity(checkedEvent(peer)),"warning");
+ assert.throws(()=>checkedEvent({...peer,state:"ok"}),/peer marker/);
+ assert.throws(()=>checkedEvent({...peer,context:{...peer.context,peerMarker:"private"}}),/diagnostic/);
+ assert.throws(()=>checkedEvent({...peer,context:{...peer.context,pageInstanceId:"project-name"}}),/diagnostic/);
+});
