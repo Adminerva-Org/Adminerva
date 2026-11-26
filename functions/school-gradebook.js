@@ -109,6 +109,7 @@ function createSchoolGradebookService({db}){
         gradeId:doc.id,studentUid:data.studentUid,personId:data.personId,
         studentName:person.exists&&person.data().schoolId===ctx.schoolId?person.data().displayName:"Student",
         status:data.status,awarded:data.awarded,total:data.total,pending:data.pending||0,
+        reviewSuggested:data.status==="draft"&&(data.reviewSuggested===true||source==="github"),
         evidenceType:data.evidenceType||source,submissionVersion:data.submissionVersion,
         revision:data.revision||1,publishedAt:data.publishedAt?.toMillis?.()||null,
         updatedAt:data.updatedAt?.toMillis?.()||null
@@ -280,6 +281,7 @@ function createSchoolGradebookService({db}){
       gradeSchema:grade.data().gradeSchema||"rubric_v1",criteria:Array.isArray(grade.data().criteria)?grade.data().criteria:[],
       awarded:grade.data().awarded,total:grade.data().total,
       pending:grade.data().pending,feedback:grade.data().feedback,
+      reviewSuggested:grade.data().status==="draft"&&(grade.data().reviewSuggested===true||source==="github"),
       draftSource:grade.data().draftSource||"teacher",
       version:grade.data().submissionVersion,revision:grade.data().revision,
       publishedAt:grade.data().publishedAt?.toMillis?.()||null,
@@ -324,6 +326,7 @@ function createSchoolGradebookService({db}){
      evidenceType:source,submissionId:submissionRef.id,submissionVersion,submissionDigest:evidenceDigest(submission),
      gradeSchema:"rubric_v1",criteria:scores.criteria,awarded:scores.awarded,pending:scores.pending,total:scores.total,
      feedback,draftSource,status:"draft",revision,updatedAt:now,
+     reviewSuggested:source==="github"||scores.pending>0,
      ...(source==="link"&&input.onlyIfUngraded===true?{
        linkedArtifactReviewedByUid:ctx.uid,linkedArtifactReviewNote:artifactReviewNote
      }:{})};
