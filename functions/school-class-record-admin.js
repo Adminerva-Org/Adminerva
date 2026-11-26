@@ -6,7 +6,7 @@
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {checkId,rowKey}=require("./school-academics.js");
 const {resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
-const {custodyRef,originalSections,normalized}=require("./school-legacy-custody.js");
+const {custodyRef,originalSections,normalized,historicalCustodianRecord}=require("./school-legacy-custody.js");
 const {FieldValue}=require("firebase-admin/firestore");
 const {schemeMatchesOffering,schemeSpecificity}=require("./school-class-record.js");
 
@@ -84,6 +84,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       if(!original.exists||!validOrigin(original.data(),ctx.schoolId)||
          !offering.exists||offering.data().schoolId!==ctx.schoolId)
         deny("not-found","Original assessment and official class must belong to the verified legacy school.");
+      if(!historicalCustodianRecord(original.data()))
+        deny("permission-denied","This is a teacher-owned private assessment, not an administrator-held legacy custody source.");
       const data=original.data(),classData=offering.data(),
         teacherUid=String(classData.primaryTeacherUid||"");
       if(!teacherUid||teacherUid===ctx.uid||data.ownerUid===teacherUid)
@@ -153,7 +155,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
         ]);
         if(current.exists&&current.data().status==="active")
           deny("already-exists","This legacy source is already verified for this offering.");
-        if(!task.exists||task.data().schoolId&&task.data().schoolId!==ctx.schoolId||
+        if(!task.exists||!historicalCustodianRecord(task.data())||
+           task.data().schoolId&&task.data().schoolId!==ctx.schoolId||
            String(task.data().title||"")!==preview.originalTitle||
            String(task.data().ownerUid||"")!==preview.originalOwnerUid||
            String(task.data().subject||"")!==preview.originalSubject||
