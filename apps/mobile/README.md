@@ -34,3 +34,9 @@ For official Android updates, use stable application identity, Play App Signing,
 The same GitHub Actions workflow creates an Android debug APK from canonical public-only website assets. Open its successful run, download the Android artifact ZIP and extract app-debug.apk (with its SHA256SUMS.txt). The APK is signed with a disposable development debug key, not the school's production publishing key. This is **not** a Play Store release and must not be used for logged-in student work or practical exams.
 
 An iPhone/iPad installation file is not available: shipping a device-installable iOS app requires approved Apple signing and distribution via an authorized testing channel (e.g. TestFlight). The public web app remains available in Safari.
+
+## iOS Simulator and public-device diagnostics
+
+The public-only iOS Simulator CI job runs on GitHub macOS, regenerates a temporary Capacitor 8 Swift Package Manager project, and compiles an **unsigned Simulator-only** `App.app` ZIP. On a Mac with Xcode, extract the nested ZIP and install it in a simulator with `xcrun simctl install booted App.app` (after booting a compatible simulator). This artifact is **not an IPA** and cannot be installed on a physical iPhone/iPad. Apple Developer Program signing, a verified app identity, TestFlight and physical-device acceptance remain separate release gates. The build does not include private accounts or examination monitoring.
+
+Android and iOS public previews also include **Check connection**, which tests only the first-party public version listing with a short timeout. This is not a Firebase login or Studio cloud-save check; it sends no account identifier, project code or monitoring data.
