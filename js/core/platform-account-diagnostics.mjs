@@ -54,10 +54,10 @@ function beginProcess(name,metadata={}){
   processes.set(id,{name,start});
   try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name,...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})}});}catch{}
   let finished=false;
-  return (success,errorCode,reasonCode)=>{
+  return (success,errorCode,reasonCode,outcome={})=>{
     if(finished)return;finished=true;
     if(turn!==epoch)return;
-    const context={process:name,elapsedMs:elapsed(start),...(studioReasons.has(reasonCode)?{reasonCode}:{}),...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})};
+    const context={process:name,elapsedMs:elapsed(start),...(["available","unavailable","unknown"].includes(outcome.deviceBackup)?{deviceBackup:outcome.deviceBackup}:{}),...(["scheduled","not_scheduled"].includes(outcome.retryState)?{retryState:outcome.retryState}:{}),...(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"].includes(outcome.recovery)?{recovery:outcome.recovery}:{}),...(studioReasons.has(reasonCode)?{reasonCode}:{}),...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})};
     processes.delete(id);
     emit(success===true?"process_finished":"process_failed",{module:"studio",kind:success===true?"action":"error",
       state:success===true?"ok":"error",operationId:id,phase:success===true?"completed":"failed",
