@@ -64,7 +64,7 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
     sectionName:section,offeringSectionName:labels.sectionName,
     subjectName:labels.subjectName,ownerUid,
     ...(delegated?{custodyGrantId:custodyId(taskId,offeringId),taskId}:{}),
-    ...(matchesSubject?{}:{originalSubjectName:task.subject.trim()})};
+    ...(matchesSubject?{}:{originalSubjectName:String(task.subject||"").trim()})};
 }
 /**
  * A historical section name can differ after SIS adoption or placement changes.
@@ -215,11 +215,6 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
     }
     const task=await db.doc("assessments/"+column.taskId).get();
     const original=task.exists?task.data():null;
-    const verifiedSubjectReview=!!original&&mapping.subjectProof===
-      "teacher_confirmed_original_subject_with_roster"&&
-      mapping.identityProof==="original_student_section"&&
-      Number(mapping.identityVerifiedCount)>0&&
-      mapping.originalSubjectName===String(original.subject||"").trim();
     const delegatedRef=mapping.custodyGrantId?
       custodyRef(db,schoolId,column.taskId,offeringId):null;
     const delegation=delegatedRef?await delegatedRef.get():null;
@@ -228,6 +223,11 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
         schoolId,assessmentId:column.taskId,offeringId,teacherUid:mapping.ownerUid,
         task:original,section:mapping.sectionName
       });
+    const verifiedSubjectReview=!!original&&
+      mapping.originalSubjectName===String(original.subject||"").trim()&&
+      ((mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"&&
+        mapping.identityProof==="original_student_section"&&
+        Number(mapping.identityVerifiedCount)>0)||delegated);
     if(!validOrigin(original,schoolId)||(!delegated&&original.ownerUid!==mapping.ownerUid)||
        (mapping.custodyGrantId&&!delegated)||
        !historicalSections(original).some(section=>canonical(section)===canonical(mapping.sectionName))||
