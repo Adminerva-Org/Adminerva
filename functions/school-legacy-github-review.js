@@ -242,7 +242,37 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
            awarded:grade?Number(grade.score):null});
        }
      }
-     return {task:taskInfo,evidence:results};
+     // Original scalar grades can outlive evidence or use a different receipt
+     // key. Show them as protected outcomes, but NEVER treat such rows as new
+     // student-submitted evidence or enable edits without a verified receipt.
+     const gradePage=await db.collection("student_grades").where("taskId","==",id).limit(1001).get();
+     if(gradePage.size>=1001)
+       deny("resource-exhausted","The original grade ledger requires pagination.");
+     const seen=new Set(results.map(row=>row.studentId));
+     let gradeOnly=0,publishedCount=0,draftCount=0;
+     for(const doc of gradePage.docs){
+       const grade=doc.data();
+       if(grade.taskId!==id||typeof grade.studentId!=="string"||
+          !inScope(grade.studentId,grade.section))continue;
+       const awarded=Number(grade.score),maximum=Number(grade.maxScore||total);
+       if(!Number.isFinite(awarded)||!Number.isFinite(maximum)||awarded<0||
+          awarded>maximum||maximum<=0)continue;
+       if(grade.published===true)publishedCount++;else draftCount++;
+       if(seen.has(grade.studentId))continue;
+       seen.add(grade.studentId);gradeOnly++;
+       const person=await db.doc("students/"+grade.studentId).get();
+       results.push({evidenceId:null,studentId:grade.studentId,studentUid:grade.studentId,
+         studentName:clean(person.exists?person.data().name:grade.studentId,160),
+         section:clean(grade.section,160),status:"grade_only",
+         gradeOnly:true,hasSubmission:false,discoveryOnly:false,
+         gradeStatus:grade.published===true?"published":"draft",awarded,
+         maxScore:maximum});
+     }
+     return {task:taskInfo,evidence:results,coverage:{
+       evidenceCount:rows.length,gradeCount:publishedCount+draftCount,
+       publishedCount,draftCount,gradeOnly,evidenceWithoutGrade:
+         results.filter(row=>!row.gradeStatus&&!row.gradeOnly).length
+     }};
    }
    const recordId=legacyDocumentId(input.legacyEvidenceId,"Historical submission ID");
    const record=await verifiedRecord(recordId);
