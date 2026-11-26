@@ -7,7 +7,7 @@
  * workflow only; it does not duplicate student identity, registration, class
  * enrollment or Class Record grades.
  */
-const {FieldValue}=require("firebase-admin/firestore");
+const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {
@@ -84,22 +84,28 @@ function createSchoolStudentRecordsService({db}){
       return {ref,doc,data:doc.data()};
     }
     if(input.action==="search_students"){
-      const query=String(input.query||"").trim().toLocaleLowerCase("en");
-      const snap=await db.collection(root+"people").where("kind","==","student").limit(251).get();
-      if(snap.size===251)deny("resource-exhausted","Student directory search requires pagination.");
-      const rows=snap.docs.filter(doc=>{
+      const query=(optional(input.query,160)||"").toLocaleLowerCase("en");
+      const cursor=input.cursor?id(input.cursor,"Student directory cursor"):"";
+      // Stable school-local document-ID ordering includes older records without searchKey.
+      // Search scans a bounded page; a cursor explicitly indicates unsearched records.
+      const pageSize=80;
+      let scan=db.collection(root+"people").where("kind","==","student")
+        .orderBy(FieldPath.documentId()).limit(pageSize+1);
+      if(cursor)scan=scan.startAfter(cursor);
+      const snap=await scan.get(),page=snap.docs.slice(0,pageSize);
+      const rows=page.filter(doc=>{
         const row=doc.data();
         if(row.schoolId!==ctx.schoolId)return false;
         if(!query)return true;
         return [row.displayName,row.studentNumber].some(value=>
           String(value||"").toLocaleLowerCase("en").includes(query));
-      }).sort((a,b)=>String(a.data().displayName||"").localeCompare(String(b.data().displayName||"")))
-        .slice(0,80).map(doc=>({
+      }).map(doc=>({
         personId:doc.id,displayName:doc.data().displayName||"Student",
         studentNumber:doc.data().studentNumber||"",status:doc.data().status||"active",
         revision:Number(doc.data().revision)||1
       }));
-      return {items:rows,truncated:rows.length===80};
+      const nextCursor=snap.docs.length>pageSize?page.at(-1).id:null;
+      return {items:rows,nextCursor,truncated:Boolean(nextCursor)};
     }
 
     if(input.action==="student_file"){
