@@ -16,7 +16,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
-const {custodyRef,validCustody,authorizedTeacherCustody,historicalCustodianRecord,normalized}=require("./school-legacy-custody.js");
+const {custodyRef,validCustody,authorizedTeacherCustody,historicalCustodianRecord,normalized,identityOnlyCustody}=require("./school-legacy-custody.js");
 
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
@@ -50,7 +50,8 @@ async function exactCustodyCandidate({db,schoolId,assessmentId,task,identities,r
   if(!validOrigin(task,schoolId)||!historicalCustodianRecord(task)||!rosterSize||
      !identities.size||identities.size>350)return null;
   const sections=historicalSections(task);
-  if(!sections.length)return null;
+  const identityOnly=sections.length===0;
+  if(identityOnly&&(task.schemaVersion===3||task.submissionSource==="studio"||task.assessmentFormat==="studio_code"))return null;
   const ids=[...identities.keys()], sectionStudents=new Map();
   for(let offset=0;offset<ids.length;offset+=100){
     const chunk=ids.slice(offset,offset+100);
@@ -67,7 +68,7 @@ async function exactCustodyCandidate({db,schoolId,assessmentId,task,identities,r
     const ids=sectionStudents.get(normalized(section))||new Set();
     return new Set([...ids].map(id=>identities.get(id))).size>=required;
   });
-  if(!proven.length)return null;
+  if(!identityOnly&&!proven.length)return null;
   const [receipts,grades]=await Promise.all([
     db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
     db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get()
@@ -83,8 +84,10 @@ async function exactCustodyCandidate({db,schoolId,assessmentId,task,identities,r
     if(row.taskId===assessmentId&&row.score!==undefined&&row.score!==null&&Number.isFinite(Number(row.score)))proof.add(row.studentId);
   }
   const verified=proven.filter(section=>[...sectionStudents.get(normalized(section))].some(id=>proof.has(id)));
-  if(!verified.length)return null;
-  return {assessmentId,title:String(task.title||"Historical assessment").slice(0,160),
+  if(identityOnly){
+    if(new Set(ids.filter(id=>proof.has(id)).map(id=>identities.get(id))).size<required)return null;
+  }else if(!verified.length)return null;
+  return {assessmentId,sectionProof:identityOnly?"assessment_student_identity":"original_deployed_section",title:String(task.title||"Historical assessment").slice(0,160),
     subject:String(task.subject||"").slice(0,120),originalSections:verified.slice(0,12),
     originalOwnerStatus:task.ownerUid?"different_account":"owner_not_recorded",
     maximum:Number.isFinite(Number(task.maxScore))&&Number(task.maxScore)>0?Number(task.maxScore):null,
@@ -899,7 +902,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         if(!matchesSubject)stats.subjectMismatchCount++;
         const maximum=Number(task.maxScore);
         if(!Number.isFinite(maximum)||maximum<=0||maximum>10000){stats.invalidScoreCount++;continue;}
-        if(!sections.length){stats.noSectionCount++;continue;}
+        if(!sections.length&&!identityOnlyCustody(custodyGrant)){stats.noSectionCount++;continue;}
         const mapping=historicalMapping({task,taskId:doc.id,schoolId:ctx.schoolId,
           ownerUid:ctx.uid,offering,offeringId,labels,
           ...(custodyGrant?{custodyGrant,sourceSectionName:custodyGrant.originalSection,
@@ -913,7 +916,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           submissionSource:studio?"studio":"github",lifecycle:"historical",
           maxPoints:maximum,categorySuggestion:String(task.type||"").trim().slice(0,60),
           published:task.published!==false,linkable:Boolean(mapping),
-          historicalSectionReview:!mapping,historicalSubjectReview:!matchesSubject,
+          historicalSectionReview:!mapping,historicalSubjectReview:!matchesSubject&&!custodyGrant,
           originalSubjectName:typeof task.subject==="string"?task.subject.trim().slice(0,120):"",
           sourceSections:!mapping?sections.slice(0,40):[],
           historical:true,historicalMapping:mapping,
@@ -1827,6 +1830,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
               Boolean(granted),custodyGrant:granted});
           if(!rechecked||rechecked.sectionName!==mapping.sectionName||
              rechecked.custodyGrantId!==mapping.custodyGrantId||
+             rechecked.sectionProof!==mapping.sectionProof||
              (mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"&&
                (mapping.identityProof!=="original_student_section"||
                 !Number.isInteger(mapping.identityVerifiedCount)||mapping.identityVerifiedCount<1||
