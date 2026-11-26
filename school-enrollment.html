@@ -147,7 +147,7 @@
             <div>
               <h2 class="text-lg font-extrabold">Admissions</h2>
             </div>
-            <div class="flex flex-wrap gap-2"><button id="en-template-open" class="en-btn secondary" type="button" hidden>Requirement templates</button><button id="en-refresh-applications" class="en-btn secondary" type="button">Refresh</button></div>
+            <div class="flex flex-wrap gap-2"><button id="en-template-open" class="en-btn secondary" type="button" hidden>Requirement templates</button><button id="en-clearance-policy-open" class="en-btn secondary" type="button" hidden>Clearance settings</button><button id="en-refresh-applications" class="en-btn secondary" type="button">Refresh</button></div>
           </div>
           <div class="grid sm:grid-cols-2 gap-2 mt-3">
             <label class="text-sm font-bold">Find applicant<input id="en-application-search" class="en-input mt-1" type="search" placeholder="Name or reference"></label>
@@ -331,6 +331,29 @@
     </form>
   </dialog>
 
+  <dialog id="en-clearance-policy-dialog" class="en-dialog" aria-labelledby="en-clearance-policy-title">
+    <form id="en-clearance-policy-form" class="en-card grid gap-3">
+      <div class="flex justify-between gap-2"><h2 id="en-clearance-policy-title" class="text-lg font-extrabold">Enrollment clearance</h2><button type="button" id="en-clearance-policy-close" class="en-btn secondary">Close</button></div>
+      <fieldset class="grid gap-2"><legend class="font-bold">Require documented clearance before enrollment for</legend>
+        <label><input name="requiredTypes" value="new" type="checkbox"> New students</label>
+        <label><input name="requiredTypes" value="returning" type="checkbox"> Returning students</label>
+        <label><input name="requiredTypes" value="transferee" type="checkbox"> Transferees</label>
+      </fieldset>
+      <p class="en-muted">Off by default. Changes apply to pending enrollments, not historical registrations. This does not record payments or balances.</p>
+      <label class="text-sm font-bold">Change reason<textarea name="reason" class="en-input mt-1" minlength="8" maxlength="500" required></textarea></label>
+      <p id="en-clearance-policy-status" class="en-muted" role="status"></p><button id="en-clearance-policy-save" class="en-btn" type="submit" disabled>Save policy</button>
+    </form>
+  </dialog>
+  <dialog id="en-clearance-dialog" class="en-dialog" aria-labelledby="en-clearance-title">
+    <form id="en-clearance-form" class="en-card grid gap-3">
+      <div class="flex justify-between gap-2"><div><h2 id="en-clearance-title" class="text-lg font-extrabold">Record enrollment clearance</h2><p id="en-clearance-target" class="en-muted"></p></div><button type="button" id="en-clearance-close" class="en-btn secondary">Close</button></div>
+      <label class="text-sm font-bold">Decision<select name="state" class="en-input mt-1"><option value="cleared">Cleared</option><option value="held">On hold</option></select></label>
+      <label class="text-sm font-bold">Authorized office reference<input name="reference" class="en-input mt-1" maxlength="150"></label>
+      <label class="text-sm font-bold">Decision reason<textarea name="reason" class="en-input mt-1" minlength="8" maxlength="500" required></textarea></label>
+      <label><input name="confirmSourceReviewed" type="checkbox"> I reviewed the documented clearance from the authorized office.</label>
+      <p id="en-clearance-status" class="en-muted" role="status"></p><button class="en-btn" type="submit">Save clearance</button>
+    </form>
+  </dialog>
   <dialog id="en-requirements-dialog" class="en-dialog" aria-labelledby="en-requirements-title">
     <form id="en-requirements-form" class="en-card">
       <div class="flex items-start justify-between gap-3">
@@ -481,7 +504,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar12"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar13"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
