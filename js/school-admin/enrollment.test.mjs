@@ -192,7 +192,7 @@ test("reviewed directory student handoff binds Enrollment to the exact person re
   assert.equal(h.form.elements.applicationId.value,"");
 });
 
-test("registering a reviewed directory student sends its exact person ID",async()=>{
+test("returning onsite application sends its exact existing person ID before enrollment",async()=>{
   const h=harness(),loading=h.context.loadStudentCandidate("person-7",{scroll:false});
   h.requests[0].resolve({
     person:{
@@ -213,7 +213,8 @@ test("registering a reviewed directory student sends its exact person ID",async(
   h.form.elements.studentEmailType.value="personal";
   h.form.dispatch("submit");
   assert.equal(h.requests.length,2);
-  assert.equal(h.requests[1].payload.action,"register_student");
+  assert.equal(h.requests[1].payload.action,"create_onsite_application");
+  assert.equal(h.requests[1].payload.applicationType,"returning");
   assert.equal(h.requests[1].payload.personId,"person-7");
   assert.equal(h.requests[1].payload.applicationId,"");
 });
