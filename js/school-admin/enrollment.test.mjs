@@ -317,3 +317,10 @@ test("applicant checklist includes mandatory template items without overwriting 
   assert.equal(h.get("en-requirements-list").children[1].children[2].disabled,true);
   assert.equal(h.get("en-requirements-none").disabled,true);
 });
+
+
+test("a returning student with an active placement can prepare an advance application",async()=>{
+  const h=harness(),loading=h.context.loadStudentCandidate("person-8",{scroll:false});
+  h.requests[0].resolve({person:{personId:"person-8",displayName:"Returning Student",birthDate:"2012-01-01",studentNumber:"S-008"},activeRegistrations:[{registrationId:"old-registration",yearId:"old-year",termId:"old-period"}],activeLegacyEnrollments:[{registrationId:"old-registration",yearId:"old-year",termId:"old-period"}]});
+  assert.equal(await loading,true);assert.equal(h.form.elements.personId.value,"person-8");assert.equal(h.get("en-register").hidden,false);
+});
