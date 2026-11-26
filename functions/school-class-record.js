@@ -18,6 +18,7 @@ const {rowKey,checkId}=require("./school-academics.js");
 const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
 const {custodyRef,validCustody,authorizedTeacherCustody,historicalCustodianRecord,normalized,identityOnlyCustody,custodyMaximum}=require("./school-legacy-custody.js");
 
+const {originalReceipt,originalActivityGrade}=require("./school-legacy-recovery-sources.js");
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
 const MAX_SCORE=10000;
@@ -69,11 +70,13 @@ async function exactCustodyCandidate({db,schoolId,assessmentId,task,identities,r
     return new Set([...ids].map(id=>identities.get(id))).size>=required;
   });
   if(!identityOnly&&!proven.length)return null;
-  const [receipts,grades]=await Promise.all([
+  const [receipts,grades,earlierReceipts,activities]=await Promise.all([
     db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
-    db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get()
+    db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get(),
+    db.collection("student_submissions").where("assessmentId","==",assessmentId).limit(501).get(),
+    db.collection("activity_grades").where("taskId","==",assessmentId).limit(501).get()
   ]);
-  if(receipts.size>=501||grades.size>=501)return null;
+  if([receipts,grades,earlierReceipts,activities].some(page=>page.size>=501))return null;
   const proof=new Set();
   for(const doc of receipts.docs){
     const row=doc.data();
@@ -83,6 +86,8 @@ async function exactCustodyCandidate({db,schoolId,assessmentId,task,identities,r
     const row=doc.data();
     if(row.taskId===assessmentId&&row.score!==undefined&&row.score!==null&&Number.isFinite(Number(row.score)))proof.add(row.studentId);
   }
+  for(const doc of earlierReceipts.docs){const row=originalReceipt(doc,assessmentId);if(row)proof.add(row.studentId);}
+  for(const doc of activities.docs){const row=originalActivityGrade(doc,assessmentId);if(row)proof.add(row.studentId);}
   const verified=proven.filter(section=>[...sectionStudents.get(normalized(section))].some(id=>proof.has(id)));
   if(identityOnly){
     if(new Set(ids.filter(id=>proof.has(id)).map(id=>identities.get(id))).size<required)return null;
