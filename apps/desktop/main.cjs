@@ -8,12 +8,55 @@
 const {app,BrowserWindow,shell,Menu,dialog,ipcMain}=require("electron");
 const path=require("node:path");
 const {APP_ORIGIN,APP_PREFIX,START_URL,classifyNavigation}=require("./navigation-policy.cjs");
-const {generatePairing}=require("./native-auth-protocol.cjs");
-const {sendHandoff}=require("./native-handoff-client.cjs");
 const APP_TITLE="Adminerva — Desktop Public Preview";
-const DEV_SIGNIN=process.env.ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI==="true";
+// Public installer packages NEVER activate development authentication.
+const DEV_SIGNIN=!app.isPackaged&&process.env.ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI==="true";
+const generatePairing=DEV_SIGNIN?require("./native-auth-protocol.cjs").generatePairing:null;
+const sendHandoff=DEV_SIGNIN?require("./native-handoff-client.cjs").sendHandoff:null;
 const LOGIN_BOOTSTRAP=APP_ORIGIN+APP_PREFIX+"desktop-session.html";
 app.enableSandbox();
+const {checkUpdateStatus,DOWNLOAD_CENTER_URL}=require("./update-check.cjs");
+let checking=false;
+async function showUpdateStatus(){
+ if(checking)return;
+ const win=BrowserWindow.getFocusedWindow()||BrowserWindow.getAllWindows()[0];
+ if(!win||win.isDestroyed())return;
+ checking=true;
+ try{
+  const platform=process.platform==="win32"?"windows":
+   process.platform==="darwin"?"macos":"unsupported";
+  const currentVersion=app.getVersion();
+  const result=await checkUpdateStatus({platform,currentVersion,signal:AbortSignal.timeout(8000)});
+  const message=result.state==="newer-preview-listed"?
+   "A newer public preview is listed: v"+result.latestVersion:
+   result.state==="no-newer-version-listed"?
+   "No newer preview version is listed. Installed: v"+currentVersion:
+   result.state==="ahead-of-listing"?
+   "This preview is newer than the published listing.":"No preview update listing exists for this device.";
+  const choice=await dialog.showMessageBox(win,{
+   type:"info",title:"Adminerva — Check for updates",message,
+   detail:"Unsigned developer previews cannot update themselves. No school data was changed and no installer was downloaded. Official applications will use verified, signed updates.",
+   buttons:["Close","Open test builds"],defaultId:0,cancelId:0
+  });
+  if(choice.response===1)void shell.openExternal(DOWNLOAD_CENTER_URL).catch(()=>{});
+ }catch{
+  if(!win.isDestroyed())await dialog.showMessageBox(win,{
+   type:"warning",title:"Adminerva — Check for updates",
+   message:"Unable to check the official preview listing.",
+   detail:"Try again with an internet connection. No download or installation was started.",
+   buttons:["Close"]
+  }).catch(()=>{});
+ }finally{checking=false;}
+}
+function installAppMenu(){
+ Menu.setApplicationMenu(Menu.buildFromTemplate([
+  {label:"Adminerva",submenu:[
+   {label:"Check for updates…",click:()=>void showUpdateStatus()},
+   {type:"separator"},{role:"quit"}
+  ]},
+  {role:"editMenu"},{role:"viewMenu"},{role:"windowMenu"}
+ ]));
+}
 let activeWindow=null;
 let pendingPairing=null;
 let pendingToken=null;
@@ -148,6 +191,7 @@ function setupMenu(){
     if(pendingPairing)void sendHandoff("cancel",pendingPairing).catch(()=>{});
     pendingPairing=null;pendingToken=null;tokenConsumedForBootstrap=false;
    }},
+   {label:"Check for updates…",click:()=>void showUpdateStatus()},
    {type:"separator"},{role:"quit"}
   ]},
   {label:"View",submenu:[{role:"reload"},{role:"toggleDevTools"}]}
@@ -157,8 +201,8 @@ function createWindow(){
  const win=new BrowserWindow({
   title:APP_TITLE,width:1160,height:790,minWidth:320,minHeight:480,
   show:false,webPreferences:{
-   preload:path.join(__dirname,"preload.cjs"),
-   partition:"persist:adminerva-public-preview",
+   preload:path.join(__dirname,DEV_SIGNIN?"preload-auth-dev.cjs":"preload.cjs"),
+   partition:DEV_SIGNIN?"persist:adminerva-auth-dev":"persist:adminerva-public-preview",
    sandbox:true,contextIsolation:true,nodeIntegration:false,
    webSecurity:true,allowRunningInsecureContent:false,webviewTag:false
   }
@@ -204,7 +248,8 @@ app.on("web-contents-created",(_event,contents)=>{
  contents.on("will-attach-webview",event=>event.preventDefault());
 });
 app.whenReady().then(()=>{
- setupMenu();createWindow();
+ createWindow();
+ if(DEV_SIGNIN)setupMenu();else installAppMenu();
  app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)createWindow();});
 });
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});
