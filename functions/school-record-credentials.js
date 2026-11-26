@@ -4,7 +4,8 @@
 const {createHash}=require("node:crypto");
 const {FieldValue}=require("firebase-admin/firestore");
 const {TenantAccessError}=require("./tenant-access.js");
-const ACTIONS=new Set(["academic_record_packet","get_certificate_template","save_certificate_template","prepare_enrollment_certificate","get_enrollment_certificate","issue_enrollment_certificate","revoke_enrollment_certificate","verify_enrollment_certificate"]);
+const {externalView}=require("./school-external-academic-records.js");
+const ACTIONS=new Set(["academic_record_years","academic_record_packet","get_certificate_template","save_certificate_template","prepare_enrollment_certificate","get_enrollment_certificate","issue_enrollment_certificate","revoke_enrollment_certificate","verify_enrollment_certificate"]);
 function canonicalValue(value){
   if(Array.isArray(value))return value.map(canonicalValue);
   if(value&&typeof value==="object")return Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonicalValue(value[key])]));
@@ -44,6 +45,12 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
     if(!recordId)return "";
     const doc=await read(db.doc(root+collection+"/"+id(recordId,330)));
     return own(doc,ctx.schoolId)?String(doc.data().name||recordId).slice(0,160):"";
+  }
+  if(input.action==="academic_record_years"){
+    const personId=id(input.personId);await student(personId);
+    const registrations=await bounded(db.collection(root+"student_registrations").where("personId","==",personId),100,"Registration history");
+    const years=[...new Set(registrations.map(doc=>doc.data().yearId).filter(Boolean))];
+    return {items:await Promise.all(years.map(async yearId=>({yearId,label:await label(ref=>ref.get(),"academic_years",yearId)||yearId})))};
   }
   if(input.action==="academic_record_packet"){
     const personId=id(input.personId),yearId=input.yearId?id(input.yearId):null,mode=input.mode;
@@ -103,12 +110,22 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
     }
     const unresolved=rows.filter(row=>row.state!=="released").length;
     if(unresolved)blockers.push(unresolved+" class result(s) have unresolved placement or released-grade evidence.");
-    if(!rows.length)blockers.push("No class result evidence found.");
+    if(!rows.length)blockers.push("No local class result evidence found.");
+    // External year labels are not interchangeable with canonical year IDs.
+    // Only an all-year SF10 working packet includes verified previous-school records.
+    let externalRecords=[];
+    if(mode==="sf10"&&!yearId){
+      const external=await bounded(db.collection(root+"student_external_academic_records").where("personId","==",personId),100,"Previous-school evidence");
+      const retained=external.filter(doc=>doc.data().state!=="archived");
+      externalRecords=retained.filter(doc=>doc.data().state==="verified").map(externalView);
+      if(retained.some(doc=>doc.data().state!=="verified"))blockers.push("Some previous-school academic evidence remains unverified and is excluded from the working results.");
+      if(own(profile,ctx.schoolId)&&profile.data().previousSchool&&!externalRecords.length)blockers.push("Previous school is recorded; no verified previous-school academic evidence is available.");
+    }
     const years=[...new Set(registrations.map(doc=>doc.data().yearId).filter(Boolean))];
     return {mode,personId,yearId,studentName:a.data.displayName||"",studentNumber:a.data.studentNumber||"",
       lrnVerified:own(profile,ctx.schoolId)&&profile.data().lrnState==="verified",academicYears:years,
       rows:rows.sort((a,b)=>a.yearName.localeCompare(b.yearName)||a.termName.localeCompare(b.termName)||a.subjectName.localeCompare(b.subjectName)),
-      blockers,completeWithinScope:blockers.length===0,officialForm:false,generatedAt:Date.now()};
+      externalRecords,blockers,completeWithinScope:blockers.length===0,officialForm:false,generatedAt:Date.now()};
   }
   if(input.action==="get_certificate_template")return template(await templateRef.get());
   if(input.action==="save_certificate_template"){
