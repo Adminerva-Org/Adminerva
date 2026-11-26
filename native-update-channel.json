@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "channel": "public-preview",
+  "latestVersion": {
+    "windows": "0.1.0",
+    "macos": "0.1.0",
+    "android": "0.1.0"
+  },
+  "installMode": "manual-preview",
+  "officialSignedRelease": false
+}
