@@ -85,6 +85,26 @@ function createSchoolStudentRecordsService({db}){
       return {ref,doc,data:doc.data()};
     }
     if(ADMISSION_DOCUMENT_ACTIONS.has(input.action))return admissionDocumentAction({db,ctx,input,studentView:true});
+    if(input.action==="list_document_requests"){
+      const filter=String(input.status||"open"),cursor=input.cursor?id(input.cursor,"Document request cursor",330):null,pageSize=40;
+      if(!["open","all",...Object.keys(REQUEST_TRANSITIONS)].includes(filter))deny("invalid-argument","Choose a document request status.");
+      let query=db.collection(root+"student_document_requests").where("schoolId","==",ctx.schoolId);
+      if(filter==="open")query=query.where("status","in",["requested","in_review","ready"]);
+      else if(filter!=="all")query=query.where("status","==",filter);
+      query=query.orderBy(FieldPath.documentId()).limit(pageSize+1);if(cursor)query=query.startAfter(cursor);
+      const snap=await query.get(),page=snap.docs.slice(0,pageSize),
+        scoped=page.filter(doc=>doc.data().schoolId===ctx.schoolId),
+        personIds=[...new Set(scoped.map(doc=>id(doc.data().personId,"Person ID")))],
+        people=await Promise.all(personIds.map(personId=>db.doc(root+"people/"+personId).get())),
+        lookup=new Map(people.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId&&doc.data().kind==="student").map(doc=>[doc.id,doc.data()]));
+      return {items:scoped.filter(doc=>lookup.has(doc.data().personId)).map(doc=>{
+        const row=doc.data(),person=lookup.get(row.personId);
+        return {requestId:doc.id,personId:row.personId,displayName:person.displayName||"Student",studentNumber:person.studentNumber||"",
+          type:row.type,label:requestTypeLabel(row.type),status:row.status||"requested",purpose:row.purpose||"",
+          releaseReference:row.releaseReference||"",revision:Number(row.revision)||1,requestedAt:millis(row.requestedAt),
+          updatedAt:millis(row.updatedAt),releasedAt:millis(row.releasedAt)};
+      }),nextCursor:snap.size>pageSize?page.at(-1).id:null,skippedCount:scoped.filter(doc=>!lookup.has(doc.data().personId)).length};
+    }
     if(input.action==="search_students"){
       const query=(optional(input.query,160)||"").toLocaleLowerCase("en");
       const cursor=input.cursor?id(input.cursor,"Student directory cursor"):"";
