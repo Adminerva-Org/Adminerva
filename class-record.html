@@ -342,10 +342,10 @@
       <div id="cr-assessment-source-note" class="cr-source-note mt-3" hidden></div>
       <details id="cr-source-finder" class="cr-source-finder">
         <summary>Can't find an earlier assessment? Search my sources</summary>
-        <p class="cr-help">Search original assessments, school deployments and imported blueprints belonging to your current teacher account. This does not copy or publish grades.</p>
+        <p class="cr-help">Search by title or paste the exact Firestore assessment ID.</p>
         <div class="cr-source-search-row">
-          <label class="cr-field">Assessment title
-            <input id="cr-source-search" type="search" class="cr-input mt-1" maxlength="80" placeholder="Mini PETA 1, UI or XML" autocomplete="off">
+          <label class="cr-field">Assessment title or ID
+            <input id="cr-source-search" type="search" class="cr-input mt-1" maxlength="140" placeholder="Title or assessment ID (id:…)" autocomplete="off">
           </label>
           <button id="cr-find-source" class="cr-button" type="button">Find assessment</button>
         </div>
@@ -591,6 +591,6 @@
 <script src="js/core/adminerva-loader.js?v=3bc029269047"></script>
 <script defer src="js/core/adminerva-nav.js?v=3bc029269047"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=3bc029269047"></script>
-<script type="module" src="js/class-record/class-record.mjs?v=20261126-legacy-custody-cr"></script>
+<script type="module" src="js/class-record/class-record.mjs?v=20261126-exact-assessment-id-cr"></script>
 </body>
 </html>
