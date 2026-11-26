@@ -66,7 +66,7 @@ test("Class Record historical linkage cannot be forged from another original own
   assert.equal(historicalMapping(args),null);
   const mapping=historicalMapping({...args,custodyGrant:grant});
   assert.equal(mapping.ownerUid,teacherUid);
-  assert.equal(mapping.originalOwnerUid,oldOwner);
+  assert.equal(mapping.originalOwnerUid,undefined,"custodian UID is not exposed through Class Record");
   assert.equal(mapping.custodyGrantId,custodyId(assessmentId,offeringId));
   assert.equal(mappingMatches(mapping,schoolId,offeringId,offering),true);
   assert.equal(historicalMapping({...args,custodyGrant:{...grant,status:"revoked"}}),null);
