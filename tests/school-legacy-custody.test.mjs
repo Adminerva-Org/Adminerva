@@ -21,7 +21,7 @@ const docs=new Map([
   [prefix+"legacy_assessment_custody/"+custodyId(assessmentId,offeringId),grant],
   [prefix+"staff_assignments/"+rowKey(teacherUid,offeringId),
     {schoolId,teacherUid,offeringId,status:"active"}],
-  [prefix+"course_offerings/"+offeringId,{schoolId,status:"active"}],
+  [prefix+"course_offerings/"+offeringId,{schoolId,status:"active",primaryTeacherUid:teacherUid}],
   [prefix+"memberships/"+teacherUid,{schoolId,status:"active",roles:["teacher"]}]
 ]);
 const db={doc:path=>({path,get:async()=>({exists:docs.has(path),data:()=>docs.get(path),
@@ -61,6 +61,18 @@ test("delegated V4 Review & Grade requires an active school teacher appointment 
   docs.set(key,{...docs.get(key),status:"archived"});
   assert.equal(await authorizedTeacherCustody(opts),null);
   docs.set(key,{schoolId,teacherUid,offeringId,status:"active"});
+});
+test("custody review requires the current explicit Primary Teacher even if the former lead is still assigned",async()=>{
+  const opts={db,schoolId,teacherUid,assessmentId,offeringId,task};
+  const key=prefix+"course_offerings/"+offeringId;
+  const original=docs.get(key);
+  try {
+    assert.ok(await authorizedTeacherCustody(opts));
+    docs.set(key,{...original,primaryTeacherUid:"new-primary"});
+    assert.equal(await authorizedTeacherCustody(opts),null);
+    docs.set(key,{...original,primaryTeacherUid:""});
+    assert.equal(await authorizedTeacherCustody(opts),null);
+  } finally { docs.set(key,original); }
 });
 test("Class Record historical linkage cannot be forged from another original owner",()=>{
   const offering={yearId:"year",termId:"q3",sectionId:"section",subjectId:"course"};
