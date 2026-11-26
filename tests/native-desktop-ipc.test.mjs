@@ -112,3 +112,46 @@ test("authenticated Studio workspace blocks native account switching until safe 
  assert.equal(h.win.webContents.checkPermission(),false);
  assert.equal(h.win.webContents.windowOpen({url:"file:///etc/passwd"}).action,"deny");
 });
+
+test("sign-out revokes private desktop navigation and clears the prior learner's workspace",async()=>{
+ const h=await bootDesktop();
+ const ended=h.ipc.get("adminerva:session-ended");
+ assert.equal(typeof ended,"function");
+ assert.equal(await ended(h.frame),false,"subframe may not change authentication state");
+ h.win.webContents.url="https://evil.example/forged.html";
+ assert.equal(await ended(h.top),false,"unapproved origin cannot report sign-out");
+ h.win.webContents.url="https://adminerva-org.github.io/Adminerva/student-playground.html";
+ vm.runInContext("allowPrivate=true",h.ctx);
+ assert.equal(await ended(h.top),true);
+ assert.equal(h.read("allowPrivate"),false);
+ assert.equal(h.win.webContents.url,"https://adminerva-org.github.io/Adminerva/guest-home.html");
+ assert.equal(await ended(h.top),false,"replayed sign-out is harmless");
+});
+
+test("native desktop auth stays window-session scoped while browser login remains persistent",()=>{
+ const firebase=readFileSync(new URL("../js/core/firebase-core.js",import.meta.url),"utf8");
+ const preload=readFileSync(new URL("../apps/desktop/preload.cjs",import.meta.url),"utf8");
+ assert.match(firebase,/desktopSession\?\[browserSessionPersistence\]/);
+ assert.match(firebase,/\[indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence\]/);
+ assert.match(firebase,/observedUid=null/);
+ assert.match(firebase,/desktopBridge\.reportSignedOut\(\)/);
+ assert.match(preload,/reportSignedOut:\(\)=>ipcRenderer\.invoke\("adminerva:session-ended"\)/);
+ assert.match(source,/ipcMain\.handle\("adminerva:session-ended"/);
+ assert.match(source,/activeWindow\.loadURL\(START_URL\)/);
+});
+
+test("Studio logout and leave guards refuse to abandon unconfirmed code",()=>{
+ const project=readFileSync(new URL("../js/student/project-studio.mjs",import.meta.url),"utf8");
+ const nav=readFileSync(new URL("../js/core/adminerva-nav.js",import.meta.url),"utf8");
+ assert.match(project,/window\.addEventListener\("adminerva:before-signout",event=>/);
+ assert.match(project,/window\.addEventListener\("beforeunload",event=>/);
+ assert.match(project,/saveState\(captureState\(\)\)/);
+ assert.match(project,/cloudPending\.size>0\|\|cloudWrites\.size>0\|\|unbackedProjectIds\.size>0/);
+ assert.match(project,/setCloudStatus\("Cloud save pending/);
+ assert.match(nav,/dispatchEvent\(new CustomEvent\("adminerva:before-signout",\{cancelable:true\}\)\)/);
+ assert.match(nav,/event\.stopPropagation\(\)/);
+ assert.match(nav,/button\.disabled=false/);
+ assert.match(nav,/await signOut\(getAuth\(\)\)/);
+ // Do not continue to login via finally after a Firebase sign-out failure.
+ assert.doesNotMatch(nav,/finally\s*\{[\s\S]{0,200}window\.location\.href\s*=\s*"login.html"/);
+});
