@@ -213,14 +213,27 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        if(scanned>1000)deny("resource-exhausted","Historical repository inbox needs a narrower paginated view.");
        for(const doc of page.docs){
          const data=doc.data();
-         const meta=approvedEvidence(data,id,doc.id);
+         // Authorize the exact original identity before parsing evidence. A
+         // malformed older receipt is an exception, not an inbox-wide failure.
+         let studentId;
+         try{studentId=legacyDocumentId(data?.studentId,"Historical student",220);}
+         catch{continue;}
+         if(data.assessmentId!==id||doc.id!==studentId+"_"+id||!inScope(studentId,data.section))continue;
+         let meta;
+         try{meta=approvedEvidence(data,id,doc.id);}
+         catch(error){
+           if(!(error instanceof TenantAccessError))throw error;
+           rows.push({evidenceId:doc.id,studentId,studentUid:studentId,
+             section:clean(data.section,160),status:"historical_evidence_exception",
+             evidenceException:true,hasSubmission:false,discoveryOnly:false});
+           continue;
+         }
          rows.push({evidenceId:doc.id,studentId:meta.studentId,studentUid:meta.studentId,
            section:clean(data.section,160),status:data.status||"submitted",
            version:meta.revision||1,updatedAt:data.submittedAt?.toMillis?.()||null,
            selectedCount:meta.selected.length,verifiedCount:meta.verified.length,
            approved:meta.approved,hasSubmission:meta.hasSubmission,
            discoveryOnly:meta.discoveryOnly});
-         if(!inScope(meta.studentId,data.section))rows.pop();
        }
        if(page.size<80)break;
        cursor=page.docs[page.docs.length-1].id;
@@ -237,10 +250,22 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        for(let i=0;i<batch.length;i++){
          const row=batch[i],person=people[i].exists?people[i].data():{},
            grade=grades[i].exists?grades[i].data():null;
-         checkGrade(grade,row.studentId);
+         let gradeException=false;
+         try{
+           checkGrade(grade,row.studentId);
+           if(grade&&!inScope(row.studentId,grade.section||row.section))
+             deny("failed-precondition","Historical grade is outside this class.");
+           if(grade)gradeSummary(grade,rubric);
+         }catch(error){
+           if(!(error instanceof TenantAccessError))throw error;
+           gradeException=true;
+         }
          results.push({...row,studentName:clean(person.name||row.studentId,160),
-           gradeStatus:grade?.published===true?"published":grade?"draft":null,
-           awarded:grade?Number(grade.score):null});
+           ...(gradeException?{gradeException:true,hasSubmission:false}:{}),
+           gradeStatus:gradeException?null:grade?.published===true?"published":grade?"draft":null,
+           awarded:gradeException||!grade?null:Number(grade.score),
+           maxScore:gradeException||!grade?null:Number(grade.maxScore),
+           pending:gradeException||!grade?0:Number(grade.pending||0)});
        }
      }
      // Original scalar grades can outlive evidence or use a different receipt
@@ -251,10 +276,20 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        deny("resource-exhausted","The original grade ledger requires pagination.");
      const seen=new Set(results.map(row=>row.studentId));
      let gradeOnly=0,publishedCount=0,draftCount=0;
+     const byStudent=new Map(results.map(row=>[row.studentId,row]));
      for(const doc of gradePage.docs){
        const grade=doc.data();
        if(grade.taskId!==id||typeof grade.studentId!=="string"||
           !inScope(grade.studentId,grade.section))continue;
+       try{legacyDocumentId(grade.studentId,"Historical student",220);}catch{continue;}
+       const existing=byStudent.get(grade.studentId);
+       if(existing&&doc.id!==existing.evidenceId){
+         // Do not create a parallel grade when the original used another key.
+         existing.gradeException=true;existing.hasSubmission=false;
+         existing.gradeStatus=null;existing.awarded=null;
+         continue;
+       }
+       if(grade.score===null||grade.score===undefined||grade.score==="")continue;
        const awarded=Number(grade.score),maximum=Number(grade.maxScore||total);
        if(!Number.isFinite(awarded)||!Number.isFinite(maximum)||awarded<0||
           awarded>maximum||maximum<=0)continue;
@@ -271,6 +306,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      }
      return {task:taskInfo,evidence:results,coverage:{
        evidenceCount:rows.length,gradeCount:publishedCount+draftCount,
+       evidenceExceptions:results.filter(row=>row.evidenceException).length,
+       gradeExceptions:results.filter(row=>row.gradeException).length,
        publishedCount,draftCount,gradeOnly,evidenceWithoutGrade:
          results.filter(row=>!row.gradeStatus&&!row.gradeOnly).length
      }};
@@ -332,12 +369,13 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    const auditRef=db.collection("grade_revisions").doc();
    let outcome;
    await db.runTransaction(async tx=>{
-     const [freshTask,freshImport,freshEvidence,prior,freshCustody,freshAssignment,freshMembership,freshOffering]=await Promise.all([
+     const [freshTask,freshImport,freshEvidence,prior,freshCustody,freshAssignment,freshMembership,freshOffering,originalGrades]=await Promise.all([
        tx.get(taskRef),tx.get(importRef),tx.get(record.ref),tx.get(gradeDocument),
        custody?tx.get(custody.ref):Promise.resolve(null),
        custody?tx.get(db.doc(prefix+"staff_assignments/"+require("./school-academics.js").rowKey(ctx.uid,legacyOfferingId))):Promise.resolve(null),
        custody?tx.get(db.doc(prefix+"memberships/"+ctx.uid)):Promise.resolve(null),
-       custody?tx.get(db.doc(prefix+"course_offerings/"+legacyOfferingId)):Promise.resolve(null)
+       custody?tx.get(db.doc(prefix+"course_offerings/"+legacyOfferingId)):Promise.resolve(null),
+       tx.get(db.collection("student_grades").where("taskId","==",id).limit(1001))
      ]);
      const sourceUnchanged=freshTask.exists&&
        freshTask.data().evalCriteria===taskData.evalCriteria&&
@@ -367,6 +405,10 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
         JSON.stringify(latest.selected)!==JSON.stringify(meta.selected)||
         JSON.stringify(latest.verified)!==JSON.stringify(meta.verified))
        deny("failed-precondition","The frozen student-submitted repository evidence changed during review.");
+     if(originalGrades.size>=1001)
+       deny("resource-exhausted","Original grade identity reconciliation requires pagination.");
+     if(originalGrades.docs.some(doc=>doc.id!==recordId&&doc.data().studentId===meta.studentId))
+       deny("failed-precondition","An original grade exists under another document ID. Reconcile it before grading.");
      const before=prior.exists?prior.data():null;
      checkGrade(before,meta.studentId);
      const priorVersion=before?Number(before.gradeVersion||1):0;
