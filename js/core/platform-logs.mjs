@@ -321,7 +321,7 @@ function renderFilterSummary(visibleCount,totalCount){
   $("pl-clear-filters").disabled=!filters.length;
   for(const button of document.querySelectorAll(".pl-quick-filter"))button.setAttribute("aria-pressed",String(button.dataset.filter===severityFilter));
   const scope=view==="global"
-    ?"Flag/module/error signature are queried on the server. Text search affects loaded rows only."
+    ?(severityFilter==="unknown"?"Unknown flag and text search affect loaded rows only; the indexed feed may contain no unclassified events.":"Flag/module/error signature are queried on the server. Text search affects loaded rows only.")
     :view==="live"
       ?"The watch still collects all events; filters affect visible console lines only."
       :"Filters affect loaded rows only; older events are available through pagination.";
@@ -346,7 +346,7 @@ function renderEvents(){
   for(const key of flags)$(["pl",key,"count"].join("-")).textContent=summary[key];
   const level=$("pl-level").value,module=$("pl-module").value;
   const search=$("pl-event-search").value.trim().toLocaleLowerCase();
-  const filtered=rows.filter(row=>(state.view==="global"||(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
+  const filtered=rows.filter(row=>(state.view==="global"?(level!=="unknown"||severity(row.severity)==="unknown"):(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
     (!search||[row.ownerUid,state.selectedUid,row.action,row.errorCode,row.fingerprint,
       row.traceId,row.service,row.sessionId,row.module,row.route,row.operationId,row.context?.control,row.context?.process,row.context?.reasonCode,row.context?.parentOperationId,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search))));
   if(state.view==="live"){
@@ -655,7 +655,7 @@ async function loadGlobal({older=false}={}){
   try{
     const filter={
       action:"global_feed",reason,windowHours:Number($("pl-window").value),
-      severity:state.fingerprint?"":$("pl-level").value,
+      severity:state.fingerprint||$("pl-level").value==="unknown"?"":$("pl-level").value,
       module:state.fingerprint?"":$("pl-module").value,
       ...(state.fingerprint?{fingerprint:state.fingerprint}:{}),
       limit:LIMIT,...(cursor?{cursor}:{})
