@@ -161,3 +161,13 @@ test("academic preparation resolves released evidence and labels the result non-
   assert.match(credential,/signatureVerified:false/);assert.match(service,/Use the certificate issuance action/);
   assert.match(recordsUi,/UNSIGNED COPY/);
 });
+
+
+test("certificate digest survives Firestore map key ordering and rejects changed content",()=>{
+  const {certificateDigest}=require("../functions/school-record-credentials.js");
+  const first={studentName:"Student",templateRevision:1,placement:{year:"2026",period:"Q1"}};
+  assert.equal(certificateDigest(first),certificateDigest({placement:{period:"Q1",year:"2026"},templateRevision:1,studentName:"Student"}));
+  assert.notEqual(certificateDigest(first),certificateDigest({...first,templateRevision:2}));
+  assert.match(service,/find_student_by_lrn/);assert.match(service,/claim.data\(\).status!=="active"/);
+  assert.match(recordsHtml,/id="sr-lrn-dialog"/);
+});
