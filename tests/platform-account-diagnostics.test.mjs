@@ -176,3 +176,20 @@ test("backend failure capture retains code and callable name, never request payl
   assert.equal(JSON.stringify(values[0]).includes("private student answer"),false);
   assert.equal(JSON.stringify(values[0]).includes("private code"),false);
 });
+
+test("bounded context accepts known controls and process snapshots only",async()=>{
+  const ctx={control:"cloudSaveProjectBtn",visibility:"visible",network:"online",focus:"focused",ready:"complete",dialog:"none",busy:"busy",
+    clientAt:T,active:[{name:"studio_cloud_save",id:SESSION,ageMs:300}],overflow:0};
+  const e=event({kind:"action",action:"control_clicked",state:"info",context:ctx});
+  assert.deepEqual(checkedEvent(e).context,ctx);
+  for(const invalid of [{...ctx,control:"student-name"},{...ctx,network:"secret"},{...ctx,text:"private"},
+    {...ctx,active:[{name:"studio_cloud_save",id:SESSION,ageMs:300,payload:"private"}]},
+    {...ctx,active:Array(7).fill(ctx.active[0])},{...ctx,active:[ctx.active[0],ctx.active[0]]}]){
+    assert.throws(()=>checkedEvent({...e,context:invalid}),/diagnostic|process/i);
+  }
+  const db=fakeDb(),api=service(db).service;
+  await api(request(USER,{action:"record",event:e}));
+  const response=await api(request(ADMIN,{action:"list",targetUid:USER,reason:"Investigating overlapping save operations"}));
+  assert.deepEqual(response.events[0].context,ctx);
+  await assert.rejects(api(request(USER,{action:"list",targetUid:USER,reason:"Investigating overlapping save operations"})),/Platform Administrator/);
+});
