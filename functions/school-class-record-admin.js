@@ -96,9 +96,12 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
         teacherUid=String(classData.primaryTeacherUid||"");
       if(!teacherUid||teacherUid===ctx.uid||data.ownerUid===teacherUid)
         deny("failed-precondition","Select an official class with a different active Primary Teacher. Already-owned assessments do not need custody delegation.");
-      const section=String(input.originalSection||"").trim();
-      if(!originalSections(data).some(value=>normalized(value)===normalized(section)))
-        deny("failed-precondition","The original assessment was not deployed to that exact historical section.");
+      const sections=originalSections(data),identityOnly=sections.length===0;
+      const section=identityOnly?"":String(input.originalSection||"").trim();
+      if(!identityOnly&&!sections.some(value=>normalized(value)===normalized(section)))
+        deny("failed-precondition","Choose an original section: "+sections.slice(0,12).join(", "));
+      if(identityOnly&&(data.schemaVersion===3||data.submissionSource==="studio"||data.assessmentFormat==="studio_code"))
+        deny("failed-precondition","Sectionless custody currently supports original Repository Management GitHub assessments only.");
       const maximum=Number(data.maxScore);
       if(!Number.isFinite(maximum)||maximum<=0||maximum>10000)
         deny("failed-precondition","The original assessment maximum score is invalid.");
@@ -128,7 +131,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       const ids=[...identities.keys()];
       if(ids.length>350)deny("resource-exhausted","Historic identity reconciliation exceeds safe class size.");
       const validStudentIds=[];
-      for(let offset=0;offset<ids.length;offset+=100){
+      if(identityOnly)validStudentIds.push(...ids);
+      else for(let offset=0;offset<ids.length;offset+=100){
         const chunk=ids.slice(offset,offset+100);
         const snapshots=await db.getAll(...chunk.map(id=>db.doc("students/"+id)));
         for(let i=0;i<chunk.length;i++){
@@ -137,7 +141,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
             validStudentIds.push(chunk[i]);
         }
       }
-      const verifiedPeople=new Set(validStudentIds.map(id=>identities.get(id)));
+      let verifiedPeople=new Set(validStudentIds.map(id=>identities.get(id)));
       // A targetSections list could be only a teacher's unpublished
       // preparation. Require assessment-specific original student evidence
       // (a real submission receipt, or an existing grade) before delegation.
@@ -161,9 +165,14 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
            Number.isFinite(Number(grade.score)))
           sourceProof.add(grade.studentId);
       }
+      if(identityOnly){
+        validStudentIds.splice(0,validStudentIds.length,...validStudentIds.filter(id=>sourceProof.has(id)));
+        verifiedPeople=new Set(validStudentIds.map(id=>identities.get(id)));
+      }
       const required=roster.length===1?1:Math.max(2,Math.ceil(roster.length/3));
       const preview={assessmentId,offeringId,originalTitle:String(data.title||""),
         originalSubject:String(data.subject||""),originalSection:section,
+        sectionProof:identityOnly?"assessment_student_identity":"original_deployed_section",
         originalMaxScore:maximum,teacherUid,originalOwnerUid:String(data.ownerUid||""),
         verifiedStudentCount:verifiedPeople.size,requiredStudentCount:required,
         rosterCount:roster.length,originalSourceRecordCount:sourceProof.size,
@@ -179,11 +188,12 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       if(input.confirmTitle!==preview.originalTitle)
         deny("failed-precondition","Confirm the exact original assessment title before delegating custody.");
       await db.runTransaction(async tx=>{
-        const [current,task,classRecord,appointment,member,approver]=await Promise.all([
+        const [current,task,classRecord,appointment,member,approver,priorCustody]=await Promise.all([
           tx.get(grantRef),tx.get(originalRef),tx.get(offeringRef),
           tx.get(db.doc(prefix+"staff_assignments/"+rowKey(teacherUid,offeringId))),
           tx.get(db.doc(prefix+"memberships/"+teacherUid)),
-          tx.get(db.doc(prefix+"memberships/"+ctx.uid))
+          tx.get(db.doc(prefix+"memberships/"+ctx.uid)),
+          tx.get(db.collection(prefix+"legacy_assessment_custody").where("assessmentId","==",assessmentId).limit(101))
         ]);
         if(!approver.exists||approver.data().schoolId!==ctx.schoolId||
            approver.data().status!=="active"||
@@ -191,6 +201,14 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
           deny("permission-denied","A current active School Administrator must authorize custody changes.");
         if(current.exists&&current.data().status==="active")
           deny("already-exists","This legacy source is already verified for this offering.");
+        if(priorCustody.size>=101)deny("resource-exhausted","Historical custody needs paginated reconciliation.");
+        const selected=new Set(validStudentIds);
+        if(priorCustody.docs.some(doc=>{
+          const other=doc.data();
+          return other.schoolId===ctx.schoolId&&other.offeringId!==offeringId&&
+            (identityOnly||other.sectionProof==="assessment_student_identity")&&
+            (other.verifiedLegacyStudentIds||[]).some(id=>selected.has(id));
+        }))deny("failed-precondition","An original student record is already reserved for another official class. Reconcile the earlier custody before linking.");
         if(!task.exists||!historicalCustodianRecord(task.data())||
            task.data().schoolId&&task.data().schoolId!==ctx.schoolId||
            String(task.data().title||"")!==preview.originalTitle||
@@ -198,7 +216,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
            String(task.data().subject||"")!==preview.originalSubject||
            custodySourceDigest(task.data())!==custodySourceDigest(data)||
            Number(task.data().maxScore)!==maximum||
-           !originalSections(task.data()).some(x=>normalized(x)===normalized(section))||
+           (identityOnly?originalSections(task.data()).length!==0:
+             !originalSections(task.data()).some(x=>normalized(x)===normalized(section)))||
            !classRecord.exists||classRecord.data().schoolId!==ctx.schoolId||
            classRecord.data().primaryTeacherUid!==teacherUid||
            !appointment.exists||appointment.data().status!=="active"||
@@ -208,7 +227,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
           deny("failed-precondition","Original assessment or official teacher assignment changed during custody review.");
         tx.set(grantRef,{schoolId:ctx.schoolId,assessmentId,offeringId,teacherUid,
           originalOwnerUid:preview.originalOwnerUid,originalTitle:preview.originalTitle,
-          originalSubject:preview.originalSubject,originalSection:section,
+          originalSubject:preview.originalSubject,originalSection:section,sectionProof:preview.sectionProof,
           originalMaxScore:maximum,sourceDigest:custodySourceDigest(data),
           verifiedLegacyStudentIds:[...new Set(validStudentIds)].sort(),
           verifiedPersonCount:verifiedPeople.size,rosterCount:roster.length,
@@ -217,7 +236,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
         tx.create(db.collection(prefix+"class_record_audit").doc(),{
           schoolId:ctx.schoolId,offeringId,assessmentId,actorUid:ctx.uid,
           action:"legacy_assessment_custody_approved",teacherUid,
-          originalSection:section,verifiedPersonCount:verifiedPeople.size,reason,
+          originalSection:section,sectionProof:preview.sectionProof,verifiedPersonCount:verifiedPeople.size,reason,
           createdAt:FieldValue.serverTimestamp()
         });
       });
