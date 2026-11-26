@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
-const {custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections}=
+const {custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,custodySourceDigest}=
   require("../functions/school-legacy-custody.js");
 const {rowKey}=require("../functions/school-academics.js");
 const {historicalMapping,mappingMatches}=require("../functions/school-class-record-historical.js");
@@ -13,7 +13,7 @@ const task={title:"Mini PETA 1 — UI/XML",ownerUid:oldOwner,maxScore:20,subject
   deployments:[{section:"St. Carlo Acutis"}]};
 const grant={schoolId,assessmentId,offeringId,teacherUid,
   originalOwnerUid:oldOwner,originalTitle:task.title,originalSubject:task.subject,
-  originalMaxScore:20,originalSection:"St. Carlo Acutis",
+  originalMaxScore:20,originalSection:"St. Carlo Acutis",sourceDigest:custodySourceDigest(task),
   verifiedLegacyStudentIds:["legacy-one","legacy-two"],status:"active",
   reviewedBySchoolAdminUid:adminUid,reviewReason:"Teacher and original cohort verified"};
 const prefix="schools/"+schoolId+"/";
@@ -37,6 +37,8 @@ test("historical custody is deterministic and restricted to the original pilot s
 test("school custody must be explicitly approved and preserve unchanged original source metadata",()=>{
   const args={schoolId,assessmentId,offeringId,teacherUid,task,section:grant.originalSection};
   assert.equal(validCustody(grant,args),true);
+  assert.equal(validCustody(grant,{...args,task:{...task,evalCriteria:"Changed source rubric"}}),false);
+  assert.equal(validCustody({...grant,sourceDigest:"f".repeat(64)},args),false);
   assert.equal(validCustody(grant,{...args,task:{...task,ownershipBasis:""}}),false,
     "an ordinary private teacher-created assessment can never be delegated administratively");
   for(const [key,val] of [
