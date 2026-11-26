@@ -54,13 +54,14 @@ function release(value){
 }
 
 const CONTROLS=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
-const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery"]);
+const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_get","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery"]);
 const CONTEXT_ENUMS={visibility:["visible","hidden","other"],network:["online","offline"],focus:["focused","unfocused"],ready:["loading","interactive","complete","other"],dialog:["open","none"],busy:["busy","idle"]};
 function checkedContext(value){
   if(!value||typeof value!=="object"||Array.isArray(value))deny("invalid-argument","Invalid diagnostic context.");
-  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery","deviceBackup","retryState"];
+  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery","deviceBackup","retryState","parentOperationId"];
   if(Object.keys(value).some(k=>!allowed.includes(k)))deny("invalid-argument","Diagnostic context accepts only approved metadata.");
   const out={};
+  if(value.parentOperationId!==undefined){if(typeof value.parentOperationId!=="string"||!UUID.test(value.parentOperationId))deny("invalid-argument","Invalid diagnostic parent operation.");out.parentOperationId=value.parentOperationId.toLowerCase();}
   for(const [key,options] of [["reasonCode",STUDIO_REASONS],["projectCategory",new Set(["personal","assessment","unknown"])],["recovery",new Set(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"])],["deviceBackup",new Set(["available","unavailable","unknown"])],["retryState",new Set(["scheduled","not_scheduled"])]] ){
     if(value[key]!==undefined){if(!options.has(value[key]))deny("invalid-argument","Invalid diagnostic context category.");out[key]=value[key];}
   }
@@ -138,6 +139,20 @@ function safeService(value){
 }
 const STUDIO_REASONS=new Set(["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_STATE_CHANGED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_CLOSED","STUDIO_FINAL_CHECKPOINT_REQUIRED","STUDIO_FINAL_CHECKPOINT_CONFLICT","STUDIO_FINAL_CHECKPOINT_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EMPTY_SNAPSHOT_REJECTED","STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_NOT_ARCHIVED"]);
 function studioDiagnosticReason(error){return STUDIO_REASONS.has(error?.diagnosticReason)?error.diagnosticReason:"";}
+// These identifiers are client-declared correlation hints, never identity or authority.
+const CORRELATED_CALLS={schoolStudioProjects:new Set(["sync","get","archive","restore"]),schoolStudioSubmissions:new Set(["submit"]),schoolStudioAssessmentVariant:new Set(["assign"])};
+function clientCorrelation(request,service){
+  if(!Object.hasOwn(CORRELATED_CALLS,service)||!CORRELATED_CALLS[service].has(request?.data?.action))return {};
+  const value=request?.data?._diagnostic;
+  if(!value||typeof value!=="object"||Array.isArray(value)||Object.keys(value).some(k=>!["sessionId","operationId","parentOperationId"].includes(k)))return {};
+  if(typeof value.sessionId!=="string"||!UUID.test(value.sessionId)||typeof value.operationId!=="string"||!UUID.test(value.operationId))return {};
+  if(value.parentOperationId!==undefined&&(typeof value.parentOperationId!=="string"||!UUID.test(value.parentOperationId)||value.parentOperationId.toLowerCase()===value.operationId.toLowerCase()))return {};
+  return {sessionId:value.sessionId.toLowerCase(),operationId:value.operationId.toLowerCase(),...(value.parentOperationId?{parentOperationId:value.parentOperationId.toLowerCase()}:{})};
+}
+function correlationFields(request,service){
+  const {parentOperationId,...ids}=clientCorrelation(request,service);
+  return {ids,context:parentOperationId?{parentOperationId}:{}};
+}
 function serverErrorCode(error){
   const value=String(error?.code||"internal").replace(/^functions\//,"");
   return /^[-A-Za-z0-9_./]{1,64}$/.test(value)?value:"internal";
@@ -241,13 +256,14 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     const rawPath=String(request?.rawRequest?.path||"").split("?")[0].split("/").at(-1);
     const service=safeService(serviceName||rawPath);
     const type=serverErrorCode(error),reasonCode=studioDiagnosticReason(error);
+    const correlation=correlationFields(request,service);
     const action=String(request?.data?.action||"");
     // Never include user data, arbitrary action arguments or error messages.
     const safeAction=/^[a-z][a-z0-9_-]{0,45}$/.test(action)?action:"call";
     const synthetic={
-      eventId:randomUUID(),sessionId:randomUUID(),kind:"error",module:"api",
+      eventId:randomUUID(),sessionId:randomUUID(),...correlation.ids,kind:"error",module:"api",
       action:"api_failed",state:"error",errorCode:type,route:"",release:"",
-      phase:"failed",traceId:traceFromRequest(request),...(reasonCode?{context:{reasonCode}}:{}),
+      phase:"failed",traceId:traceFromRequest(request),...((reasonCode||Object.keys(correlation.context).length)?{context:{...correlation.context,...(reasonCode?{reasonCode}:{})}}:{}),
       durationMs:Math.max(0,Math.min(120000,now()-(Number(startedAt)||now())))
     };
     try{return await insert(ownerUid,synthetic,{source:"backend",service:service+"."+safeAction});}
@@ -346,9 +362,10 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     const rawAction=String(request?.data?.action||"call");
     const safeAction=safeProcess(rawAction,48);
     const safeServiceName=safeProcess(service,64);
+    const correlation=correlationFields(request,safeServiceName);
     const ms=Math.max(0,Math.min(120000,now()-(Number(startedAt)||now())));
     const event={
-      eventId:randomUUID(),sessionId:randomUUID(),kind:"action",module:"api",
+      eventId:randomUUID(),sessionId:randomUUID(),...correlation.ids,...(Object.keys(correlation.context).length?{context:correlation.context}:{}),kind:"action",module:"api",
       action:"api_succeeded",state:"ok",errorCode:"",route:"",
       release:"",phase:"completed",durationMs:ms,traceId:traceFromRequest(request)
     };
@@ -636,4 +653,4 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
   }
   return {service,writeServerFailure,recordServerProcess,recordNotificationDelivered,cleanup};
 }
-module.exports={studioDiagnosticReason,RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics};
+module.exports={clientCorrelation,studioDiagnosticReason,RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics};
