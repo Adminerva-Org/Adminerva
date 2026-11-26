@@ -16,7 +16,7 @@ const {createMonitoringService}=require("./monitoring-service.js");
 const {legacyStudentRecordsForAccount}=require("./legacy-student-identity.js");
 initializeApp();
 const db=getFirestore();
-const {createPlatformAccountDiagnostics}=require("./platform-account-diagnostics.js");
+const {createPlatformAccountDiagnostics,studioDiagnosticReason}=require("./platform-account-diagnostics.js");
 const platformAccountDiagnostics=createPlatformAccountDiagnostics({db,FieldValue,Timestamp});
 const messaging=getMessaging();
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
@@ -67,8 +67,8 @@ function safeCallable(handler,options={}){return async request=>{
     }).catch(error=>console.warn("System Admin assist audit write failed",{code:error.code||"unknown"}));
   }
   return result;
-}catch(error){await platformAccountDiagnostics.writeServerFailure(request,error,startedAt);
-  const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+}catch(error){await platformAccountDiagnostics.writeServerFailure(request,error,startedAt,options.diagnosticsService);
+  const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code)){const reason=studioDiagnosticReason(error);throw new HttpsError(error.code,error.message,reason?{diagnosticReason:reason}:undefined);}console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
 async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
   return !school.exists||school.data().compatibilityMode!=="v4_only";
