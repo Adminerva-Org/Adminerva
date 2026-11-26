@@ -133,3 +133,15 @@ test("school-wide document queue uses school-scoped cursors and reuses canonical
   assert.match(block,/nextCursor/);assert.match(block,/doc.data\(\).schoolId===ctx.schoolId/);
   assert.match(recordsUi,/openRequestLifecycle\(row,next,true\)/);assert.match(recordsHtml,/id="sr-requests-workspace"/);
 });
+
+
+test("LRN is an existing twelve digit string, never an invented student identifier",()=>{
+  const {normalizeLrn,normalizeRegistrarProfile}=require("../functions/school-student-records.js");
+  assert.equal(normalizeLrn("001234567890"),"001234567890");assert.equal(normalizeLrn(""),null);
+  assert.throws(()=>normalizeLrn(123456789012));assert.throws(()=>normalizeLrn("12345678901"));
+  assert.throws(()=>normalizeRegistrarProfile({lrn:"123456789012",lrnState:"unrecorded"}));
+  assert.equal(normalizeRegistrarProfile({lrn:"123456789012",lrnState:"verified"}).lrnState,"verified");
+  assert.match(service,/student_lrn_claims/);assert.match(service,/status:"superseded"/);
+  assert.match(service,/This LRN is already associated/);assert.match(service,/requireRegistrarMembership/);
+  assert.doesNotMatch(service.slice(service.indexOf('if(input.action==="search_students")'),service.indexOf('if(input.action==="student_file")')),/row\.lrn/);
+});
