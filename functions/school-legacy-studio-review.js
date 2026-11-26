@@ -228,6 +228,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
           status:data.status==="revision_requested"?"reopened":data.status||"submitted",
           version:data.revision,
           gradeStatus:grade?grade.published===true?"published":"draft":null,
+          gradeRevision:grade?Number(grade.gradeVersion||1):0,reviewSuggested:!!grade&&grade.published!==true&&(grade.reviewSuggested===true||grade.score===0||Number(grade.pending||0)>0),
           awarded:grade?Number(grade.score||0):null,
           updatedAt:data.submittedAt?.toMillis?.()||null};
       });
