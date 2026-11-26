@@ -1,7 +1,7 @@
 /** Shared, role-aware navigation. Page guards remain responsible for access. */
 // Lightweight internal diagnostics use the authenticated session only; writes are
 // server validated and available to Platform Administrators through audited reads.
-import("./platform-account-diagnostics.mjs?v=20261126-context-1").catch(()=>{});
+import("./platform-account-diagnostics.mjs?v=20261126-context-2").catch(()=>{});
 if(!document.getElementById("adminerva-analytics-script")){
   const analytics=document.createElement("script");
   analytics.id="adminerva-analytics-script";
