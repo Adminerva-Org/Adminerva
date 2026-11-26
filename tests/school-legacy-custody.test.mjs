@@ -5,6 +5,7 @@ const require=createRequire(import.meta.url);
 const {custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,custodySourceDigest,verifiedOriginalMaximum,custodyMaximum}=
   require("../functions/school-legacy-custody.js");
 const {rowKey}=require("../functions/school-academics.js");
+const {sameRecoveryCohort,markRecoveryOverlaps}=require("../functions/school-class-record-admin.js");
 const {historicalMapping,mappingMatches,historicalPublishedGrades}=require("../functions/school-class-record-historical.js");
 const schoolId="mcs-manila",assessmentId="legacy-ui-xml",offeringId="grade11-programming",
   teacherUid="original-teacher",adminUid="school-admin",oldOwner="historical-custodian";
@@ -178,4 +179,29 @@ test("missing original maximum is recovered only from consistent recorded maxima
  assert.equal(custodyMaximum(source,recovered),20);
  assert.equal(custodyMaximum(source,null),null);
  assert.equal(validCustody({...recovered,maximumProof:undefined},{schoolId,assessmentId,offeringId,teacherUid,task:source}),false);
+});
+
+
+test("multi-class historical recovery is scoped to exact academic period, subject, teacher and school",()=>{
+ const anchor={schoolId,yearId:"2026",termId:"sem2",subjectId:"programming4",primaryTeacherUid:teacherUid,status:"active"};
+ assert.equal(sameRecoveryCohort(anchor,{...anchor,sectionId:"other-section"},schoolId),true);
+ for(const change of [{schoolId:"other-school"},{yearId:"2025"},{termId:"sem1"},{subjectId:"programming2"},
+   {primaryTeacherUid:"other-teacher"},{status:"archived"}]){
+   assert.equal(sameRecoveryCohort(anchor,{...anchor,...change},schoolId),false);
+ }
+ assert.equal(sameRecoveryCohort({...anchor,termId:""},anchor,schoolId),false);
+});
+test("multi-class recovery with overlapping canonical people blocks both classes and removes identity arrays",()=>{
+ const rows=[
+  {offeringId:"a",eligible:true,matchedPersonIds:["p1","p2"]},
+  {offeringId:"b",eligible:true,matchedPersonIds:["p2","p3"]},
+  {offeringId:"c",eligible:true,matchedPersonIds:["p4"]},
+  {offeringId:"d",eligible:false,matchedPersonIds:["p4"],status:"maximum_reconciliation_required"}
+ ];
+ const result=markRecoveryOverlaps(rows);
+ assert.equal(result[0].status,"overlapping_class_rosters");
+ assert.equal(result[1].eligible,false);
+ assert.equal(result[2].eligible,true);
+ assert.equal(result[3].status,"maximum_reconciliation_required");
+ assert.ok(result.every(row=>!("matchedPersonIds" in row)));
 });
