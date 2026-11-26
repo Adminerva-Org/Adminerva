@@ -453,6 +453,10 @@ function createSchoolEnrollmentService({db}){
           (person.data().studentNumber&&person.data().studentNumber!==studentNumber)))
           deny("failed-precondition","The existing student identity changed. Reopen Student Records.");
         if(personId){
+          const placements=await tx.get(db.collection(root+"student_registrations").where("personId","==",personId).limit(101));
+          if(placements.size===101)deny("resource-exhausted","Review student registration history before starting another application.");
+          if(placements.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().yearId===yearId&&doc.data().termId===termId&&doc.data().status==="active"))
+            deny("failed-precondition","The student is already enrolled for this academic period.");
           const history=await tx.get(db.collection(root+"enrollment_applications").where("personId","==",personId).limit(101));
           if(history.size===101)deny("resource-exhausted","Review existing applications before creating another.");
           if(history.docs.some(doc=>doc.id!==applicationId&&doc.data().schoolId===ctx.schoolId&&doc.data().yearId===yearId&&
@@ -1531,6 +1535,8 @@ function createSchoolEnrollmentService({db}){
         const priorRegistration=registration.exists?registration.data():null;
         if(priorRegistration&&priorRegistration.schoolId!==ctx.schoolId)
           deny("failed-precondition","Enrollment record collision requires review.");
+        if(priorRegistration&&priorRegistration.status==="active")
+          deny("failed-precondition","An official registration already exists for this placement. Use Registrations to review it instead of replacing its application link.");
         if(priorRegistration&&priorRegistration.status!=="active")
           deny("failed-precondition","A previous enrollment exists for this period. Restore or review it instead of silently recreating it.");
 
