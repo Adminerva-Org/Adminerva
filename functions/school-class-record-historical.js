@@ -52,7 +52,7 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
   if(!validId(taskId)||!validOrigin(task,schoolId)||(!isOwner&&!delegated)||
      !labels.sectionName||!labels.subjectName||!labels.termName||!labels.yearName||
      !offering.termId||!offering.yearId||!offering.sectionId||!offering.subjectId||
-     (!matchesSubject&&!(verifiedSubject===true&&typeof task.subject==="string"&&
+     (!matchesSubject&&!delegated&&!(verifiedSubject===true&&typeof task.subject==="string"&&
        task.subject.trim().length>0&&task.subject.trim().length<=120)))return null;
   const sections=historicalSections(task),requested=String(sourceSectionName||labels.sectionName).trim();
   const section=sections.find(s=>canonical(s)===canonical(requested));
@@ -111,7 +111,8 @@ function mappingMatches(mapping,schoolId,offeringId,offering){
     mapping.yearId===offering.yearId&&mapping.termId===offering.termId&&
     mapping.sectionId===offering.sectionId&&mapping.subjectId===offering.subjectId&&
     !!mapping.sectionName&&!!mapping.subjectName&&validId(mapping.ownerUid)&&
-    (!mapping.custodyGrantId||mapping.custodyGrantId===custodyId(mapping.taskId||"",offeringId));
+    (!mapping.custodyGrantId||(validId(mapping.taskId)&&
+      mapping.custodyGrantId===custodyId(mapping.taskId,offeringId)));
 }
 function legacySavedScoreEligible(data){
   // The school has accepted its saved legacy scores; a positive unresolved
@@ -236,7 +237,8 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
       finish();continue;
     }
     const pairs=[...students.entries()],matches=new Map(),ambiguous=new Set(),missing=[];
-    const showDraft=Array.isArray(diagnosticRows)&&viewerUid===original.ownerUid;
+    const showDraft=Array.isArray(diagnosticRows)&&
+      (viewerUid===original.ownerUid||delegated&&viewerUid===mapping.ownerUid);
     const assess=async (data,studentId,personId)=>{
       if(delegated&&!delegation.data().verifiedLegacyStudentIds.includes(studentId))return;
       const state=states.get(personId);
