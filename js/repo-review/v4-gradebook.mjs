@@ -8,7 +8,7 @@ import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResp
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
-import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261123-revisionless-save-1";
+import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261126-historical-scalar";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -363,6 +363,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             result.coverage.gradeOnly+" grade-only · "+
             (result.coverage.evidenceExceptions||0)+" evidence exceptions · "+
             (result.coverage.gradeExceptions||0)+" grade conflicts.":"")));
+        if(currentTask.historicalRubricMode==="scalar_manual")notice.append(make("p","text-sm text-amber-900 mt-2","Original rubric unavailable — individual numerical grading is available; AI evaluation is disabled."));
         inbox.append(notice);
       }
       if(historicalStudio){
@@ -611,13 +612,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         "Historical published "+grade.awarded+" / "+grade.total;
       return;
     }
-    if(currentTask?.legacyCompatibility&&grade?.gradeSchema==="legacy_scalar_v1"){
+    if(currentTask?.historicalRubricMode==="scalar_manual"){
+      host.append(make("p","text-sm text-slate-600 mb-2","Original rubric unavailable. Review the submission and enter the total score manually."));
+    }else if(currentTask?.legacyCompatibility&&grade?.gradeSchema==="legacy_scalar_v1"){
       host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
         "Original private historical draft: "+grade.awarded+" / "+grade.total+
         ". Its rubric breakdown was not recorded. Enter and review a fresh breakdown before saving any replacement draft."));
     }
     (currentTask?.rubric||[]).forEach((criterion,index)=>{
-      const saved=prior[index]||{};
+      const saved=prior[index]||(currentTask?.historicalRubricMode==="scalar_manual"&&index===0&&grade?{awardedPoints:grade.awarded,pendingPoints:grade.pending||0}:{});
       const row=make("div","rounded-xl border border-slate-200 bg-slate-50 p-3");
       row.dataset.rubricRow=String(index);
       row.append(make("div","font-bold text-slate-900",criterion.name+" · "+criterion.points+" pts"));
@@ -642,6 +645,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     updateScore();
   }
   async function evaluationSnapshotForCurrent(){
+    if(currentTask?.historicalRubricMode==="scalar_manual")throw Error("Original rubric unavailable. Grade this historical response manually.");
     if(currentTask?.submissionSource!=="github"){
       if(currentTask?.submissionSource==="studio"&&currentTask?.personalizedTask?.enabled===true&&
          !(currentSnapshot?.personalizedTask?.variantId&&String(currentSnapshot?.personalizedTask?.prompt||"").trim()))
@@ -949,6 +953,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   })());
 
   document.getElementById("gbV4ExternalApply").addEventListener("click",()=>{
+    if(currentTask?.historicalRubricMode==="scalar_manual"){document.getElementById("gbV4ExternalStatus").textContent="Original rubric unavailable. Enter the total manually.";return;}
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
     try{
