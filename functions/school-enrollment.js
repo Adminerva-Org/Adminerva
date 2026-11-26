@@ -24,8 +24,29 @@ const APPLICATION_REVIEW_TRANSITIONS={
 function canReviewApplication(from,to){
   return Object.hasOwn(APPLICATION_REVIEW_TRANSITIONS,from)&&APPLICATION_REVIEW_TRANSITIONS[from].has(to);
 }
+const REQUIREMENT_STATES=new Set(["missing","received","verified"]);
+function normalizeAdmissionRequirements(value,noRequirements){
+  if(!Array.isArray(value)||value.length>24)
+    deny("invalid-argument","Enter up to 24 admission requirements.");
+  if(typeof noRequirements!=="boolean"||(!value.length&&!noRequirements)||(value.length&&noRequirements))
+    deny("invalid-argument","List the applicable requirements or explicitly confirm none apply.");
+  const seen=new Set();
+  return value.map(item=>{
+    const label=text(item?.label,"Requirement name",100),state=item?.status;
+    const normalized=label.toLocaleLowerCase("en");
+    if(seen.has(normalized)||!REQUIREMENT_STATES.has(state))
+      deny("invalid-argument","Requirements must have unique names and valid statuses.");
+    seen.add(normalized);return {label,status:state};
+  });
+}
+function admissionRequirementsReady(row){
+  if(row?.requirementsReviewed!==true||!Array.isArray(row.requirements))return false;
+  if(!row.requirements.length)return row.noRequirements===true;
+  return row.noRequirements===false&&row.requirements.length<=24&&
+    row.requirements.every(item=>typeof item?.label==="string"&&item.label.trim()&&item.status==="verified");
+}
 function isReviewedApplicationRevision(row,revision){
-  return row?.status==="accepted"&&Number.isSafeInteger(revision)&&revision>=1&&
+  return row?.status==="accepted"&&admissionRequirementsReady(row)&&Number.isSafeInteger(revision)&&revision>=1&&
     (Number(row.revision)||1)===revision;
 }
 const REGISTRATION_END_TYPES=new Set(["withdrawal","transfer_out","registration_cancelled","other"]);
@@ -339,11 +360,47 @@ function createSchoolEnrollmentService({db}){
         studentEmailRequired:Boolean(doc.data().studentEmailRequired),
         source:doc.data().source||"online",status:doc.data().status||"submitted",
         reviewReason:doc.data().reviewReason||"",
+        requirements:Array.isArray(doc.data().requirements)?doc.data().requirements:[],
+        requirementsReviewed:doc.data().requirementsReviewed===true,
+        noRequirements:doc.data().noRequirements===true,
+        requirementsReady:admissionRequirementsReady(doc.data()),
         revision:Number(doc.data().revision)||1,
         updatedAt:doc.data().updatedAt?.toMillis?.()||doc.data().createdAt?.toMillis?.()||0
       }));
       items.sort((a,b)=>b.updatedAt-a.updatedAt||a.displayName.localeCompare(b.displayName));
       return {items};
+    }
+
+    if(input.action==="save_application_requirements"){
+      const applicationId=checkId(input.applicationId,"Application ID",128),
+        expectedRevision=Number(input.expectedRevision);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
+        deny("invalid-argument","Refresh this application before saving requirements.");
+      const requirements=normalizeAdmissionRequirements(input.requirements,input.noRequirements);
+      const reason=text(input.reason,"Review reason",500);
+      if(reason.length<8)deny("invalid-argument","Record the basis for the requirements review.");
+      const ref=db.doc(root+"enrollment_applications/"+applicationId),
+        auditRef=db.collection(root+"directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const application=await tx.get(ref);
+        if(!application.exists||application.data().schoolId!==ctx.schoolId)
+          deny("not-found","Enrollment application was not found.");
+        const prior=application.data(),currentRevision=Number(prior.revision)||1;
+        if(currentRevision!==expectedRevision)
+          deny("failed-precondition","The application changed. Refresh before saving requirements.");
+        if(!["submitted","needs_information"].includes(prior.status||"submitted"))
+          deny("failed-precondition","Reopen the application for corrections before editing its requirements.");
+        const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
+        tx.update(ref,{requirements,noRequirements:input.noRequirements,requirementsReviewed:true,
+          requirementsReviewedByUid:ctx.uid,requirementsReviewedAt:now,revision,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,
+          action:"admissions_requirements_review",previousRequirements:prior.requirements||[],
+          previousNoRequirements:prior.noRequirements===true,requirements,noRequirements:input.noRequirements,
+          reason,revision,createdAt:now});
+      });
+      return {applicationId,revision:expectedRevision+1,
+        requirementsReady:admissionRequirementsReady({requirements,noRequirements:input.noRequirements,requirementsReviewed:true})};
     }
 
     if(input.action==="review_application"){
@@ -368,8 +425,11 @@ function createSchoolEnrollmentService({db}){
         const previousStatus=application.data().status||"submitted";
         if(!canReviewApplication(previousStatus,status))
           deny("failed-precondition","This admissions decision is no longer available. Refresh the application.");
+        if(status==="accepted"&&!admissionRequirementsReady(application.data()))
+          deny("failed-precondition","Review and verify all applicable admission requirements before accepting.");
         const now=FieldValue.serverTimestamp();
         tx.update(ref,{status,reviewReason:reason,reviewedByUid:ctx.uid,
+          ...(status==="needs_information"?{requirementsReviewed:false}:{}),
           reviewedAt:now,updatedAt:now,revision:currentRevision+1});
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,
           action:"admissions_review",previousStatus,status,reason,revision:currentRevision+1,createdAt:now});
@@ -1411,5 +1471,7 @@ module.exports={
   registrationOwnsEnrollment,
   progressionGradeValid,
   canReviewApplication,
-  isReviewedApplicationRevision
+  isReviewedApplicationRevision,
+  normalizeAdmissionRequirements,
+  admissionRequirementsReady
 };
