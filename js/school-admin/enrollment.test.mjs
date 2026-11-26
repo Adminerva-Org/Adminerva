@@ -6,7 +6,7 @@ import vm from "node:vm";
 // Run the actual enrollment controller with a small DOM/callable adapter.
 function harness(){
   class Element{
-    constructor(){this.value="";this.children=[];this.listeners={};this.style={};this.disabled=false;this.hidden=false;this.open=false;this.textContent="";}
+    constructor(){this.value="";this.children=[];this.listeners={};this.style={};this.dataset={};this.disabled=false;this.hidden=false;this.open=false;this.textContent="";}
     replaceChildren(...items){this.children=[];this.append(...items);}
     append(...items){this.children.push(...items);for(const item of items)if(item.selected)this.value=item.value;}
     addEventListener(type,callback){(this.listeners[type]??=[]).push(callback);}
@@ -44,7 +44,7 @@ function harness(){
   cohortForm.reportValidity=()=>true;
   const actionButton=new Element(),requests=[];
   let allowDiscard=true,pickerOptions;
-  const scope={lease:()=>({schoolId:"manila-cathedral-school",uid:"admin"}),assertLease(){}};
+  const scope={current:{schoolId:"manila-cathedral-school",roles:["school_admin"],enrollmentMode:"canonical"},lease:()=>({schoolId:"manila-cathedral-school",uid:"admin"}),assertLease(){}};
   const context=vm.createContext({
     app:{},auth:{currentUser:{uid:"admin"}},getFunctions:()=>({}),
     httpsCallable:()=>payload=>new Promise((resolve,reject)=>requests.push({payload,resolve:data=>resolve({data}),reject})),
@@ -67,7 +67,7 @@ function harness(){
       {offeringId:"elective-offering",yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"other-section",subjectId:"elective-subject",rosterMode:"selective"}
     ]};
   context.setCatalog(catalog);
-  const applicant={applicationId:"app-new",reference:"MCS-NEW",displayName:"New student",birthDate:"2013-03-01",guardianEmail:"new.parent@example.test",incomingLevel:"7",yearId:"new-year",preferredProgramId:"new-program"};
+  const applicant={applicationId:"app-new",status:"accepted",revision:7,reference:"MCS-NEW",displayName:"New student",birthDate:"2013-03-01",guardianEmail:"new.parent@example.test",incomingLevel:"7",yearId:"new-year",preferredProgramId:"new-program"};
   return {context,form,get,applicant,requests,actionButton,setDiscard:value=>{allowDiscard=value;},get pickerOptions(){return pickerOptions;}};
 }
 
@@ -282,4 +282,21 @@ test("graduation readiness preview is revision-safe and does not invent a target
   assert.equal(h.requests[0].payload.expectedRevision,9);
   assert.equal(h.requests[0].payload.progressionType,"graduation");
   assert.equal("targetSectionId" in h.requests[0].payload,false);
+});
+
+
+test("only accepted applications open the registration form",()=>{
+  const h=harness();h.context.loadApplicationIntoForm({...h.applicant,status:"submitted"});
+  assert.equal(h.form.elements.applicationId.value,"");
+  h.context.loadApplicationIntoForm(h.applicant);
+  assert.equal(h.form.elements.applicationId.value,"app-new");
+  assert.equal(h.get("en-register").hidden,false);
+});
+test("enrollment sends the exact accepted application revision",()=>{
+  const h=harness();h.context.loadApplicationIntoForm(h.applicant);
+  h.form.elements.termId.value="new-period";h.form.elements.sectionId.value="other-section";
+  h.form.elements.studentEmail.value="student@example.test";h.form.elements.studentEmailType.value="personal";
+  h.form.dispatch("submit");
+  assert.equal(h.requests[0].payload.applicationId,"app-new");
+  assert.equal(h.requests[0].payload.applicationRevision,7);
 });
