@@ -69,6 +69,7 @@ async function authorizedTeacherCustody({db,schoolId,teacherUid,assessmentId,off
  const grant=doc.exists?doc.data():null;
  if(!validCustody(grant,{schoolId,teacherUid,assessmentId,offeringId,task})||
     !offering.exists||offering.data().schoolId!==schoolId||
+    offering.data().primaryTeacherUid!==teacherUid||
     !assignment.exists||assignment.data().schoolId!==schoolId||
     assignment.data().teacherUid!==teacherUid||assignment.data().offeringId!==offeringId||
     assignment.data().status!=="active"||
