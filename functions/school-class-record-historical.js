@@ -7,7 +7,7 @@
  */
 const {legacyStudentRecordsForAccount,SCHOOL_ID}=require("./legacy-student-identity.js");
 const HISTORICAL_SOURCE="legacy_historical";
-const {custodyId,custodyRef,validCustody,originalSections,identityOnlyCustody}=require("./school-legacy-custody.js");
+const {custodyId,custodyRef,validCustody,originalSections,identityOnlyCustody,custodyMaximum}=require("./school-legacy-custody.js");
 const canonical=value=>String(value||"").trim().toLocaleLowerCase("en");
 const courseName=value=>canonical(value).replace(/\s+/g," ").trim();
 /**
@@ -58,7 +58,7 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
   const identityOnly=delegated&&identityOnlyCustody(custodyGrant);
   const section=identityOnly?labels.sectionName:sections.find(s=>canonical(s)===canonical(requested));
   if(!section||canonical(section)!==canonical(labels.sectionName)&&verifiedSection!==true)return null;
-  const maximum=Number(task.maxScore);
+  const maximum=custodyMaximum(task,delegated?custodyGrant:null);
   if(!Number.isFinite(maximum)||maximum<=0||maximum>10000)return null;
   return {schoolId,offeringId,yearId:offering.yearId,termId:offering.termId,
     sectionId:offering.sectionId,subjectId:offering.subjectId,
@@ -266,7 +266,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
         if(!matches.has(personId))state.status="section_mismatch";return;
       }
       const grade=projectedGrade(data,{taskId:column.taskId,studentId,sectionName:mapping.sectionName,
-        allowDraft:true,originalMaximum:original.maxScore??null,verifiedReceiptSection,identityOnly});
+        allowDraft:true,originalMaximum:custodyMaximum(original,delegated?delegation.data():null),verifiedReceiptSection,identityOnly});
       if(!grade){if(!matches.has(personId))state.status="invalid_grade";return;}
       if(matches.has(personId)){ambiguous.add(personId);return;}
       matches.set(personId,{grade:{...grade,sourceType:HISTORICAL_SOURCE,taskId:column.taskId,personId},
