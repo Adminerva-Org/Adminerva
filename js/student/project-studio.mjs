@@ -365,7 +365,9 @@ export function createProjectStudio({
     // call obtained the per-project lock. An empty queue is NOT proof of
     // the teacher-close receipt: only an examFinalized server response is.
     if(!snapshot||deletedProjects.has(id))return closingSessionEpoch?false:true;
-    const finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_cloud_save");
+    let finishDiagnostic;
+    try{finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_cloud_save");}catch{}
+    const reportDiagnostic=success=>{try{finishDiagnostic?.(success);}catch{}};
     const work=(async()=>{
       try{
         if(auth.currentUser?.uid!==uid)throw Error("Sign in with the original project account.");
@@ -432,8 +434,8 @@ export function createProjectStudio({
       }
     })();
     cloudWrites.set(id,work);
-    try{const saved=await work;finishDiagnostic?.(saved===true);return saved;}
-    catch(error){finishDiagnostic?.(false);throw error;}
+    try{const saved=await work;reportDiagnostic(saved===true);return saved;}
+    catch(error){reportDiagnostic(false);throw error;}
     finally{if(cloudWrites.get(id)===work)cloudWrites.delete(id);}
   }
   async function flushCloudSaves({closingSessionEpoch=0}={}){
