@@ -105,7 +105,7 @@ function contextFields(record){
   const c=record.context;if(!c)return [];
   const active=Array.isArray(c.active)?c.active:[];
   return [["Control",c.control],["Tracked process",c.process],["Client time (unverified)",Number.isSafeInteger(c.clientAt)?time(c.clientAt):""],
-    ["Rejection reason",c.reasonCode],["Project category",c.projectCategory],["Recovery",c.recovery],["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
+    ["Rejection reason",c.reasonCode],["Project category",c.projectCategory],["Recovery",c.recovery],["Device backup (client)",c.deviceBackup],["Retry",c.retryState],["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
     ["Elapsed (ms)",c.elapsedMs],["Tracked active processes",Array.isArray(c.active)?active.length+(c.overflow||0):null],
     ["Overlap (same tracked operation)",active.some((p,i)=>active.slice(0,i).some(q=>q.name===p.name))?"Observed; not proof of a duplicate write":""],
     ...active.map(p=>["Active "+p.name,p.id+" · "+p.ageMs+" ms"])];
@@ -816,6 +816,7 @@ async function pollLive(generation){
     if(generation!==live.generation||state.view!=="live"||!live.running||live.paused)return;
     if(result.scope!=="live_indexed_account_events")
       throw Error("Unexpected live feed response");
+    markAudited(live.reason);
     const first=!live.baseline;
     const additions=[];
     for(const row of Array.isArray(result.events)?result.events:[]){
@@ -924,7 +925,10 @@ async function loadDirectory(user,epoch){
 }
 $("pl-clear-filters").addEventListener("click",clearInvestigationFilters);
 $("pl-inspector-close").addEventListener("click",()=>closeInspector({restoreFocus:true}));
-$("pl-reason").addEventListener("input",()=>{$("pl-access-summary").textContent="Reason changed · next read audited";});
+$("pl-reason").addEventListener("input",()=>{
+  $("pl-access-summary").textContent="Reason changed · next read audited";
+  if(state.live.running&&!state.live.paused)toggleLive();
+});
 for(const button of document.querySelectorAll(".pl-quick-filter"))button.addEventListener("click",()=>{
   const select=$("pl-level");select.value=select.value===button.dataset.filter?"":button.dataset.filter;
   select.dispatchEvent(new Event("change"));
@@ -936,7 +940,7 @@ function syncDirectory(){
   $("pl-workspace").classList.toggle("pl-directory-collapsed",!open);
 }
 $("pl-directory-disclosure").addEventListener("toggle",syncDirectory);
-$("pl-toggle-directory").addEventListener("click",()=>{$("pl-directory-disclosure").open=!$("pl-directory-disclosure").open;syncDirectory();});
+$("pl-toggle-directory").addEventListener("click",()=>{if($("pl-workspace").classList.contains("pl-focus-mode")){$("pl-workspace").classList.remove("pl-focus-mode");$("pl-focus-mode").setAttribute("aria-pressed","false");$("pl-directory-disclosure").open=true;}else $("pl-directory-disclosure").open=!$("pl-directory-disclosure").open;syncDirectory();});
 $("pl-focus-mode").addEventListener("click",()=>{
   const focused=$("pl-workspace").classList.toggle("pl-focus-mode");
   $("pl-focus-mode").setAttribute("aria-pressed",String(focused));
