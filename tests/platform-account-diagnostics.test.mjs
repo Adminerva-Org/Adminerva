@@ -199,3 +199,12 @@ test("fixed Studio callable lifecycle names are accepted; unknown processes are 
  assert.equal(checkedEvent(e).context.process,"studio_api_submit");
  assert.throws(()=>checkedEvent({...e,context:{process:"arbitrary"}}),/Unknown diagnostic/);
 });
+
+test("Studio server policy denials preserve callable and exact reason without recording message",async()=>{
+ const db=fakeDb(),collector=service(db);
+ await collector.writeServerFailure(request(USER,{action:"sync"}),{code:"failed-precondition",diagnosticReason:"STUDIO_EXAM_CLOSED",message:"private text"},T,"schoolStudioProjects");
+ const rows=[...db.values.values()].filter(row=>row.action==="api_failed");
+ assert.equal(rows.length,1);assert.equal(rows[0].service,"schoolStudioProjects.sync");assert.equal(rows[0].severity,"warning");assert.equal(rows[0].context.reasonCode,"STUDIO_EXAM_CLOSED");assert.equal(JSON.stringify(rows[0]).includes("private text"),false);
+ assert.throws(()=>checkedEvent(event({context:{reasonCode:"private reason"}})),/Invalid diagnostic context/);
+ assert.equal(diagnosticSeverity({...rows[0],source:"browser"}),"failure");
+});
