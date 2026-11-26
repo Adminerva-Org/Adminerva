@@ -112,16 +112,25 @@ function createSchoolStudentRecordsService({db}){
 
     if(input.action==="student_file"){
       const personId=id(input.personId,"Person ID"),a=await student(personId);
+      const section=input.historySection||null,cursor=input.cursor?id(input.cursor,"History cursor",330):null,
+        sections=["registrations","guardians","documentRequests","releasedGrades","audit"];
+      if((section&&!sections.includes(section))||(cursor&&!section))deny("invalid-argument","Choose a valid history section.");
+      const nextCursors={};
+      async function historyPage(name,collection,field,pageSize){
+        if(section&&section!==name)return {docs:[]};
+        let query=db.collection(root+collection).where(field,"==",personId).orderBy(FieldPath.documentId()).limit(pageSize+1);
+        if(cursor)query=query.startAfter(cursor);
+        const snap=await query.get(),docs=snap.docs.slice(0,pageSize);
+        nextCursors[name]=snap.docs.length>pageSize?docs.at(-1).id:null;
+        return {docs};
+      }
       const [registrationSnap,relationshipSnap,requestSnap,gradeSnap,auditSnap]=await Promise.all([
-        db.collection(root+"student_registrations").where("personId","==",personId).limit(101).get(),
-        db.collection(root+"guardian_relationships").where("studentPersonId","==",personId).limit(51).get(),
-        db.collection(root+"student_document_requests").where("personId","==",personId).limit(101).get(),
-        db.collection(root+"class_record_period_grades").where("personId","==",personId).limit(201).get(),
-        db.collection(root+"student_records_audit").where("personId","==",personId).limit(101).get()
+        historyPage("registrations","student_registrations","personId",50),
+        historyPage("guardians","guardian_relationships","studentPersonId",40),
+        historyPage("documentRequests","student_document_requests","personId",50),
+        historyPage("releasedGrades","class_record_period_grades","personId",60),
+        historyPage("audit","student_records_audit","personId",50)
       ]);
-      if(registrationSnap.size===101||relationshipSnap.size===51||requestSnap.size===101||
-         gradeSnap.size===201||auditSnap.size===101)
-        deny("resource-exhausted","Student 201-file history requires pagination before it can be shown safely.");
 
       const registrations=registrationSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId)
         .map(doc=>({registrationId:doc.id,...doc.data()}));
@@ -198,9 +207,9 @@ function createSchoolStudentRecordsService({db}){
       const audit=auditSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId)
         .map(doc=>({auditId:doc.id,action:doc.data().action||"record_change",
           reason:doc.data().reason||"",createdAt:millis(doc.data().createdAt)}))
-        .sort((x,y)=>(y.createdAt||0)-(x.createdAt||0)).slice(0,50);
+        .sort((x,y)=>(y.createdAt||0)-(x.createdAt||0));
       const p=a.data,primaryEmail=normalizeGuardianEmail(p.primaryGuardianEmail);
-      const legacyGuardianAvailable=Boolean(primaryEmail&&p.primaryGuardianName)&&
+      const legacyGuardianAvailable=!section&&!nextCursors.guardians&&Boolean(primaryEmail&&p.primaryGuardianName)&&
         !guardians.some(row=>row.email===primaryEmail&&row.status==="active");
       return {
         person:{personId,displayName:p.displayName||"Student",studentNumber:p.studentNumber||"",
@@ -227,7 +236,7 @@ function createSchoolStudentRecordsService({db}){
           subjectName:labels["subjects/"+row.subjectId]||row.subjectId,
           sectionName:labels["sections/"+row.sectionId]||row.sectionId
         })).sort((x,y)=>(y.finalizedAt||0)-(x.finalizedAt||0)),
-        legacyGuardianAvailable,audit
+        legacyGuardianAvailable,audit,nextCursors,historySection:section
       };
     }
 
