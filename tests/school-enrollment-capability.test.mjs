@@ -80,3 +80,13 @@ test("onsite and online intake share a deterministic school-scoped application k
   assert.equal(acceptedIdentityMatches({...details,personId:"student-1"}, {...details,personId:"student-2"}),false);
   assert.equal(acceptedIdentityMatches(details,{...details,birthDate:"2013-01-01"}),false);
 });
+
+
+test("admissions search uses bounded school-local cursor pages and corrections preserve identity keys",()=>{
+  const source=require("node:fs").readFileSync(new URL("../functions/school-enrollment.js",import.meta.url),"utf8");
+  assert.match(source,/collection\(root\+"enrollment_applications"\)\.orderBy\(FieldPath\.documentId\(\)\)\.limit\(pageSize\+1\)/);
+  assert.match(source,/if\(cursor\)scan=scan.startAfter\(cursor\)/);
+  const correction=source.slice(source.indexOf('if(input.action==="correct_application")'),source.indexOf('if(input.action==="list_applications")'));
+  assert.match(correction,/staffCorrected:true/);assert.match(correction,/requirementsReviewed:false/);
+  assert.doesNotMatch(correction,/changes=\{[^}]*birthDate/);
+});
