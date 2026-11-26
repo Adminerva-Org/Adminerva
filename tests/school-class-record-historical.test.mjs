@@ -275,3 +275,84 @@ test("original read-through never reads unrelated legacy grades or creates a dup
   records.set("student_grades/old_student_legacy-task",{...row,published:false});
   assert.deepEqual(await historicalPublishedGrades(input),[]);
 });
+
+test("historical private grade preview is owner-only and never becomes a published result",async()=>{
+  const records=new Map([["assessments/legacy-task",task],
+    ["student_grades/old_student_legacy-task",{...row,published:false}]]);
+  const db={doc:path=>({path,get:async()=>({exists:records.has(path),data:()=>records.get(path)})}),
+    getAll:async(...refs)=>Promise.all(refs.map(ref=>ref.get()))};
+  const roster=[{personId:"p1",authUid:"u1",legacyStudentIds:["old_student"]}];
+  const input={db,schoolId,offeringId,offering,columns:[column],roster};
+  const diagnostics=[];
+  assert.deepEqual(await historicalPublishedGrades({...input,diagnosticRows:diagnostics,viewerUid:ownerUid}),[]);
+  assert.deepEqual(diagnostics,[{columnId:column.columnId,personId:"p1",status:"private_draft",awarded:17,total:20}]);
+  const other=[];
+  assert.deepEqual(await historicalPublishedGrades({...input,diagnosticRows:other,viewerUid:"other-teacher"}),[]);
+  assert.equal(other[0].status,"missing_grade");
+  assert.equal(other[0].awarded,undefined);
+  assert.deepEqual(await historicalPublishedGrades(input),[]);
+  records.set("student_grades/old_student_legacy-task",row);
+  const published=[];
+  assert.equal((await historicalPublishedGrades({...input,diagnosticRows:published,viewerUid:ownerUid}))[0].awarded,17);
+  assert.equal(published[0].status,"published");
+});
+test("earlier grade IDs and omitted legacy section/maximum are recovered only with original evidence",async()=>{
+  const old={...row,section:null,maxScore:null};
+  const records=new Map([["assessments/legacy-task",task],
+    ["assessment_evidence/old_student_legacy-task",{assessmentId:"legacy-task",studentId:"old_student",section:"Section A"}]]);
+  let candidates=[old,{...row,studentId:"foreign_student"}];
+  const db={doc:path=>({path,get:async()=>({exists:records.has(path),data:()=>records.get(path)})}),
+    getAll:async(...refs)=>Promise.all(refs.map(ref=>ref.get())),
+    collection:name=>({where:(field,op,value)=>{assert.equal(name,"student_grades");assert.equal(field,"taskId");assert.equal(value,"legacy-task");
+      return {limit:()=>({get:async()=>({size:candidates.length,docs:candidates.map(data=>({data:()=>data}))})})};}})};
+  const roster=[{personId:"p1",authUid:"u1",legacyStudentIds:["old_student"]}];
+  const input={db,schoolId,offeringId,offering,columns:[column],roster};
+  const output=await historicalPublishedGrades(input);
+  assert.equal(output.length,1);assert.equal(output[0].awarded,17);assert.equal(output[0].total,20);
+  records.set("assessment_evidence/old_student_legacy-task",{assessmentId:"legacy-task",studentId:"foreign_student",section:"Section A"});
+  const missing=[];
+  assert.deepEqual(await historicalPublishedGrades({...input,diagnosticRows:missing,viewerUid:ownerUid}),[]);
+  assert.equal(missing[0].status,"section_mismatch");
+  candidates=[row,{...row,score:18}];
+  const ambiguous=[];
+  assert.deepEqual(await historicalPublishedGrades({...input,diagnosticRows:ambiguous,viewerUid:ownerUid}),[]);
+  assert.equal(ambiguous[0].status,"ambiguous_grade");
+  candidates=[row];
+  records.set("student_grades/old_student_legacy-task",{...row,published:false});
+  assert.deepEqual(await historicalPublishedGrades(input),[],"canonical private grade must not be replaced by an older published row");
+});
+test("unmapped historical learners are diagnosed without manufacturing zero scores",async()=>{
+  const db={doc:path=>({get:async()=>({exists:path==="assessments/legacy-task",data:()=>task})})};
+  const diagnostics=[];
+  const results=await historicalPublishedGrades({db,schoolId,offeringId,offering,columns:[column],
+    roster:[{personId:"p1",authUid:""}],diagnosticRows:diagnostics,viewerUid:ownerUid});
+  assert.deepEqual(results,[]);
+  assert.equal(diagnostics[0].status,"identity_unmapped");
+  assert.equal(diagnostics[0].awarded,undefined);
+});
+
+test("legacy migration accepts saved historical numeric grades without changing publication",async()=>{
+  const privateRow={...row,published:false,reviewRequired:true};
+  const records=new Map([["assessments/legacy-task",task],["student_grades/old_student_legacy-task",privateRow]]);
+  const db={doc:path=>({path,get:async()=>({exists:records.has(path),data:()=>records.get(path)})}),
+    getAll:async(...refs)=>Promise.all(refs.map(ref=>ref.get()))};
+  const roster=[{personId:"p1",authUid:"u1",legacyStudentIds:["old_student"]}];
+  const input={db,schoolId,offeringId,offering,columns:[column],roster};
+  const diagnostics=[];
+  const accepted=await historicalPublishedGrades({...input,acceptSavedLegacy:true,diagnosticRows:diagnostics,viewerUid:ownerUid});
+  assert.equal(accepted[0].awarded,17);
+  assert.equal(accepted[0].legacyAccepted,true);
+  assert.equal(diagnostics[0].status,"legacy_accepted");
+  assert.equal(privateRow.published,false);
+  assert.deepEqual(await historicalPublishedGrades(input),[],"student/default path remains published-only");
+  assert.deepEqual(await historicalPublishedGrades({...input,acceptSavedLegacy:false}),[],"strict school mode");
+  assert.deepEqual(await historicalPublishedGrades({...input,schoolId:"other-school",acceptSavedLegacy:true}),[]);
+  assert.deepEqual(await historicalPublishedGrades({...input,columns:[{...column,assessmentSource:"school"}],acceptSavedLegacy:true}),[]);
+  records.set("student_grades/old_student_legacy-task",{...privateRow,pending:2});
+  assert.deepEqual(await historicalPublishedGrades({...input,acceptSavedLegacy:true}),[],"unresolved rubric points are not a completed score");
+  records.set("student_grades/old_student_legacy-task",{...privateRow,score:0});
+  assert.equal((await historicalPublishedGrades({...input,acceptSavedLegacy:true}))[0].awarded,0);
+  records.set("student_grades/old_student_legacy-task",{...privateRow,published:true});
+  const published=await historicalPublishedGrades({...input,acceptSavedLegacy:true});
+  assert.equal(published[0].legacyAccepted,undefined);
+});

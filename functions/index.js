@@ -138,9 +138,9 @@ exports.schoolAttendance=onCall(callOptions,safeCallable(createSchoolAttendanceS
 
 const {createSchoolAssessmentService}=require("./school-assessments.js");
 exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db}),{diagnosticsService:"schoolAssessments"}));
+// Native sign-in stays fail-closed until signed-client and school acceptance.
 const {createNativeClientHandoffService}=require("./native-client-handoff.js");
 const {createNativeHandoffLimiter}=require("./native-handoff-rate-limit.js");
-// Inert until specifically authorized for official signed clients.
 exports.nativeClientHandoff=onCall(
  {...callOptions,maxInstances:1,concurrency:5,timeoutSeconds:20},
  safeCallable(createNativeClientHandoffService({
@@ -214,7 +214,9 @@ exports.schoolStudentClassRecord=onCall(callOptions,safeCallable(createSchoolStu
   resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
 })));
 const {createSchoolClassRecordAdminService}=require("./school-class-record-admin.js");
-exports.schoolClassRecordAdmin=onCall(callOptions,safeCallable(createSchoolClassRecordAdminService({db})));
+exports.schoolClassRecordAdmin=onCall(callOptions,safeCallable(createSchoolClassRecordAdminService({
+  db,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
+})));
 const {createSchoolGradebookService}=require("./school-gradebook.js");
 exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db}),{diagnosticsService:"schoolGradebook"}));
 const {createSchoolAssessmentConversationService}=require("./school-assessment-conversation.js");

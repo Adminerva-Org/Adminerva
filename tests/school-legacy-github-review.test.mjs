@@ -19,6 +19,10 @@ function install(){
      FieldPath:{documentId:()=>"__name__"}
    };
    if(name==="./tenant-access.js")return {TenantAccessError};
+   if(name==="./school-legacy-custody.js")return {
+     authorizedTeacherCustody:async()=>null,validCustody:()=>false,
+     normalized:value=>String(value||"").trim().toLowerCase()
+   };
    throw Error("Unrecognized dependency "+name);
  }},{filename:"school-legacy-github-review.js"});
  return module.exports;
@@ -59,21 +63,24 @@ function fixture({published=false,grade=null,approval=true,discovery=false,
  const db={doc,
    collection(path){return {
      doc:id=>doc(path+"/"+(id||"audit-"+(++count))),
-     where(field,op,value){assert.equal(op,"==");return {
-       orderBy(){let last="";return {
-         startAfter(v){last=v;return this;},
-         limit(n){return {get:async()=>{
-           const records=[...map].filter(([key,data])=>
-             key.startsWith(path+"/")&&key.split("/").length===2&&
-             data[field]===value&&key.slice(path.length+1)>last)
-             .slice(0,n).map(([key,data])=>({
-               id:key.split("/").at(-1),data:()=>data
-             }));
-           return {docs:records,size:records.length};
-         }};
-         }
-       };}
-     };}
+     where(field,op,value){assert.equal(op,"==");
+       const page=(limit,last="")=>{
+         const records=[...map].filter(([key,data])=>
+           key.startsWith(path+"/")&&key.split("/").length===2&&
+           data[field]===value&&key.slice(path.length+1)>last)
+           .slice(0,limit).map(([key,data])=>({
+             id:key.split("/").at(-1),data:()=>data
+           }));
+         return {docs:records,size:records.length};
+       };
+       return {
+         limit(n){return {get:async()=>page(n)};},
+         orderBy(){let last="";return {
+           startAfter(v){last=v;return this;},
+           limit(n){return {get:async()=>page(n,last)};}
+         };}
+       };
+     }
    };},
    async runTransaction(fn){const tx={
      get:ref=>ref.get(),
@@ -105,6 +112,27 @@ test("historical GitHub V4 inbox and inspect read through original school-owned 
  assert.deepEqual([...result.snapshot.verifiedContributionCommits],[commit]);
  assert.equal(result.task.rubric.length,2);
  assert.equal(f.writes.length,0);
+});
+test("legacy Review & Grade discovers grade-only original rows without inventing submission evidence",async()=>{
+ const f=fixture();
+ const extraStudent="historical.grade.only@example.edu.ph";
+ f.map.set("student_grades/"+extraStudent+"_"+taskId,{
+   taskId,studentId:extraStudent,section:"Grade 12 ICT",
+   score:18,maxScore:40,published:true,gradeSource:"teacher_manual"
+ });
+ const response=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(response.coverage.evidenceCount,1);
+ assert.equal(response.coverage.gradeCount,1);
+ assert.equal(response.coverage.publishedCount,1);
+ assert.equal(response.coverage.gradeOnly,1);
+ assert.equal(response.coverage.evidenceWithoutGrade,1);
+ const row=response.evidence.find(item=>item.studentId===extraStudent);
+ assert.equal(row.gradeOnly,true);
+ assert.equal(row.hasSubmission,false);
+ assert.equal(row.evidenceId,null);
+ assert.equal(row.awarded,18);
+ assert.equal(row.gradeStatus,"published");
+ assert.equal(f.writes.length,0,"reconciliation must never copy or mutate a grade");
 });
 test("V4 grade save and publish update ONLY original grade and audit records",async()=>{
  const f=fixture();

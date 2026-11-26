@@ -16,6 +16,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
+const {custodyRef,validCustody,authorizedTeacherCustody}=require("./school-legacy-custody.js");
 
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
@@ -281,7 +282,8 @@ function finalizationSourceDigest({columns,settings,roster,manualScores,publishe
     linkedKeys.has((row.sourceType||SCHOOL_SOURCE)+"::"+row.taskId)&&rosterIds.has(row.personId)).map(row=>({
       sourceType:row.sourceType||SCHOOL_SOURCE,taskId:row.taskId,personId:row.personId,
       awarded:Number(row.awarded),total:Number(row.total),revision:Number(row.revision)||0,
-      publishedAt:Number(row.publishedAt)||0
+      publishedAt:Number(row.publishedAt)||0,
+      ...(row.legacyAccepted===true?{legacyAccepted:true}:{})
     })).sort((a,b)=>(a.sourceType+"|"+a.taskId+"|"+a.personId)
       .localeCompare(b.sourceType+"|"+b.taskId+"|"+b.personId));
   const statuses=[...(cellStates||[])].filter(row=>
@@ -820,8 +822,24 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       if(snap.size===501)
         deny("resource-exhausted","Historical assessment library exceeds the bounded picker capacity.");
       stats.ownedCount=snap.size;
+      const candidates=new Map(snap.docs.map(doc=>[doc.id,{doc,custodyGrant:null}]));
+      const delegations=await db.collection(prefix+"legacy_assessment_custody")
+        .where("teacherUid","==",ctx.uid).limit(51).get();
+      if(delegations.size>=51)deny("resource-exhausted","Legacy custody approvals need pagination.");
+      for(const record of delegations.docs){
+        const grant=record.data();
+        if(grant.status!=="active"||grant.schoolId!==ctx.schoolId||
+           grant.offeringId!==offeringId||candidates.has(grant.assessmentId))continue;
+        const original=await db.doc("assessments/"+grant.assessmentId).get();
+        if(!original.exists)continue;
+        const verified=await authorizedTeacherCustody({
+          db,schoolId:ctx.schoolId,teacherUid:ctx.uid,assessmentId:grant.assessmentId,
+          offeringId,task:original.data()
+        });
+        if(verified)candidates.set(original.id,{doc:original,custodyGrant:verified.grant});
+      }
       const items=[];
-      for(const doc of snap.docs){
+      for(const {doc,custodyGrant} of candidates.values()){
         const task=doc.data(),sections=historicalSections(task);
         if(!validOrigin(task,ctx.schoolId)){stats.originMismatchCount++;continue;}
         const matchesSubject=historicalSubjectMatches(task.subject,labels.subjectName);
@@ -830,7 +848,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         if(!Number.isFinite(maximum)||maximum<=0||maximum>10000){stats.invalidScoreCount++;continue;}
         if(!sections.length){stats.noSectionCount++;continue;}
         const mapping=historicalMapping({task,taskId:doc.id,schoolId:ctx.schoolId,
-          ownerUid:ctx.uid,offering,offeringId,labels});
+          ownerUid:ctx.uid,offering,offeringId,labels,
+          ...(custodyGrant?{custodyGrant,sourceSectionName:custodyGrant.originalSection,
+            verifiedSection:true,verifiedSubject:true}:{})});
         if(mapping)stats.availableCount++;
         else if(!matchesSubject)stats.subjectReviewCount++;
         else stats.sectionReviewCount++;
@@ -845,7 +865,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           sourceSections:!mapping?sections.slice(0,40):[],
           historical:true,historicalMapping:mapping,
           periodLabel:labels.yearName+" · "+labels.termName,
-          gradeRoute:"school-gradebook.html?view=review&task="+encodeURIComponent("legacy:"+doc.id)
+          gradeRoute:"school-gradebook.html?view=review&task="+
+            encodeURIComponent("legacy:"+doc.id+(custodyGrant?"@"+offeringId:"")),
+          ...(custodyGrant?{custodyApproved:true,originalSection:custodyGrant.originalSection}:{})
         });
       }
       return {items,stats};
@@ -996,10 +1018,39 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         awarded:Number(data.awarded)||0,total:Number(data.total)||0,
         revision:Number(data.revision)||1,publishedAt:millis(data.publishedAt)
       }));
-      const [legacyGrades,historicalGrades]=await Promise.all([
-        legacyPublishedGrades(columns,roster,labels.sectionName,assessments),
-        historicalPublishedGrades({db,schoolId:ctx.schoolId,offeringId,offering,columns,roster,resolveUsers})
+      const historicalGradeDiagnostics=[];
+      // This exception is limited to the verified legacy migration school
+      // while its actual server-side compatibility setting permits legacy.
+      const acceptSavedLegacy=ctx.schoolId===LEGACY_BRIDGE_SCHOOL&&ctx.compatibilityMode==="legacy_allowed";
+      // Older Personalized Studio links predate historicalMapping. Reuse
+      // their existing class link only when the original task still matches
+      // the verified class, original source type, subject and section.
+      const compatibleOlderColumns=[];
+      if(acceptSavedLegacy){
+        const older=columns.filter(c=>c.kind==="assessment"&&c.assessmentSource===LEGACY_PERSONALIZED_SOURCE);
+        for(const column of older){
+          const doc=await db.doc("assessments/"+checkId(column.taskId,"Legacy assessment",160)).get();
+          const task=doc.exists?doc.data():null;
+          if(!task||task.schemaVersion!==3||task.submissionSource!=="studio"||
+             task.assessmentFormat!=="studio_code"||
+             !(task.assessmentMode==="personalized"||task.personalizedTask?.enabled===true))continue;
+          const mapping=historicalMapping({task,taskId:column.taskId,schoolId:ctx.schoolId,
+            ownerUid:task.ownerUid,offering,offeringId,labels});
+          if(mapping&&typeof task.ownerUid==="string"&&task.ownerUid)
+            compatibleOlderColumns.push({...column,assessmentSource:HISTORICAL_SOURCE,historicalMapping:mapping});
+        }
+      }
+      const olderIds=new Set(compatibleOlderColumns.map(c=>c.columnId));
+      const olderTaskIds=new Set(compatibleOlderColumns.map(c=>c.taskId));
+      const [legacyGrades,historicalGrades,olderReadThrough]=await Promise.all([
+        legacyPublishedGrades(columns.filter(c=>!olderIds.has(c.columnId)),roster,labels.sectionName,assessments),
+        historicalPublishedGrades({db,schoolId:ctx.schoolId,offeringId,offering,columns,roster,resolveUsers,
+          diagnosticRows:historicalGradeDiagnostics,viewerUid:ctx.uid,acceptSavedLegacy}),
+        historicalPublishedGrades({db,schoolId:ctx.schoolId,offeringId,offering,columns:compatibleOlderColumns,roster,resolveUsers,
+          diagnosticRows:historicalGradeDiagnostics,viewerUid:ctx.uid,acceptSavedLegacy})
       ]);
+      const olderProjected=olderReadThrough.filter(row=>olderTaskIds.has(row.taskId))
+        .map(row=>({...row,sourceType:LEGACY_PERSONALIZED_SOURCE}));
       const manualIds=new Set(columns.filter(column=>column.kind==="manual").map(column=>column.columnId));
       const manualScores=manualSnap.docs.map(doc=>doc.data()).filter(data=>
         data.schoolId===ctx.schoolId&&manualIds.has(data.columnId)&&personIds.has(data.personId)
@@ -1018,8 +1069,10 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         previousStatus:CELL_STATUSES.has(String(data.previousStatus||""))?String(data.previousStatus):"normal",
         revision:Number(data.revision)||1,updatedAt:millis(data.updatedAt),updatedByUid:data.updatedByUid||null
       }));
-      const publishedGrades=[...schoolGrades,...legacyGrades,...historicalGrades];
-      const snapshot=computePeriodSnapshot({columns,settings,roster,manualScores,publishedGrades,cellStates});
+      const classRecordGrades=[...schoolGrades,...legacyGrades,...historicalGrades,...olderProjected];
+      const publishedGrades=classRecordGrades.filter(row=>row.legacyAccepted!==true);
+      const legacyAcceptedGrades=classRecordGrades.filter(row=>row.legacyAccepted===true);
+      const snapshot=computePeriodSnapshot({columns,settings,roster,manualScores,publishedGrades:classRecordGrades,cellStates});
       const finalization=finalizationDoc.exists&&finalizationDoc.data().schoolId===ctx.schoolId?{
         status:finalizationDoc.data().status||"finalized",
         revision:Number(finalizationDoc.data().revision)||1,
@@ -1036,7 +1089,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       return {
         offering,labels,roster,assessments,historicalAvailability:discovery.historicalAvailability,
         columns,settings,gradingPolicy:gradingPolicy.policy,
-        manualScores,publishedGrades,cellStates,collaborators:collaboratorState.teachers,
+        manualScores,publishedGrades,legacyAcceptedGrades,acceptSavedLegacy,cellStates,historicalGradeDiagnostics,collaborators:collaboratorState.teachers,
         permissions:{
           primaryTeacherUid:collaboratorState.lead.primaryTeacherUid,
           primarySource:collaboratorState.lead.source,
@@ -1265,6 +1318,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         columns:data.columns,settings:data.settings,
         gradingPolicy:data.gradingPolicy,
         manualScores:data.manualScores,publishedGrades:data.publishedGrades,cellStates:data.cellStates,
+        historicalGradeDiagnostics:data.historicalGradeDiagnostics,
+        legacyAcceptedGrades:data.legacyAcceptedGrades,acceptSavedLegacy:data.acceptSavedLegacy,
         collaborators:data.collaborators,permissions:data.permissions,
         sheetRevision:data.sheetRevision,finalization:data.finalization,
         periodReadiness:{
@@ -1475,6 +1530,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           subjectId:data.offering.subjectId,sectionId:data.offering.sectionId,
           status:"finalized",revision,sheetRevision:expectedSheetRevision,
           sourceDigest:data.snapshot.sourceDigest,
+          ...(data.legacyAcceptedGrades.length?{legacySavedScorePolicy:"legacy_allowed",
+            legacyAcceptedScoreCount:data.legacyAcceptedGrades.length}:{}),
           gradeComputation:data.settings.gradeComputation,
           categoryWeights:data.settings.categoryWeights,
           appliedSchemeId:data.settings.appliedSchemeId||null,
@@ -1625,7 +1682,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           const mapping=await verifiedHistoricalSectionMapping({db,schoolId:ctx.schoolId,roster,
             resolveUsers,task:original.exists?original.data():null,taskId,ownerUid:ctx.uid,
             offering,offeringId,labels,sourceSectionName:item.historicalSourceSection,
-            confirmOriginalSubject:item.confirmOriginalSubject});
+            confirmOriginalSubject:item.confirmOriginalSubject,
+            custodyGrant:available.historicalMapping?.custodyGrantId?
+              (await custodyRef(db,ctx.schoolId,taskId,offeringId).get()).data():null});
           if(!mapping)
             deny("failed-precondition","The selected original section could not be verified against enough enrolled students' historical school identities. Check the original section, identity recovery, or ask School Administration to reconcile the legacy roster.");
           available.historicalMapping=mapping;available.linkable=true;
@@ -1647,10 +1706,12 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       let revision;
       await db.runTransaction(async tx=>{
-        const [grant,currentOffering,current,priorMappings,originalTasks]=await Promise.all([
+        const [grant,currentOffering,current,priorMappings,originalTasks,custodyGrants]=await Promise.all([
           tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),
           Promise.all(mappingRefs.map(ref=>tx.get(ref))),
-          Promise.all(newHistorical.map(column=>tx.get(db.doc("assessments/"+column.taskId))))
+          Promise.all(newHistorical.map(column=>tx.get(db.doc("assessments/"+column.taskId)))),
+          Promise.all(newHistorical.map(column=>column.historicalMapping.custodyGrantId?
+            tx.get(custodyRef(db,ctx.schoolId,column.taskId,offeringId)):Promise.resolve(null)))
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
            grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
@@ -1662,11 +1723,21 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           if(!mappingMatches(mapping,ctx.schoolId,offeringId,currentOffering.data()))
             deny("failed-precondition","The selected academic period or class changed. Reload before linking.");
           const original=originalTasks[i];
-          const rechecked=historicalMapping({task:original.exists?original.data():null,taskId:column.taskId,
+          const granted=custodyGrants[i]?.exists?custodyGrants[i].data():null;
+          const originalData=original.exists?original.data():null;
+          if(mapping.custodyGrantId&&!validCustody(granted,{
+            schoolId:ctx.schoolId,assessmentId:column.taskId,offeringId,
+            teacherUid:ctx.uid,task:originalData,section:mapping.sectionName
+          }))
+            deny("failed-precondition","School Admin custody approval changed or was revoked.");
+          const rechecked=historicalMapping({task:originalData,taskId:column.taskId,
             schoolId:ctx.schoolId,ownerUid:ctx.uid,offering:currentOffering.data(),offeringId,labels,
-            sourceSectionName:mapping.sectionName,verifiedSection:mapping.identityProof==="original_student_section",
-            verifiedSubject:mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"});
+            sourceSectionName:mapping.sectionName,verifiedSection:mapping.identityProof==="original_student_section"||
+              Boolean(granted),
+            verifiedSubject:mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"||
+              Boolean(granted),custodyGrant:granted});
           if(!rechecked||rechecked.sectionName!==mapping.sectionName||
+             rechecked.custodyGrantId!==mapping.custodyGrantId||
              (mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"&&
                (mapping.identityProof!=="original_student_section"||
                 !Number.isInteger(mapping.identityVerifiedCount)||mapping.identityVerifiedCount<1||

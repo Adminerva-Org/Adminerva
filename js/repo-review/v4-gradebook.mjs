@@ -90,7 +90,20 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       copy=document.getElementById("gbV4ClassRecordStatus"),
       link=document.getElementById("gbV4ClassRecordLink");
     if(!panel||!copy||!link)return;
-    if(!currentTask||currentTask.legacyCompatibility){panel.hidden=true;return;}
+    if(!currentTask){panel.hidden=true;return;}
+    if(currentTask.legacyCompatibility){
+      const classId=currentTask.legacyOfferingId||requestedOfferingId;
+      panel.hidden=!classId;
+      if(!classId)return;
+      link.href="class-record.html?"+new URLSearchParams({
+        offering:classId,assessment:currentTask.legacyAssessmentId,source:"legacy_historical"
+      }).toString();
+      link.textContent="Open historical Class Record";
+      copy.textContent="This original historical assessment retains its grades and submissions. "+
+        "The assigned teacher may link it to the official Class Record after confirming the "+
+        "academic period and School Admin-verified custody. Existing scores are not copied.";
+      return;
+    }
     panel.hidden=false;
     link.href="class-record.html?"+new URLSearchParams({
       offering:currentTask.offeringId,assessment:currentTask.taskId,source:"school"
@@ -232,9 +245,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const v4Items=(result.assessments||[]).filter(item=>
       ["studio","github","text","link"].includes(item.submissionSource)&&item.status==="deployed"&&
       (!requestedOfferingId||item.offeringId===requestedOfferingId));
-    const legacyItems=requestedOfferingId?[]:(legacyResult.items||[]).map(item=>({
-      taskId:"legacy:"+item.legacyAssessmentId,
+    const legacyItems=(legacyResult.items||[]).filter(item=>
+      !requestedOfferingId||item.legacyOfferingId===requestedOfferingId).map(item=>({
+      taskId:"legacy:"+item.legacyAssessmentId+
+        (item.legacyOfferingId?"@"+item.legacyOfferingId:""),
       legacyAssessmentId:item.legacyAssessmentId,
+      legacyOfferingId:item.legacyOfferingId||"",
+      custodyApproved:item.custodyApproved===true,
       legacyCompatibility:true,
       title:item.title,
       subject:item.subject||"Computer Programming",
@@ -290,7 +307,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       let result,resultData=null,classRecordStatus={status:"unavailable"};
       if(historical){
         result=await scoped(migrationApi,historicalStudio?"legacy_review_inbox":"legacy_github_inbox",{
-          legacyAssessmentId:task.legacyAssessmentId
+          legacyAssessmentId:task.legacyAssessmentId,
+          ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{})
         });
         currentTask={...task,...result.task};
       }else{
@@ -337,7 +355,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
         notice.append(make("h3","font-bold text-violet-950","Historical GitHub evidence · V4 review interface"));
         notice.append(make("p","text-violet-900 mt-1",
-          "Actual student-submitted commit selections are eligible for V4 grading. Historical teacher-discovered repository snapshots are retained as context but excluded from new grades, even if previously approved. Existing historical grades are preserved."));
+          "Actual student-submitted commit selections are eligible for V4 grading. Historical teacher-discovered repository snapshots are retained as context but excluded from new grades, even if previously approved. Existing historical grades are preserved. "+
+          (result.coverage?result.coverage.gradeCount+" original grade records ("+
+            result.coverage.publishedCount+" published, "+result.coverage.draftCount+" draft) · "+
+            result.coverage.evidenceCount+" evidence records · "+
+            result.coverage.evidenceWithoutGrade+" evidence-only · "+
+            result.coverage.gradeOnly+" grade-only.":"")));
         inbox.append(notice);
       }
       if(historicalStudio){
@@ -399,9 +422,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         details.append(
           make("h3","font-extrabold text-slate-900",row.studentName||"Student"),
           make("p","text-xs text-slate-500 mt-1",
-            "Version "+row.version+" · "+
+            (row.gradeOnly?"Original historical grade (no matching submission receipt)":
+              "Version "+row.version+" · "+
               (historicalGithub&&row.hasSubmission===false?"no student submission (teacher discovery only)":row.status)+
-              " · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently"))
+              " · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently")))
         );
         const resultLine=grade?
           (grade.status==="published"?"Published result":"Grade draft")+" · "+grade.awarded+" / "+grade.total+
@@ -413,9 +437,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           view==="results"?(grade?"Open result":"Grade response"):
             task.submissionSource==="github"?"Review submitted commits":"Review response");
         button.type="button";
+        if(row.gradeOnly){
+          button.textContent="Original score — read only";
+          button.disabled=true;button.title="No matching frozen student submission. The saved original score is preserved but cannot be edited through evidence review.";
+          button.classList.add("opacity-60","cursor-not-allowed");
+        }
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
-        if(pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
+        if(!row.gradeOnly&&pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
         button.addEventListener("click",()=>void openReview(normalized));
         card.append(details,button);inbox.append(card);
       }
@@ -714,11 +743,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         {taskId:currentTask.taskId,submissionId:row.recordId};
       const result=historicalStudio?
         await scoped(migrationApi,"legacy_review_inspect",{
-          legacyAssessmentId:currentTask.legacyAssessmentId,legacySubmissionId:row.recordId
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),legacySubmissionId:row.recordId
         }):
         historicalGithub?
         await scoped(migrationApi,"legacy_github_inspect",{
-          legacyAssessmentId:currentTask.legacyAssessmentId,legacyEvidenceId:row.recordId
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),legacyEvidenceId:row.recordId
         }):null;
       if(historicalStudio||historicalGithub){
         currentSnapshot=result.snapshot;
@@ -946,6 +977,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           const part=await scoped(migrationApi,currentTask.submissionSource==="github"
             ?"legacy_github_bulk_publish":"legacy_review_bulk_publish",{
             legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
             ...(cursor?{cursor}:{})
           });
           totals.published+=Number(part.published||0);
@@ -990,6 +1022,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           throw Error("Review the student's submitted commit evidence and enter a grading note of at least 15 characters. No separate contribution approval is required.");
         await scoped(migrationApi,"legacy_github_save_draft",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
           legacyEvidenceId:currentRow.recordId,
           expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
           expectedCheckpointSha:currentSnapshot.checkpointSha,
@@ -1001,6 +1034,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       }else if(currentTask.legacyCompatibility){
         await scoped(migrationApi,"legacy_review_save_draft",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
           legacySubmissionId:currentRow.recordId,criteria,
           feedback:document.getElementById("gbV4Feedback").value.trim(),
           draftSource:currentDraftSource
@@ -1018,6 +1052,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         await scoped(migrationApi,currentTask.submissionSource==="github"?
           "legacy_github_inspect":"legacy_review_inspect",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
           ...(currentTask.submissionSource==="github"?
             {legacyEvidenceId:currentRow.recordId}:{legacySubmissionId:currentRow.recordId})
         }):
@@ -1043,6 +1078,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         await scoped(migrationApi,currentTask.submissionSource==="github"?
           "legacy_github_publish":"legacy_review_publish",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
           ...(currentTask.submissionSource==="github"?{
             legacyEvidenceId:currentRow.recordId,
             expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
