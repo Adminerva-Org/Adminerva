@@ -7,6 +7,7 @@
  */
 const {legacyStudentRecordsForAccount,SCHOOL_ID}=require("./legacy-student-identity.js");
 const HISTORICAL_SOURCE="legacy_historical";
+const {originalActivityGrade}=require("./school-legacy-recovery-sources.js");
 const {custodyId,custodyRef,validCustody,originalSections,identityOnlyCustody,custodyMaximum}=require("./school-legacy-custody.js");
 const canonical=value=>String(value||"").trim().toLocaleLowerCase("en");
 const courseName=value=>canonical(value).replace(/\s+/g," ").trim();
@@ -238,7 +239,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
       for(const state of states.values())state.status="source_unavailable";
       finish();continue;
     }
-    const pairs=[...students.entries()],matches=new Map(),ambiguous=new Set(),missing=[];
+    const pairs=[...students.entries()],matches=new Map(),ambiguous=new Set(),missing=[],primaryPeople=new Set();
     const showDraft=Array.isArray(diagnosticRows)&&
       (viewerUid===original.ownerUid||delegated&&viewerUid===mapping.ownerUid);
     const assess=async (data,studentId,personId)=>{
@@ -280,7 +281,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
       const snapshots=await db.getAll(...batch.map(([studentId])=>db.doc("student_grades/"+studentId+"_"+column.taskId)));
       for(let index=0;index<batch.length;index++){
         const [studentId,personId]=batch[index],snapshot=snapshots[index];
-        if(snapshot?.exists)await assess(snapshot.data(),studentId,personId);
+        if(snapshot?.exists){primaryPeople.add(personId);await assess(snapshot.data(),studentId,personId);}
         else missing.push([studentId,personId]);
       }
     }
@@ -292,7 +293,24 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
         const missingIds=new Map(missing);
         for(const doc of fallback.docs){
           const data=doc.data(),personId=missingIds.get(data.studentId);
-          if(personId)await assess(data,data.studentId,personId);
+          if(personId){primaryPeople.add(personId);await assess(data,data.studentId,personId);}
+        }
+      }
+    }
+    // Exact-ID activity rows are a fallback, never a second grade. A primary
+    // row (even invalid or unpublished) prevents an older activity from
+    // replacing it. Title-only activity matches are deliberately excluded.
+    if(missing.length&&typeof db.collection==="function"){
+      const eligible=new Map(missing.filter(([,person])=>!primaryPeople.has(person)&&states.get(person)?.status!=="lookup_limit"));
+      if(eligible.size){
+        const activities=await db.collection("activity_grades").where("taskId","==",column.taskId).limit(1001).get();
+        if(activities.size>=1001){
+          for(const person of eligible.values())states.get(person).status="lookup_limit";
+        }else{
+          for(const doc of activities.docs){
+            const data=originalActivityGrade(doc,column.taskId),personId=data&&eligible.get(data.studentId);
+            if(personId)await assess(data,data.studentId,personId);
+          }
         }
       }
     }
