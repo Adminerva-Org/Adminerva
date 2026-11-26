@@ -15,7 +15,7 @@ import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,listV4StudioAssignments,loadV4StudioProject,
   getV4StudioSubmissionStatus,getV4StudioSubmittedRecovery,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject,retryV4StudioSchool
-} from "./v4-studio-service.mjs?v=20261123-cloud-recovery-1";
+} from "./v4-studio-service.mjs?v=20261126-rejection-1";
 import {describeStudioCloudSaveError,studioCloudRetryDelay} from "./studio-cloud-save-recovery.mjs?v=20261123-cloud-recovery-1";
 
 const el=id=>document.getElementById(id);
@@ -365,9 +365,9 @@ export function createProjectStudio({
     // call obtained the per-project lock. An empty queue is NOT proof of
     // the teacher-close receipt: only an examFinalized server response is.
     if(!snapshot||deletedProjects.has(id))return closingSessionEpoch?false:true;
-    let finishDiagnostic;
+    let finishDiagnostic,diagnosticError,diagnosticOutcome={};
     try{finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_cloud_save",{projectCategory:snapshot.assessment?"assessment":"personal"});}catch{}
-    const reportDiagnostic=success=>{try{finishDiagnostic?.(success);}catch{}};
+    const reportDiagnostic=success=>{try{finishDiagnostic?.(success,diagnosticError?.code,diagnosticError?.details?.diagnosticReason,diagnosticOutcome);}catch{}};
     const work=(async()=>{
       try{
         if(auth.currentUser?.uid!==uid)throw Error("Sign in with the original project account.");
@@ -413,6 +413,7 @@ export function createProjectStudio({
         }
         return true;
       }catch(error){
+        diagnosticError=error;
         console.warn("Studio cloud save failed:",error);
         document.dispatchEvent(new CustomEvent("adminerva:diagnostic-event",{detail:{
           action:"cloud_save_failed",errorCode:String(error?.code||error?.name||"unavailable"),reasonCode:error?.details?.diagnosticReason
@@ -420,6 +421,7 @@ export function createProjectStudio({
         const failure=describeStudioCloudSaveError(error,{online:navigator.onLine!==false});
         const retrying=scheduleCloudRetry(id,error,closingSessionEpoch);
         const unbacked=unbackedProjectIds.has(id);
+        diagnosticOutcome={deviceBackup:unbacked?"unavailable":"available",retryState:retrying?"scheduled":"not_scheduled"};
         const suffix=retrying?" · retry scheduled":" · select Save to retry";
         setCloudStatus(unbacked?
           "No device backup or cloud confirmation · "+failure.label+" · keep this tab open":
