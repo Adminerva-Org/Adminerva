@@ -29,8 +29,12 @@ a:focus-visible{outline:3px solid #fff;outline-offset:3px}
 <nav aria-label="Public preview options">
 <a href="guest-home.html">Explore public Adminerva tools</a>
 <a href="downloads.html">See official release availability</a>
+<button id="preview-check-update" type="button" style="min-height:48px;border-radius:12px;background:#173f5b;border:1px solid #7acdde;color:#e8f4ff;font:inherit;font-weight:750;cursor:pointer">Check for updates</button>
+<p id="preview-update-status" role="status" aria-live="polite">Preview v0.1.0 · manual test-build updates only.</p>
+<a id="preview-update-link" href="https://adminerva-org.github.io/Adminerva/downloads.html" rel="noopener noreferrer" hidden>Find verified preview builds</a>
 </nav>
 <small>Do not use this preview for live school examinations or private student work.</small>
 </main>
+<script type="module" src="preview-update.mjs"></script>
 </body>
 </html>
