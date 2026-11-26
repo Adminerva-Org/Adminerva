@@ -58,9 +58,12 @@ const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_s
 const CONTEXT_ENUMS={visibility:["visible","hidden","other"],network:["online","offline"],focus:["focused","unfocused"],ready:["loading","interactive","complete","other"],dialog:["open","none"],busy:["busy","idle"]};
 function checkedContext(value){
   if(!value||typeof value!=="object"||Array.isArray(value))deny("invalid-argument","Invalid diagnostic context.");
-  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs"];
+  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery"];
   if(Object.keys(value).some(k=>!allowed.includes(k)))deny("invalid-argument","Diagnostic context accepts only approved metadata.");
   const out={};
+  for(const [key,options] of [["reasonCode",STUDIO_REASONS],["projectCategory",new Set(["personal","assessment","unknown"])],["recovery",new Set(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"])]] ){
+    if(value[key]!==undefined){if(!options.has(value[key]))deny("invalid-argument","Invalid diagnostic context category.");out[key]=value[key];}
+  }
   for(const [key,options] of Object.entries(CONTEXT_ENUMS)){
     if(value[key]!==undefined){if(!options.includes(value[key]))deny("invalid-argument","Invalid diagnostic state.");out[key]=value[key];}
   }
@@ -133,6 +136,8 @@ function checkedEvent(input){
 function safeService(value){
   return typeof value==="string"&&/^[a-zA-Z0-9_-]{1,64}$/.test(value)?value:"school_api";
 }
+const STUDIO_REASONS=new Set(["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_STATE_CHANGED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_CLOSED","STUDIO_FINAL_CHECKPOINT_REQUIRED","STUDIO_FINAL_CHECKPOINT_CONFLICT","STUDIO_FINAL_CHECKPOINT_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EMPTY_SNAPSHOT_REJECTED","STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_NOT_ARCHIVED"]);
+function studioDiagnosticReason(error){return STUDIO_REASONS.has(error?.diagnosticReason)?error.diagnosticReason:"";}
 function serverErrorCode(error){
   const value=String(error?.code||"internal").replace(/^functions\//,"");
   return /^[-A-Za-z0-9_./]{1,64}$/.test(value)?value:"internal";
@@ -155,10 +160,12 @@ function traceFromRequest(request){
 }
 function fingerprint(row){
   if(!["failure","warning"].includes(diagnosticSeverity(row)))return "";
-  const values=[row.module||"other",row.service||"",row.action||"",row.errorCode||"unknown"];
+  const values=[row.module||"other",row.service||"",row.action||"",row.errorCode||"unknown",row.context?.reasonCode||""];
   return createHash("sha256").update(values.join("|")).digest("hex").slice(0,20);
 }
 function diagnosticSeverity(row){
+  // Explicit server-owned policy rejections are warnings, not infrastructure failures.
+  if(row?.source==="backend"&&["STUDIO_EXAM_CLOSED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_EXAM_STATE_CHANGED"].includes(row.context?.reasonCode))return "warning";
   // Only server-interpreted outcomes are flagged; an observed button click
   // is a normal event, not evidence that its requested operation succeeded.
   if(row?.kind==="error"||row?.state==="error"||
@@ -203,14 +210,14 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       const counter=await tx.get(quota),count=Number(counter.data()?.count)||0;
       if(count>=PER_ACCOUNT_DAILY_LIMIT)
         deny("resource-exhausted","Account diagnostic collection reached its daily safety limit.");
-      const isNormal=diagnosticSeverity(event)==="normal";
+      const isNormal=diagnosticSeverity({...event,source})==="normal";
       const normalCount=Number(counter.data()?.normalCount)||0;
       if(isNormal&&normalCount>=NORMAL_DAILY_LIMIT)
         deny("resource-exhausted","Normal event budget is full; diagnostic slots are reserved for warnings and errors.");
       const expiry=Timestamp.fromMillis(at+RETENTION_DAYS*DAY_MS);
       tx.set(account,{
         ownerUid,updatedAt:FieldValue.serverTimestamp(),
-        lastSeverity:diagnosticSeverity(event),
+        lastSeverity:diagnosticSeverity({...event,source}),
         lastKind:event.kind,lastAction:event.action,lastModule:event.module,
         lastState:event.state,lastErrorCode:event.errorCode||""
       },{merge:true});
@@ -226,20 +233,20 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       return {recorded:true,duplicate:false};
     });
   }
-  async function writeServerFailure(request,error,startedAt=now()){
+  async function writeServerFailure(request,error,startedAt=now(),serviceName=""){
     if(request?.auth?.token?.email_verified!==true||!request?.auth?.uid)return;
     const ownerUid=String(request.auth.uid);
     if(!UID.test(ownerUid))return;
     const rawPath=String(request?.rawRequest?.path||"").split("?")[0].split("/").at(-1);
-    const service=safeService(rawPath);
-    const type=serverErrorCode(error);
+    const service=safeService(serviceName||rawPath);
+    const type=serverErrorCode(error),reasonCode=studioDiagnosticReason(error);
     const action=String(request?.data?.action||"");
     // Never include user data, arbitrary action arguments or error messages.
     const safeAction=/^[a-z][a-z0-9_-]{0,45}$/.test(action)?action:"call";
     const synthetic={
       eventId:randomUUID(),sessionId:randomUUID(),kind:"error",module:"api",
       action:"api_failed",state:"error",errorCode:type,route:"",release:"",
-      phase:"failed",traceId:traceFromRequest(request),
+      phase:"failed",traceId:traceFromRequest(request),...(reasonCode?{context:{reasonCode}}:{}),
       durationMs:Math.max(0,Math.min(120000,now()-(Number(startedAt)||now())))
     };
     try{return await insert(ownerUid,synthetic,{source:"backend",service:service+"."+safeAction});}
@@ -628,4 +635,4 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
   }
   return {service,writeServerFailure,recordServerProcess,recordNotificationDelivered,cleanup};
 }
-module.exports={RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics};
+module.exports={studioDiagnosticReason,RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics};
