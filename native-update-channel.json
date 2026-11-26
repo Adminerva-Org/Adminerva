@@ -4,7 +4,7 @@
   "latestVersion": {
     "windows": "0.1.1",
     "macos": "0.1.1",
-    "android": "0.1.1"
+    "android": "0.1.2"
   },
   "installMode": "manual-preview",
   "officialSignedRelease": false
