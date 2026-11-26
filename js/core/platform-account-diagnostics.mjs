@@ -10,7 +10,8 @@ const record=httpsCallable(getFunctions(app,"asia-southeast1"),"platformAccountD
 let activeUid="",sessionId="",enabled=false,eventsSent=0,epoch=0,pendingRunOperationId="";
 let pending=[],flushing=false;const MAX_DELAYED_EVENTS=20;
 let errors=new Map();
-const MAX_PAGE_EVENTS=90;
+const MAX_PAGE_EVENTS=90,MAX_PAGE_FAILURE_EVENTS=30;
+let failureEventsSent=0;
 const ID=()=>crypto.randomUUID();
 const allowedRoutes=/(?:^\/$|^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]{1,80}\.html$)/;
 const allowedCodes=/^[-a-zA-Z0-9_./]{1,64}$/;
@@ -35,6 +36,7 @@ function environment(){
 
 const controls=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
 const processes=new Map();
+const processNames=new Set(["studio_cloud_save","studio_api_sync","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign"]);
 const MAX_TRACKED=24;
 const elapsed=start=>Math.min(3600000,Math.max(0,Math.round(performance.now()-start)));
 function snapshotContext(extra={}){
@@ -46,19 +48,19 @@ function snapshotContext(extra={}){
     busy:document.querySelector('[aria-busy="true"]')?"busy":"idle",active,overflow:Math.max(0,processes.size-active.length),...extra};
 }
 function beginProcess(name){
-  if(!enabled||name!=="studio_cloud_save"||processes.size>=MAX_TRACKED)return ()=>{};
+  if(!enabled||!processNames.has(name)||processes.size>=MAX_TRACKED)return ()=>{};
   const id=ID(),start=performance.now(),turn=epoch;
   processes.set(id,{name,start});
   try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name}});}catch{}
   let finished=false;
-  return (success)=>{
+  return (success,errorCode)=>{
     if(finished)return;finished=true;
     if(turn!==epoch)return;
     const context={process:name,elapsedMs:elapsed(start)};
     processes.delete(id);
     emit(success===true?"process_finished":"process_failed",{module:"studio",kind:success===true?"action":"error",
       state:success===true?"ok":"error",operationId:id,phase:success===true?"completed":"failed",
-      errorCode:success===true?"":"cloud_save_failed",context});
+      errorCode:success===true?"":code(errorCode)||(name==="studio_cloud_save"?"cloud_save_failed":"unavailable"),context});
   };
 }
 function queueDelayed(event){
@@ -104,9 +106,9 @@ function code(value){
   return allowedCodes.test(raw)?raw:"";
 }
 async function send(event,replay=false){
-  if(!enabled||!activeUid||auth.currentUser?.uid!==activeUid||(!replay&&eventsSent>=MAX_PAGE_EVENTS))return;
+  if(!enabled||!activeUid||auth.currentUser?.uid!==activeUid||(!replay&&(event.kind==="error"?failureEventsSent>=MAX_PAGE_FAILURE_EVENTS:eventsSent>=MAX_PAGE_EVENTS)))return;
   const uid=activeUid,turn=epoch;
-  if(!replay)eventsSent++;
+  if(!replay){if(event.kind==="error")failureEventsSent++;else eventsSent++;}
   if(navigator.onLine===false){queueDelayed(event);return;}
   for(let attempt=0;attempt<2;attempt++){
     if(auth.currentUser?.uid!==uid||turn!==epoch)return;
@@ -124,7 +126,7 @@ async function send(event,replay=false){
   }
 }
 function emit(action,{kind="action",module=moduleForRoute(),state="info",errorCode="",operationId="",phase="",context={}}={}){
-  if(!enabled||!activeUid||!sessionId||eventsSent>=MAX_PAGE_EVENTS)return;
+  if(!enabled||!activeUid||!sessionId||(kind==="error"?failureEventsSent>=MAX_PAGE_FAILURE_EVENTS:eventsSent>=MAX_PAGE_EVENTS))return;
   const event={eventId:ID(),sessionId,kind,module,action,state,
     errorCode:kind==="error"?code(errorCode):"",route:route(),release,
     ...environment(),context:snapshotContext(context),
@@ -151,7 +153,7 @@ function initializeSession(user){
   if(fresh)emit("session_started",{kind:"session",state:"ok",phase:"observed"});
 }
 onAuthStateChanged(auth,user=>{
-  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();processes.clear();
+  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;failureEventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();processes.clear();
   if(!user?.emailVerified)return;
   activeUid=user.uid;enabled=true;
   initializeSession(user);
