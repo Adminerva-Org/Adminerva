@@ -27,6 +27,13 @@ function originalSections(task){
  return [...new Map(values.filter(x=>typeof x==="string"&&x.trim().length&&x.trim().length<=160)
    .map(x=>[normalized(x),x.trim()])).values()];
 }
+function custodySourceDigest(task){
+ return createHash("sha256").update(JSON.stringify([
+   String(task?.evalCriteria||""),String(task?.taskContext||""),
+   String(task?.assessmentFormat||""),Number(task?.schemaVersion||0),
+   String(task?.submissionSource||""),String(task?.ownershipBasis||"")
+ ])).digest("hex");
+}
 function historicalCustodianRecord(task){
   // Delegate only unattributed early sources or records explicitly marked
   // as administrator-held custody. Ordinary teacher-private preparations
@@ -44,6 +51,7 @@ function validCustody(grant,{schoolId,assessmentId,offeringId,teacherUid,task,se
     grant.originalTitle!==String(task.title||"")||
     Number(grant.originalMaxScore)!==Number(task.maxScore)||
     grant.originalSubject!==String(task.subject||"")||
+    grant.sourceDigest!==custodySourceDigest(task)||
     !originalSections(task).some(s=>normalized(s)===normalized(grant.originalSection))||
     (section&&normalized(section)!==normalized(grant.originalSection))||
     !Array.isArray(grant.verifiedLegacyStudentIds)||grant.verifiedLegacyStudentIds.length===0||
@@ -69,4 +77,4 @@ async function authorizedTeacherCustody({db,schoolId,teacherUid,assessmentId,off
    return null;
  return {ref:doc.ref,grant};
 }
-module.exports={custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,normalized,historicalCustodianRecord};
+module.exports={custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,normalized,historicalCustodianRecord,custodySourceDigest};
