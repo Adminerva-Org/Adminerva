@@ -59,7 +59,7 @@ function setSaving(value){
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
-  for(const control of document.querySelectorAll("#en-application-list button, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
   if(!value){
@@ -1006,6 +1006,70 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
 }
 
 let requirementsReview=null,templateReview=null,templateLoadRun=0;
+let documentReview=null,documentRun=0;
+function closeDocuments(){
+  ++documentRun;documentReview=null;get("en-documents-file").value="";get("en-documents-list").replaceChildren();get("en-documents-dialog").close();
+}
+function saveDocumentDownload(result){
+  const bytes=Uint8Array.from(atob(result.base64),c=>c.charCodeAt(0)),ext=({"application/pdf":"pdf","image/jpeg":"jpg","image/png":"png"})[result.contentType];
+  if(!ext)throw new Error("Unsupported document format.");
+  const url=URL.createObjectURL(new Blob([bytes],{type:result.contentType})),link=document.createElement("a");
+  link.href=url;link.download="admission-document."+ext;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+async function openDocuments(item){
+  if(saving)return;
+  const run=++documentRun;documentReview=item;
+  get("en-documents-target").textContent=item.displayName+" · "+item.reference;
+  get("en-documents-list").replaceChildren();get("en-documents-status").textContent="Loading…";
+  get("en-documents-file").value="";
+  const select=get("en-documents-requirement");select.replaceChildren(new Option("Choose requirement",""));
+  for(const requirement of item.requirements||[])select.append(new Option(requirement.label,requirement.label));
+  const editable=["submitted","needs_information"].includes(item.status);
+  get("en-documents-form").hidden=!editable||!(item.requirements||[]).length;
+  if(!get("en-documents-dialog").open)get("en-documents-dialog").showModal();
+  try{
+    const result=await perform("list_admission_documents",{applicationId:item.applicationId});
+    if(run!==documentRun)return;
+    const host=get("en-documents-list");
+    for(const row of result.items||[]){
+      const line=document.createElement("div");line.className="en-row";
+      const name=document.createElement("span");name.textContent=row.label+" · "+Math.ceil(row.size/1024)+" KB"+(row.state==="pending"?" · Upload pending":"");line.append(name);
+      const action=document.createElement("button");action.type="button";action.className="en-btn secondary";
+      action.textContent=row.state==="stored"?"Download":"Cancel pending";
+      if(row.state==="stored"||editable){
+        action.addEventListener("click",()=>void (async()=>{
+          if(saving||documentReview!==item)return;
+          setSaving(true);get("en-documents-status").textContent="Working…";
+          try{
+            if(row.state==="stored"){saveDocumentDownload(await perform("download_admission_document",{applicationId:item.applicationId,documentId:row.documentId}));get("en-documents-status").textContent="Downloaded.";}
+            else{await perform("cancel_admission_document",{applicationId:item.applicationId,documentId:row.documentId,expectedRevision:item.revision});closeDocuments();await loadApplications();status.textContent="Pending upload cancelled.";}
+          }catch(error){get("en-documents-status").textContent=error?.message||"Document action failed.";}
+          finally{setSaving(false);}
+        })());line.append(action);
+      }
+      host.append(line);
+    }
+    get("en-documents-status").textContent=result.items?.length?"":editable&&!item.requirements?.length?"Save the requirements checklist first.":"No documents stored.";
+  }catch(error){if(run===documentRun)get("en-documents-status").textContent=error?.message||"Documents unavailable.";}
+}
+get("en-documents-close").addEventListener("click",()=>{if(!saving)closeDocuments();});
+get("en-documents-dialog").addEventListener("cancel",event=>{event.preventDefault();if(!saving)closeDocuments();});
+get("en-documents-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(saving||!documentReview)return;
+  const item=documentReview,file=get("en-documents-file").files?.[0],label=get("en-documents-requirement").value;
+  if(!file||!label||file.size>2*1024*1024){get("en-documents-status").textContent="Choose a requirement and a supported file up to 2 MB.";return;}
+  void (async()=>{
+    setSaving(true);get("en-documents-status").textContent="Uploading…";
+    try{
+      const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
+      for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+      await perform("save_admission_document",{applicationId:item.applicationId,expectedRevision:item.revision,label,contentType:file.type,base64:btoa(binary)});
+      closeDocuments();await loadApplications();status.textContent="Document stored. Verify the requirement.";
+    }catch(error){get("en-documents-status").textContent=(error?.message||"Upload failed.")+" Close and refresh before retrying the same file.";}
+    finally{setSaving(false);}
+  })();
+});
 function renderTemplateEditor(){
   const type=get("en-template-type").value||"new",template=templateReview?.templates.find(row=>row.type===type);
   get("en-template-labels").value=template?template.labels.join("\n"):"";
@@ -1175,6 +1239,7 @@ function renderApplications(){
       const control=document.createElement("button");control.type="button";control.className="en-btn"+(primary?"":" secondary");
       control.textContent=label;control.addEventListener("click",callback);actions.append(control);
     };
+    addAction("Documents",()=>void openDocuments(item));
     if(item.status==="accepted"&&item.requirementsReady)addAction("Enroll",()=>loadApplicationIntoForm(item),true);
     if(["submitted","needs_information"].includes(item.status)){
       addAction("Requirements",()=>openRequirements(item),!item.requirementsReady);
@@ -1304,6 +1369,7 @@ picker=createTenantSchoolPicker({
     if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
     if(requirementsReview&&!confirm("Discard the open requirements review?"))throw new Error("Finish the requirements review before switching schools.");
     if(requirementsReview)closeRequirements();
+    if(documentReview)closeDocuments();
     if(get("en-template-dialog").open&&!confirm("Discard the open template editor?"))throw new Error("Finish the template edit before switching schools.");
     closeTemplateEditor();get("en-template-open").hidden=true;
     ++refreshVersion;requestedPersonId="";activeEnrollmentView="registrations";
