@@ -190,7 +190,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        if(!current.exists||current.data().published===true)continue;
        const grade=current.data();
        if(grade.studentId!==evidence.studentId||grade.taskId!==id){failed++;continue;}
-       if(Number(grade.score)===0){zeroSkipped++;continue;}
+
        try{
          await review({ctx,input:{
            action:"legacy_github_publish",legacyAssessmentId:id,legacyEvidenceId:row.id,
@@ -343,7 +343,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        grade:grade.exists?gradeSummary(grade.data(),rubric,custody?total:null):null,
        checkingInstructions};
    }
-   if(!["legacy_github_save_draft","legacy_github_publish"].includes(input.action))
+   if(!["legacy_github_save_draft","legacy_github_publish","legacy_github_correct_published"].includes(input.action))
      deny("invalid-argument","Unknown historical repository review operation.");
    // The original student-selected SHA receipt is authoritative. A teacher's
    // forced discovery or optional checkpoint approval does not create a grade.
@@ -428,9 +428,18 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        deny("failed-precondition","Historical grade changed. Reload before saving or publishing.");
      if(input.action==="legacy_github_save_draft"&&input.onlyIfUngraded===true&&prior.exists)
        deny("failed-precondition","An original historical grade already exists. Bulk evaluation cannot replace a draft or published result.");
-     if(before?.published===true)
+     const correcting=input.action==="legacy_github_correct_published";
+     if(correcting&&before?.published!==true)
+       deny("failed-precondition","Only a published original grade can be corrected.");
+     if(before?.published===true&&!correcting)
        deny("failed-precondition","A published historical grade is protected from ordinary edits.");
-     if(input.action==="legacy_github_save_draft"){
+     if(correcting){
+       gradeSummary(before,rubric,custody?total:null);
+       if(before.gradedSha&&String(before.gradedSha).toLowerCase()!==latest.checkpointSha||
+          before.evidenceRevision!=null&&Number(before.evidenceRevision)!==latest.revision)
+         deny("failed-precondition","Original grade evidence changed. Reconcile before correction.");
+     }
+     if(input.action==="legacy_github_save_draft"||correcting){
        const reviewNote=clean(input.reviewNote,3000);
        // Teacher feedback is distinct from an optional internal note. The
        // grade action itself records the reviewer and frozen evidence provenance.
@@ -438,13 +447,15 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        if(!feedback||String(input.feedback||"").trim().length>5000)
          deny("invalid-argument","Historical GitHub grading requires feedback within 5000 characters.");
        const scores=validateCriteria(input.criteria,rubric);
+       if(correcting&&scores.pending!==0)deny("failed-precondition","Complete all numerical scores before correcting a published grade.");
        const revision=priorVersion+1,now=FieldValue.serverTimestamp();
        const draftSource=["internal_ai","external_ai"].includes(input.draftSource)?
          input.draftSource:"teacher";
        const values={studentId:meta.studentId,taskId:id,
          section:clean(record.data.section,160),score:scores.awarded,maxScore:scores.total,
          criteria:scores.criteria,pending:scores.pending,
-         feedback,published:false,reviewRequired:scores.pending>0,reviewSuggested:true,manuallyAdjusted:true,
+         feedback,published:correcting,reviewRequired:scores.pending>0,reviewSuggested:!correcting,manuallyAdjusted:true,
+         ...(correcting?{lastCorrectedAt:now,lastCorrectedByUid:ctx.uid}:{}),
          gradeVersion:revision,gradeSource:draftSource==="teacher"?"teacher_manual":"teacher_ai_reviewed",
          evaluationSource:draftSource,
          reviewedBy:ctx.uid,reviewedAt:now,gradedAt:now,
@@ -461,11 +472,11 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        if(prior.exists)tx.set(gradeDocument,{...before,...values});
        else tx.create(gradeDocument,values);
        tx.create(auditRef,{gradeId:recordId,studentId:meta.studentId,taskId:id,editorUid:ctx.uid,
-         reason:"Historical GitHub rubric draft saved from unified V4 Review & Grade",
-         before:before?{score:before.score,published:false,gradeVersion:priorVersion}:null,
-         after:{score:scores.awarded,published:false,gradeVersion:revision},
+         reason:correcting?"Historical published grade corrected":"Historical GitHub draft saved from V4",
+         before:before?{score:before.score,published:before.published===true,gradeVersion:priorVersion,feedback:before.feedback||"",criteria:before.criteria||[],pending:before.pending||0}:null,
+         after:{score:scores.awarded,published:correcting,gradeVersion:revision,feedback,criteria:scores.criteria,pending:scores.pending},
          schoolId:ctx.schoolId,evidenceRevision:latest.revision,createdAt:now});
-       outcome={status:"draft",awarded:scores.awarded,total:scores.total,revision};
+       outcome={status:correcting?"published":"draft",awarded:scores.awarded,total:scores.total,revision};
        return;
      }
      if(!before||before.gradeSource!=="teacher_manual"&&
@@ -473,8 +484,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
         before.reviewedBy!==ctx.uid||!Array.isArray(before.criteria)||
         before.gradedSha!==latest.checkpointSha||
         Number(before.evidenceRevision||0)!==latest.revision||
-        Number(before.score)<=0||Number(before.pending||0)!==0)
-       deny("failed-precondition","Save a complete, non-zero draft bound to the current submitted evidence before publication.");
+        before.score==null||before.score===""||!Number.isFinite(Number(before.score))||Number(before.score)<0||Number(before.pending||0)!==0)
+       deny("failed-precondition","Save a complete draft bound to the current submitted evidence before publication.");
      const scores=validateCriteria(before.criteria,rubric);
      if(scores.pending!==0||scores.awarded!==Number(before.score)||scores.total!==Number(before.maxScore))
        deny("failed-precondition","Historical rubric scores no longer reconcile with the grade.");
