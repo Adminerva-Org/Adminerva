@@ -7,9 +7,8 @@
  * Registrar/School Admin review remains the authority boundary.
  */
 const {FieldValue}=require("firebase-admin/firestore");
-const {createHash}=require("node:crypto");
 const {TenantAccessError}=require("./tenant-access.js");
-const {standardSchool}=require("./school-enrollment.js");
+const {standardSchool,admissionApplicationId}=require("./school-enrollment.js");
 // Current public intake remains an MCS pilot adapter. Keep this pilot selector
 // local so the canonical Enrollment & Registration service stays school-neutral.
 const PUBLIC_PILOT_SCHOOL_ID="manila-cathedral-school";
@@ -56,9 +55,7 @@ function publicReference(applicationId){
   return "MCS-"+applicationId.slice(0,10).toUpperCase();
 }
 function applicationIdFor({yearId,displayName,birthDate,guardianEmail}){
-  return createHash("sha256")
-    .update([PUBLIC_PILOT_SCHOOL_ID,yearId,displayName.toLowerCase(),birthDate,guardianEmail].join("\0"))
-    .digest("hex").slice(0,48);
+  return admissionApplicationId({schoolId:PUBLIC_PILOT_SCHOOL_ID,yearId,displayName,birthDate,guardianEmail});
 }
 
 function createPublicSchoolEnrollmentService({db}){
@@ -146,7 +143,7 @@ function createPublicSchoolEnrollmentService({db}){
           const prior=current.data();
           if(prior.schoolId!==PUBLIC_PILOT_SCHOOL_ID)
             deny("failed-precondition","Enrollment application identity collision requires school review.");
-          if(["accepted","enrolled","rejected","withdrawn"].includes(prior.status))
+          if(prior.source==="onsite"||prior.personId||["accepted","enrolled","rejected","withdrawn"].includes(prior.status))
             deny("failed-precondition","This application is locked for school review. Contact the Registrar if corrections are needed.");
           revision=(Number(prior.revision)||1)+1;
           status=prior.status==="needs_information"?"submitted":(prior.status||"submitted");
