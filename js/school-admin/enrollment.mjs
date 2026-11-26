@@ -20,7 +20,8 @@ let requestedPersonId=(()=>{try{
 let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],offerings:[]},
   saving=false,draftDirty=false,loadedApplication=null,loadedPerson=null,registrations=[],legacyRegistrations=[],
   registrationChange=null,legacyCleanup=null,progressionChange=null,cohortPreview=null;
-const requestVersions={catalog:0,applications:0,registrations:0};
+const requestVersions={catalog:0,applications:0,registrations:0,legacy:0};
+let registrationCursor=null,registrationBusy=false,legacyCursor=null,legacyBusy=false,legacyScanned=false,legacyBlocked=0;
 let refreshVersion=0,progressionPreviewRun=0,historyRun=0,cohortRun=0;
 let activeEnrollmentView="registrations";
 const enrollmentViews={registrations:["en-registrations","en-legacy-reconciliation-card","en-admin-tools"],applications:["en-applications"],register:["en-register"],progression:["en-progression"],activation:["en-activation"]};
@@ -60,7 +61,7 @@ function setSaving(value){
   }
   for(const control of form.elements)control.disabled=value;
   get("en-applicant-type").disabled=value||Boolean(loadedPerson);
-  for(const control of document.querySelectorAll("#en-application-list button, #en-application-list input, #en-bulk-open, #en-bulk-clear, #en-bulk-form button, #en-bulk-form select, #en-applications-more, #en-correction-form button, #en-correction-form input, #en-correction-form select, #en-correction-form textarea, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-application-list input, #en-registrations-more, #en-legacy-scan, #en-bulk-open, #en-bulk-clear, #en-bulk-form button, #en-bulk-form select, #en-applications-more, #en-correction-form button, #en-correction-form input, #en-correction-form select, #en-correction-form textarea, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
   if(!value){
@@ -74,7 +75,7 @@ function setSaving(value){
     const cohortReady=cohortPreview?.rows?.some(row=>row.preview?.canApply&&!row.applied)&&
       cohortPreview.signature===cohortSignature();
     get("en-cohort-apply").disabled=!cohortReady;
-    updateBulkControls();
+    updateBulkControls();updateRegistrationControls();
   }
 }
 function discardDraft(){
@@ -212,9 +213,10 @@ function renderRegistrations(){
     return [item.displayName,item.studentNumber,registrationLabel(item)]
       .some(value=>String(value||"").toLocaleLowerCase("en").includes(query));
   });
+  updateRegistrationControls();get("en-registrations-count").textContent=items.length+" matching · "+registrations.length+" loaded"+(registrationCursor?" · more records available":"");
   if(!items.length){
     const empty=document.createElement("p");empty.className="en-muted";
-    empty.textContent=registrations.length
+    empty.textContent=registrationCursor?"No matches in loaded registrations. Load more.":registrations.length
       ?"No registrations match the current student/section filter."
       :"No standard enrollment registrations yet.";
     host.append(empty);return;
@@ -280,7 +282,7 @@ function renderLegacyRegistrations(){
     const empty=document.createElement("p");empty.className="en-muted";
     empty.textContent=legacyRegistrations.length
       ?"No pre-canonical enrollment records match the current student/section filter."
-      :"No pre-canonical active enrollments require reconciliation.";
+      :!legacyScanned?"Scan legacy records when reconciliation is needed.":legacyCursor?"No candidates in scanned records. Continue scan.":legacyBlocked?"Some histories require manual review.":"No candidates found in completed scan.";
     host.append(empty);return;
   }
   for(const item of items){
@@ -301,19 +303,37 @@ function renderLegacyRegistrations(){
     badge.textContent="pre-canonical";actions.append(badge);
     const button=document.createElement("button");button.type="button";button.className="en-btn secondary";
     button.textContent="Reconcile";
-    button.disabled=item.personStatus!=="active"||item.hasRegistrationLinkedEnrollment;
+    button.disabled=item.personStatus!=="active"||item.hasRegistrationLinkedEnrollment||item.manualReview===true||item.courseCount>80;
     button.addEventListener("click",()=>openLegacyReconciliation(item));
     actions.append(button);
     row.append(info,actions);host.append(row);
   }
 }
-async function loadRegistrations(){
-  const result=await latest("registrations","list_registrations");
-  if(!result)return;
-  registrations=(result.items||[]).slice().sort((a,b)=>
-    registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));
-  legacyRegistrations=(result.legacyItems||[]).slice().sort((a,b)=>a.displayName.localeCompare(b.displayName));
-  renderRegistrations();renderLegacyRegistrations();
+function updateRegistrationControls(){
+  get("en-registrations-more").hidden=!registrationCursor;get("en-registrations-more").disabled=saving||registrationBusy;
+  get("en-legacy-scan").disabled=saving||legacyBusy;get("en-legacy-scan").textContent=legacyCursor?"Continue scan":legacyScanned?"Rescan legacy records":"Scan legacy records";
+}
+async function scanLegacy(){
+  if(saving||legacyBusy)return;
+  const cursor=legacyCursor;if(!cursor){legacyRegistrations=[];legacyBlocked=0;}legacyBusy=true;updateRegistrationControls();
+  try{
+    const result=await latest("legacy","list_legacy_candidates",cursor?{cursor}:{});if(!result)return;
+    const rows=new Map(legacyRegistrations.map(item=>[item.personId,item]));for(const item of result.items||[])rows.set(item.personId,item);
+    legacyRegistrations=[...rows.values()].sort((a,b)=>a.displayName.localeCompare(b.displayName));legacyCursor=result.nextCursor||null;legacyScanned=true;legacyBlocked+=result.blockedCount||0;
+    get("en-legacy-scan-status").textContent=legacyRegistrations.length+" candidates"+(legacyCursor?" · scan incomplete":" · scan complete")+(legacyBlocked?" · some histories require manual review":"");renderLegacyRegistrations();
+  }catch(error){get("en-legacy-scan-status").textContent=error?.message||"Legacy scan failed.";}finally{legacyBusy=false;updateRegistrationControls();}
+}
+get("en-legacy-scan").addEventListener("click",()=>void scanLegacy());
+get("en-registrations-more").addEventListener("click",()=>void loadRegistrations({more:true}).catch(error=>{status.textContent=error?.message||"Could not load more registrations.";}));
+async function loadRegistrations({more=false}={}){
+  if(more&&(!registrationCursor||registrationBusy||saving))return;
+  const cursor=more?registrationCursor:null;registrationBusy=true;updateRegistrationControls();
+  try{
+    const result=await latest("registrations","list_registrations",cursor?{cursor}:{});if(!result)return;
+    const rows=new Map((more?registrations:[]).map(item=>[item.registrationId,item]));for(const item of result.items||[])rows.set(item.registrationId,item);
+    registrations=[...rows.values()].sort((a,b)=>registrationLabel(a).localeCompare(registrationLabel(b))||a.displayName.localeCompare(b.displayName));registrationCursor=result.nextCursor||null;
+    if(!more){legacyRegistrations=[];legacyCursor=null;legacyScanned=false;legacyBlocked=0;get("en-legacy-scan-status").textContent="";}
+  }finally{registrationBusy=false;renderRegistrations();renderLegacyRegistrations();}
   if(cohortPreview){
     ++cohortRun;cohortPreview=null;get("en-cohort-apply").disabled=true;
     get("en-cohort-results").replaceChildren();
@@ -510,10 +530,11 @@ async function previewCohort(){
     (!selection.targetYearId||!selection.targetProgramId||!selection.targetTermId||!selection.targetSectionId)){
     message.textContent="Choose the complete target placement before previewing the cohort.";return;
   }
-  const candidates=cohortRows();
+  const run=++cohortRun,signature=cohortSignature(selection);let candidates;
+  message.textContent="Loading the full selected cohort…";
+  try{const result=await perform("list_progression_cohort",{yearId:selection.sourceYearId,termId:selection.sourceTermId,sectionId:selection.sourceSectionId});if(run!==cohortRun)return;candidates=result.items||[];}catch(error){if(run===cohortRun)invalidateCohortPreview(error?.message||"Cohort could not be loaded.");return;}
   if(!candidates.length){invalidateCohortPreview("No active registrations match the selected source cohort.");return;}
   if(candidates.length>60){invalidateCohortPreview("This cohort exceeds 60 active registrations and requires paginated Registrar processing.");return;}
-  const run=++cohortRun,signature=cohortSignature(selection);
   cohortPreview=null;get("en-cohort-apply").disabled=true;get("en-cohort-results").replaceChildren();
   message.textContent="Checking "+candidates.length+" learner"+(candidates.length===1?"":"s")+" against released Final Grades and target placement…";
   const rows=await mapLimit(candidates,4,async item=>{
@@ -1521,6 +1542,7 @@ picker=createTenantSchoolPicker({
     if(get("en-progression-dialog").open)get("en-progression-dialog").close();
     if(get("en-history-dialog").open)get("en-history-dialog").close();
     form.reset();cohortForm().reset();clearLoadedApplication({resetIdentity:true});
+    registrations=[];registrationCursor=null;registrationBusy=false;legacyRegistrations=[];legacyCursor=null;legacyScanned=false;legacyBusy=false;legacyBlocked=0;get("en-legacy-scan-status").textContent="";get("en-registrations-count").textContent="";
     applications=[];applicationCursor=null;applicationBusy=false;get("en-applications-more").hidden=true;get("en-applications-count").textContent="";get("en-application-search").value="";get("en-application-status").value="pending";
     get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
     get("en-cohort-results").replaceChildren();get("en-cohort-status").textContent="Choose a source cohort and decision.";
