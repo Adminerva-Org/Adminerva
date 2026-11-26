@@ -125,3 +125,11 @@ test("student-file history is independently paged and retains exact released gra
   assert.match(recordsUi,/current\[section\]=sortHistory/);
   assert.match(recordsHtml,/data-sr-view="releasedGrades"/);
 });
+
+
+test("school-wide document queue uses school-scoped cursors and reuses canonical request lifecycle",()=>{
+  const block=service.slice(service.indexOf('if(input.action==="list_document_requests")'),service.indexOf('if(input.action==="search_students")'));
+  assert.match(block,/student_document_requests/);assert.match(block,/where\("schoolId","==",ctx.schoolId\)/);
+  assert.match(block,/nextCursor/);assert.match(block,/doc.data\(\).schoolId===ctx.schoolId/);
+  assert.match(recordsUi,/openRequestLifecycle\(row,next,true\)/);assert.match(recordsHtml,/id="sr-requests-workspace"/);
+});
