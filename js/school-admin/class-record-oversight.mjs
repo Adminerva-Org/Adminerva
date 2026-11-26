@@ -301,8 +301,9 @@ custodyForm.addEventListener("submit",event=>void (async()=>{
       (result.originalSection||"No original section — matched by assessment student IDs")+" · "+result.verifiedStudentCount+" / "+result.rosterCount+
       " student identities verified (minimum "+result.requiredStudentCount+"). "+
       result.originalSourceRecordCount+" original submitted-evidence or grade record(s) matched. "+
+      (result.originalMaxScore!=null?"Maximum "+result.originalMaxScore+(result.maximumProof==="consistent_original_grade_maxima"?" (verified from saved grades). ":" (original assessment). "):"Maximum score unresolved. ")+
       (result.eligible?"Ready for School Administrator approval.":
-        "Not eligible: reconcile the class identities and confirm the original assessment has real submissions or grades.");
+        result.status==="maximum_reconciliation_required"?"Not eligible: reconcile original maximum scores.":"Not eligible: reconcile the class identities and confirm the original assessment has real submissions or grades.");
     el("cro-legacy-approve").disabled=!result.eligible;
   }catch(error){custodyStatus.textContent=error?.message||"Historical source could not be verified.";}
   finally{setCustodyBusy(false);if(verifiedCustody&&!verifiedCustody.eligible)
