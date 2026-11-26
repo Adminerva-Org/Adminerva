@@ -19,6 +19,10 @@ function install(){
      FieldPath:{documentId:()=>"__name__"}
    };
    if(name==="./tenant-access.js")return {TenantAccessError};
+   if(name==="./school-legacy-custody.js")return {
+     authorizedTeacherCustody:async()=>null,validCustody:()=>false,
+     normalized:value=>String(value||"").trim().toLowerCase()
+   };
    throw Error("Unrecognized dependency "+name);
  }},{filename:"school-legacy-github-review.js"});
  return module.exports;
@@ -59,21 +63,24 @@ function fixture({published=false,grade=null,approval=true,discovery=false,
  const db={doc,
    collection(path){return {
      doc:id=>doc(path+"/"+(id||"audit-"+(++count))),
-     where(field,op,value){assert.equal(op,"==");return {
-       orderBy(){let last="";return {
-         startAfter(v){last=v;return this;},
-         limit(n){return {get:async()=>{
-           const records=[...map].filter(([key,data])=>
-             key.startsWith(path+"/")&&key.split("/").length===2&&
-             data[field]===value&&key.slice(path.length+1)>last)
-             .slice(0,n).map(([key,data])=>({
-               id:key.split("/").at(-1),data:()=>data
-             }));
-           return {docs:records,size:records.length};
-         }};
-         }
-       };}
-     };}
+     where(field,op,value){assert.equal(op,"==");
+       const page=(limit,last="")=>{
+         const records=[...map].filter(([key,data])=>
+           key.startsWith(path+"/")&&key.split("/").length===2&&
+           data[field]===value&&key.slice(path.length+1)>last)
+           .slice(0,limit).map(([key,data])=>({
+             id:key.split("/").at(-1),data:()=>data
+           }));
+         return {docs:records,size:records.length};
+       };
+       return {
+         limit(n){return {get:async()=>page(n)};},
+         orderBy(){let last="";return {
+           startAfter(v){last=v;return this;},
+           limit(n){return {get:async()=>page(n,last)};}
+         };}
+       };
+     }
    };},
    async runTransaction(fn){const tx={
      get:ref=>ref.get(),
