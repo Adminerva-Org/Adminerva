@@ -28,7 +28,7 @@ function install(){
  return module.exports;
 }
 function fixture({published=false,grade=null,approval=true,discovery=false,
-  studentResubmitted=false,zeroCommits=false,revision=7,omitRevision=false}={}){
+  studentResubmitted=false,zeroCommits=false,revision=7,omitRevision=false,scalarOnly=false}={}){
  const map=new Map(),writes=[];
  const put=(path,value)=>map.set(path,value);
  put("assessments/"+taskId,{ownerUid:ctx.uid,title:"Java OOP",
@@ -90,7 +90,8 @@ function fixture({published=false,grade=null,approval=true,discovery=false,
    };return fn(tx);}
  };
  const service=install().createSchoolLegacyGithubReview({db,
-   parseLegacyRubric:()=>[{name:"Code quality",points:20},{name:"Program behavior",points:20}]});
+   parseLegacyRubric:()=>[{name:"Code quality",points:20},{name:"Program behavior",points:20}],
+   ...(scalarOnly?{parseVerifiedLegacyRubric:()=>null}:{})});
  const request=(action,extra={})=>({ctx,input:{action,legacyAssessmentId:taskId,...extra}});
  const gradeArgs={legacyEvidenceId:evidenceId,expectedEvidenceRevision:revision,
    expectedCheckpointSha:checkpoint,expectedGradeRevision:0,
@@ -296,4 +297,42 @@ test("historical GitHub bulk publication cannot publish a stale checkpoint or al
  assert.equal(f.map.get("student_grades/"+evidenceId).published,false);
  assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,1,
    "only the original private draft may be audited, never a stale publication");
+});
+
+
+test("incompatible historical evidence does not interrupt another learner's grading",async()=>{
+ const f=fixture();
+ const old="older-student",oldId=old+"_"+taskId;
+ f.map.set("assessment_evidence/"+oldId,{studentId:old,assessmentId:taskId,section:"Grade 12 ICT",repository:"https://github.com/learner/older"});
+ f.map.set("student_grades/"+oldId,{studentId:old,taskId,section:"Grade 12 ICT",score:31,maxScore:40,published:true});
+ const result=await f.service(f.request("legacy_github_inbox"));
+ const row=result.evidence.find(row=>row.studentId===old);
+ assert.equal(row.evidenceException,true);assert.equal(row.hasSubmission,false);
+ assert.equal(row.gradeStatus,"published");assert.equal(row.awarded,31);
+ assert.equal(result.coverage.evidenceExceptions,1);
+ assert.equal((await f.service(f.request("legacy_github_save_draft",f.gradeArgs))).awarded,35);
+ assert.equal(f.map.get("student_grades/"+oldId).score,31);
+});
+test("alternate original grade IDs cannot silently produce duplicate grades",async()=>{
+ const f=fixture();
+ f.map.set("student_grades/old-grade-key",{studentId,taskId,section:"Grade 12 ICT",score:32,maxScore:40,published:false});
+ const result=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(result.evidence[0].gradeException,true);
+ assert.equal(result.evidence[0].hasSubmission,false);
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",f.gradeArgs)),error=>error.code==="failed-precondition");
+ assert.equal(f.writes.length,0);
+});
+
+
+test("historical assessment without verified rubric supports manual total-score grading only",async()=>{
+ const f=fixture({scalarOnly:true});
+ const inbox=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(inbox.task.historicalRubricMode,"scalar_manual");
+ assert.equal(inbox.task.rubric.length,1);assert.equal(inbox.task.rubric[0].points,40);
+ const input={...f.gradeArgs,criteria:[{awardedPoints:33,pendingPoints:0,comment:"Original total manually reviewed"}]};
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",{...input,draftSource:"external_ai"})),error=>error.code==="failed-precondition");
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",{...input,onlyIfUngraded:true})),error=>error.code==="failed-precondition");
+ const result=await f.service(f.request("legacy_github_save_draft",input));
+ assert.equal(result.awarded,33);assert.equal(result.total,40);
+ assert.equal(f.map.get("student_grades/"+evidenceId).score,33);
 });

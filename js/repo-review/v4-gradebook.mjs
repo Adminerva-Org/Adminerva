@@ -8,7 +8,7 @@ import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResp
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
-import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261123-revisionless-save-1";
+import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261126-historical-scalar";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -326,7 +326,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const gradeMap=new Map(historical?
         rows.filter(item=>item.gradeStatus).map(item=>[item.studentUid,{
           studentUid:item.studentUid,status:item.gradeStatus,awarded:item.awarded,
-          total:currentTask.rubric.reduce((sum,part)=>sum+Number(part.points),0),pending:0
+          total:item.maxScore??currentTask.rubric.reduce((sum,part)=>sum+Number(part.points),0),pending:Number(item.pending||0)
         }]):
         (resultData.results||[]).map(item=>[item.studentUid,item]));
       if(view==="results")rows=[...rows].sort((a,b)=>{
@@ -360,7 +360,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             result.coverage.publishedCount+" published, "+result.coverage.draftCount+" draft) · "+
             result.coverage.evidenceCount+" evidence records · "+
             result.coverage.evidenceWithoutGrade+" evidence-only · "+
-            result.coverage.gradeOnly+" grade-only.":"")));
+            result.coverage.gradeOnly+" grade-only · "+
+            (result.coverage.evidenceExceptions||0)+" evidence exceptions · "+
+            (result.coverage.gradeExceptions||0)+" grade conflicts.":"")));
+        if(currentTask.historicalRubricMode==="scalar_manual")notice.append(make("p","text-sm text-amber-900 mt-2","Original rubric unavailable — individual numerical grading is available; AI evaluation is disabled."));
         inbox.append(notice);
       }
       if(historicalStudio){
@@ -422,7 +425,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         details.append(
           make("h3","font-extrabold text-slate-900",row.studentName||"Student"),
           make("p","text-xs text-slate-500 mt-1",
-            (row.gradeOnly?"Original historical grade (no matching submission receipt)":
+            (row.gradeException?"Original grade requires reconciliation":row.evidenceException?"Original evidence requires reconciliation":row.gradeOnly?"Original historical grade (no matching submission receipt)":
               "Version "+row.version+" · "+
               (historicalGithub&&row.hasSubmission===false?"no student submission (teacher discovery only)":row.status)+
               " · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently")))
@@ -430,21 +433,22 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         const resultLine=grade?
           (grade.status==="published"?"Published result":"Grade draft")+" · "+grade.awarded+" / "+grade.total+
             (grade.pending?" · "+grade.pending+" pending":""):
-          (historicalGithub&&row.hasSubmission===false?
+          (row.gradeException?"Grade conflict · excluded from evaluation":row.evidenceException?"Incompatible original evidence · excluded from evaluation":
+          historicalGithub&&row.hasSubmission===false?
             "No student submission · excluded from evaluation":"Needs grading");
         details.append(make("p","text-xs font-bold mt-1 "+(grade?.status==="published"?"text-emerald-700":grade?"text-amber-700":"text-slate-600"),resultLine));
         const button=make("button","rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5 text-sm",
           view==="results"?(grade?"Open result":"Grade response"):
             task.submissionSource==="github"?"Review submitted commits":"Review response");
         button.type="button";
-        if(row.gradeOnly){
-          button.textContent="Original score — read only";
+        if(row.gradeOnly||row.evidenceException||row.gradeException){
+          button.textContent=row.gradeException?"Reconcile original grade":row.evidenceException?"Evidence unavailable — read only":"Original score — read only";
           button.disabled=true;button.title="No matching frozen student submission. The saved original score is preserved but cannot be edited through evidence review.";
           button.classList.add("opacity-60","cursor-not-allowed");
         }
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
-        if(!row.gradeOnly&&pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
+        if(!row.gradeOnly&&!row.evidenceException&&!row.gradeException&&pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
         button.addEventListener("click",()=>void openReview(normalized));
         card.append(details,button);inbox.append(card);
       }
@@ -608,13 +612,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         "Historical published "+grade.awarded+" / "+grade.total;
       return;
     }
-    if(currentTask?.legacyCompatibility&&grade?.gradeSchema==="legacy_scalar_v1"){
+    if(currentTask?.historicalRubricMode==="scalar_manual"){
+      host.append(make("p","text-sm text-slate-600 mb-2","Original rubric unavailable. Review the submission and enter the total score manually."));
+    }else if(currentTask?.legacyCompatibility&&grade?.gradeSchema==="legacy_scalar_v1"){
       host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
         "Original private historical draft: "+grade.awarded+" / "+grade.total+
         ". Its rubric breakdown was not recorded. Enter and review a fresh breakdown before saving any replacement draft."));
     }
     (currentTask?.rubric||[]).forEach((criterion,index)=>{
-      const saved=prior[index]||{};
+      const saved=prior[index]||(currentTask?.historicalRubricMode==="scalar_manual"&&index===0&&grade?{awardedPoints:grade.awarded,pendingPoints:grade.pending||0}:{});
       const row=make("div","rounded-xl border border-slate-200 bg-slate-50 p-3");
       row.dataset.rubricRow=String(index);
       row.append(make("div","font-bold text-slate-900",criterion.name+" · "+criterion.points+" pts"));
@@ -639,6 +645,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     updateScore();
   }
   async function evaluationSnapshotForCurrent(){
+    if(currentTask?.historicalRubricMode==="scalar_manual")throw Error("Original rubric unavailable. Grade this historical response manually.");
     if(currentTask?.submissionSource!=="github"){
       if(currentTask?.submissionSource==="studio"&&currentTask?.personalizedTask?.enabled===true&&
          !(currentSnapshot?.personalizedTask?.variantId&&String(currentSnapshot?.personalizedTask?.prompt||"").trim()))
@@ -946,6 +953,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   })());
 
   document.getElementById("gbV4ExternalApply").addEventListener("click",()=>{
+    if(currentTask?.historicalRubricMode==="scalar_manual"){document.getElementById("gbV4ExternalStatus").textContent="Original rubric unavailable. Enter the total manually.";return;}
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
     try{

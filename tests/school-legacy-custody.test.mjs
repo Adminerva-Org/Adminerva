@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
-const {custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,custodySourceDigest}=
+const {custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,custodySourceDigest,verifiedOriginalMaximum,custodyMaximum}=
   require("../functions/school-legacy-custody.js");
 const {rowKey}=require("../functions/school-academics.js");
 const {historicalMapping,mappingMatches,historicalPublishedGrades}=require("../functions/school-class-record-historical.js");
@@ -21,7 +21,7 @@ const docs=new Map([
   [prefix+"legacy_assessment_custody/"+custodyId(assessmentId,offeringId),grant],
   [prefix+"staff_assignments/"+rowKey(teacherUid,offeringId),
     {schoolId,teacherUid,offeringId,status:"active"}],
-  [prefix+"course_offerings/"+offeringId,{schoolId,status:"active"}],
+  [prefix+"course_offerings/"+offeringId,{schoolId,status:"active",primaryTeacherUid:teacherUid}],
   [prefix+"memberships/"+teacherUid,{schoolId,status:"active",roles:["teacher"]}]
 ]);
 const db={doc:path=>({path,get:async()=>({exists:docs.has(path),data:()=>docs.get(path),
@@ -61,6 +61,18 @@ test("delegated V4 Review & Grade requires an active school teacher appointment 
   docs.set(key,{...docs.get(key),status:"archived"});
   assert.equal(await authorizedTeacherCustody(opts),null);
   docs.set(key,{schoolId,teacherUid,offeringId,status:"active"});
+});
+test("custody review requires the current explicit Primary Teacher even if the former lead is still assigned",async()=>{
+  const opts={db,schoolId,teacherUid,assessmentId,offeringId,task};
+  const key=prefix+"course_offerings/"+offeringId;
+  const original=docs.get(key);
+  try {
+    assert.ok(await authorizedTeacherCustody(opts));
+    docs.set(key,{...original,primaryTeacherUid:"new-primary"});
+    assert.equal(await authorizedTeacherCustody(opts),null);
+    docs.set(key,{...original,primaryTeacherUid:""});
+    assert.equal(await authorizedTeacherCustody(opts),null);
+  } finally { docs.set(key,original); }
 });
 test("Class Record historical linkage cannot be forged from another original owner",()=>{
   const offering={yearId:"year",termId:"q3",sectionId:"section",subjectId:"course"};
@@ -116,4 +128,54 @@ test("original historical grades project only from an active custody grant and v
  });
  assert.deepEqual(await historicalPublishedGrades(args),[],
    "a different original student section cannot be used to populate this class");
+});
+
+
+test("sectionless original assessment projects only independently approved exact student identities",async()=>{
+ const source={...task,deployments:[],subject:""};
+ const scoped={...grant,originalSubject:"",originalSection:"",sectionProof:"assessment_student_identity",
+   verifiedPersonCount:2,sourceDigest:custodySourceDigest(source)};
+ const offering={yearId:"year",termId:"q3",sectionId:"section",subjectId:"course"};
+ const labels={yearName:"AY 2026",termName:"Q3",sectionName:"Current SIS class",subjectName:"Computer Programming 4"};
+ const args={task:source,taskId:assessmentId,schoolId,ownerUid:teacherUid,offering,offeringId,labels,
+   verifiedSection:true,custodyGrant:scoped};
+ assert.equal(historicalMapping({...args,custodyGrant:null}),null);
+ assert.equal(validCustody(scoped,{schoolId,assessmentId,offeringId,teacherUid,task:source}),true);
+ assert.equal(validCustody(scoped,{schoolId,assessmentId,offeringId,teacherUid,task:{...source,targetSections:["Old class"]}}),false);
+ const mapping=historicalMapping(args);
+ assert.equal(mapping.sectionProof,"assessment_student_identity");
+ const columns=[{kind:"assessment",assessmentSource:"legacy_historical",columnId:"mp1",
+   taskId:assessmentId,historicalMapping:mapping,maxPoints:20}];
+ const roster=[{personId:"p1",authUid:"auth1",legacyStudentIds:["legacy-one"]},{personId:"p3",authUid:"auth3",legacyStudentIds:["legacy-three"]}];
+ const saved=new Map([
+   ["assessments/"+assessmentId,source],
+   [prefix+"legacy_assessment_custody/"+custodyId(assessmentId,offeringId),scoped],
+   ["student_grades/legacy-one_"+assessmentId,{taskId:assessmentId,studentId:"legacy-one",score:17,maxScore:20,published:false}],
+   ["student_grades/legacy-three_"+assessmentId,{taskId:assessmentId,studentId:"legacy-three",score:20,maxScore:20,published:true}]
+ ]);
+ const db={doc:path=>({path,get:async()=>({exists:saved.has(path),data:()=>saved.get(path)})}),
+   getAll:async(...refs)=>refs.map(ref=>({exists:saved.has(ref.path),data:()=>saved.get(ref.path)}))};
+ const input={db,schoolId,offeringId,offering,columns,roster};
+ assert.deepEqual(await historicalPublishedGrades(input),[]);
+ const grades=await historicalPublishedGrades({...input,acceptSavedLegacy:true});
+ assert.equal(grades.length,1);assert.equal(grades[0].personId,"p1");assert.equal(grades[0].awarded,17);
+ assert.equal(grades[0].legacyAccepted,true);
+});
+
+
+test("missing original maximum is recovered only from consistent recorded maxima",()=>{
+ const source={...task};delete source.maxScore;
+ const grades=[{taskId:assessmentId,studentId:"legacy-one",score:12,maxScore:20},{taskId:assessmentId,studentId:"legacy-two",score:17,maxScore:20}];
+ const ids=["legacy-one","legacy-two"];
+ assert.deepEqual(verifiedOriginalMaximum(source,grades,assessmentId,ids),{maximum:20,proof:"consistent_original_grade_maxima"});
+ assert.equal(verifiedOriginalMaximum(source,grades,assessmentId,["legacy-one"]),null);
+ assert.equal(verifiedOriginalMaximum(source,[...grades,{taskId:assessmentId,studentId:"legacy-three",score:15,maxScore:25}],assessmentId,ids),null);
+ assert.equal(verifiedOriginalMaximum(source,grades.map(({maxScore,...grade})=>grade),assessmentId,ids),null);
+ assert.equal(verifiedOriginalMaximum({...source,maxScore:0},grades,assessmentId,ids),null);
+ assert.deepEqual(verifiedOriginalMaximum(task,grades,assessmentId,ids),{maximum:20,proof:"original_assessment"});
+ const recovered={...grant,maximumProof:"consistent_original_grade_maxima",sourceDigest:custodySourceDigest(source)};
+ assert.equal(validCustody(recovered,{schoolId,assessmentId,offeringId,teacherUid,task:source}),true);
+ assert.equal(custodyMaximum(source,recovered),20);
+ assert.equal(custodyMaximum(source,null),null);
+ assert.equal(validCustody({...recovered,maximumProof:undefined},{schoolId,assessmentId,offeringId,teacherUid,task:source}),false);
 });
