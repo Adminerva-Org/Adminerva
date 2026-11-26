@@ -445,10 +445,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     button.textContent = "Signing out…"; button.disabled = true;
     try {
-      const { getAuth, signOut }=await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js");
+      const [{ getAuth, signOut }] = await Promise.all([
+        import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
+        import("./connection-cache.mjs?v=1.3.0").then(module => module.clearConnectionPreferences())
+      ]);
       try{const push=await import("./push-notifications.mjs?v=1.4.1");await push.departPushAccount();}catch{}
       await signOut(getAuth());
-      try{const cache=await import("./connection-cache.mjs?v=1.3.0");cache.clearConnectionPreferences();}catch{}
       try { for (const key of ["Adminerva_Role", "Adminerva_Mock_Role", "Adminerva_Impersonate"]) localStorage.removeItem(key); } catch { /* Account is already signed out. */ }
       window.location.href = "login.html";
     } catch (error) {

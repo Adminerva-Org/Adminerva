@@ -63,7 +63,14 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
   const routeByPage={xml:'student-xml-lab.html',practice:'student-practice.html',ide:'student-playground.html',
     'studio-submissions':'studio-submissions.html',home:role==='student'?'student-home.html':'teacher-home.html',dashboard:module==='student'?'student-home.html':'teacher-home.html'};
   const pathname='/'+(routeByPage[page]||page+'.html');
-  const window = { location: { href: 'https://adminerva.example'+pathname, pathname, search:'' } };
+  const window = {
+    location: { href: 'https://adminerva.example'+pathname, pathname, search:'' },
+    dispatchEvent: event => !event.defaultPrevented
+  };
+  class CustomEvent {
+    constructor(type,options={}){this.type=type;this.cancelable=Boolean(options.cancelable);this.defaultPrevented=false;}
+    preventDefault(){if(this.cancelable)this.defaultPrevented=true;}
+  }
   const localStorage = { getItem: () => { if (storageThrows) throw new Error('Unavailable'); return role; } };
   const fixtureImport=()=>Promise.resolve({
     mountInformationMenu(){},mountNotificationCenter(){},mountAccountContextSwitcher(){},
@@ -72,7 +79,7 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
   });
   vm.runInNewContext(forFixture(integrations.source || source), {
     document,window,location:window.location,localStorage,fixtureImport,
-    URLSearchParams,console:{warn(){}},...integrations
+    URLSearchParams,CustomEvent,console:{warn(){}},...integrations
   });
   documentEvents.DOMContentLoaded[0]();
   const clickOutside = () => { for (const callback of documentEvents.click) callback({ target: new Element(), preventDefault() {} }); };
@@ -410,7 +417,7 @@ test('navigation sign-out clears cached connection credentials before Firebase s
     connectionModule: { clearConnectionPreferences: () => calls.push('clear') }
   });
   const button = new Element('button'); button.id = 'signOutBtn'; view.root.append(button);
-  await Promise.all(view.root.dispatch('click', { target: button, preventDefault() {} }));
+  await Promise.all(view.root.dispatch('click', { target: button, preventDefault() {}, stopPropagation() {} }));
   assert.deepEqual(calls, ['clear', 'signout']);
   assert.equal(view.window.location.href, 'login.html');
 });
