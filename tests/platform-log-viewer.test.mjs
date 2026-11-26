@@ -101,8 +101,8 @@ test("wide-screen compact workspace retains canonical log controls and responsiv
   assert.match(css,/\.pl-live-line\{grid-template-columns:77px 48px minmax\(0,1fr\)/);
   assert.match(css,/\.pl-analysis-drawer>summary/);
   assert.match(css,/\.pl-filter-bar\{display:flex;flex-direction:column/);
-  assert.match(page,/css\/platform-logs\.css\?v=20261125-compact-workspace-1/);
-  assert.match(page,/js\/core\/platform-logs\.mjs\?v=20261125-compact-workspace-1/);
+  assert.match(page,/css\/platform-logs\.css\?v=20261126-inspector-2/);
+  assert.match(page,/js\/core\/platform-logs\.mjs\?v=20261126-inspector-2/);
   assert.doesNotMatch(viewer,/setDoc|updateDoc|deleteDoc/);
 });
 
@@ -183,4 +183,11 @@ test("directory and recent accounts are read only from canonical callable APIs a
   assert.match(backend,/if\(!authority\.platformAdmin\)deny\("permission-denied"/);
   assert.doesNotMatch(viewer,/setDoc|updateDoc|deleteDoc|collectionGroup/);
   assert.doesNotMatch(page,/export.*CSV/i);
+});
+
+test("inspector is bounded to authorized loaded operations and resets with view access",()=>{
+ assert.match(page,/id="pl-inspector"/);assert.match(viewer,/function relatedOperationRows/);
+ assert.match(viewer,/row\.sessionId===selected\.sessionId/);assert.match(viewer,/stopLive\(\);closeInspector\(\)/);
+ assert.match(viewer,/missing completion is not proof of a stuck process/);
+ assert.match(css,/pl-investigation-grid\.pl-inspecting/);
 });
