@@ -382,3 +382,18 @@ test("exact custody discovery requires verified class cohort and original grade 
   records.length=0;
   assert.equal(await exactCustodyCandidate(opts),null);
 });
+
+
+test("exact ID discovery for a sectionless source requires assessment-specific proof for enough distinct roster people",async()=>{
+ const schoolId="mcs-manila",assessmentId="ExampleLegacyId",identities=new Map([["s1","p1"],["s2","p2"],["s3","p3"]]);
+ const task={title:"Original UI/XML",ownerUid:"old-admin",ownershipBasis:"legacy-administrator-custody",maxScore:20};
+ const grades=[{taskId:assessmentId,studentId:"s1",score:0},{taskId:assessmentId,studentId:"s2",score:19}];
+ const db={collection:name=>({where:()=>({limit:()=>({get:async()=>({size:name==="student_grades"?grades.length:0,
+   docs:name==="student_grades"?grades.map(row=>({data:()=>row})):[]})})})})};
+ const input={db,schoolId,assessmentId,task,identities,rosterSize:6};
+ const match=await exactCustodyCandidate(input);
+ assert.equal(match.sectionProof,"assessment_student_identity");assert.deepEqual(match.originalSections,[]);
+ assert.equal(await exactCustodyCandidate({...input,rosterSize:9}),null);
+ grades[1].studentId="s1";
+ assert.equal(await exactCustodyCandidate(input),null);
+});
