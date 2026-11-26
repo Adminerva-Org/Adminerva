@@ -48,7 +48,7 @@
 
   <nav id="sr-workspace-nav" class="sr-file-tabs" aria-label="Registrar records workspace" hidden><button id="sr-mode-students" type="button" class="sr-btn secondary" aria-pressed="true">Student files</button><button id="sr-mode-requests" type="button" class="sr-btn secondary" aria-pressed="false">Document requests</button></nav>
   <section id="sr-requests-workspace" class="sr-card" hidden>
-    <div class="flex flex-wrap gap-2 items-start justify-between"><h2 class="text-lg font-extrabold">Document request queue</h2><button id="sr-queue-refresh" type="button" class="sr-btn secondary">Refresh</button></div>
+    <div class="flex flex-wrap gap-2 items-start justify-between"><h2 class="text-lg font-extrabold">Document request queue</h2><div class="flex flex-wrap gap-2"><button id="sr-certificate-settings" type="button" class="sr-btn secondary" hidden>Certificate settings</button><button id="sr-certificate-verify" type="button" class="sr-btn secondary">Verify reference</button><button id="sr-queue-refresh" type="button" class="sr-btn secondary">Refresh</button></div></div>
     <div class="grid sm:grid-cols-2 gap-2 mt-3"><label class="text-sm font-bold">Status<select id="sr-queue-filter" class="sr-input mt-1"><option value="open">Open requests</option><option value="requested">Requested</option><option value="in_review">In review</option><option value="ready">Ready</option><option value="released">Released</option><option value="cancelled">Cancelled</option><option value="all">All</option></select></label><label class="text-sm font-bold">Find request<input id="sr-queue-search" class="sr-input mt-1" type="search" placeholder="Student, number or document"></label></div>
     <div id="sr-queue-list" class="sr-list mt-3"></div><div class="sr-history-controls"><button id="sr-queue-more" type="button" class="sr-btn secondary" hidden>Load more</button><span id="sr-queue-status" class="sr-muted" aria-live="polite"></span></div>
   </section>
@@ -130,7 +130,7 @@
       </section>
 
       <section class="sr-card" data-sr-panel="releasedGrades" hidden>
-        <h2 class="text-lg font-extrabold">Released Final Grades</h2>
+        <div class="flex gap-2 justify-between items-start flex-wrap"><h2 class="text-lg font-extrabold">Released Final Grades</h2><button id="sr-academic-prepare" type="button" class="sr-btn secondary">Prepare academic record</button></div>
         <div class="overflow-x-auto mt-3"><table class="sr-table"><thead><tr><th>Period</th><th>Subject</th><th>Section</th><th>Final Grade</th><th>Revision</th></tr></thead><tbody id="sr-grade-list"></tbody></table></div>
         <div class="sr-history-controls"><button id="sr-history-more-releasedGrades" class="sr-btn secondary" type="button" data-sr-history="releasedGrades" hidden>Load more</button><span id="sr-history-count-releasedGrades" class="sr-muted" aria-live="polite"></span></div>
       </section>
@@ -178,9 +178,57 @@
     </form>
   </dialog>
 
+  <dialog id="sr-academic-dialog" class="sr-dialog" aria-labelledby="sr-academic-title">
+    <div class="sr-card">
+      <div class="flex justify-between gap-2 items-start"><h2 id="sr-academic-title" class="text-lg font-extrabold">Academic record preparation</h2><button id="sr-academic-close" class="sr-btn secondary" type="button">Close</button></div>
+      <form id="sr-academic-form" class="grid gap-2 mt-3">
+        <label class="text-sm font-bold">Record type<select id="sr-academic-mode" class="sr-input mt-1"><option value="sf9">SF9 data · progress report</option><option value="sf10">SF10 data · permanent record</option></select></label>
+        <label class="text-sm font-bold">Academic year<select id="sr-academic-year" class="sr-input mt-1" required></select></label>
+        <button type="submit" class="sr-btn">Prepare data</button>
+      </form>
+      <p class="sr-muted mt-2">Working data only. Use the approved current LIS form for official preparation.</p>
+      <p id="sr-academic-status" class="sr-muted mt-2" role="status" aria-live="polite"></p>
+      <div id="sr-academic-blockers" class="sr-list mt-2"></div>
+      <div id="sr-academic-results" class="sr-list mt-2"></div>
+      <button id="sr-academic-export" type="button" class="sr-btn secondary mt-3" disabled>Export working CSV</button>
+    </div>
+  </dialog>
+  <dialog id="sr-certificate-settings-dialog" class="sr-dialog" aria-labelledby="sr-certificate-settings-title">
+    <form id="sr-certificate-settings-form" class="sr-card grid gap-2">
+      <div class="flex justify-between gap-2"><h2 id="sr-certificate-settings-title" class="text-lg font-extrabold">Enrollment certificate settings</h2><button id="sr-certificate-settings-close" class="sr-btn secondary" type="button">Close</button></div>
+      <label class="text-sm font-bold">Authorized signatory name<input name="signatoryName" class="sr-input mt-1" maxlength="160" required></label>
+      <label class="text-sm font-bold">Signatory title<input name="signatoryTitle" class="sr-input mt-1" maxlength="100" required></label>
+      <label class="text-sm font-bold">School letterhead address<input name="schoolAddress" class="sr-input mt-1" maxlength="220"></label>
+      <label class="text-sm font-bold">School identifier<input name="schoolIdentifier" class="sr-input mt-1" maxlength="80"></label>
+      <label class="text-sm font-bold">Change reason<input name="reason" class="sr-input mt-1" minlength="8" maxlength="500" required></label>
+      <p id="sr-certificate-settings-status" class="sr-muted" role="status"></p><button id="sr-certificate-settings-save" type="submit" class="sr-btn" disabled>Save settings</button>
+    </form>
+  </dialog>
+  <dialog id="sr-certificate-dialog" class="sr-dialog" aria-labelledby="sr-certificate-title">
+    <div class="sr-card">
+      <div class="flex justify-between gap-2"><h2 id="sr-certificate-title" class="text-lg font-extrabold">Enrollment certificate</h2><button id="sr-certificate-close" class="sr-btn secondary" type="button">Close</button></div>
+      <form id="sr-certificate-prepare-form" class="grid gap-2 mt-3" hidden>
+        <label class="text-sm font-bold">Official registration<select id="sr-certificate-registration" class="sr-input mt-1" required></select></label>
+        <button type="submit" class="sr-btn">Prepare draft</button>
+      </form>
+      <div id="sr-certificate-preview" class="sr-list mt-3"></div><p id="sr-certificate-status" class="sr-muted mt-2" role="status" aria-live="polite"></p>
+      <div class="flex gap-2 flex-wrap mt-3">
+        <button id="sr-certificate-print" class="sr-btn secondary" type="button" hidden>Print unsigned copy</button>
+        <button id="sr-certificate-issue" class="sr-btn" type="button" hidden>Issue</button>
+        <button id="sr-certificate-revoke" class="sr-btn danger" type="button" hidden>Revoke</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="sr-certificate-verify-dialog" class="sr-dialog" aria-labelledby="sr-certificate-verify-title">
+    <form id="sr-certificate-verify-form" class="sr-card grid gap-2">
+      <div class="flex justify-between gap-2"><h2 id="sr-certificate-verify-title" class="text-lg font-extrabold">Verify institutional reference</h2><button id="sr-certificate-verify-close" class="sr-btn secondary" type="button">Close</button></div>
+      <label class="text-sm font-bold">Certificate reference<input id="sr-certificate-reference" class="sr-input mt-1" required maxlength="100" autocomplete="off"></label>
+      <button class="sr-btn" type="submit">Verify record</button><div id="sr-certificate-verify-result" class="sr-list" role="status"></div>
+    </form>
+  </dialog>
   <dialog id="sr-request-dialog" class="sr-dialog" aria-labelledby="sr-request-title">
     <form id="sr-request-form" class="sr-card">
-      <div class="flex justify-between items-start gap-3"><div><h2 id="sr-request-title" class="text-xl font-extrabold">New document request</h2><p class="sr-muted mt-1">Request tracking only; no file is generated.</p></div><button id="sr-request-close" type="button" class="sr-btn secondary">Close</button></div>
+      <div class="flex justify-between items-start gap-3"><div><h2 id="sr-request-title" class="text-xl font-extrabold">New document request</h2><p class="sr-muted mt-1">Enrollment certificates can be prepared here. Other credentials are tracked for external preparation.</p></div><button id="sr-request-close" type="button" class="sr-btn secondary">Close</button></div>
       <label class="block text-sm font-bold mt-4">Record / credential
         <select name="type" class="sr-input mt-1" required><option value="">Choose request type</option><option value="certificate_of_enrollment">Certificate of Enrollment</option><option value="report_card">Report Card</option><option value="transcript_of_records">Transcript of Records</option><option value="student_record_copy">Student Record Copy</option><option value="graduation_certificate">Graduation Certificate</option><option value="other">Other school record</option></select>
       </label>
@@ -204,7 +252,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar6"></script>
+<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar7"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-student-records1"></script>
 </body>
 </html>
