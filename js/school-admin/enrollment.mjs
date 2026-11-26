@@ -42,10 +42,10 @@ function perform(action,details={}){
   return api({schoolId:lease.schoolId,action,...details,...(assistMode()?{platformMode:"assist"}:{})})
     .then(response=>{picker.scope.assertLease(lease);return response.data;});
 }
-async function latest(source,action){
+async function latest(source,action,details={}){
   const version=++requestVersions[source];
   try{
-    const result=await perform(action);
+    const result=await perform(action,details);
     return version===requestVersions[source]?result:null;
   }catch(error){
     if(version!==requestVersions[source])return null;
@@ -60,7 +60,7 @@ function setSaving(value){
   }
   for(const control of form.elements)control.disabled=value;
   get("en-applicant-type").disabled=value||Boolean(loadedPerson);
-  for(const control of document.querySelectorAll("#en-application-list button, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-applications-more, #en-correction-form button, #en-correction-form input, #en-correction-form select, #en-correction-form textarea, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
   if(!value){
@@ -1016,7 +1016,34 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
   }
 }
 
-let requirementsReview=null,templateReview=null,templateLoadRun=0;
+let requirementsReview=null,templateReview=null,templateLoadRun=0,correctionReview=null;
+function closeCorrection(){
+  correctionReview=null;for(const key of ["guardian","relationship","mobile","email","reason"])get("en-correction-"+key).value="";
+  get("en-correction-dialog").close();
+}
+function openCorrection(item){
+  if(saving||!["submitted","needs_information"].includes(item.status))return;
+  correctionReview=item;get("en-correction-target").textContent=item.displayName+" · "+item.reference;
+  for(const [key,value] of Object.entries({guardian:item.guardianName,relationship:item.guardianRelationship,mobile:item.guardianMobile,email:item.studentEmail,"email-type":item.studentEmailType||"personal",reason:""}))get("en-correction-"+key).value=value||"";
+  options(get("en-correction-program"),catalog.programs||[],"No preference");get("en-correction-program").value=item.preferredProgramId||"";
+  const required=gradeRequiresStudentEmail(item.incomingLevel);get("en-correction-email-label").hidden=!required;get("en-correction-email-type-label").hidden=!required;get("en-correction-email").required=required;
+  get("en-correction-status").textContent="";get("en-correction-dialog").showModal();
+}
+get("en-correction-close").addEventListener("click",()=>{if(!saving)closeCorrection();});
+get("en-correction-dialog").addEventListener("cancel",event=>{event.preventDefault();if(!saving)closeCorrection();});
+get("en-correction-form").addEventListener("submit",event=>{
+  event.preventDefault();if(saving||!correctionReview)return;
+  const item=correctionReview,value=key=>get("en-correction-"+key).value.trim();
+  void (async()=>{
+    setSaving(true);get("en-correction-status").textContent="Saving…";
+    try{
+      await perform("correct_application",{applicationId:item.applicationId,expectedRevision:item.revision,guardianName:value("guardian"),guardianRelationship:value("relationship"),guardianMobile:value("mobile"),studentEmail:value("email"),studentEmailType:value("email-type"),preferredProgramId:value("program"),reason:value("reason")});
+      closeCorrection();status.textContent="Correction saved. Review requirements again.";
+      try{await loadApplications();}catch{status.textContent="Correction saved. Refresh Admissions.";}
+    }catch(error){get("en-correction-status").textContent=error?.message||"Correction failed.";}
+    finally{setSaving(false);}
+  })();
+});
 let documentReview=null,documentRun=0;
 function closeDocuments(){
   ++documentRun;documentReview=null;get("en-documents-file").value="";get("en-documents-list").replaceChildren();get("en-documents-dialog").close();
@@ -1223,7 +1250,7 @@ async function reviewApplication(item,nextStatus){
   }catch(error){status.textContent=error?.message||"Application review was not saved.";}
   finally{setSaving(false);}
 }
-let applications=[];
+let applications=[],applicationCursor=null,applicationBusy=false;
 function renderApplications(){
   const host=get("en-application-list");host.replaceChildren();
   const query=String(get("en-application-search").value||"").trim().toLowerCase();
@@ -1232,9 +1259,12 @@ function renderApplications(){
     const matchesStatus=filter==="all"||(filter==="pending"?["submitted","needs_information","accepted"].includes(item.status):item.status===filter);
     return matchesStatus&&(!query||[item.displayName,item.reference,item.applicationType].some(v=>String(v||"").toLowerCase().includes(query)));
   });
+  get("en-applications-more").hidden=!applicationCursor;
+  get("en-applications-more").disabled=saving||applicationBusy;
+  get("en-applications-count").textContent=items.length+" matching · "+applications.length+" scanned"+(applicationCursor?" · more records available":"");
   if(!items.length){
     const empty=document.createElement("p");empty.className="en-muted";
-    empty.textContent=applications.length?"No applications match these filters.":"No applications loaded.";host.append(empty);return;
+    empty.textContent=applicationCursor?"No matches in loaded records. Load more to continue searching.":applications.length?"No applications match these filters.":"No applications loaded.";host.append(empty);return;
   }
   for(const item of items){
     const row=document.createElement("article");row.className="en-row";row.setAttribute("role","listitem");
@@ -1265,6 +1295,7 @@ function renderApplications(){
     if(item.status==="accepted"&&item.requirementsReady)addAction("Enroll",()=>loadApplicationIntoForm(item),true);
     if(["submitted","needs_information"].includes(item.status)){
       if(item.applicationType==="returning"&&!item.personId)addAction("Link student",()=>void linkReturningApplication(item),true);
+      addAction("Correct",()=>openCorrection(item));
       addAction("Requirements",()=>openRequirements(item),!item.requirementsReady);
       if(item.requirementsReady&&(item.applicationType!=="returning"||item.personId))addAction("Accept",()=>void reviewApplication(item,"accepted"),true);
     }
@@ -1275,11 +1306,18 @@ function renderApplications(){
   }
   if(saving)for(const button of host.querySelectorAll("button"))button.disabled=true;
 }
-async function loadApplications(){
-  const result=await latest("applications","list_applications");
-  if(!result)return;
-  applications=result.items||[];renderApplications();
+async function loadApplications({more=false}={}){
+  if(more&&(!applicationCursor||applicationBusy||saving))return;
+  const cursor=more?applicationCursor:null;applicationBusy=true;
+  try{
+    const result=await latest("applications","list_applications",cursor?{cursor}:{});
+    if(!result)return;
+    const rows=new Map((more?applications:[]).map(item=>[item.applicationId,item]));
+    for(const item of result.items||[])rows.set(item.applicationId,item);
+    applications=[...rows.values()].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));applicationCursor=result.nextCursor||null;
+  }finally{applicationBusy=false;renderApplications();}
 }
+get("en-applications-more").addEventListener("click",()=>void loadApplications({more:true}).catch(error=>{status.textContent=error?.message||"More applications could not be loaded.";}));
 get("en-application-search").addEventListener("input",renderApplications);
 get("en-application-status").addEventListener("change",renderApplications);
 async function refreshAll(){
@@ -1400,6 +1438,8 @@ picker=createTenantSchoolPicker({
     if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
     if(requirementsReview&&!confirm("Discard the open requirements review?"))throw new Error("Finish the requirements review before switching schools.");
     if(requirementsReview)closeRequirements();
+    if(correctionReview&&!confirm("Discard the open correction?"))throw new Error("Finish the correction before switching schools.");
+    if(correctionReview)closeCorrection();
     if(documentReview)closeDocuments();
     if(get("en-template-dialog").open&&!confirm("Discard the open template editor?"))throw new Error("Finish the template edit before switching schools.");
     closeTemplateEditor();get("en-template-open").hidden=true;
@@ -1413,7 +1453,7 @@ picker=createTenantSchoolPicker({
     if(get("en-progression-dialog").open)get("en-progression-dialog").close();
     if(get("en-history-dialog").open)get("en-history-dialog").close();
     form.reset();cohortForm().reset();clearLoadedApplication({resetIdentity:true});
-    applications=[];get("en-application-search").value="";get("en-application-status").value="pending";
+    applications=[];applicationCursor=null;applicationBusy=false;get("en-applications-more").hidden=true;get("en-applications-count").textContent="";get("en-application-search").value="";get("en-application-status").value="pending";
     get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
     get("en-cohort-results").replaceChildren();get("en-cohort-status").textContent="Choose a source cohort and decision.";
     renderActivation("");get("en-admin-tools").hidden=true;workspace.hidden=true;
