@@ -138,16 +138,41 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
         }
       }
       const verifiedPeople=new Set(validStudentIds.map(id=>identities.get(id)));
+      // A targetSections list could be only a teacher's unpublished
+      // preparation. Require assessment-specific original student evidence
+      // (a real submission receipt, or an existing grade) before delegation.
+      const verifiedIds=new Set(validStudentIds);
+      const [receiptPage,gradePage]=await Promise.all([
+        db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
+        db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get()
+      ]);
+      if(receiptPage.size>=501||gradePage.size>=501)
+        deny("resource-exhausted","Historical assessment source evidence requires paginated verification.");
+      const sourceProof=new Set();
+      for(const receipt of receiptPage.docs){
+        const evidence=receipt.data();
+        if(evidence.assessmentId===assessmentId&&verifiedIds.has(evidence.studentId)&&
+           evidence.submittedAt)sourceProof.add(evidence.studentId);
+      }
+      for(const row of gradePage.docs){
+        const grade=row.data();
+        if(grade.taskId===assessmentId&&verifiedIds.has(grade.studentId)&&
+           grade.score!==undefined&&grade.score!==null&&
+           Number.isFinite(Number(grade.score)))
+          sourceProof.add(grade.studentId);
+      }
       const required=roster.length===1?1:Math.max(2,Math.ceil(roster.length/3));
       const preview={assessmentId,offeringId,originalTitle:String(data.title||""),
         originalSubject:String(data.subject||""),originalSection:section,
         originalMaxScore:maximum,teacherUid,originalOwnerUid:String(data.ownerUid||""),
         verifiedStudentCount:verifiedPeople.size,requiredStudentCount:required,
-        rosterCount:roster.length,eligible:verifiedPeople.size>=required,
-        status:verifiedPeople.size>=required?"ready_for_school_admin_approval":"identity_reconciliation_required"};
+        rosterCount:roster.length,originalSourceRecordCount:sourceProof.size,
+        eligible:verifiedPeople.size>=required&&sourceProof.size>0,
+        status:verifiedPeople.size<required?"identity_reconciliation_required":
+          sourceProof.size===0?"original_submission_or_grade_not_found":"ready_for_school_admin_approval"};
       if(input.action==="preview_legacy_custody")return preview;
       if(!preview.eligible)
-        deny("failed-precondition","Insufficient independently verified historical student identities. Reconcile the official roster first.");
+        deny("failed-precondition","Verify original roster identities AND at least one assessment-specific student submission or saved original grade before approving custody.");
       const reason=String(input.reason||"").trim();
       if(reason.length<30||reason.length>1000)
         deny("invalid-argument","Document the original teacher and section custody proof (30–1000 characters).");
