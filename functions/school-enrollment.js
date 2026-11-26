@@ -763,16 +763,9 @@ function createSchoolEnrollmentService({db}){
       };
     }
 
-    if(input.action==="list_registrations"){
-      const [snap,enrollmentSnap]=await Promise.all([
-        db.collection(root+"student_registrations").orderBy("displayName").limit(201).get(),
-        db.collection(root+"enrollments").where("status","==","active").limit(501).get()
-      ]);
-      if(snap.size===201)deny("resource-exhausted","Enrollment list requires pagination.");
-      if(enrollmentSnap.size===501)deny("resource-exhausted",
-        "Pre-canonical enrollment reconciliation requires pagination before it can be reviewed safely.");
-      const registrationDocs=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId),
-        items=registrationDocs.map(doc=>({
+    function registrationRows(docs){
+      const registrationDocs=docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
+      return registrationDocs.map(doc=>({
           registrationId:doc.id,personId:doc.data().personId,
           displayName:doc.data().displayName||"Student",
           studentNumber:doc.data().studentNumber||"",
@@ -790,47 +783,51 @@ function createSchoolEnrollmentService({db}){
           progressedToRegistrationId:doc.data().progressedToRegistrationId||null,
           previousRegistrationId:doc.data().previousRegistrationId||null,
           revision:Number(doc.data().revision)||1
-        })),
-        activelyRegisteredPeople=new Set(registrationDocs
-          .filter(doc=>(doc.data().status||"active")==="active")
-          .map(doc=>doc.data().personId)),
-        orphanEnrollments=enrollmentSnap.docs.filter(doc=>{
-          const row=doc.data();
-          return row.schoolId===ctx.schoolId&&row.status==="active"&&
-            typeof row.personId==="string"&&!activelyRegisteredPeople.has(row.personId);
-        }),
-        grouped=new Map();
-      for(const doc of orphanEnrollments){
-        const row=doc.data(),group=grouped.get(row.personId)||[];
-        group.push({
-          enrollmentId:doc.id,expectedRevision:Number(row.revision)||1,
-          offeringId:row.offeringId||null,yearId:row.yearId||null,termId:row.termId||null,
-          sectionId:row.sectionId||null,subjectId:row.subjectId||null,
-          registrationId:row.registrationId||null
-        });
-        grouped.set(row.personId,group);
-      }
-      const personIds=[...grouped.keys()];
-      if(personIds.length>100)deny("resource-exhausted",
-        "Too many students have pre-canonical active enrollments for one reconciliation page.");
-      const people=await Promise.all(personIds.map(personId=>
-        db.doc(root+"people/"+checkId(personId,"Person ID",128)).get()));
-      const legacyItems=personIds.map((personId,index)=>{
-        const person=people[index],enrollments=grouped.get(personId)||[];
-        if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student")
-          return null;
+        }));
+    }
+
+    if(input.action==="list_registrations"){
+      const pageSize=80,cursor=input.cursor?checkId(input.cursor,"Registration cursor",128):null;
+      let query=db.collection(root+"student_registrations").orderBy(FieldPath.documentId()).limit(pageSize+1);
+      if(cursor)query=query.startAfter(cursor);
+      const snap=await query.get(),page=snap.docs.slice(0,pageSize);
+      return {items:registrationRows(page),nextCursor:snap.size>pageSize?page.at(-1).id:null};
+    }
+
+    if(input.action==="list_progression_cohort"){
+      const yearId=checkId(input.yearId,"Academic year"),termId=checkId(input.termId,"Academic period"),sectionId=checkId(input.sectionId,"Section");
+      const snap=await db.collection(root+"student_registrations").where("yearId","==",yearId).where("termId","==",termId).where("sectionId","==",sectionId).where("status","==","active").limit(61).get();
+      if(snap.size===61)deny("resource-exhausted","This cohort exceeds 60 active registrations. Use individual progression for larger cohorts.");
+      return {items:registrationRows(snap.docs)};
+    }
+
+    if(input.action==="list_legacy_candidates"){
+      const cursor=input.cursor?checkId(input.cursor,"Legacy scan cursor",128):null,pageSize=30;
+      let query=db.collection(root+"enrollments").where("status","==","active").orderBy(FieldPath.documentId()).limit(pageSize+1);
+      if(cursor)query=query.startAfter(cursor);
+      const snap=await query.get(),page=snap.docs.slice(0,pageSize),peopleIds=[...new Set(page.filter(doc=>doc.data().schoolId===ctx.schoolId&&typeof doc.data().personId==="string").map(doc=>doc.data().personId))];
+      let blockedCount=0;
+      const candidates=await Promise.all(peopleIds.map(async personId=>{
+        checkId(personId,"Person ID",128);
+        const [person,registrations]=await Promise.all([db.doc(root+"people/"+personId).get(),db.collection(root+"student_registrations").where("personId","==",personId).limit(51).get()]);
+        if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student")return null;
+        if(registrations.size===51){blockedCount++;return null;}
+        if(registrations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&(doc.data().status||"active")==="active"))return null;
+        const all=await db.collection(root+"enrollments").where("personId","==",personId).limit(101).get();
+        if(all.size===101){blockedCount++;return null;}
+        const enrollments=all.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().personId===personId&&doc.data().status==="active").map(doc=>({
+          enrollmentId:doc.id,expectedRevision:Number(doc.data().revision)||1,offeringId:doc.data().offeringId||null,
+          yearId:doc.data().yearId||null,termId:doc.data().termId||null,sectionId:doc.data().sectionId||null,
+          subjectId:doc.data().subjectId||null,registrationId:doc.data().registrationId||null
+        }));
+        if(!enrollments.length)return null;
         const row=person.data();
-        return {
-          personId,displayName:row.displayName||"Student",studentNumber:row.studentNumber||"",
-          personStatus:row.status||"active",courseCount:enrollments.length,
-          sectionIds:[...new Set(enrollments.map(item=>item.sectionId).filter(Boolean))],
-          yearIds:[...new Set(enrollments.map(item=>item.yearId).filter(Boolean))],
-          termIds:[...new Set(enrollments.map(item=>item.termId).filter(Boolean))],
-          hasRegistrationLinkedEnrollment:enrollments.some(item=>Boolean(item.registrationId)),
-          enrollments
-        };
-      }).filter(Boolean).sort((a,b)=>a.displayName.localeCompare(b.displayName));
-      return {items,legacyItems};
+        return {personId,displayName:row.displayName||"Student",studentNumber:row.studentNumber||"",personStatus:row.status||"active",
+          courseCount:enrollments.length,sectionIds:[...new Set(enrollments.map(item=>item.sectionId).filter(Boolean))],
+          yearIds:[...new Set(enrollments.map(item=>item.yearId).filter(Boolean))],termIds:[...new Set(enrollments.map(item=>item.termId).filter(Boolean))],
+          hasRegistrationLinkedEnrollment:enrollments.some(item=>Boolean(item.registrationId)),manualReview:enrollments.length>80,enrollments};
+      }));
+      return {items:candidates.filter(Boolean),nextCursor:snap.size>pageSize?page.at(-1).id:null,blockedCount};
     }
 
     if(input.action==="end_orphan_enrollments"){
@@ -871,9 +868,10 @@ function createSchoolEnrollmentService({db}){
         auditRef=db.collection(root+"directory_audit").doc();
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
-        const [person,registrationCheck,...records]=await Promise.all([
+        const [person,registrationCheck,liveEnrollments,...records]=await Promise.all([
           tx.get(personRef),
           tx.get(db.collection(root+"student_registrations").where("personId","==",personId).limit(51)),
+          tx.get(db.collection(root+"enrollments").where("personId","==",personId).limit(101)),
           ...refs.map(ref=>tx.get(ref))
         ]);
         if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
@@ -885,6 +883,8 @@ function createSchoolEnrollmentService({db}){
           (doc.data().status||"active")==="active"))
           deny("failed-precondition",
             "An official registration was created after preview. Refresh before changing legacy enrollments.");
+        if(liveEnrollments.size===101||JSON.stringify(liveEnrollments.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active").map(doc=>doc.id).sort())!==JSON.stringify(expectedIds))
+          deny("failed-precondition","Active legacy enrollments changed after preview. Refresh before reconciling.");
         const now=FieldValue.serverTimestamp();
         records.forEach((record,index)=>{
           const reviewed=expected[index];
