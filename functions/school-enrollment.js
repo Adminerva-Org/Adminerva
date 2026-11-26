@@ -200,6 +200,8 @@ function createSchoolEnrollmentService({db}){
     }
 
     if(ADMISSION_DOCUMENT_ACTIONS.has(input.action))return admissionDocumentAction({db,ctx,input});
+    if(ctx.platformOverride&&["register_student","bind_returning_application","correct_application"].includes(input.action)&&String(input.platformMode||"").toLowerCase()!=="assist")
+      deny("failed-precondition","System Admin preview is read-only. Choose Assist school for audited changes.");
     const templateRef=type=>db.doc(root+"configuration/admission_requirements_"+admissionType(type));
     function readTemplate(doc,type){
       if(!doc.exists)return {type,revision:0,labels:[]};
@@ -262,8 +264,8 @@ function createSchoolEnrollmentService({db}){
         deny("failed-precondition","Only an active registration can be progressed.");
       const personId=checkId(source.personId,"Person ID",128),
         personRef=db.doc(root+"people/"+personId),
-        enrollmentQuery=db.collection(root+"enrollments").where("personId","==",personId).limit(251),
-        offeringQuery=db.collection(root+"course_offerings").limit(251),
+        enrollmentQuery=db.collection(root+"enrollments").where("personId","==",personId).where("status","==","active").limit(251),
+        offeringQuery=db.collection(root+"course_offerings").where("sectionId","==",source.sectionId).where("yearId","==",source.yearId).where("termId","==",source.termId).limit(251),
         termQuery=db.collection(root+"terms").where("yearId","==",source.yearId).limit(51),
         [person,enrollmentSnap,offeringSnap,termSnap]=await Promise.all([
           read(personRef),read(enrollmentQuery),read(offeringQuery),read(termQuery)
@@ -380,7 +382,9 @@ function createSchoolEnrollmentService({db}){
         if(targetStudentEmailRequired&&!person.data().authUid&&!person.data().activationEmailHash)
           blockers.push({type:"student_identity_required",
             message:"The target grade requires a student sign-in identity. Prepare the student's activation email or link their verified account in People & Access before progression."});
-        targetOfferings=offeringSnap.docs.filter(doc=>{
+        const targetOfferingSnap=await read(db.collection(root+"course_offerings").where("sectionId","==",sectionId).where("yearId","==",yearId).where("termId","==",termId).limit(251));
+        if(targetOfferingSnap.size===251)deny("resource-exhausted","Target section offering history requires pagination.");
+        targetOfferings=targetOfferingSnap.docs.filter(doc=>{
           const row=doc.data();
           return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId&&
             row.programId===programId&&row.termId===termId&&row.sectionId===sectionId&&
@@ -413,6 +417,27 @@ function createSchoolEnrollmentService({db}){
         canApply:blockers.length===0};
     }
 
+    if(input.action==="registrar_summary"){
+      const yearId=checkId(input.yearId,"Academic year"),termId=input.termId?checkId(input.termId,"Academic period"):null;
+      const year=await db.doc(root+"academic_years/"+yearId).get();
+      if(!year.exists||year.data().schoolId!==ctx.schoolId)deny("not-found","Academic year not found.");
+      if(termId){const term=await db.doc(root+"terms/"+termId).get();if(!term.exists||term.data().schoolId!==ctx.schoolId||term.data().yearId!==yearId)deny("failed-precondition","Choose a period in the selected year.");}
+      const applications=db.collection(root+"enrollment_applications").where("schoolId","==",ctx.schoolId).where("yearId","==",yearId);
+      let registrations=db.collection(root+"student_registrations").where("schoolId","==",ctx.schoolId).where("yearId","==",yearId);
+      if(termId)registrations=registrations.where("termId","==",termId);
+      const requests=db.collection(root+"student_document_requests").where("schoolId","==",ctx.schoolId);
+      const count=async query=>Number((await query.count().get()).data().count)||0;
+      const groups=[
+        {key:"applications",query:applications,values:["submitted","needs_information","accepted","enrolled","rejected","withdrawn"]},
+        {key:"registrations",query:registrations,values:["active","ended"]},
+        {key:"documentRequests",query:requests,values:["requested","in_review","ready","released","cancelled"]}
+      ];
+      const rows=await Promise.all(groups.map(async group=>{
+        const counts=await Promise.all([count(group.query),...group.values.map(value=>count(group.query.where("status","==",value)))]);
+        return [group.key,{total:counts[0],statuses:Object.fromEntries(group.values.map((value,index)=>[value,counts[index+1]]))}];
+      }));
+      return {yearId,termId,asOf:Date.now(),...Object.fromEntries(rows)};
+    }
     if(input.action==="catalog"){
       const names=["academic_years","academic_programs","terms","sections","subjects","course_offerings"];
       const snaps=await Promise.all(names.map(name=>db.collection(root+name).limit(250).get()));
@@ -1672,7 +1697,7 @@ function createSchoolEnrollmentService({db}){
 
         const accountLinked=person.exists&&Boolean(person.data().authUid);
         const registrationData={
-          schoolId:ctx.schoolId,personId,displayName,studentNumber,birthDate,
+          schoolId:ctx.schoolId,personId,displayName,studentNumber:studentNumber||(person.exists?person.data().studentNumber||null:null),birthDate,
           guardianName,guardianRelationship,guardianEmail,guardianMobile,
           studentEmailType,studentEmailRequired,accountResponsibility,
           yearId,programId,termId,sectionId,gradeLevel,status:"active",
