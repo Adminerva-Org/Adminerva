@@ -24,7 +24,7 @@ const requestVersions={catalog:0,applications:0,registrations:0,legacy:0};
 let registrationCursor=null,registrationBusy=false,legacyCursor=null,legacyBusy=false,legacyScanned=false,legacyBlocked=0;
 let refreshVersion=0,progressionPreviewRun=0,historyRun=0,cohortRun=0;
 let activeEnrollmentView="registrations";
-const enrollmentViews={registrations:["en-registrations","en-legacy-reconciliation-card","en-admin-tools"],applications:["en-applications"],register:["en-register"],progression:["en-progression"],activation:["en-activation"]};
+const enrollmentViews={registrations:["en-registrations","en-legacy-reconciliation-card","en-admin-tools"],applications:["en-applications"],register:["en-register"],progression:["en-progression"],activation:["en-activation"],reports:["en-reports"]};
 function showEnrollmentView(view){
   if(!Object.hasOwn(enrollmentViews,view))return;
   activeEnrollmentView=view;
@@ -191,7 +191,7 @@ async function loadCatalog(){
     if((catalog.sections||[]).some(row=>row.id===previousSection))sectionFilter.value=previousSection;
   }
   refreshPlacement();
-  refreshCohortOptions();
+  refreshCohortOptions();refreshReportYears();
   return true;
 }
 function registrationLabel(row){
@@ -1265,6 +1265,49 @@ async function reviewApplication(item,nextStatus){
   }catch(error){status.textContent=error?.message||"Application review was not saved.";}
   finally{setSaving(false);}
 }
+let reportData=null,reportRun=0;
+function clearReport(){
+  ++reportRun;reportData=null;get("en-report-results").replaceChildren();get("en-report-export").disabled=true;get("en-report-status").textContent="";
+}
+function refreshReportTerms(){
+  const yearId=get("en-report-year").value,term=get("en-report-term");term.replaceChildren(new Option("All periods",""));
+  for(const row of (catalog.terms||[]).filter(row=>row.yearId===yearId))term.append(new Option(row.name||row.id,row.id));
+  term.value="";clearReport();
+}
+function refreshReportYears(){
+  options(get("en-report-year"),catalog.years||[],"Choose academic year");refreshReportTerms();
+}
+get("en-report-year").addEventListener("change",refreshReportTerms);
+get("en-report-term").addEventListener("change",clearReport);
+const reportGroups=[["applications","Admissions · academic year"],["registrations","Registration records · selected period"],["documentRequests","Document requests · all years"]];
+function reportLabel(value){return value.replaceAll("_"," ");}
+function renderReport(data){
+  const host=get("en-report-results");host.replaceChildren();
+  for(const [key,label] of reportGroups){
+    const card=document.createElement("section");card.className="en-summary";
+    const title=document.createElement("h3");title.className="font-bold";title.textContent=label;card.append(title);
+    const total=document.createElement("p");total.className="text-xl font-extrabold";total.textContent=String(data[key].total);card.append(total);
+    for(const [state,count] of Object.entries(data[key].statuses)){
+      const row=document.createElement("p");row.className="en-muted";row.textContent=reportLabel(state)+" · "+count;card.append(row);
+    }
+    host.append(card);
+  }
+  get("en-report-status").textContent="Generated "+dateLabel(data.asOf)+" · Counts are records, not unique student headcounts.";
+  get("en-report-export").disabled=false;
+}
+get("en-report-load").addEventListener("click",()=>void (async()=>{
+  if(saving)return;const yearId=get("en-report-year").value,termId=get("en-report-term").value;
+  if(!yearId){get("en-report-status").textContent="Choose an academic year.";return;}
+  clearReport();const run=reportRun;get("en-report-status").textContent="Generating…";
+  try{const result=await perform("registrar_summary",{yearId,termId});if(run!==reportRun)return;reportData=result;renderReport(result);}
+  catch(error){if(run===reportRun)get("en-report-status").textContent=error?.message||"Summary unavailable.";}
+})());
+get("en-report-export").addEventListener("click",()=>{
+  if(!reportData||saving)return;
+  const rows=[["year_id","term_id","scope","status","record_count","generated_at"],...reportGroups.flatMap(([key])=>[["total",reportData[key].total],...Object.entries(reportData[key].statuses)].map(([state,count])=>[reportData.yearId,key==="registrations"?reportData.termId||"all":"all",key,state,count,new Date(reportData.asOf).toISOString()]))];
+  const csv=rows.map(row=>row.map(value=>'"'+String(value).replaceAll('"','""')+'"').join(",")).join("\r\n");
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="registrar-summary.csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
 let applications=[],applicationCursor=null,applicationBusy=false;
 let selectedApplications=new Map(),bulkReview=null;
 function updateBulkControls(){
@@ -1529,7 +1572,7 @@ picker=createTenantSchoolPicker({
     if(correctionReview&&!confirm("Discard the open correction?"))throw new Error("Finish the correction before switching schools.");
     if(correctionReview)closeCorrection();
     if(documentReview)closeDocuments();
-    if(bulkReview)closeBulk();selectedApplications.clear();
+    if(bulkReview)closeBulk();selectedApplications.clear();clearReport();get("en-report-year").replaceChildren();get("en-report-term").replaceChildren();
     if(get("en-template-dialog").open&&!confirm("Discard the open template editor?"))throw new Error("Finish the template edit before switching schools.");
     closeTemplateEditor();get("en-template-open").hidden=true;
     ++refreshVersion;requestedPersonId="";activeEnrollmentView="registrations";
