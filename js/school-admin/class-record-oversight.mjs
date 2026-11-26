@@ -298,7 +298,7 @@ custodyForm.addEventListener("submit",event=>void (async()=>{
     const result=await scoped("preview_legacy_custody",custodyFields());
     verifiedCustody=result;custodyApproval.hidden=false;
     custodyStatus.textContent=(result.originalTitle||"Historical assessment")+" · "+
-      result.originalSection+" · "+result.verifiedStudentCount+" / "+result.rosterCount+
+      (result.originalSection||"No original section — matched by assessment student IDs")+" · "+result.verifiedStudentCount+" / "+result.rosterCount+
       " student identities verified (minimum "+result.requiredStudentCount+"). "+
       result.originalSourceRecordCount+" original submitted-evidence or grade record(s) matched. "+
       (result.eligible?"Ready for School Administrator approval.":
