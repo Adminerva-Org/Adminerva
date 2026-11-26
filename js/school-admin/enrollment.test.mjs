@@ -42,6 +42,7 @@ function harness(){
   for(const field of cohortForm.elements)cohortForm.elements[field.name]=field;
   cohortForm.reset=()=>{for(const field of cohortForm.elements)field.value="";};
   cohortForm.reportValidity=()=>true;
+  for(const id of ["en-clearance-form","en-clearance-policy-form"]){const dialogForm=get(id);dialogForm.reset=()=>{for(const control of dialogForm.children){control.value="";control.checked=false;}};}
   const actionButton=new Element(),requests=[];
   let allowDiscard=true,pickerOptions;
   const scope={current:{schoolId:"manila-cathedral-school",roles:["school_admin"],enrollmentMode:"canonical"},lease:()=>({schoolId:"manila-cathedral-school",uid:"admin"}),assertLease(){}};
@@ -338,4 +339,13 @@ test("bulk selection cannot combine unrelated academic years or grades",()=>{
   h.context.selectBulkApplication({...h.applicant,applicationId:"different",yearId:"old-year"},true);
   assert.equal(h.get("en-bulk-open").textContent,"Enroll selected (1)");
   assert.match(h.get("en-status").textContent,/same school year and incoming grade/);
+});
+
+
+test("clearance pending prevents individual and bulk enrollment selection",()=>{
+  const h=harness(),blocked={...h.applicant,clearanceRequired:true,clearanceReady:false};
+  h.context.loadApplicationIntoForm(blocked);
+  assert.equal(h.form.elements.applicationId.value,"");
+  h.context.selectBulkApplication(blocked,true);
+  assert.match(h.get("en-status").textContent,/complete requirements and clearance/);
 });
