@@ -5,7 +5,7 @@ const {createHash}=require("node:crypto");
 const {FieldValue}=require("firebase-admin/firestore");
 const {TenantAccessError}=require("./tenant-access.js");
 const {externalView}=require("./school-external-academic-records.js");
-const ACTIONS=new Set(["academic_record_years","academic_record_packet","get_certificate_template","save_certificate_template","prepare_enrollment_certificate","get_enrollment_certificate","issue_enrollment_certificate","revoke_enrollment_certificate","verify_enrollment_certificate"]);
+const ACTIONS=new Set(["academic_record_years","academic_record_packet","get_certificate_template","save_certificate_template","prepare_enrollment_certificate","get_enrollment_certificate","issue_enrollment_certificate","revoke_enrollment_certificate","verify_enrollment_certificate","record_good_moral_attestation"]);
 function canonicalValue(value){
   if(Array.isArray(value))return value.map(canonicalValue);
   if(value&&typeof value==="object")return Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonicalValue(value[key])]));
@@ -18,6 +18,24 @@ function id(raw,max=128){if(typeof raw!=="string"||!new RegExp("^[A-Za-z0-9][A-Z
 function str(raw,label,max=160,required=true){const s=typeof raw==="string"?raw.trim():"";if((required&&!s)||s.length>max)deny("invalid-argument","Review "+label+".");return s;}
 function revision(value,min=1){if(!Number.isSafeInteger(value)||value<min)deny("invalid-argument","Refresh the record before continuing.");return value;}
 function own(doc,schoolId){return doc.exists&&doc.data().schoolId===schoolId;}
+const CREDENTIAL_TYPES=Object.freeze({
+  certificate_of_enrollment:{prefix:"COE",title:"Certificate of Enrollment"},
+  graduation_certificate:{prefix:"GRAD",title:"Certificate of Graduation"},
+  transfer_certificate:{prefix:"TRF",title:"Certificate of Transfer-out"},
+  good_moral_certificate:{prefix:"GMC",title:"Certificate of Good Moral Character"}
+});
+function credentialType(type="certificate_of_enrollment"){
+  if(!Object.hasOwn(CREDENTIAL_TYPES,type))deny("invalid-argument","Choose an institutional certificate type.");
+  return type;
+}
+function eligibleRegistration(type,row){
+  if(!row)return false;
+  if(type==="certificate_of_enrollment")return row.status==="active";
+  if(type==="graduation_certificate")return row.status==="ended"&&row.endReasonType==="progression"&&row.progressionType==="graduation";
+  if(type==="transfer_certificate")return row.status==="ended"&&row.endReasonType==="transfer_out"&&!row.progressionType;
+  if(type==="good_moral_certificate")return row.status==="active"||(row.status==="ended"&&["transfer_out","progression","withdrawal"].includes(row.endReasonType));
+  return false;
+}
 function certificateTemplate(input){
   return {signatoryName:str(input.signatoryName,"signatory name"),signatoryTitle:str(input.signatoryTitle,"signatory title",100),
     schoolAddress:str(input.schoolAddress,"school address",220,false),schoolIdentifier:str(input.schoolIdentifier,"school identifier",80,false)};
@@ -28,8 +46,8 @@ function releasedGrade(row,schoolId,personId,offeringId,releasedRevision){
 }
 async function registrarCredentialAction({db,ctx,input,requireMembership,student}){
   const root="schools/"+ctx.schoolId+"/",schoolRef=db.doc("platform_schools/"+ctx.schoolId),
-    memberRef=db.doc(root+"memberships/"+ctx.uid),
-    templateRef=db.doc(root+"configuration/registrar_enrollment_certificate");
+    memberRef=db.doc(root+"memberships/"+ctx.uid);
+  const templateRef=type=>db.doc(root+"configuration/registrar_"+(type==="certificate_of_enrollment"?"enrollment_certificate":credentialType(type)));
   await requireMembership(ref=>ref.get());
   const audit=(personId,action,extra={})=>({schoolId:ctx.schoolId,personId,actorUid:ctx.uid,action,...extra,createdAt:FieldValue.serverTimestamp()});
   function template(doc){
@@ -127,24 +145,24 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
       rows:rows.sort((a,b)=>a.yearName.localeCompare(b.yearName)||a.termName.localeCompare(b.termName)||a.subjectName.localeCompare(b.subjectName)),
       externalRecords,blockers,completeWithinScope:blockers.length===0,officialForm:false,generatedAt:Date.now()};
   }
-  if(input.action==="get_certificate_template")return template(await templateRef.get());
+  if(input.action==="get_certificate_template"){const type=credentialType(input.type);return {type,...template(await templateRef(type).get())};}
   if(input.action==="save_certificate_template"){
-    const details=certificateTemplate(input),expected=revision(input.expectedRevision,0),reason=str(input.reason,"change reason",500);
+    const type=credentialType(input.type),ref=templateRef(type),details=certificateTemplate(input),expected=revision(input.expectedRevision,0),reason=str(input.reason,"change reason",500);
     if(reason.length<8)deny("invalid-argument","Record a template change reason.");
     await db.runTransaction(async tx=>{
       await requireMembership(ref=>tx.get(ref));
-      const [member,current]=await Promise.all([tx.get(memberRef),tx.get(templateRef)]);
+      const [member,current]=await Promise.all([tx.get(memberRef),tx.get(ref)]);
       if(!own(member,ctx.schoolId)||!member.data().roles?.includes("school_admin"))deny("permission-denied","Only a verified School Administrator may configure signatories.");
       const previous=template(current);if(previous.revision!==expected)deny("failed-precondition","Template changed. Refresh.");
       const now=FieldValue.serverTimestamp(),payload={schoolId:ctx.schoolId,...details,revision:expected+1,updatedAt:now,updatedByUid:ctx.uid};
-      if(current.exists)tx.update(templateRef,payload);else tx.create(templateRef,payload);
-      tx.create(db.collection(root+"student_records_audit").doc(),audit(null,"certificate_template_saved",{reason,revision:expected+1}));
+      if(current.exists)tx.update(ref,payload);else tx.create(ref,payload);
+      tx.create(db.collection(root+"student_records_audit").doc(),audit(null,"certificate_template_saved",{type,reason,revision:expected+1}));
     });
-    return {...details,revision:expected+1};
+    return {type,...details,revision:expected+1};
   }
   if(input.action==="verify_enrollment_certificate"){
     const reference=str(input.reference,"certificate reference",100).toUpperCase();
-    if(!/^COE-[A-Z0-9]{20,64}$/.test(reference))deny("invalid-argument","Enter the certificate's Adminerva reference.");
+    if(!/^(COE|GRAD|TRF|GMC)-[A-Z0-9]{20,64}$/.test(reference))deny("invalid-argument","Enter the certificate's Adminerva reference.");
     const snap=await db.collection(root+"student_document_requests").where("releaseReference","==",reference).limit(2).get();
     if(snap.size!==1||!own(snap.docs[0],ctx.schoolId)||snap.docs[0].data().generationMode!=="institutional")return {state:"not_found"};
     const row=snap.docs[0].data();if(row.status!=="released"||!row.issuedCertificate)return {state:"not_found"};
@@ -152,21 +170,28 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
     await db.collection(root+"student_records_audit").add(audit(row.personId,"enrollment_certificate_reference_checked",{requestId:snap.docs[0].id}));
     return {state:row.credentialState==="revoked"?"revoked":"recorded",reference,issuedAt:row.issuedAt?.toMillis?.()||null,
       studentName:row.issuedCertificate.studentName,yearName:row.issuedCertificate.yearName,termName:row.issuedCertificate.termName,
-      signatureVerified:false};
+      type:row.type,signatureVerified:false};
   }
   const requestId=id(input.requestId),requestRef=db.doc(root+"student_document_requests/"+requestId);
   function checkRequest(doc){
-    if(!own(doc,ctx.schoolId)||doc.data().type!=="certificate_of_enrollment"||doc.data().generationMode!=="institutional")
+    if(!own(doc,ctx.schoolId)||!Object.hasOwn(CREDENTIAL_TYPES,doc.data().type)||doc.data().generationMode!=="institutional")
       deny("not-found","Institutional certificate request not found.");
     return doc.data();
   }
   async function snapshot(row,registrationId,read){
+    const type=credentialType(row.type);
     const personId=id(row.personId),[person,school,config,reg]=await Promise.all([
-      read(db.doc(root+"people/"+personId)),read(schoolRef),read(templateRef),read(db.doc(root+"student_registrations/"+id(registrationId)))
+      read(db.doc(root+"people/"+personId)),read(schoolRef),read(templateRef(type)),read(db.doc(root+"student_registrations/"+id(registrationId)))
     ]);
-    if(!own(person,ctx.schoolId)||person.data().kind!=="student"||person.data().status!=="active"||
-       !own(reg,ctx.schoolId)||reg.data().personId!==personId||reg.data().status!=="active")
-      deny("failed-precondition","A current active official registration is required for this certificate.");
+    if(!own(person,ctx.schoolId)||person.data().kind!=="student"||!["active","archived"].includes(person.data().status)||
+       !own(reg,ctx.schoolId)||reg.data().personId!==personId||!eligibleRegistration(type,reg.data())||
+       (type==="certificate_of_enrollment"&&person.data().status!=="active"))
+      deny("failed-precondition","The selected official registration is not eligible for this certificate.");
+    if(type==="good_moral_certificate"){
+      const attestation=row.moralAttestation;
+      if(!attestation||attestation.status!=="approved"||attestation.registrationId!==registrationId||attestation.registrationRevision!==(Number(reg.data().revision)||1)||attestation.personRevision!==(Number(person.data().revision)||1))
+        deny("failed-precondition","A current School Administrator attestation of the authorized office's documented approval is required.");
+    }
     if(!school.exists||!["active","pilot"].includes(school.data().state))deny("failed-precondition","School is not active.");
     const t=template(config);if(!t.revision)deny("failed-precondition","School Administrator must configure the certificate signatory first.");
     const r=reg.data(),[yearName,termName,programName,sectionName]=await Promise.all([
@@ -175,7 +200,8 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
     return {templateRevision:t.revision,registrationId,registrationRevision:Number(r.revision)||1,personRevision:Number(person.data().revision)||1,
       schoolName:str(school.data().displayName||school.data().name,"school name"),schoolAddress:t.schoolAddress,schoolIdentifier:t.schoolIdentifier,
       studentName:str(person.data().displayName,"student name"),studentNumber:person.data().studentNumber||"",yearName,termName,programName,sectionName,
-      gradeLevel:r.gradeLevel||"",purpose:row.purpose||"",signatoryName:t.signatoryName,signatoryTitle:t.signatoryTitle};
+      gradeLevel:r.gradeLevel||"",purpose:row.purpose||"",signatoryName:t.signatoryName,signatoryTitle:t.signatoryTitle,
+      ...(type==="certificate_of_enrollment"?{}:{type,title:CREDENTIAL_TYPES[type].title,registrationOutcome:r.endReasonType||"active",...(type==="good_moral_certificate"?{attestationReference:row.moralAttestation.reference,attestationOffice:row.moralAttestation.office,attestationRevision:row.moralAttestation.revision}:{})})};
   }
   if(input.action==="get_enrollment_certificate"){
     const row=checkRequest(await requestRef.get());
@@ -184,11 +210,28 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
       if(row.issuedDigest!==certificateDigest(row.issuedCertificate))deny("data-loss","Certificate snapshot integrity check failed.");
       return {state:row.credentialState||"issued",reference:row.releaseReference,issuedAt:row.issuedAt?.toMillis?.()||null,certificate:row.issuedCertificate,revision:Number(row.revision)||1};
     }
-    const placements=await bounded(db.collection(root+"student_registrations").where("personId","==",row.personId).where("status","==","active"),50,"Active placements");
-    return {state:row.status,revision:Number(row.revision)||1,certificate:row.certificateDraft||null,
+    const placements=(await bounded(db.collection(root+"student_registrations").where("personId","==",row.personId),100,"Official placements")).filter(doc=>eligibleRegistration(row.type,doc.data()));
+    return {type:row.type,state:row.status,revision:Number(row.revision)||1,certificate:row.certificateDraft||null,attestation:row.moralAttestation?{status:row.moralAttestation.status,registrationId:row.moralAttestation.registrationId,reference:row.moralAttestation.reference,office:row.moralAttestation.office}:null,
       placements:await Promise.all(placements.map(async doc=>({registrationId:doc.id,label:[await label(ref=>ref.get(),"academic_years",doc.data().yearId),await label(ref=>ref.get(),"terms",doc.data().termId),await label(ref=>ref.get(),"sections",doc.data().sectionId)].join(" · ")})))};
   }
   const expected=revision(input.expectedRevision);
+  if(input.action==="record_good_moral_attestation"){
+    const registrationId=id(input.registrationId),reference=str(input.reference,"authorized office reference",150),office=str(input.office,"authorized office",120),reason=str(input.reason,"review reason",500);
+    if(reason.length<12||input.confirmSourceReviewed!==true)deny("invalid-argument","Confirm documented approval from the authorized office.");
+    await db.runTransaction(async tx=>{
+      await requireMembership(ref=>tx.get(ref));
+      const [member,requestDoc,reg]=await Promise.all([tx.get(memberRef),tx.get(requestRef),tx.get(db.doc(root+"student_registrations/"+registrationId))]);
+      const row=checkRequest(requestDoc);
+      if(!own(member,ctx.schoolId)||!member.data().roles?.includes("school_admin"))deny("permission-denied","A verified School Administrator must record the authorized office approval.");
+      if(row.type!=="good_moral_certificate"||!["in_review","ready"].includes(row.status)||Number(row.revision)!==expected)deny("failed-precondition","Refresh the Good Moral request before recording approval.");
+      const person=await student(id(row.personId),ref=>tx.get(ref));
+      if(!own(reg,ctx.schoolId)||reg.data().personId!==row.personId||!eligibleRegistration(row.type,reg.data()))deny("failed-precondition","Select an eligible official registration.");
+      const now=FieldValue.serverTimestamp(),attestation={status:"approved",registrationId,registrationRevision:Number(reg.data().revision)||1,personRevision:Number(person.data.revision)||1,reference,office,revision:expected+1,recordedByUid:ctx.uid,recordedAt:now};
+      tx.update(requestRef,{moralAttestation:attestation,certificateDraft:FieldValue.delete(),certificateDraftDigest:FieldValue.delete(),status:"in_review",revision:expected+1,updatedAt:now});
+      tx.create(requestRef.collection("certificate_revisions").doc(String(expected+1)),{schoolId:ctx.schoolId,personId:row.personId,state:"attested",attestation,createdAt:now,actorUid:ctx.uid});
+      tx.create(db.collection(root+"student_records_audit").doc(),audit(row.personId,"good_moral_attestation_recorded",{requestId,reason,revision:expected+1}));
+    });return {revision:expected+1,state:"in_review"};
+  }
   if(input.action==="prepare_enrollment_certificate"){
     const registrationId=id(input.registrationId);
     let draft;
@@ -207,19 +250,19 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
   if(input.action==="issue_enrollment_certificate"){
     const reason=str(input.reason,"release confirmation",500);
     if(reason.length<12||input.confirmRelease!==true)deny("invalid-argument","Confirm that the certificate is ready for institutional release.");
-    const reference="COE-"+hash(ctx.schoolId,requestId).slice(0,32).toUpperCase();
-    let issued;
+    let issued,reference;
     await db.runTransaction(async tx=>{
       await requireMembership(ref=>tx.get(ref));
       const row=checkRequest(await tx.get(requestRef));
       if(Number(row.revision)!==expected||row.status!=="ready"||!row.certificateDraft)deny("failed-precondition","Prepare and approve the certificate before release.");
       issued=await snapshot(row,row.certificateDraft.registrationId,ref=>tx.get(ref));
+      reference=CREDENTIAL_TYPES[row.type].prefix+"-"+hash(ctx.schoolId,requestId).slice(0,32).toUpperCase();
       if(certificateDigest(issued)!==row.certificateDraftDigest)deny("failed-precondition","Source registration, student or template changed. Prepare and approve a new draft.");
       const now=FieldValue.serverTimestamp();
       tx.update(requestRef,{status:"released",credentialState:"issued",issuedCertificate:issued,issuedDigest:certificateDigest(issued),releaseReference:reference,
         issuedAt:now,issuedByUid:ctx.uid,releasedAt:now,releasedByUid:ctx.uid,revision:expected+1,updatedAt:now,updatedByUid:ctx.uid});
       tx.create(requestRef.collection("certificate_revisions").doc(String(expected+1)),{schoolId:ctx.schoolId,personId:row.personId,state:"issued",certificate:issued,digest:certificateDigest(issued),reference,createdAt:now,actorUid:ctx.uid});
-      tx.create(db.collection(root+"student_records_audit").doc(),audit(row.personId,"enrollment_certificate_issued",{requestId,reference,reason,revision:expected+1}));
+      tx.create(db.collection(root+"student_records_audit").doc(),audit(row.personId,"enrollment_certificate_issued",{type:row.type,requestId,reference,reason,revision:expected+1}));
     });
     return {state:"issued",reference,certificate:issued,revision:expected+1};
   }
@@ -237,4 +280,4 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
   }
   deny("invalid-argument","Unknown institutional record action.");
 }
-module.exports={ACTIONS,registrarCredentialAction,releasedGrade,certificateTemplate,certificateDigest};
+module.exports={ACTIONS,registrarCredentialAction,releasedGrade,certificateTemplate,certificateDigest,CREDENTIAL_TYPES,eligibleRegistration};
