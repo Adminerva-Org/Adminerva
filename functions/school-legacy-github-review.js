@@ -12,6 +12,7 @@ const {createHash}=require("node:crypto");
 const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {TenantAccessError}=require("./tenant-access.js");
 const {authorizedTeacherCustody,validCustody,custodySectionMatches,custodyMaximum,verifiedOriginalMaximum}=require("./school-legacy-custody.js");
+const {originalReceipt,originalActivityGrade}=require("./school-legacy-recovery-sources.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message)};
 const hash=(...items)=>createHash("sha256").update(JSON.stringify(items)).digest("hex");
 const validSha=value=>typeof value==="string"&&/^[a-f0-9]{40}$/i.test(value);
@@ -277,9 +278,13 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      // Original scalar grades can outlive evidence or use a different receipt
      // key. Show them as protected outcomes, but NEVER treat such rows as new
      // student-submitted evidence or enable edits without a verified receipt.
-     const gradePage=await db.collection("student_grades").where("taskId","==",id).limit(1001).get();
-     if(gradePage.size>=1001)
-       deny("resource-exhausted","The original grade ledger requires pagination.");
+     const [gradePage,earlierReceipts,activityPage]=await Promise.all([
+       db.collection("student_grades").where("taskId","==",id).limit(1001).get(),
+       db.collection("student_submissions").where("assessmentId","==",id).limit(1001).get(),
+       db.collection("activity_grades").where("taskId","==",id).limit(1001).get()
+     ]);
+     if([gradePage,earlierReceipts,activityPage].some(page=>page.size>=1001))
+       deny("resource-exhausted","The original submission or grade ledger requires pagination.");
      const seen=new Set(results.map(row=>row.studentId));
      let gradeOnly=0,publishedCount=0,draftCount=0;
      const byStudent=new Map(results.map(row=>[row.studentId,row]));
@@ -303,15 +308,64 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        if(seen.has(grade.studentId))continue;
        seen.add(grade.studentId);gradeOnly++;
        const person=await db.doc("students/"+grade.studentId).get();
-       results.push({evidenceId:null,studentId:grade.studentId,studentUid:grade.studentId,
+       const gradeRow={evidenceId:null,studentId:grade.studentId,studentUid:grade.studentId,
          studentName:clean(person.exists?person.data().name:grade.studentId,160),
          section:clean(grade.section,160),status:"grade_only",
          gradeOnly:true,hasSubmission:false,discoveryOnly:false,
          gradeStatus:grade.published===true?"published":"draft",reviewSuggested:grade.published!==true,awarded,
-         maxScore:maximum});
+         maxScore:maximum};
+       results.push(gradeRow);byStudent.set(grade.studentId,gradeRow);
+     }
+     const primaryIds=new Set(gradePage.docs.map(doc=>doc.data()).filter(row=>row.taskId===id).map(row=>row.studentId));
+     async function ensureRow(studentId,section){
+       if(byStudent.has(studentId))return byStudent.get(studentId);
+       const person=await db.doc("students/"+studentId).get();
+       const row={evidenceId:null,studentId,studentUid:studentId,studentName:clean(person.exists?person.data().name:studentId,160),
+         section:clean(section,160),hasSubmission:false,gradeStatus:null,awarded:null};
+       results.push(row);byStudent.set(studentId,row);return row;
+     }
+     // Keep earlier submitted checkpoint receipts as original, inspectable
+     // evidence. Never convert a checkpoint into a student-selected commit.
+     const receiptsByStudent=new Map();
+     for(const doc of earlierReceipts.docs){
+       const receipt=originalReceipt(doc,id);
+       if(!receipt||!inScope(receipt.studentId,receipt.section))continue;
+       const list=receiptsByStudent.get(receipt.studentId)||[];
+       list.push(receipt);receiptsByStudent.set(receipt.studentId,list);
+     }
+     for(const [studentId,list] of receiptsByStudent){
+       list.sort((a,b)=>b.submittedAt-a.submittedAt||a.receiptId.localeCompare(b.receiptId));
+       const row=await ensureRow(studentId,list[0].section);
+       row.originalReceipts=list.slice(0,20);
+       row.originalReceiptCount=list.length;
+       if(!row.hasSubmission){row.receiptOnly=true;row.status="historical_checkpoint_receipt";}
+     }
+     // An activity score is an original result, not a new grade. Do not
+     // prefer it over any primary student_grades record, even an invalid one.
+     const activitiesByStudent=new Map();
+     for(const doc of activityPage.docs){
+       const data=doc.data();
+       if(data.taskId!==id||typeof data.studentId!=="string"||!inScope(data.studentId,data.section))continue;
+       try{legacyDocumentId(data.studentId,"Historical student",220);}catch{continue;}
+       const list=activitiesByStudent.get(data.studentId)||[];
+       list.push(originalActivityGrade(doc,id));activitiesByStudent.set(data.studentId,list);
+     }
+     let activityGradeCount=0;
+     for(const [studentId,list] of activitiesByStudent){
+       if(primaryIds.has(studentId))continue;
+       const row=await ensureRow(studentId,list[0]?.section||"");
+       if(list.length!==1||!list[0]){
+         row.gradeException=true;row.hasSubmission=false;continue;
+       }
+       const grade=list[0];
+       Object.assign(row,{activityOnly:true,gradeStatus:grade.published===true?"published":"draft",
+         awarded:grade.score,maxScore:grade.maxScore,pending:grade.pending,reviewSuggested:grade.published!==true,
+         gradeRevision:Number(grade.gradeVersion||1),hasSubmission:false});
+       activityGradeCount++;if(grade.published===true)publishedCount++;else draftCount++;
      }
      return {task:taskInfo,evidence:results,coverage:{
        evidenceCount:rows.length,gradeCount:publishedCount+draftCount,
+       originalReceiptCount:[...receiptsByStudent.values()].reduce((sum,list)=>sum+list.length,0),activityGradeCount,
        evidenceExceptions:results.filter(row=>row.evidenceException).length,
        gradeExceptions:results.filter(row=>row.gradeException).length,
        publishedCount,draftCount,gradeOnly,evidenceWithoutGrade:
@@ -377,13 +431,14 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
    const auditRef=db.collection("grade_revisions").doc();
    let outcome;
    await db.runTransaction(async tx=>{
-     const [freshTask,freshImport,freshEvidence,prior,freshCustody,freshAssignment,freshMembership,freshOffering,originalGrades]=await Promise.all([
+     const [freshTask,freshImport,freshEvidence,prior,freshCustody,freshAssignment,freshMembership,freshOffering,originalGrades,activityGrades]=await Promise.all([
        tx.get(taskRef),tx.get(importRef),tx.get(record.ref),tx.get(gradeDocument),
        custody?tx.get(custody.ref):Promise.resolve(null),
        custody?tx.get(db.doc(prefix+"staff_assignments/"+require("./school-academics.js").rowKey(ctx.uid,legacyOfferingId))):Promise.resolve(null),
        custody?tx.get(db.doc(prefix+"memberships/"+ctx.uid)):Promise.resolve(null),
        custody?tx.get(db.doc(prefix+"course_offerings/"+legacyOfferingId)):Promise.resolve(null),
-       tx.get(db.collection("student_grades").where("taskId","==",id).limit(1001))
+       tx.get(db.collection("student_grades").where("taskId","==",id).limit(1001)),
+       tx.get(db.collection("activity_grades").where("taskId","==",id).limit(1001))
      ]);
      const sourceUnchanged=freshTask.exists&&
        freshTask.data().evalCriteria===taskData.evalCriteria&&
@@ -422,6 +477,9 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      }
      if(originalGrades.docs.some(doc=>doc.id!==recordId&&doc.data().studentId===meta.studentId))
        deny("failed-precondition","An original grade exists under another document ID. Reconcile it before grading.");
+     if(activityGrades.size>=1001)deny("resource-exhausted","Original activity grade reconciliation requires pagination.");
+     if(!prior.exists&&activityGrades.docs.some(doc=>doc.data().taskId===id&&doc.data().studentId===meta.studentId))
+       deny("failed-precondition","An original activity grade exists. Reconcile that result instead of creating a duplicate grade.");
      const before=prior.exists?prior.data():null;
      checkGrade(before,meta.studentId);
      const priorVersion=before?Number(before.gradeVersion||1):0;
