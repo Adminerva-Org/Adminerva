@@ -141,7 +141,8 @@ function updateStudentEmailPolicy(){
 function refreshPlacement(){
   const yearId=selected("yearId"),programId=selected("programId");
   const terms=catalog.terms.filter(row=>
-    (!yearId||row.yearId===yearId)&&(!programId||row.programId===programId));
+    (!yearId||row.yearId===yearId)&&(!programId||row.programId===programId)&&
+    !(loadedPerson?.activeRegistrations||[]).some(reg=>reg.yearId===row.yearId&&reg.termId===row.id));
   let sections=catalog.sections.filter(row=>!programId||row.programId===programId);
   if(loadedApplication?.incomingLevel)
     sections=sections.filter(row=>String(row.gradeLevel||"")===String(loadedApplication.incomingLevel));
@@ -481,7 +482,7 @@ function renderCohortResults(rows){
     name.textContent=row.item.displayName;meta.className="en-muted";
     const state=row.applied?"Applied":row.applyError?"Apply failed":row.preview?.canApply?"Ready":"Blocked";
     meta.textContent=[levelLabel(row.item.gradeLevel),state,
-      row.preview?.completion?.length?row.preview.completion.filter(item=>item.ready).length+"/"+row.preview.completion.length+" Final Grades ready":""]
+      row.preview?.completion?.length?row.preview.completion.filter(item=>item.ready).length+"/"+row.preview.completion.length+" Final Grades ready":"",row.preview?.admissionApplication?"Returning "+row.preview.admissionApplication.reference:""]
       .filter(Boolean).join(" · ");
     info.append(name,meta);
     const issues=row.preview?.blockers||[];
@@ -523,7 +524,7 @@ async function previewCohort(){
         targetTermId:selection.targetTermId,targetSectionId:selection.targetSectionId
       }:{})
     };
-    try{return {item,payload,preview:await perform("preview_progression",payload)};}
+    try{const preview=await perform("preview_progression",payload);return {item,payload:{...payload,expectedAdmissionApplicationId:preview.admissionApplication?.applicationId||null,expectedAdmissionRevision:preview.admissionApplication?.revision||null},preview};}
     catch(error){return {item,payload,preview:{canApply:false,blockers:[{message:error?.message||"Readiness check failed."}]}};}
   });
   if(run!==cohortRun)return;
@@ -562,7 +563,7 @@ get("en-cohort-apply").addEventListener("click",()=>{
         }catch(error){row.applyError=error?.message||"Progression failed.";failed++;}
         renderCohortResults(cohortPreview.rows);
       }
-      await loadRegistrations();
+      await Promise.allSettled([loadRegistrations(),loadApplications()]);
       get("en-cohort-apply").disabled=true;
       message.textContent=applied+" progression"+(applied===1?"":"s")+" applied · "+failed+
         " failed after final server revalidation · blocked learners were unchanged.";
@@ -654,7 +655,7 @@ async function updateProgressionPreview(){
         ?"student academic completion / graduation"
         :registrationLabel({...result.target,displayName:""});
       preview.textContent="Ready · "+result.completion.filter(item=>item.ready).length+
-        " released Final Grade"+(result.completion.length===1?"":"s")+" verified · "+destination+".";
+        " released Final Grade"+(result.completion.length===1?"":"s")+" verified · "+destination+(result.admissionApplication?" · Returning "+result.admissionApplication.reference:"")+".";
       confirm.disabled=false;
     }else{
       preview.textContent=(result.blockers||[]).length+
@@ -778,9 +779,9 @@ get("en-progression-form").addEventListener("submit",event=>{
   void (async()=>{
     setSaving(true);status.textContent="Applying "+progressionTypeLabel(payload.progressionType).toLowerCase()+" and preserving completed registration history…";
     try{
-      const result=await perform("progress_registration",{...payload,reason});
+      const result=await perform("progress_registration",{...payload,reason,expectedAdmissionApplicationId:preview.admissionApplication?.applicationId||null,expectedAdmissionRevision:preview.admissionApplication?.revision||null});
       progressionChange=null;get("en-progression-dialog").close();
-      await loadRegistrations();
+      await Promise.allSettled([loadRegistrations(),loadApplications()]);
       status.textContent=result.progressionType==="graduation"
         ?item.displayName+" graduated · "+result.completedCourseCount+" released class result"+(result.completedCourseCount===1?"":"s")+" preserved."
         :item.displayName+" · "+progressionTypeLabel(result.progressionType)+" completed · "+
@@ -946,26 +947,18 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
   status.textContent="Loading the reviewed student directory record…";
   try{
     const result=await perform("student_candidate",{personId}),person=result.person;
-    if(result.activeRegistrations?.length){
-      const current=result.activeRegistrations[0],section=catalog.sections.find(row=>row.id===current.sectionId)?.name||current.sectionId||"assigned section";
-      get("en-registration-search").value=person.displayName||person.studentNumber||"";
-      renderRegistrations();
-      status.textContent=person.displayName+" already has an active official registration"+(section?" · "+section:"")+
-        ". Use the Current registrations controls to correct or end that placement.";
-      showEnrollmentView("registrations");
-      if(scroll)get("en-registration-list").scrollIntoView({behavior:"smooth",block:"start"});
-      return false;
-    }
-    if(result.activeLegacyEnrollments?.length){
+    const activeRegistrations=result.activeRegistrations||[];
+    const unresolvedLegacy=(result.activeLegacyEnrollments||[]).filter(row=>!activeRegistrations.some(reg=>row.registrationId===reg.registrationId||(!row.registrationId&&row.yearId===reg.yearId&&row.termId===reg.termId)));
+    if(unresolvedLegacy.length){
       const legacyItem={
         personId:person.personId,displayName:person.displayName||"Student",
         studentNumber:person.studentNumber||"",personStatus:"active",
-        courseCount:result.activeLegacyEnrollments.length,
-        sectionIds:[...new Set(result.activeLegacyEnrollments.map(row=>row.sectionId).filter(Boolean))],
-        yearIds:[...new Set(result.activeLegacyEnrollments.map(row=>row.yearId).filter(Boolean))],
-        termIds:[...new Set(result.activeLegacyEnrollments.map(row=>row.termId).filter(Boolean))],
-        hasRegistrationLinkedEnrollment:result.activeLegacyEnrollments.some(row=>Boolean(row.registrationId)),
-        enrollments:result.activeLegacyEnrollments
+        courseCount:unresolvedLegacy.length,
+        sectionIds:[...new Set(unresolvedLegacy.map(row=>row.sectionId).filter(Boolean))],
+        yearIds:[...new Set(unresolvedLegacy.map(row=>row.yearId).filter(Boolean))],
+        termIds:[...new Set(unresolvedLegacy.map(row=>row.termId).filter(Boolean))],
+        hasRegistrationLinkedEnrollment:unresolvedLegacy.some(row=>Boolean(row.registrationId)),
+        enrollments:unresolvedLegacy
       };
       const existingIndex=legacyRegistrations.findIndex(row=>row.personId===person.personId);
       if(existingIndex>=0)legacyRegistrations.splice(existingIndex,1,legacyItem);
@@ -981,7 +974,7 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
       return false;
     }
     if(draftDirty&&!discardDraft())return false;
-    clearLoadedApplication();loadedApplication=null;loadedPerson=person;
+    clearLoadedApplication();loadedApplication=null;loadedPerson={...person,activeRegistrations};
     get("en-applicant-type").value="returning";get("en-applicant-type").disabled=true;get("en-find-existing").hidden=true;
     form.elements.applicationId.value="";form.elements.personId.value=person.personId;
     form.elements.displayName.value=person.displayName||"";
@@ -997,7 +990,7 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
     form.elements.yearId.value="";form.elements.programId.value="";
     form.elements.termId.value="";form.elements.sectionId.value="";
     get("en-register-title").textContent="Returning student application";
-    get("en-register-help").textContent="Existing student · "+(person.studentNumber||person.displayName);
+    get("en-register-help").textContent="Existing student · "+(person.studentNumber||person.displayName)+(activeRegistrations.length?" · Choose a future academic period. Year-end progression remains required.":"");
     get("en-clear-application").hidden=false;
     get("en-clear-application").textContent="Clear loaded student";
     refreshPlacement();draftDirty=false;
