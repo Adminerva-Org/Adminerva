@@ -39,6 +39,26 @@ function enrollmentClearanceReady(row,policy){
   return Boolean(row.status==="accepted"&&clearance?.state==="cleared"&&clearance.policyRevision===policy.revision&&
     clearance.applicationRevision===(Number(row.revision)||1)&&typeof clearance.reference==="string"&&clearance.reference.trim());
 }
+function summarizeActivePlacements(rows,sections,scope){
+  const people=new Map(),counts=new Map();let invalidRecords=0,activeRegistrationCount=0,unresolvedLearners=0,duplicateLearners=0;
+  for(const row of rows){
+    if(row.schoolId!==scope.schoolId||row.yearId!==scope.yearId||row.termId!==scope.termId||row.status!=="active"){invalidRecords++;continue;}
+    activeRegistrationCount++;
+    if(typeof row.personId!=="string"||!(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/).test(row.personId)){invalidRecords++;continue;}
+    const records=people.get(row.personId)||[];records.push(row);people.set(row.personId,records);
+  }
+  for(const records of people.values()){
+    if(records.length!==1){duplicateLearners++;continue;}
+    const row=records[0],section=sections.get(row.sectionId);
+    if(!section||section.schoolId!==scope.schoolId||section.programId!==scope.programId||row.programId!==scope.programId||
+       String(row.gradeLevel||"")!==String(section.gradeLevel||"")){unresolvedLearners++;continue;}
+    counts.set(row.sectionId,(counts.get(row.sectionId)||0)+1);
+  }
+  const bySection=[...counts].map(([sectionId,learnerCount])=>{const section=sections.get(sectionId);return {sectionId,sectionName:String(section.name||sectionId).slice(0,160),gradeLevel:String(section.gradeLevel||""),learnerCount};}).sort((a,b)=>a.gradeLevel.localeCompare(b.gradeLevel,undefined,{numeric:true})||a.sectionName.localeCompare(b.sectionName));
+  const grades=new Map();for(const row of bySection)grades.set(row.gradeLevel,(grades.get(row.gradeLevel)||0)+row.learnerCount);
+  return {activeRegistrationCount,uniqueLearners:people.size,assignedLearners:people.size-duplicateLearners-unresolvedLearners,duplicateLearners,unresolvedLearners,invalidRecords,
+    byGrade:[...grades].map(([gradeLevel,learnerCount])=>({gradeLevel,learnerCount})),bySection};
+}
 function admissionType(value){
   if(!ADMISSION_TYPES.includes(value))deny("invalid-argument","Choose a valid applicant type.");
   return value;
@@ -478,7 +498,8 @@ function createSchoolEnrollmentService({db}){
       const yearId=checkId(input.yearId,"Academic year"),termId=input.termId?checkId(input.termId,"Academic period"):null;
       const year=await db.doc(root+"academic_years/"+yearId).get();
       if(!year.exists||year.data().schoolId!==ctx.schoolId)deny("not-found","Academic year not found.");
-      if(termId){const term=await db.doc(root+"terms/"+termId).get();if(!term.exists||term.data().schoolId!==ctx.schoolId||term.data().yearId!==yearId)deny("failed-precondition","Choose a period in the selected year.");}
+      let reportTerm=null;
+      if(termId){const term=await db.doc(root+"terms/"+termId).get();if(!term.exists||term.data().schoolId!==ctx.schoolId||term.data().yearId!==yearId)deny("failed-precondition","Choose a period in the selected year.");reportTerm=term.data();}
       const applications=db.collection(root+"enrollment_applications").where("schoolId","==",ctx.schoolId).where("yearId","==",yearId);
       let registrations=db.collection(root+"student_registrations").where("schoolId","==",ctx.schoolId).where("yearId","==",yearId);
       if(termId)registrations=registrations.where("termId","==",termId);
@@ -493,7 +514,17 @@ function createSchoolEnrollmentService({db}){
         const counts=await Promise.all([count(group.query),...group.values.map(value=>count(group.query.where("status","==",value)))]);
         return [group.key,{total:counts[0],statuses:Object.fromEntries(group.values.map((value,index)=>[value,counts[index+1]]))}];
       }));
-      return {yearId,termId,asOf:Date.now(),...Object.fromEntries(rows)};
+      let headcount=null;
+      if(reportTerm){
+        const active=await registrations.where("status","==","active").select("schoolId","personId","programId","yearId","termId","sectionId","gradeLevel","status").limit(5001).get();
+        if(active.size>5000)deny("resource-exhausted","The selected period exceeds 5,000 active registration records.");
+        const values=active.docs.map(doc=>doc.data()),sectionIds=[...new Set(values.map(row=>row.sectionId).filter(value=>typeof value==="string"&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)))];
+        if(sectionIds.length>500)deny("resource-exhausted","Section headcount exceeds the safe report limit.");
+        const sectionDocs=await Promise.all(sectionIds.map(sectionId=>db.doc(root+"sections/"+sectionId).get()));
+        const sectionMap=new Map(sectionDocs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId).map(doc=>[doc.id,doc.data()]));
+        headcount=summarizeActivePlacements(values,sectionMap,{schoolId:ctx.schoolId,yearId,termId,programId:reportTerm.programId});
+      }
+      return {yearId,termId,asOf:Date.now(),headcount,...Object.fromEntries(rows)};
     }
     if(input.action==="catalog"){
       const names=["academic_years","academic_programs","terms","sections","subjects","course_offerings"];
@@ -1822,7 +1853,7 @@ module.exports={
   normalizeRequirementTemplate,
   templateCovered,
   pendingRequirementsReady,
-  normalizeClearanceTypes,enrollmentClearanceReady,
+  normalizeClearanceTypes,enrollmentClearanceReady,summarizeActivePlacements,
   admissionApplicationId,
   acceptedIdentityMatches
 };
