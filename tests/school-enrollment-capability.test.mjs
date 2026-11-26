@@ -69,3 +69,14 @@ test("admissions document custody validates file size, encoding, type and scoped
   assert.equal(documentPath("school-a","app-1","doc-1"),"registrar/school-a/applications/app-1/doc-1");
   assert.equal(admissionRequirementsReady({requirementsReviewed:true,noRequirements:true,requirements:[],admissionDocuments:[{state:"pending"}]}),false);
 });
+
+
+test("onsite and online intake share a deterministic school-scoped application key",()=>{
+  const {admissionApplicationId,acceptedIdentityMatches}=require("../functions/school-enrollment.js");
+  const details={schoolId:"school-a",yearId:"year-1",displayName:"Student A",birthDate:"2012-01-01",guardianEmail:"parent@example.test"};
+  assert.equal(admissionApplicationId(details),admissionApplicationId({...details,displayName:"student a"}));
+  assert.notEqual(admissionApplicationId(details),admissionApplicationId({...details,schoolId:"school-b"}));
+  assert.equal(acceptedIdentityMatches({...details,personId:"student-1"}, {...details,personId:"student-1"}),true);
+  assert.equal(acceptedIdentityMatches({...details,personId:"student-1"}, {...details,personId:"student-2"}),false);
+  assert.equal(acceptedIdentityMatches(details,{...details,birthDate:"2013-01-01"}),false);
+});
