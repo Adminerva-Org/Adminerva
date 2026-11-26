@@ -113,6 +113,27 @@ test("historical GitHub V4 inbox and inspect read through original school-owned 
  assert.equal(result.task.rubric.length,2);
  assert.equal(f.writes.length,0);
 });
+test("legacy Review & Grade discovers grade-only original rows without inventing submission evidence",async()=>{
+ const f=fixture();
+ const extraStudent="historical.grade.only@example.edu.ph";
+ f.map.set("student_grades/"+extraStudent+"_"+taskId,{
+   taskId,studentId:extraStudent,section:"Grade 12 ICT",
+   score:18,maxScore:40,published:true,gradeSource:"teacher_manual"
+ });
+ const response=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(response.coverage.evidenceCount,1);
+ assert.equal(response.coverage.gradeCount,1);
+ assert.equal(response.coverage.publishedCount,1);
+ assert.equal(response.coverage.gradeOnly,1);
+ assert.equal(response.coverage.evidenceWithoutGrade,1);
+ const row=response.evidence.find(item=>item.studentId===extraStudent);
+ assert.equal(row.gradeOnly,true);
+ assert.equal(row.hasSubmission,false);
+ assert.equal(row.evidenceId,null);
+ assert.equal(row.awarded,18);
+ assert.equal(row.gradeStatus,"published");
+ assert.equal(f.writes.length,0,"reconciliation must never copy or mutate a grade");
+});
 test("V4 grade save and publish update ONLY original grade and audit records",async()=>{
  const f=fixture();
  const saved=await f.service(f.request("legacy_github_save_draft",f.gradeArgs));
