@@ -97,3 +97,13 @@ test("year-end progression is blocked before the final configured academic perio
   assert.match(source,/source_period_not_final/);
   assert.match(source,/last active academic period configured for this year and program/);
 });
+
+
+test("advance returning admission is consumed by grade-gated progression instead of parallel enrollment",()=>{
+  assert.match(source,/returning_application_not_ready/);
+  assert.match(source,/returning_placement_mismatch/);
+  assert.match(source,/expectedAdmissionRevision/);
+  assert.match(source,/tx.update\(review.admissionRef,\{status:"enrolled"/);
+  assert.match(source,/applicationId:review.admissionApplication\?\.applicationId\|\|null/);
+  assert.match(source,/A prior academic year still has an active registration/);
+});
