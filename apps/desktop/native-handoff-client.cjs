@@ -31,7 +31,8 @@ async function sendHandoff(action,pairing,{fetchImpl=fetch,signal}={}){
  if(!result||typeof result!=="object"||!["waiting","authorized","expired","unavailable","canceled"].includes(result.state))
   throw Error("Invalid native handoff response.");
  if(result.state==="authorized"&&
-  (typeof result.customToken!=="string"||result.customToken.length<32))
+  (typeof result.customToken!=="string"||result.customToken.length<32||
+   typeof result.uid!=="string"||!result.uid||result.uid.length>128))
   throw Error("Invalid native sign-in credential.");
  return result;
 }

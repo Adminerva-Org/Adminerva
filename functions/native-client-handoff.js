@@ -168,7 +168,7 @@ function createNativeClientHandoffService({db,auth,Timestamp,now=()=>Date.now(),
   });
   if(!outcome)return {state:"unavailable"};
   const customToken=await auth.createCustomToken(outcome);
-  return {state:"authorized",customToken};
+  return {state:"authorized",uid:outcome,customToken};
  };
 }
 module.exports={createNativeClientHandoffService,NativeHandoffError,HANDOFF_TTL_MS};

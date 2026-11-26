@@ -72,7 +72,7 @@ test("fresh verified browser approval and original verifier yield one token, no 
   {code:"unauthenticated"});
  assert.equal((await h(request(p,"authorize",{confirmationCode:p.confirmationCode},true))).state,"approved");
  const result=await h(request(p,"redeem",{verifier:p.verifier}));
- assert.deepEqual(result,{state:"authorized",customToken:"private-custom-token-for-student-uid"});
+ assert.deepEqual(result,{state:"authorized",uid:"student-uid",customToken:"private-custom-token-for-student-uid"});
  assert.deepEqual(await h(request(p,"redeem",{verifier:p.verifier})),{state:"unavailable"});
  assert.deepEqual([...db.data.keys()],["native_client_handoffs/"+p.flowId]);
 });
