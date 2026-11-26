@@ -366,7 +366,7 @@ export function createProjectStudio({
     // the teacher-close receipt: only an examFinalized server response is.
     if(!snapshot||deletedProjects.has(id))return closingSessionEpoch?false:true;
     let finishDiagnostic;
-    try{finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_cloud_save");}catch{}
+    try{finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_cloud_save",{projectCategory:snapshot.assessment?"assessment":"personal"});}catch{}
     const reportDiagnostic=success=>{try{finishDiagnostic?.(success);}catch{}};
     const work=(async()=>{
       try{
@@ -415,7 +415,7 @@ export function createProjectStudio({
       }catch(error){
         console.warn("Studio cloud save failed:",error);
         document.dispatchEvent(new CustomEvent("adminerva:diagnostic-event",{detail:{
-          action:"cloud_save_failed",errorCode:String(error?.code||error?.name||"unavailable")
+          action:"cloud_save_failed",errorCode:String(error?.code||error?.name||"unavailable"),reasonCode:error?.details?.diagnosticReason
         }}));
         const failure=describeStudioCloudSaveError(error,{online:navigator.onLine!==false});
         const retrying=scheduleCloudRetry(id,error,closingSessionEpoch);
