@@ -61,7 +61,7 @@ function setSaving(value){
   }
   for(const control of form.elements)control.disabled=value;
   get("en-applicant-type").disabled=value||Boolean(loadedPerson);
-  for(const control of document.querySelectorAll("#en-application-list button, #en-application-list input, #en-registrations-more, #en-legacy-scan, #en-bulk-open, #en-bulk-clear, #en-bulk-form button, #en-bulk-form select, #en-applications-more, #en-correction-form button, #en-correction-form input, #en-correction-form select, #en-correction-form textarea, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-application-list input, #en-registrations-more, #en-legacy-scan, #en-bulk-open, #en-bulk-clear, #en-bulk-form button, #en-bulk-form select, #en-applications-more, #en-correction-form button, #en-correction-form input, #en-correction-form select, #en-correction-form textarea, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-clearance-policy-open, #en-clearance-policy-form button, #en-clearance-policy-form input, #en-clearance-policy-form textarea, #en-clearance-form button, #en-clearance-form input, #en-clearance-form select, #en-clearance-form textarea, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
   if(!value){
@@ -905,7 +905,7 @@ function applicationMeta(item){
   return [item.reference,year,levelLabel(item.incomingLevel),program].filter(Boolean).join(" · ");
 }
 function loadApplicationIntoForm(item){
-  if(saving||item.status!=="accepted"||!item.requirementsReady||!discardDraft())return;
+  if(saving||item.status!=="accepted"||!item.requirementsReady||item.clearanceReady===false||!discardDraft())return;
   if(loadedApplication?.applicationId===item.applicationId&&loadedApplication.revision===item.revision){showEnrollmentView("register");return;}
   loadedPerson=null;form.elements.personId.value=item.personId||"";
   get("en-applicant-type-row").hidden=true;get("en-find-existing").hidden=true;
@@ -1032,6 +1032,35 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
   }
 }
 
+let clearancePolicy=null,clearancePolicyRun=0,clearanceReview=null;
+function closeClearancePolicy(){++clearancePolicyRun;clearancePolicy=null;get("en-clearance-policy-form").reset();get("en-clearance-policy-save").disabled=true;get("en-clearance-policy-dialog").close();}
+function closeClearance(){clearanceReview=null;get("en-clearance-form").reset();get("en-clearance-dialog").close();}
+get("en-clearance-policy-open").addEventListener("click",()=>void (async()=>{
+  if(saving)return;const run=++clearancePolicyRun;clearancePolicy=null;const form=get("en-clearance-policy-form");form.reset();
+  get("en-clearance-policy-save").disabled=true;get("en-clearance-policy-status").textContent="Loading…";get("en-clearance-policy-dialog").showModal();
+  try{const result=await perform("get_enrollment_clearance_policy");if(run!==clearancePolicyRun)return;clearancePolicy=result;
+    for(const control of form.querySelectorAll('input[name="requiredTypes"]'))control.checked=result.requiredTypes.includes(control.value);
+    get("en-clearance-policy-save").disabled=false;get("en-clearance-policy-status").textContent=result.revision?"Policy revision "+result.revision:"No clearance required.";
+  }catch(error){if(run===clearancePolicyRun)get("en-clearance-policy-status").textContent=error?.message||"Policy unavailable.";}
+})());
+get("en-clearance-policy-close").addEventListener("click",()=>{if(!saving)closeClearancePolicy();});
+get("en-clearance-policy-dialog").addEventListener("cancel",event=>{event.preventDefault();if(!saving)closeClearancePolicy();});
+get("en-clearance-policy-form").addEventListener("submit",event=>{
+  event.preventDefault();if(saving||!clearancePolicy||!event.currentTarget.reportValidity())return;
+  const data=new FormData(event.currentTarget),expectedRevision=clearancePolicy.revision,requiredTypes=data.getAll("requiredTypes"),reason=String(data.get("reason")||"").trim();
+  void (async()=>{setSaving(true);try{await perform("save_enrollment_clearance_policy",{expectedRevision,requiredTypes,reason});closeClearancePolicy();selectedApplications.clear();await loadApplications();status.textContent="Clearance policy saved.";}catch(error){get("en-clearance-policy-status").textContent=error?.message||"Policy save failed.";}finally{setSaving(false);}})();
+});
+function openClearance(item){
+  if(saving||item.status!=="accepted"||!item.clearanceRequired||get("en-clearance-policy-open").hidden)return;
+  clearanceReview=item;const form=get("en-clearance-form");form.reset();get("en-clearance-target").textContent=item.displayName+" · "+item.reference;get("en-clearance-status").textContent="";get("en-clearance-dialog").showModal();
+}
+get("en-clearance-close").addEventListener("click",()=>{if(!saving)closeClearance();});
+get("en-clearance-dialog").addEventListener("cancel",event=>{event.preventDefault();if(!saving)closeClearance();});
+get("en-clearance-form").addEventListener("submit",event=>{
+  event.preventDefault();if(saving||!clearanceReview||!event.currentTarget.reportValidity())return;
+  const item=clearanceReview,data=new FormData(event.currentTarget),state=String(data.get("state")||""),reference=String(data.get("reference")||"").trim(),reason=String(data.get("reason")||"").trim(),confirmSourceReviewed=data.get("confirmSourceReviewed")!==null;
+  void (async()=>{setSaving(true);try{await perform("record_enrollment_clearance",{applicationId:item.applicationId,expectedRevision:item.revision,expectedPolicyRevision:item.clearancePolicyRevision,state,reference,reason,confirmSourceReviewed});closeClearance();await loadApplications({refreshItem:item.applicationId});status.textContent="Enrollment clearance saved.";}catch(error){get("en-clearance-status").textContent=error?.message||"Clearance save failed.";}finally{setSaving(false);}})();
+});
 let requirementsReview=null,templateReview=null,templateLoadRun=0,correctionReview=null;
 function closeCorrection(){
   correctionReview=null;for(const key of ["guardian","relationship","mobile","email","reason"])get("en-correction-"+key).value="";
@@ -1401,7 +1430,7 @@ function renderApplications(){
     contacts.textContent=item.guardianName+" · "+item.guardianEmail+
       (item.studentEmail?" · student: "+item.studentEmail:" · guardian-managed learner");
     info.append(name,meta,contacts);
-    if(item.status==="accepted"&&item.requirementsReady){
+    if(item.status==="accepted"&&item.requirementsReady&&item.clearanceReady!==false){
       const selectLabel=document.createElement("label");selectLabel.className="en-muted";
       const checkbox=document.createElement("input");checkbox.type="checkbox";checkbox.checked=selectedApplications.has(item.applicationId);checkbox.disabled=saving;
       checkbox.addEventListener("change",()=>selectBulkApplication(item,checkbox.checked));const selectText=document.createElement("span");selectText.textContent=" Select for bulk enrollment";selectLabel.append(checkbox,selectText);info.append(selectLabel);
@@ -1423,7 +1452,8 @@ function renderApplications(){
       control.textContent=label;control.addEventListener("click",callback);actions.append(control);
     };
     addAction("Documents",()=>void openDocuments(item));
-    if(item.status==="accepted"&&item.requirementsReady)addAction("Enroll",()=>loadApplicationIntoForm(item),true);
+    if(item.status==="accepted"&&item.clearanceRequired){const state=document.createElement("p");state.className="en-muted";state.textContent=item.clearanceReady?"Clearance recorded":"Clearance "+(item.clearanceState==="held"?"on hold":"pending");info.append(state);if(!get("en-clearance-policy-open").hidden)addAction("Clearance",()=>openClearance(item),!item.clearanceReady);}
+    if(item.status==="accepted"&&item.requirementsReady&&item.clearanceReady!==false)addAction("Enroll",()=>loadApplicationIntoForm(item),true);
     if(["submitted","needs_information"].includes(item.status)){
       if(item.applicationType==="returning"&&!item.personId)addAction("Link student",()=>void linkReturningApplication(item),true);
       addAction("Correct",()=>openCorrection(item));
@@ -1446,7 +1476,7 @@ async function loadApplications({more=false,refreshItem=null}={}){
     const rows=new Map((more||refreshItem?applications:[]).map(item=>[item.applicationId,item]));
     for(const item of result.items||[])rows.set(item.applicationId,item);
     applications=[...rows.values()].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));if(!refreshItem)applicationCursor=result.nextCursor||null;
-    for(const [id,old] of selectedApplications){const current=rows.get(id);if(!current||current.revision!==old.revision||current.status!=="accepted"||!current.requirementsReady)selectedApplications.delete(id);}
+    for(const [id,old] of selectedApplications){const current=rows.get(id);if(!current||current.revision!==old.revision||current.status!=="accepted"||!current.requirementsReady||current.clearanceReady===false)selectedApplications.delete(id);}
   }finally{applicationBusy=false;renderApplications();}
 }
 get("en-applications-more").addEventListener("click",()=>void loadApplications({more:true}).catch(error=>{status.textContent=error?.message||"More applications could not be loaded.";}));
@@ -1575,7 +1605,7 @@ picker=createTenantSchoolPicker({
     if(documentReview)closeDocuments();
     if(bulkReview)closeBulk();selectedApplications.clear();clearReport();get("en-report-year").replaceChildren();get("en-report-term").replaceChildren();
     if(get("en-template-dialog").open&&!confirm("Discard the open template editor?"))throw new Error("Finish the template edit before switching schools.");
-    closeTemplateEditor();get("en-template-open").hidden=true;
+    closeTemplateEditor();get("en-template-open").hidden=true;closeClearance();closeClearancePolicy();get("en-clearance-policy-open").hidden=true;
     ++refreshVersion;requestedPersonId="";activeEnrollmentView="registrations";
     for(const source of Object.keys(requestVersions))++requestVersions[source];
     loadedApplication=null;loadedPerson=null;registrationChange=null;progressionChange=null;cohortPreview=null;draftDirty=false;registrations=[];
@@ -1604,7 +1634,7 @@ picker=createTenantSchoolPicker({
         :"Compatibility enrollment: contact your School Administrator for placement.";
       return;
     }
-    get("en-template-open").hidden=!current.roles.includes("school_admin")||current.platformOverride===true;
+    get("en-template-open").hidden=!current.roles.includes("school_admin")||current.platformOverride===true;get("en-clearance-policy-open").hidden=get("en-template-open").hidden;
     get("en-find-existing").href="school-student-records.html?schoolId="+encodeURIComponent(current.schoolId);
     showEnrollmentView(activeEnrollmentView);
     renderActivation(current.schoolId);workspace.hidden=false;
