@@ -172,14 +172,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4SaveDraft").disabled=
       busy||!loaded||!evidenceReady||published||reopened||legacyScalar;
     document.getElementById("gbV4Publish").disabled=
-      busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar;
+      busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar||Number(currentGrade?.pending||0)>0;
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened||readThrough;
-    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||readThrough;
+    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||(readThrough&&!historicalGithub)||!evidenceReady;
     const convert=document.getElementById("gbV4ConvertLegacy");
     convert.disabled=busy||!loaded||!legacyScalar||readThrough;
     document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar||readThrough;
-    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||readThrough);
+    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||(readThrough&&!historicalGithub));
     document.getElementById("gbV4Refresh").disabled=busy;
     if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
     if(document.getElementById("gbV4ConversationForm"))renderConversation();
@@ -337,15 +337,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const published=[...gradeMap.values()].filter(item=>item.status==="published").length;
       const draftRows=[...gradeMap.values()].filter(item=>item.status==="draft");
       const drafts=draftRows.length;
-      const publishableDrafts=draftRows.filter(item=>Number(item.awarded)>0&&Number(item.pending||0)===0).length;
+      const publishableDrafts=draftRows.filter(item=>typeof item.awarded==="number"&&Number.isFinite(item.awarded)&&item.awarded>=0&&Number(item.pending||0)===0).length;
       const zeroDrafts=draftRows.filter(item=>Number(item.awarded)===0).length;
       if(bulkPublish){
         bulkPublish.dataset.ready=publishableDrafts?"true":"false";
         bulkPublish.disabled=busy||!publishableDrafts;
         bulkPublish.textContent="Publish all drafts ("+publishableDrafts+")";
-        bulkPublish.title=zeroDrafts
-          ?zeroDrafts+" zero-score draft"+(zeroDrafts===1?" is":"s are")+" excluded from bulk publication."
-          :"Publish every valid non-zero draft for this assessment.";
+        bulkPublish.title=zeroDrafts?zeroDrafts+" zero-score draft(s) — review suggested; complete valid zeros may be published.":"Publish every complete valid draft.";
       }
       bulkEvaluator?.onInbox({
         task:currentTask,rows,gradeMap,
@@ -600,7 +598,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const host=document.getElementById("gbV4Rubric");host.replaceChildren();
     const prior=Array.isArray(grade?.criteria)?grade.criteria:[];
     if(currentTask?.legacyCompatibility&&grade?.status==="published"&&
-       grade?.gradeSchema==="legacy_scalar_v1"){
+       grade?.gradeSchema==="legacy_scalar_v1"&&currentTask.submissionSource!=="github"){
       host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
         "Original published historical grade: "+grade.awarded+" / "+grade.total+
         ". The original record did not store a criterion-by-criterion breakdown. Empty rubric rows are deliberately not presented as zero scores."));
@@ -839,7 +837,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         (historicalStudio?
           "Original published Studio grade preserved. Corrections still require the audited historical correction workflow.":
           historicalGithub?
-          "Original published GitHub grade preserved. Legacy publication revisions cannot be corrected through ordinary V4 editing.":
+          "Original published GitHub grade preserved. Use grade correction to record a new audited revision.":
           currentGrade?.gradeSchema==="legacy_scalar_v1"?
             "This imported historical grade preserves the original total but has no saved rubric breakdown. Reconstruct the breakdown without changing the score before any correction.":
             "This grade is published. Use the correction workflow for changes."):
@@ -934,7 +932,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(busy||!currentTask||bulkPublish.dataset.ready!=="true")return;
     const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
     if(!count)return;
-    if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
+    if(!confirm("Publish all "+count+" complete valid draft"+(count===1?"":"s")+" for "+currentTask.title+"? This includes legitimate zero scores. Incomplete or stale grades remain drafts."))return;
     try{
       setBusy(true,"Publishing all valid drafts…");
       let result;
@@ -958,7 +956,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             throw Error("Bulk publication paused because the next page could not be verified. Already published grades are preserved. Refresh to continue.");
           cursor=part.nextCursor;
           status.textContent="Historical bulk publication: "+totals.published+
-            " published, "+totals.zeroSkipped+" zero-score drafts held, "+
+            " published, "+totals.zeroSkipped+" zero-score drafts held by older server, "+
             totals.failed+" failed or changed, "+totals.unverifiedSkipped+
             " without verified student-submitted evidence. Preparing next page…";
         }
@@ -1128,14 +1126,20 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(!confirm("Record a new published-grade revision? The prior published revision will remain in audit history."))return;
     try{
       setBusy(true,"Verifying the frozen submission and recording the published-grade correction…");
-      const result=await scoped(gradeApi,"correct_published",{
+      const historical=currentTask.legacyCompatibility&&currentTask.submissionSource==="github";
+      const historicalIds={legacyAssessmentId:currentTask.legacyAssessmentId,legacyEvidenceId:currentRow.recordId,
+        ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{})};
+      const feedback=document.getElementById("gbV4Feedback").value.trim();
+      const result=historical?await scoped(migrationApi,"legacy_github_correct_published",{
+        ...historicalIds,expectedGradeRevision:currentGrade.revision,
+        expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
+        expectedCheckpointSha:currentSnapshot.checkpointSha,criteria,feedback
+      }):await scoped(gradeApi,"correct_published",{
         taskId:currentTask.taskId,studentUid:currentRow.studentUid,
-        expectedRevision:currentGrade.revision,criteria,
-        feedback:document.getElementById("gbV4Feedback").value.trim(),reason
+        expectedRevision:currentGrade.revision,criteria,feedback,reason
       });
-      const refreshed=await scoped(gradeApi,"get_draft",{
-        taskId:currentTask.taskId,studentUid:currentRow.studentUid
-      });
+      const refreshed=historical?await scoped(migrationApi,"legacy_github_inspect",historicalIds):
+        await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       currentGrade=refreshed.grade;
       renderRubric(currentGrade);refreshReviewControls();
       document.getElementById("gbV4CorrectionReason").value="";
