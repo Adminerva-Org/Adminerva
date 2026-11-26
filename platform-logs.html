@@ -10,7 +10,7 @@
   <script defer src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=7fe6ab08fd82">
   <link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1">
-  <link rel="stylesheet" href="css/platform-logs.css?v=20261125-compact-workspace-1">
+  <link rel="stylesheet" href="css/platform-logs.css?v=20261126-inspector-2">
 </head>
 <body id="pageBody" class="hidden">
   <div id="adminerva-nav" data-module="admin" data-page="platform-logs"></div>
@@ -19,7 +19,7 @@
       <div class="pl-hero-main">
         <p class="pl-eyebrow">System Administration / Observability</p>
         <h1>User Action &amp; System Logs</h1>
-        <p class="pl-hero-description">Investigate recorded activity, backend outcomes, and shared failures across Adminerva. Platform Administrator-only · read-only.</p>
+
       </div>
       <a class="pl-link" href="system-users.html"><span class="pl-link-full">Platform Users</span><span class="pl-link-short">Users</span></a>
     </header>
@@ -99,19 +99,25 @@
             </div>
           </details>
           <label class="pl-log-search" for="pl-event-search">Search loaded events
-            <input id="pl-event-search" type="search" autocomplete="off" placeholder="Account, action, error, trace…">
+            <input id="pl-event-search" type="search" autocomplete="off" placeholder="Control, operation, error, account…">
           </label>
         </div>
         <div class="pl-filter-feedback">
           <p id="pl-filter-status" class="pl-filter-status" role="status" aria-live="polite">Select a view and load recorded activity. Server and local filters have different scopes.</p>
           <button id="pl-clear-filters" class="pl-button pl-secondary" type="button">Clear filters</button>
         </div>
+        <div class="pl-investigation-grid" id="pl-investigation-grid">
+        <aside id="pl-inspector" class="pl-inspector" aria-labelledby="pl-inspector-title" hidden>
+          <div class="pl-inspector-head"><h3 id="pl-inspector-title" tabindex="-1">Event inspector</h3><button id="pl-inspector-close" type="button" class="pl-button pl-secondary" aria-label="Close event inspector">Close</button></div>
+          <div id="pl-inspector-body"></div>
+        </aside>
+        <div class="pl-event-feed">
         <section id="pl-live" class="pl-live" aria-labelledby="pl-live-title" hidden>
           <div class="pl-live-header">
             <div>
               <p class="pl-eyebrow">Operational event console · all accounts</p>
               <h3 id="pl-live-title">Near-live activity stream <span class="pl-live-lamp" id="pl-live-lamp" data-status="idle">Stopped</span></h3>
-              <p>Appended in server receipt order. The console checks for newly indexed events every 3 seconds while this tab is visible. Recorded events only—not screen monitoring or a complete browser console.</p>
+              <p class="pl-live-coverage">The console checks for newly indexed events every 3 seconds · server receipt order.</p>
             </div>
             <div class="pl-live-actions">
               <button id="pl-live-toggle" type="button" class="pl-button pl-primary">Start live watch</button>
@@ -194,14 +200,15 @@
           <p>Account lifecycle actions remain in the original platform audit store; this viewer does not copy or edit those records.</p>
           <div id="pl-audit-records"></div>
         </details>
-        <p class="pl-footnote">This log is for authorized system debugging, not student misconduct findings. A backend callable returning without an exception does not independently prove that a requested school record was committed. A normal click means it was observed, not that a save or submission succeeded. The Live console is a three-second polling view, not a direct socket or a guarantee of every interaction. Severity and module filters are applied server-side in the Global Event Stream; text search filters the currently loaded rows only. Events are recorded at server receipt time and may arrive late or be missing. No password, student source code, private notification body, full URL, raw stack trace, grade, screenshot or arbitrary typed input is collected. Previously recorded per-user events remain accessible under the original account timeline; the new global index starts with newly recorded events. Diagnostic records expire after 60 days. Global error-pattern counts are a bounded sample, not an exact platform-wide census.</p>
+        </div></div>
+        <details class="pl-policy"><summary>Coverage, retention &amp; privacy</summary><p class="pl-footnote">This log is for authorized system debugging, not student misconduct findings. A backend callable returning without an exception does not independently prove that a requested school record was committed. A normal click means it was observed, not that a save or submission succeeded. The Live console is a three-second polling view, not a direct socket or a guarantee of every interaction. Severity and module filters are applied server-side in the Global Event Stream; text search filters the currently loaded rows only. Events are recorded at server receipt time and may arrive late or be missing. No password, student source code, private notification body, full URL, raw stack trace, grade, screenshot or arbitrary typed input is collected. Previously recorded per-user events remain accessible under the original account timeline; the new global index starts with newly recorded events. Diagnostic records expire after 60 days. Global error-pattern counts are a bounded sample, not an exact platform-wide census.</p></details>
       </section>
     </div>
   </main>
   <script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
   <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
   <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
-  <script type="module" src="js/core/platform-logs.mjs?v=20261126-context-1"></script>
+  <script type="module" src="js/core/platform-logs.mjs?v=20261126-inspector-2"></script>
   <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script>
   <script defer src="js/core/release-footer.js?v=7fe6ab08fd82"></script>
 </body>
