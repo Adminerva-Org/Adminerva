@@ -46,6 +46,12 @@
 
   <p id="sr-status" class="sr-notice" role="status" aria-live="polite">Checking Student Records access…</p>
 
+  <nav id="sr-workspace-nav" class="sr-file-tabs" aria-label="Registrar records workspace" hidden><button id="sr-mode-students" type="button" class="sr-btn secondary" aria-pressed="true">Student files</button><button id="sr-mode-requests" type="button" class="sr-btn secondary" aria-pressed="false">Document requests</button></nav>
+  <section id="sr-requests-workspace" class="sr-card" hidden>
+    <div class="flex flex-wrap gap-2 items-start justify-between"><h2 class="text-lg font-extrabold">Document request queue</h2><button id="sr-queue-refresh" type="button" class="sr-btn secondary">Refresh</button></div>
+    <div class="grid sm:grid-cols-2 gap-2 mt-3"><label class="text-sm font-bold">Status<select id="sr-queue-filter" class="sr-input mt-1"><option value="open">Open requests</option><option value="requested">Requested</option><option value="in_review">In review</option><option value="ready">Ready</option><option value="released">Released</option><option value="cancelled">Cancelled</option><option value="all">All</option></select></label><label class="text-sm font-bold">Find request<input id="sr-queue-search" class="sr-input mt-1" type="search" placeholder="Student, number or document"></label></div>
+    <div id="sr-queue-list" class="sr-list mt-3"></div><div class="sr-history-controls"><button id="sr-queue-more" type="button" class="sr-btn secondary" hidden>Load more</button><span id="sr-queue-status" class="sr-muted" aria-live="polite"></span></div>
+  </section>
   <section id="sr-workspace" class="sr-grid" hidden>
     <aside class="sr-card">
       <h2 class="text-lg font-extrabold">Student directory</h2>
@@ -172,7 +178,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar4"></script>
+<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar5"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-student-records1"></script>
 </body>
 </html>
