@@ -611,7 +611,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       host.append(make("p","text-sm text-slate-600 mb-2","Original rubric unavailable. Review the submission and enter the total score manually."));
     }else if(currentTask?.legacyCompatibility&&grade?.gradeSchema==="legacy_scalar_v1"){
       host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
-        Original "+(grade.status==="published"?"published grade":"draft")+": "+grade.awarded+" / "+grade.total+
+        "Original "+(grade.status==="published"?"published grade":"draft")+": "+grade.awarded+" / "+grade.total+
         ". Its rubric breakdown was not recorded. Enter and review a fresh breakdown before saving any replacement draft."));
     }
     (currentTask?.rubric||[]).forEach((criterion,index)=>{
