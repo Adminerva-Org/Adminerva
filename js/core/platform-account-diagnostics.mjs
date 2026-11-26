@@ -15,7 +15,7 @@ let failureEventsSent=0;
 const ID=()=>crypto.randomUUID();
 const allowedRoutes=/(?:^\/$|^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]{1,80}\.html$)/;
 const allowedCodes=/^[-a-zA-Z0-9_./]{1,64}$/;
-const release="v20261126-context"; // The emitter revision, not the full app release.
+const release="v20261126-trace-5"; // The emitter revision, not the full app release.
 function environment(){
   // Convert the browser environment to coarse allowlisted categories; never
   // transmit a full user-agent string, fingerprint, IP address or screen size.
@@ -38,7 +38,8 @@ const controls=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenc
 const processes=new Map();
 const studioReasons=new Set(["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_STATE_CHANGED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_CLOSED","STUDIO_FINAL_CHECKPOINT_REQUIRED","STUDIO_FINAL_CHECKPOINT_CONFLICT","STUDIO_FINAL_CHECKPOINT_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EMPTY_SNAPSHOT_REJECTED","STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_NOT_ARCHIVED"]);
 const processNames=new Set(["studio_cloud_save","studio_api_sync","studio_api_get","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery"]);
-const MAX_TRACKED=24;
+const MAX_TRACKED=24,PROLONGED_MS=60000;
+const saveStages=new Set(["scope_verification","school_sync","legacy_transaction","cloud_confirmed","newer_snapshot_pending","save_failed"]);
 const elapsed=start=>Math.min(3600000,Math.max(0,Math.round(performance.now()-start)));
 function snapshotContext(extra={}){
   const active=[...processes].slice(0,6).map(([id,p])=>({name:p.name,id,ageMs:elapsed(p.start)}));
@@ -54,17 +55,32 @@ function beginProcess(name,metadata={}){
   const parent=processes.has(metadata.parentOperationId)?metadata.parentOperationId:"";
   const parentContext=parent?{parentOperationId:parent}:{};
   const correlation=Object.freeze({sessionId,operationId:id,...parentContext});
-  processes.set(id,{name,start});
-  try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name,...parentContext,...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})}});}catch{}
+  const tracked={name,start,timer:null};
+  processes.set(id,tracked);
+  let saveStage="",retryAttempt=Number.isInteger(metadata.retryAttempt)&&metadata.retryAttempt>=0&&metadata.retryAttempt<=4?metadata.retryAttempt:undefined;
+  const fixedContext={process:name,...parentContext,...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{}),...(retryAttempt!==undefined?{retryAttempt}:{})};
+  const stageContext=()=>saveStage?{saveStage}:{};
+  tracked.timer=setTimeout(()=>{
+    if(turn!==epoch||processes.get(id)!==tracked)return;
+    try{emit("process_prolonged",{kind:"system",module:"studio",state:"unavailable",operationId:id,phase:"observed",context:{...fixedContext,...stageContext(),elapsedMs:elapsed(start)}});}catch{}
+  },PROLONGED_MS);
+  try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:fixedContext});}catch{}
   let finished=false;
   const finish=(success,errorCode,reasonCode,outcome={})=>{
     if(finished)return;finished=true;
     if(turn!==epoch)return;
-    const context={process:name,...parentContext,elapsedMs:elapsed(start),...(["available","unavailable","unknown"].includes(outcome.deviceBackup)?{deviceBackup:outcome.deviceBackup}:{}),...(["scheduled","not_scheduled"].includes(outcome.retryState)?{retryState:outcome.retryState}:{}),...(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"].includes(outcome.recovery)?{recovery:outcome.recovery}:{}),...(studioReasons.has(reasonCode)?{reasonCode}:{}),...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})};
+    clearTimeout(tracked.timer);
+    const context={...fixedContext,...stageContext(),...(Number.isInteger(outcome.waitingRequests)&&outcome.waitingRequests>=0&&outcome.waitingRequests<=100?{waitingRequests:outcome.waitingRequests}:{}),elapsedMs:elapsed(start),...(["available","unavailable","unknown"].includes(outcome.deviceBackup)?{deviceBackup:outcome.deviceBackup}:{}),...(["scheduled","not_scheduled"].includes(outcome.retryState)?{retryState:outcome.retryState}:{}),...(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"].includes(outcome.recovery)?{recovery:outcome.recovery}:{}),...(studioReasons.has(reasonCode)?{reasonCode}:{}),...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})};
     processes.delete(id);
     emit(success===true?"process_finished":"process_failed",{module:"studio",kind:success===true?"action":"error",
       state:success===true?"ok":"error",operationId:id,phase:success===true?"completed":"failed",
       errorCode:success===true?"":code(errorCode)||(name==="studio_cloud_save"?"cloud_save_failed":"unavailable"),context});
+  };
+  finish.progress=(stage)=>{
+    if(finished||turn!==epoch||name!=="studio_cloud_save"||!saveStages.has(stage)||stage===saveStage)return;
+    saveStage=stage;
+    // Emit only meaningful stages, never every editor change.
+    try{emit("process_progress",{module:"studio",state:"info",operationId:id,phase:"observed",context:{...fixedContext,saveStage,elapsedMs:elapsed(start)}});}catch{}
   };
   finish.correlation=correlation;
   return finish;
@@ -160,7 +176,7 @@ function initializeSession(user){
   if(fresh)emit("session_started",{kind:"session",state:"ok",phase:"observed"});
 }
 onAuthStateChanged(auth,user=>{
-  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;failureEventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();processes.clear();
+  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;failureEventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();for(const p of processes.values())clearTimeout(p.timer);processes.clear();
   if(!user?.emailVerified)return;
   activeUid=user.uid;enabled=true;
   initializeSession(user);
