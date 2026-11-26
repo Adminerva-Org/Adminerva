@@ -34,15 +34,34 @@ const humanize=value=>String(value||"unknown").replaceAll("_"," ").replaceAll("-
 // Only correlate the authorized loaded sample within the same account and session.
 function relatedOperationRows(rows,selected,ownerUid){
   if(!selected.operationId||!selected.sessionId)return [];
-  return rows.filter(row=>(row.ownerUid||ownerUid)===ownerUid&&row.sessionId===selected.sessionId&&
-    (row.operationId===selected.operationId||row.context?.active?.some(p=>p.id===selected.operationId)))
+  const scoped=rows.filter(row=>(row.ownerUid||ownerUid)===ownerUid&&row.sessionId===selected.sessionId);
+  const ids=new Set([selected.operationId]);
+  // Follow only explicit parent links. Active snapshots supply context but do not
+  // merge separate operation trees. Cycles terminate because each ID is visited once.
+  for(let changed=true;changed;){
+    changed=false;
+    for(const row of scoped){
+      const op=row.operationId,parent=row.context?.parentOperationId;
+      if(!op||!parent)continue;
+      if(ids.has(op)&&!ids.has(parent)){ids.add(parent);changed=true;}
+      if(ids.has(parent)&&!ids.has(op)){ids.add(op);changed=true;}
+    }
+  }
+  return scoped.filter(row=>ids.has(row.operationId)||row.context?.active?.some(p=>ids.has(p.id)))
     .sort((a,b)=>a.at-b.at||String(a.id).localeCompare(String(b.id)));
 }
 function operationStatus(rows,operationId){
   const own=rows.filter(row=>row.operationId===operationId);
   const terminal=own.filter(row=>["process_finished","process_failed"].includes(row.action));
   if(terminal.length)return terminal.some(row=>row.action==="process_failed")?"Failure observed":"Completion observed";
-  return own.some(row=>row.action==="process_started")?"No completion in loaded sample":"No tracked lifecycle in loaded sample";
+  const backend=own.filter(row=>row.provenance==="server_confirmed"&&["api_succeeded","api_failed"].includes(row.action));
+  if(backend.length)return backend.some(row=>row.action==="api_failed")?"Backend rejection recorded; browser completion not loaded":"Backend returned; browser completion not loaded";
+  if(own.some(row=>row.action==="process_started")){
+    const age=Math.max(0,...rows.flatMap(row=>(row.context?.active||[]).filter(p=>p.id===operationId).map(p=>p.ageMs||0)));
+    if(age>=60000)return "Observed active for "+Math.floor(age/1000)+"s; no completion loaded";
+    return "No completion in loaded sample";
+  }
+  return "No tracked lifecycle in loaded sample";
 }
 function loadedRows(){
   return state.view==="user"?state.events:state.view==="live"?state.live.rows:state.view==="global"?state.global:state.recent;
@@ -89,14 +108,14 @@ function renderInspector(){
     const field=make("div");field.append(make("dt","",key),make("dd","",value));data.append(field);
   }
   host.append(data,make("h4","","Related operation · "+related.length+" loaded"));
-  host.append(make("p","pl-inspector-note",operationStatus(related,row.operationId)+". Server receipt order; missing completion is not proof of a stuck process."));
+  host.append(make("p","pl-inspector-note",operationStatus(related,row.operationId)+". Client-supplied links, same account/session. Server receipt order; missing completion is not proof of a stuck process."));
   const list=make("ol","pl-operation-timeline");
   for(const e of related){
     const item=make("li");item.dataset.severity=severity(e.severity);
     const b=make("button","pl-operation-event",diagnosticActionLabel(e.action));b.type="button";
     b.addEventListener("click",()=>inspectEvent(e,ownerUid,b));
     if(e.id===row.id)b.setAttribute("aria-current","true");
-    item.append(make("time","",liveTime(e.at)),b,make("small","",e.operationId===row.operationId?(e.context?.process||e.phase||""):"Observed while operation was active"));list.append(item);
+    item.append(make("time","",liveTime(e.at)),b,make("small","",e.operationId===row.operationId?(e.context?.process||e.service||e.phase||""):e.context?.parentOperationId===row.operationId?"Child · "+(e.context?.process||e.service||e.action):row.context?.parentOperationId===e.operationId?"Parent · "+(e.context?.process||e.service||e.action):e.context?.parentOperationId?"Linked operation · "+(e.context?.process||e.service||e.action):"Related operation or active snapshot"));list.append(item);
   }
   host.append(list);
   $("pl-inspector").hidden=false;$("pl-investigation-grid").classList.add("pl-inspecting");
@@ -104,7 +123,7 @@ function renderInspector(){
 function contextFields(record){
   const c=record.context;if(!c)return [];
   const active=Array.isArray(c.active)?c.active:[];
-  return [["Control",c.control],["Tracked process",c.process],["Client time (unverified)",Number.isSafeInteger(c.clientAt)?time(c.clientAt):""],
+  return [["Control",c.control],["Tracked process",c.process],["Parent operation (client)",c.parentOperationId],["Client time (unverified)",Number.isSafeInteger(c.clientAt)?time(c.clientAt):""],
     ["Rejection reason",c.reasonCode],["Project category",c.projectCategory],["Recovery",c.recovery],["Device backup (client)",c.deviceBackup],["Retry",c.retryState],["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
     ["Elapsed (ms)",c.elapsedMs],["Tracked active processes",Array.isArray(c.active)?active.length+(c.overflow||0):null],
     ["Overlap (same tracked operation)",active.some((p,i)=>active.slice(0,i).some(q=>q.name===p.name))?"Observed; not proof of a duplicate write":""],
@@ -329,7 +348,7 @@ function renderEvents(){
   const search=$("pl-event-search").value.trim().toLocaleLowerCase();
   const filtered=rows.filter(row=>(state.view==="global"||(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
     (!search||[row.ownerUid,state.selectedUid,row.action,row.errorCode,row.fingerprint,
-      row.traceId,row.service,row.sessionId,row.module,row.route,row.operationId,row.context?.control,row.context?.process,row.context?.reasonCode,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search))));
+      row.traceId,row.service,row.sessionId,row.module,row.route,row.operationId,row.context?.control,row.context?.process,row.context?.reasonCode,row.context?.parentOperationId,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search))));
   if(state.view==="live"){
     $("pl-audit-wrap").hidden=true;$("pl-impact").hidden=true;
     renderLive();return;
@@ -708,7 +727,7 @@ function liveMatches(row){
   return (!level||severity(row.severity)===level)&&(!module||row.module===module)&&
     (!search||[row.ownerUid,labelFor(row.ownerUid),row.action,row.module,
       row.errorCode,row.service,row.traceId,row.operationId,row.sessionId,
-      row.fingerprint,row.route,row.context?.control,row.context?.process,row.context?.reasonCode,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search)));
+      row.fingerprint,row.route,row.context?.control,row.context?.process,row.context?.reasonCode,row.context?.parentOperationId,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search)));
 }
 function liveLine(row){
   const line=make("div","pl-live-line");
