@@ -101,8 +101,8 @@ test("wide-screen compact workspace retains canonical log controls and responsiv
   assert.match(css,/\.pl-live-line\{grid-template-columns:77px 48px minmax\(0,1fr\)/);
   assert.match(css,/\.pl-analysis-drawer>summary/);
   assert.match(css,/\.pl-filter-bar\{display:flex;flex-direction:column/);
-  assert.match(page,/css\/platform-logs\.css\?v=20261126-trace-4/);
-  assert.match(page,/js\/core\/platform-logs\.mjs\?v=20261126-trace-4/);
+  assert.match(page,/css\/platform-logs\.css\?v=20261126-trace-5/);
+  assert.match(page,/js\/core\/platform-logs\.mjs\?v=20261126-trace-5/);
   assert.doesNotMatch(viewer,/setDoc|updateDoc|deleteDoc/);
 });
 
@@ -197,8 +197,8 @@ test("stream-first workspace preserves audit reason and adds quick filters",()=>
 });
 
 test("operation timeline connects explicit parent spans but excludes other accounts, sessions and unrelated overlap",()=>{
- const start=viewer.indexOf("function relatedOperationRows("),end=viewer.indexOf("function loadedRows(",start);
- const {relatedOperationRows,operationStatus}=new Function(viewer.slice(start,end)+";return {relatedOperationRows,operationStatus};")();
+ const start=viewer.indexOf("function linkedOperationIds("),end=viewer.indexOf("function loadedRows(",start);
+ const {relatedOperationRows,operationStatus,summarizeOperationFamily}=new Function(viewer.slice(start,end)+";return {relatedOperationRows,operationStatus,summarizeOperationFamily};")();
  const root={id:"r",ownerUid:"a",sessionId:"s",operationId:"root",action:"process_started",at:1};
  const child={...root,id:"c",operationId:"child",context:{parentOperationId:"root"},at:2};
  const server={...child,id:"b",action:"api_failed",provenance:"server_confirmed",at:3};
@@ -209,4 +209,6 @@ test("operation timeline connects explicit parent spans but excludes other accou
  assert.deepEqual(relatedOperationRows(rows,root,"a").map(x=>x.id),["r","c","b","o"]);
  assert.equal(operationStatus(rows,"child"),"Backend rejection recorded; browser completion not loaded");
  assert.match(operationStatus(rows,"root"),/Observed active for 65s/);
+ assert.deepEqual(summarizeOperationFamily(relatedOperationRows(rows,root,"a"),root),{operations:2,events:3,backendReturns:0,backendRejections:1,contextEvents:1});
+ assert.match(operationStatus([root,{...root,action:"process_prolonged",context:{elapsedMs:61000}}],"root"),/Observed active for 61s/);
 });
