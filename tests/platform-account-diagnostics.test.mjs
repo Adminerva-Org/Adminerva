@@ -225,3 +225,13 @@ test("callable correlation is bounded and never changes authenticated ownership"
  assert.equal(rows.length,2);
  for(const row of rows){assert.equal(row.ownerUid,USER);assert.equal(row.operationId,EVENT);assert.equal(row.sessionId,SESSION);assert.equal(row.context.parentOperationId,parent);}
 });
+
+test("save stages and prolonged observations are bounded and cannot claim completion",()=>{
+ const e=event({kind:"action",action:"process_progress",state:"info",operationId:EVENT,phase:"observed",context:{process:"studio_cloud_save",saveStage:"school_sync",elapsedMs:20,retryAttempt:1,waitingRequests:2}});
+ assert.deepEqual(checkedEvent(e).context,e.context);
+ for(const context of [{...e.context,saveStage:"private"},{...e.context,retryAttempt:5},{...e.context,waitingRequests:101}])assert.throws(()=>checkedEvent({...e,context}),/diagnostic/i);
+ const slow={...e,kind:"system",action:"process_prolonged",state:"unavailable",context:{...e.context,elapsedMs:60000}};
+ assert.equal(diagnosticSeverity(checkedEvent(slow)),"warning");
+ assert.throws(()=>checkedEvent({...slow,context:{...slow.context,elapsedMs:59999}}),/prolonged/);
+ assert.throws(()=>checkedEvent({...slow,state:"ok"}),/prolonged/);
+});
