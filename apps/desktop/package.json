@@ -29,7 +29,8 @@
       "main.cjs",
       "navigation-policy.cjs",
       "preload.cjs",
-      "package.json"
+      "package.json",
+      "update-check.cjs"
     ],
     "win": {
       "target": "nsis",
