@@ -101,8 +101,8 @@ test("wide-screen compact workspace retains canonical log controls and responsiv
   assert.match(css,/\.pl-live-line\{grid-template-columns:77px 48px minmax\(0,1fr\)/);
   assert.match(css,/\.pl-analysis-drawer>summary/);
   assert.match(css,/\.pl-filter-bar\{display:flex;flex-direction:column/);
-  assert.match(page,/css\/platform-logs\.css\?v=20261126-trace-5/);
-  assert.match(page,/js\/core\/platform-logs\.mjs\?v=20261126-trace-5/);
+  assert.match(page,/css\/platform-logs\.css\?v=20261126-trace-6/);
+  assert.match(page,/js\/core\/platform-logs\.mjs\?v=20261126-trace-6/);
   assert.doesNotMatch(viewer,/setDoc|updateDoc|deleteDoc/);
 });
 
@@ -211,4 +211,8 @@ test("operation timeline connects explicit parent spans but excludes other accou
  assert.match(operationStatus(rows,"root"),/Observed active for 65s/);
  assert.deepEqual(summarizeOperationFamily(relatedOperationRows(rows,root,"a"),root),{operations:2,events:3,backendReturns:0,backendRejections:1,contextEvents:1});
  assert.match(operationStatus([root,{...root,action:"process_prolonged",context:{elapsedMs:61000}}],"root"),/Observed active for 61s/);
+});
+
+test("panel sizes and loaded-record lookup are available without changing read authority",()=>{
+ assert.match(page,/id="pl-directory-width"/);assert.match(page,/id="pl-inspector-width"/);assert.match(viewer,/Find page instance/);assert.match(viewer,/Search loaded records only/);assert.match(css,/--pl-inspector-width/);
 });
