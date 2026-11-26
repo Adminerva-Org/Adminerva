@@ -5,7 +5,7 @@ const {createHash}=require("node:crypto");
 const {FieldValue}=require("firebase-admin/firestore");
 const {TenantAccessError}=require("./tenant-access.js");
 const {externalView}=require("./school-external-academic-records.js");
-const ACTIONS=new Set(["academic_record_years","academic_record_packet","get_certificate_template","save_certificate_template","prepare_enrollment_certificate","get_enrollment_certificate","issue_enrollment_certificate","revoke_enrollment_certificate","verify_enrollment_certificate","record_good_moral_attestation"]);
+const ACTIONS=new Set(["academic_record_years","academic_record_packet","get_certificate_template","save_certificate_template","prepare_enrollment_certificate","get_enrollment_certificate","issue_enrollment_certificate","revoke_enrollment_certificate","verify_enrollment_certificate","record_good_moral_attestation","withdraw_good_moral_attestation"]);
 function canonicalValue(value){
   if(Array.isArray(value))return value.map(canonicalValue);
   if(value&&typeof value==="object")return Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonicalValue(value[key])]));
@@ -32,7 +32,7 @@ function eligibleRegistration(type,row){
   if(!row)return false;
   if(type==="certificate_of_enrollment")return row.status==="active";
   if(type==="graduation_certificate")return row.status==="ended"&&row.endReasonType==="progression"&&row.progressionType==="graduation";
-  if(type==="transfer_certificate")return row.status==="ended"&&row.endReasonType==="transfer_out"&&!row.progressionType;
+  if(type==="transfer_certificate")return row.status==="ended"&&row.endReasonType==="transfer_out";
   if(type==="good_moral_certificate")return row.status==="active"||(row.status==="ended"&&["transfer_out","progression","withdrawal"].includes(row.endReasonType));
   return false;
 }
@@ -208,13 +208,30 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
     await student(id(row.personId));
     if(row.status==="released"&&row.issuedCertificate){
       if(row.issuedDigest!==certificateDigest(row.issuedCertificate))deny("data-loss","Certificate snapshot integrity check failed.");
-      return {state:row.credentialState||"issued",reference:row.releaseReference,issuedAt:row.issuedAt?.toMillis?.()||null,certificate:row.issuedCertificate,revision:Number(row.revision)||1};
+      return {type:row.type,state:row.credentialState||"issued",reference:row.releaseReference,issuedAt:row.issuedAt?.toMillis?.()||null,certificate:row.issuedCertificate,revision:Number(row.revision)||1};
     }
     const placements=(await bounded(db.collection(root+"student_registrations").where("personId","==",row.personId),100,"Official placements")).filter(doc=>eligibleRegistration(row.type,doc.data()));
     return {type:row.type,state:row.status,revision:Number(row.revision)||1,certificate:row.certificateDraft||null,attestation:row.moralAttestation?{status:row.moralAttestation.status,registrationId:row.moralAttestation.registrationId,reference:row.moralAttestation.reference,office:row.moralAttestation.office}:null,
       placements:await Promise.all(placements.map(async doc=>({registrationId:doc.id,label:[await label(ref=>ref.get(),"academic_years",doc.data().yearId),await label(ref=>ref.get(),"terms",doc.data().termId),await label(ref=>ref.get(),"sections",doc.data().sectionId)].join(" · ")})))};
   }
   const expected=revision(input.expectedRevision);
+  if(input.action==="withdraw_good_moral_attestation"){
+    const reason=str(input.reason,"withdrawal reason",500);
+    if(reason.length<12)deny("invalid-argument","Document the withdrawal of authorized office approval.");
+    await db.runTransaction(async tx=>{
+      await requireMembership(ref=>tx.get(ref));
+      const [member,requestDoc]=await Promise.all([tx.get(memberRef),tx.get(requestRef)]);
+      const row=checkRequest(requestDoc);
+      if(!own(member,ctx.schoolId)||!member.data().roles?.includes("school_admin"))deny("permission-denied","Only a verified School Administrator can withdraw office approval.");
+      if(row.type!=="good_moral_certificate"||!["in_review","ready"].includes(row.status)||Number(row.revision)!==expected||row.moralAttestation?.status!=="approved")
+        deny("failed-precondition","Refresh the pending Good Moral request before withdrawing approval. Revoke issued certificates separately.");
+      const now=FieldValue.serverTimestamp(),attestation={...row.moralAttestation,status:"withdrawn",withdrawnByUid:ctx.uid,withdrawnAt:now,revision:expected+1};
+      tx.update(requestRef,{moralAttestation:attestation,certificateDraft:FieldValue.delete(),certificateDraftDigest:FieldValue.delete(),status:"in_review",revision:expected+1,updatedAt:now,updatedByUid:ctx.uid});
+      tx.create(requestRef.collection("certificate_revisions").doc(String(expected+1)),{schoolId:ctx.schoolId,personId:row.personId,state:"attestation_withdrawn",attestation,createdAt:now,actorUid:ctx.uid});
+      tx.create(db.collection(root+"student_records_audit").doc(),audit(row.personId,"good_moral_attestation_withdrawn",{requestId,reason,revision:expected+1}));
+    });
+    return {revision:expected+1,state:"in_review"};
+  }
   if(input.action==="record_good_moral_attestation"){
     const registrationId=id(input.registrationId),reference=str(input.reference,"authorized office reference",150),office=str(input.office,"authorized office",120),reason=str(input.reason,"review reason",500);
     if(reason.length<12||input.confirmSourceReviewed!==true)deny("invalid-argument","Confirm documented approval from the authorized office.");
