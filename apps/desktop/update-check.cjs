@@ -1,7 +1,7 @@
 "use strict";
 const UPDATE_STATUS_URL="https://adminerva-org.github.io/Adminerva/native-update-channel.json";
 const DOWNLOAD_CENTER_URL="https://adminerva-org.github.io/Adminerva/downloads.html";
-const VERSION=/^(0|[1-9]\\d{0,5})\\.(0|[1-9]\\d{0,5})\\.(0|[1-9]\\d{0,5})$/;
+const VERSION=/^(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/;
 function compareVersions(a,b){
  if(typeof a!=="string"||typeof b!=="string"||!VERSION.test(a)||!VERSION.test(b))throw Error("Invalid version");
  const left=a.split(".").map(Number),right=b.split(".").map(Number);
