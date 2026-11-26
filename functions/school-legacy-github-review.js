@@ -11,7 +11,7 @@
 const {createHash}=require("node:crypto");
 const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {TenantAccessError}=require("./tenant-access.js");
-const {authorizedTeacherCustody,validCustody,custodySectionMatches}=require("./school-legacy-custody.js");
+const {authorizedTeacherCustody,validCustody,custodySectionMatches,custodyMaximum,verifiedOriginalMaximum}=require("./school-legacy-custody.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message)};
 const hash=(...items)=>createHash("sha256").update(JSON.stringify(items)).digest("hex");
 const validSha=value=>typeof value==="string"&&/^[a-f0-9]{40}$/i.test(value);
@@ -133,7 +133,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    if(isOwner&&(!imported.exists||imported.data().schoolId!==ctx.schoolId||
       imported.data().ownerUid!==ctx.uid||imported.data().legacyImport?.assessmentId!==id))
      deny("failed-precondition","Import this original assessment blueprint into the selected school before using V4 historical review.");
-   const total=Number(taskData.maxScore||20);
+   const total=custody?custodyMaximum(taskData,custody.grant):Number(taskData.maxScore||20);
    if(!Number.isFinite(total)||total<=0||total>2000)
      deny("failed-precondition","Historical assessment maximum is invalid.");
    const rubric=parseLegacyRubric(taskData.evalCriteria,total);
@@ -379,7 +379,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      ]);
      const sourceUnchanged=freshTask.exists&&
        freshTask.data().evalCriteria===taskData.evalCriteria&&
-       Number(freshTask.data().maxScore||20)===total;
+       (custody?custodyMaximum(freshTask.data(),freshCustody?.data()):Number(freshTask.data().maxScore||20))===total;
      const ownerActive=sourceUnchanged&&isOwner&&freshTask.data().ownerUid===ctx.uid&&
        freshImport.exists&&freshImport.data().schoolId===ctx.schoolId&&
        freshImport.data().ownerUid===ctx.uid&&freshImport.data().legacyImport?.assessmentId===id;
@@ -407,6 +407,11 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        deny("failed-precondition","The frozen student-submitted repository evidence changed during review.");
      if(originalGrades.size>=1001)
        deny("resource-exhausted","Original grade identity reconciliation requires pagination.");
+     if(custody?.grant.maximumProof==="consistent_original_grade_maxima"){
+       const basis=verifiedOriginalMaximum(freshTask.data(),originalGrades.docs.map(doc=>doc.data()),id,freshCustody.data().verifiedLegacyStudentIds);
+       if(basis?.maximum!==total||basis.proof!==custody.grant.maximumProof)
+         deny("failed-precondition","The recovered score maximum changed. Reconcile original grade records before continuing.");
+     }
      if(originalGrades.docs.some(doc=>doc.id!==recordId&&doc.data().studentId===meta.studentId))
        deny("failed-precondition","An original grade exists under another document ID. Reconcile it before grading.");
      const before=prior.exists?prior.data():null;
