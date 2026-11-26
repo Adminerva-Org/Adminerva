@@ -27,3 +27,11 @@ The dependency is pinned to a current supported Electron release; an immutable l
 Implement authenticated system-browser OAuth/PKCE handoff and validated return through a short-lived server-verified exchange. Never reuse browser cookies, forward Firebase ID tokens through URL parameters, enable Electron Node integration for remote pages, or automatically allow screen capture. Validate exam epoch, school, saved project, idle/unload and close behavior before admitting authenticated examination work. Then add signed/notarized Windows/macOS packaging, explicit native versioning and safe updates.
 
 Android/iOS should use reviewed Capacitor native projects with bundled reviewed web assets, secure native auth/deep links, and app-store-compliant updates. They must reuse canonical school APIs, not replicate school records or create parallel grading or exam services.
+
+## Installable, unsigned development preview artifacts
+
+The GitHub Actions workflow **Native public-preview installation artifacts** builds a Windows NSIS EXE and Intel/Apple Silicon macOS DMGs. Use **GitHub → Actions → Native public-preview installation artifacts → successful run → Artifacts**, download the corresponding ZIP and unpack the installer. GitHub sign-in may be required. Preview artifacts are retained for seven days and include SHA256SUMS.txt checksums. They are not official Adminerva releases.
+
+These packages are **public-only**, have no native account sign-in, device monitoring, teacher-controlled examinations, or privileged file/screen access. Signed, tested official applications are still pending. Windows SmartScreen and macOS Gatekeeper may warn because these are unsigned. Test only on a disposable or authorized development device, respecting organization endpoint policies; do not install these in a production school laboratory or give them to students for exams.
+
+The authenticated desktop implementation in PR #295 is intentionally excluded from this public preview. This installer exists to evaluate the install/uninstall experience, window/navigation, responsive UI and platform compatibility.

@@ -6,12 +6,46 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "check": "node --test ../../tests/cross-platform-client.test.mjs"
+    "check": "node --test ../../tests/cross-platform-client.test.mjs",
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg --x64 --arm64 --publish never"
   },
   "devDependencies": {
-    "electron": "45.4.1"
+    "electron": "45.4.1",
+    "electron-builder": "26.18.1"
   },
   "engines": {
     "node": ">=22"
+  },
+  "build": {
+    "appId": "io.adminerva.desktop.publicpreview",
+    "productName": "Adminerva Desktop Public Preview",
+    "artifactName": "Adminerva-Public-Preview-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "navigation-policy.cjs",
+      "preload.cjs",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": true
+    },
+    "mac": {
+      "target": "dmg",
+      "identity": null,
+      "hardenedRuntime": false
+    },
+    "publish": null
   }
 }
