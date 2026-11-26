@@ -81,3 +81,11 @@
 @media(max-width:700px){.av-downloads{padding:.8rem}.downloads-hero{grid-template-columns:1fr;border-radius:20px;min-height:0}.downloads-hero-art{min-height:225px}.downloads-art-desktop{right:8%;top:8px;width:75%;height:170px}.downloads-art-phone{left:13%;bottom:3px}.downloads-section-heading,.downloads-live-heading{display:block}.downloads-section-heading>p{margin-top:.8rem}.downloads-live-heading .downloads-button{margin-top:1rem}.downloads-steps-grid{grid-template-columns:1fr}.downloads-exam{grid-template-columns:1fr}.downloads-exam-mark{width:64px;height:64px}}
 @media(max-width:460px){.downloads-platform-grid{grid-template-columns:1fr}.downloads-platform{min-height:0}.downloads-hero-actions .downloads-button{width:100%}.downloads-art-phone{left:2%}.downloads-hero-art{min-height:210px}.downloads-art-desktop{height:151px}.downloads-hero h1{font-size:2.25rem}.downloads-live{padding:1.1rem}}
 @media(prefers-reduced-motion:reduce){.downloads-button{transition:none}.downloads-button:hover{transform:none}}
+
+/* QA installers are distinct from official signed platform downloads. */
+.downloads-preview-link{display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.74rem .85rem;min-height:44px;background:#e6f7fa;color:#075269!important;border:1px solid #75b9c9;border-radius:12px;text-decoration:none!important;font-size:.85rem;font-weight:850}
+.downloads-preview-link:hover{background:#ccf2f6}
+.downloads-preview-note{margin:.55rem 0 .85rem!important;font-size:.75rem!important;color:#536879!important}
+.downloads-preview-guide{margin:1rem 0 0;padding:1rem 1.15rem;border-left:3px solid #0891b2;border-radius:0 12px 12px 0;background:#e9f4f9;color:#2b516a;font-size:.86rem;line-height:1.55}
+.downloads-preview-guide strong{color:#153750}
+@media(max-width:460px){.downloads-preview-guide{padding:.85rem 1rem}.downloads-preview-link{width:100%}}
