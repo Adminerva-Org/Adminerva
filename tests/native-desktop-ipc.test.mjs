@@ -9,7 +9,7 @@ const source=readFileSync(path,"utf8");
 const require=createRequire(path);
 const BOOT="https://adminerva-org.github.io/Adminerva/desktop-session.html";
 const LOGIN="https://adminerva-org.github.io/Adminerva/login.html?switch=1";
-async function bootDesktop(){
+async function bootDesktop({successfulUid=null}={}){
  const ipc=new Map(),events=new Map(),dialogs=[],browserUrls=[],windows=[];
  let openCount=0,menu=null;
  class FakeWebContents {
@@ -45,11 +45,17 @@ async function bootDesktop(){
   ipcMain:{handle:(name,callback)=>ipc.set(name,callback)}
  };
  const localRequire=id=>id==="electron"?mock:id==="./update-check.cjs"?{checkUpdateStatus:async()=>({state:"no-newer-version-listed"}),DOWNLOAD_CENTER_URL:"https://adminerva-org.github.io/Adminerva/downloads.html"}:
-  id==="./native-handoff-client.cjs"?{sendHandoff:async()=>{openCount++;throw Error("not enabled");}}:require(id);
+  id==="./native-handoff-client.cjs"?{sendHandoff:async(action)=>{
+   openCount++;
+   if(!successfulUid)throw Error("not enabled");
+   if(action==="begin")return {state:"waiting"};
+   if(action==="redeem")return {state:"authorized",uid:successfulUid,customToken:"valid-fake-token-for-"+successfulUid+"-only"};
+   return {state:"canceled"};
+  }}:require(id);
  const ctx=vm.createContext({
   require:localRequire,__dirname:fileURLToPath(new URL("../apps/desktop/",import.meta.url)),
   process:{env:{ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI:"true"},platform:"win32"},
-  setTimeout,URL,console
+  setTimeout:successfulUid?(callback=>queueMicrotask(callback)):setTimeout,URL,console
  });
  vm.runInContext(source,ctx,{filename:path,timeout:5000});
  await new Promise(resolve=>setImmediate(resolve));
@@ -184,4 +190,33 @@ test("a failed school-role bootstrap also leaves its isolated account partition"
  assert.equal(guest.webContents.url,"https://adminerva-org.github.io/Adminerva/guest-home.html");
  assert.equal(guest.options.webPreferences.partition,"persist:adminerva-public-preview");
  assert.equal(h.win.isDestroyed(),true);
+});
+
+test("verified native pairing switches to the correct UID partition, then securely signs out",async()=>{
+ const h=await bootDesktop({successfulUid:"verified-student-uid"});
+ assert.equal(h.windows.length,1);
+ assert.equal(h.windows[0].options.webPreferences.partition,"persist:adminerva-public-preview");
+ await vm.runInContext("startDesktopSignIn()",h.ctx);
+ assert.equal(h.windows.length,2);
+ assert.equal(h.win.isDestroyed(),true);
+ assert.equal(h.win._hidden,true);
+ const authed=h.windows[1];
+ assert.equal(authed.webContents.url,BOOT);
+ const schoolPartition=authed.options.webPreferences.partition;
+ assert.match(schoolPartition,/^persist:adminerva-school-[0-9a-f]{48}$/);
+ assert.notEqual(schoolPartition,h.win.options.webPreferences.partition);
+ const frame={sender:authed.webContents,senderFrame:authed.webContents.mainFrame};
+ const consume=h.ipc.get("adminerva:consume-signin-token"),confirm=h.ipc.get("adminerva:confirm-signin");
+ assert.equal(consume(frame),"valid-fake-token-for-verified-student-uid-only");
+ assert.equal(consume(frame),null);
+ assert.equal(confirm(frame),true);
+ assert.equal(confirm(frame),false);
+ const end=h.ipc.get("adminerva:session-ended");
+ assert.equal(await end(frame),true);
+ assert.equal(h.windows.length,3);
+ const guest=h.windows[2];
+ assert.equal(guest.options.webPreferences.partition,"persist:adminerva-public-preview");
+ assert.equal(authed._hidden,true);
+ assert.equal(authed.isDestroyed(),true);
+ assert.equal(guest.webContents.url,"https://adminerva-org.github.io/Adminerva/guest-home.html");
 });
