@@ -12,6 +12,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {ACTIONS:ADMISSION_DOCUMENT_ACTIONS,admissionDocumentAction}=require("./school-admission-documents.js");
 const {ACTIONS:CREDENTIAL_ACTIONS,registrarCredentialAction}=require("./school-record-credentials.js");
+const {ACTIONS:EXTERNAL_ACADEMIC_ACTIONS,externalAcademicAction}=require("./school-external-academic-records.js");
 const {
   normalizeGuardianEmail,guardianContactIdForEmail,guardianRelationshipId
 }=require("./school-guardian-identity.js");
@@ -113,6 +114,7 @@ function createSchoolStudentRecordsService({db}){
         deny("permission-denied","An active school Registrar or School Administrator membership is required.");
     }
     if(CREDENTIAL_ACTIONS.has(input.action))return registrarCredentialAction({db,ctx,input,requireMembership:requireRegistrarMembership,student});
+    if(EXTERNAL_ACADEMIC_ACTIONS.has(input.action))return externalAcademicAction({db,ctx,input,requireMembership:requireRegistrarMembership,student});
     if(input.action==="find_student_by_lrn"){
       await requireRegistrarMembership(ref=>ref.get());
       const lrn=normalizeLrn(input.lrn);if(!lrn)deny("invalid-argument","Enter an existing 12-digit LRN.");
