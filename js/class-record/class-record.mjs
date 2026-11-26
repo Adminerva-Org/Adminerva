@@ -2040,7 +2040,7 @@ async function findEarlierAssessment(){
       sourceSearchResults.append(make("p","cr-help",
         legacyCandidates.length+" earlier Repository Management assessment"+
         (legacyCandidates.length===1?"":"s")+
-        " found in a verified original class section, but ownership requires review:"));
+        " matched to verified class student identities; custody requires review:"));
       for(const item of legacyCandidates){
         const card=make("article");
         card.append(make("strong","",item.title||"Legacy assessment"));
@@ -2050,6 +2050,7 @@ async function findEarlierAssessment(){
           (item.originalSections?.length?" · Original section: "+item.originalSections.join(", "):"")+
           (item.maximum?" · Max score: "+item.maximum:" · Original maximum not recorded")));
         card.append(make("p","",
+          item.sectionProof==="assessment_student_identity"?"No original deployment section. Matched using exact original assessment and student records.":
           item.originalOwnerStatus==="owner_not_recorded"?
             "This assessment predates teacher ownership fields. Its historical section matches verified student identities, but the original owner must still be reviewed.":
             "This assessment belongs to a different historical login or teacher identity. It cannot be reassigned from this screen."));
