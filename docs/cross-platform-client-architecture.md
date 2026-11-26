@@ -6,11 +6,13 @@
 
 The existing hosted Adminerva frontend, tenant-verified Firebase APIs, identity/roles, school operations, assessment/grade paths, and Studio cloud-save semantics remain canonical. Do not fork the School OS into platform-specific business logic. Platform-specific code may implement **only** native window/chrome, OS-authenticated device access, system-browser sign-in handoffs, secure local storage, notifications, and reviewed native file/capture features.
 
-| Client | Web code delivery | Native code delivery | Current position |
-| --- | --- | --- | --- |
-| Web/PWA | Hosted from canonical site | Not applicable | Operational web; PWA install depends on browser support |
-| Windows/macOS | Approved HTTPS web content in sandboxed Electron renderer, after auth integration | Signed installer + independently versioned native bridge | Public-only preview scaffold; no installer, no native auth |
-| Android/iOS | Reviewed web assets bundled with Capacitor native app, with allowed shared web/API content | Signed store-delivered native application | Public-only asset staging in `apps/mobile`; native Android/iOS projects and store builds absent |
+| Client | Canonical web/API delivery | Platform-specific package |
+| --- | --- | --- |
+| Web/PWA | Hosted School OS and verified Firebase services | Browser installation when eligible |
+| Windows/macOS | Approved HTTPS website in isolated, sandboxed Electron renderer; no duplicate school APIs | Signed publisher-controlled desktop shell and reviewed native privileges |
+| Android/iOS | Reviewed shared web assets bundled into Capacitor; same authorized School OS services | Platform-signed mobile package through approved distribution |
+ 
+*All release progress and operational status belongs exclusively in the School OS master plan.*
 
 **Website updates are not universally native updates.** Hosted desktop public pages load current site changes on normal navigation or relaunch; never force refresh a Studio editor during a practical exam. Bundled mobile UI requires an app-store release to update bundled code, unless a narrowly reviewed category of remote content is allowed. Native bridge changes, new OS privileges and security-sensitive flows require signed native updates. All clients share the same live authorized backend changes only when their API contracts remain compatible.
 
@@ -29,7 +31,7 @@ The native process refuses a second pairing while a private school workspace is 
 
 ## Desktop security boundary
 
-`apps/desktop/` intentionally starts only in approved public pages on `https://adminerva-org.github.io/Adminerva/`. Authentication and non-public routes open in the system browser; credentials are not handed back. All renderers are sandboxed and isolated, arbitrary window opening and unapproved top-level navigation are blocked, and permission requests are denied. There is no OS bridge beyond a read-only descriptor. The preview is **not ready for classroom/student accounts**. Review remote scripts and create an authenticated native session bridge before allowing private use.
+Packaged `apps/desktop/` previews intentionally start only in approved public pages on `https://adminerva-org.github.io/Adminerva/`. Authentication and non-public routes open in the system browser; no native credentials are included in the package. The separate, unpackaged development pairing path uses `!app.isPackaged`, an explicit local flag and a developer-only credential preload excluded from public installer metadata. All renderers are sandboxed and isolated, arbitrary window opening and unapproved top-level navigation are blocked, and permission requests are denied. There is no OS bridge beyond a read-only descriptor. The preview is **not ready for classroom/student accounts**. The developer bridge must pass real device, edge-abuse, approved school-role, save and sign-out acceptance before any signed private-use release.
 
 ## Mobile security boundary
 
@@ -37,7 +39,9 @@ Use native Android and iOS shells with reviewed bundled web assets and one autho
 
 ## Shared-computer session and save boundary
 
-The Electron development branch detects native window context before Firebase Auth initialization and selects session-only Firebase credential persistence. Its existing persistent Chromium partition may still retain **per-user device recovery drafts**, but a signed-in Firebase session is not intended to outlive the desktop window. Explicit sign-out is a revoke-only, official-origin/main-frame IPC action: it clears desktop private-navigation state and navigates to the public homepage, removing the previous learner's rendered account data. This does not authorize access to any school record.
+The Electron developer-mode shell selects session-only Firebase credential persistence while retaining per-UID project recovery storage. The backend releases a one-use custom token and the verified existing Firebase UID only after the device's pairing verifier is proven. The native process hashes that UID into a dedicated persistent Chromium partition **before** loading the authenticated bootstrap page. Each returning account gets the same recovery namespace, another account gets a different namespace, and the public guest window has its own partition. No school access is granted by the partition key.
+
+Explicit sign-out or failed role-verification uses a revoke-only, official-origin/main-frame IPC action: it revokes private route state, creates a guest window in the public partition, **hides** the previous learner's window, and requests a normal close that can still honor Studio's pending-save `beforeunload` barrier. A canceled close must not leave the former learner's window visible. This remains a browser-integration safety model, not a demonstrated device-level guarantee.
 
 The canonical Studio project controller captures the exact in-memory editor snapshot before leaving. It intercepts normal sign-out and browser/window unload while cloud pending writes, in-flight writes or in-memory-only drafts remain. Cloud save must confirm before signing out; no native menu can bypass the teacher-controlled exam close or declare a pending save complete. This guard requires browser/real-device testing for crash recovery and for all other sign-out paths; it is not an unconditional guarantee against operating-system termination.
 
@@ -52,4 +56,4 @@ The canonical Studio project controller captures the exact in-memory editor snap
 
 ## This foundation's scope
 
-Implementation in this branch: a secure **public-only** Electron preview shell; a shared browser/native compatibility model; public-only Capacitor mobile web-asset staging from canonical site files (no remote server URL); focused tests; technical documentation; status and future work consolidated into the master plan. Not implemented: native authenticated workflows, installer signing, desktop auto-update service, desktop Companion, Android/iOS native projects, signing, store packaging or release.
+The desktop public preview, optional developer pairing, UID-isolated storage and mobile public bundle all share the canonical School OS. There is no production-approved native login, signed desktop auto-update, Companion, app-store/TestFlight release or physical-device exam validation. Android public-preview APKs and iOS Simulator builds remain distinct from signed mobile distribution. The master plan alone records the development/release status.

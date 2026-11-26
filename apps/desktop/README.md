@@ -44,7 +44,7 @@ The authenticated desktop implementation in PR #295 is intentionally excluded fr
 
 ## Restricted native sign-in development only
 
-The optional draft PR #295 desktop pairing is **unpackaged-only** (`!app.isPackaged`) and additionally requires the explicit `ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI=true` developer flag. Public preview installers ship only `preload.cjs` and exclude the development `preload-auth-dev.cjs`, pairing client, and native credential bridge. The development client uses a separate `persist:adminerva-auth-dev` partition; the public preview's local cache does not grant access. Backend token issuance also remains disabled until a deliberate security review, abuse-edge controls and physical-device acceptance.
+The optional draft PR #295 desktop pairing is **unpackaged-only** (`!app.isPackaged`) and additionally requires the explicit `ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI=true` developer flag. Public preview installers ship only `preload.cjs` and exclude the development `preload-auth-dev.cjs`, pairing client, and native credential bridge. The development client uses a separate UID-hashed persistent school partitions partition; the public preview's local cache does not grant access. Backend token issuance also remains disabled until a deliberate security review, abuse-edge controls and physical-device acceptance.
 
 ## Pending browser-to-device sign-in
 
