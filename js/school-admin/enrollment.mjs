@@ -879,7 +879,8 @@ function applicationMeta(item){
   return [item.reference,year,levelLabel(item.incomingLevel),program].filter(Boolean).join(" · ");
 }
 function loadApplicationIntoForm(item){
-  if(saving||loadedApplication?.applicationId===item.applicationId||!discardDraft())return;
+  if(saving||item.status!=="accepted"||!discardDraft())return;
+  if(loadedApplication?.applicationId===item.applicationId&&loadedApplication.revision===item.revision){showEnrollmentView("register");return;}
   loadedPerson=null;form.elements.personId.value="";
   form.elements.displayName.readOnly=false;
   loadedApplication=item;
@@ -896,7 +897,7 @@ function loadApplicationIntoForm(item){
   form.elements.yearId.value=(catalog.years||[]).some(row=>row.id===item.yearId)?item.yearId:"";
   form.elements.programId.value=(catalog.programs||[]).some(row=>row.id===item.preferredProgramId)?item.preferredProgramId:"";
   form.elements.termId.value="";form.elements.sectionId.value="";
-  get("en-register-title").textContent="Review & place online application";
+  get("en-register-title").textContent="Enroll accepted applicant";
   get("en-register-help").textContent=item.reference+" · "+levelLabel(item.incomingLevel)+
     ". Confirm official program, period and section before enrollment.";
   get("en-clear-application").hidden=false;
@@ -1006,8 +1007,9 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
 
 async function reviewApplication(item,nextStatus){
   if(saving)return;
-  const label=nextStatus==="rejected"?"rejection":"request for more information";
-  const reason=prompt("Enter the reason for this "+label+". This is recorded in the enrollment review history.");
+  const label=({rejected:"rejection",needs_information:"request for more information",accepted:"acceptance after requirements review",submitted:"reopening for review"})[nextStatus];
+  if(!label)return;
+  const reason=prompt("Reason for "+label+":");
   if(!reason)return;
   setSaving(true);
   status.textContent="Saving enrollment review…";
@@ -1015,27 +1017,31 @@ async function reviewApplication(item,nextStatus){
     await perform("review_application",{applicationId:item.applicationId,status:nextStatus,
       expectedRevision:Number(item.revision)||1,reason});
     if(loadedApplication?.applicationId===item.applicationId)clearLoadedApplication({resetIdentity:true});
-    const message=nextStatus==="rejected"?"Application rejected.":"Application marked as needing information.";
+    const message=({rejected:"Application rejected.",needs_information:"Information requested.",accepted:"Application accepted. Ready for enrollment.",submitted:"Application reopened for review."})[nextStatus];
     status.textContent=message;
     try{await loadApplications();}catch{status.textContent=message+" The list could not refresh. Use Refresh applications.";}
   }catch(error){status.textContent=error?.message||"Application review was not saved.";}
   finally{setSaving(false);}
 }
-async function loadApplications(){
-  const result=await latest("applications","list_applications"),host=get("en-application-list");
-  if(!result)return;
-  host.replaceChildren();
-  const items=result.items||[];
+let applications=[];
+function renderApplications(){
+  const host=get("en-application-list");host.replaceChildren();
+  const query=String(get("en-application-search").value||"").trim().toLowerCase();
+  const filter=get("en-application-status").value||"pending";
+  const items=applications.filter(item=>{
+    const matchesStatus=filter==="all"||(filter==="pending"?["submitted","needs_information","accepted"].includes(item.status):item.status===filter);
+    return matchesStatus&&(!query||[item.displayName,item.reference,item.applicationType].some(v=>String(v||"").toLowerCase().includes(query)));
+  });
   if(!items.length){
     const empty=document.createElement("p");empty.className="en-muted";
-    empty.textContent="No online enrollment applications yet.";host.append(empty);return;
+    empty.textContent=applications.length?"No applications match these filters.":"No applications loaded.";host.append(empty);return;
   }
   for(const item of items){
     const row=document.createElement("article");row.className="en-row";row.setAttribute("role","listitem");
     const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p"),
       contacts=document.createElement("p");
     name.textContent=item.displayName;meta.className="en-muted";contacts.className="en-muted";
-    meta.textContent=applicationMeta(item);
+    meta.textContent=applicationMeta(item)+" · "+(item.applicationType||"new");
     contacts.textContent=item.guardianName+" · "+item.guardianEmail+
       (item.studentEmail?" · student: "+item.studentEmail:" · guardian-managed learner");
     info.append(name,meta,contacts);
@@ -1045,18 +1051,26 @@ async function loadApplications(){
     const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end";
     const badge=document.createElement("span");badge.className="en-badge";badge.textContent=item.status.replaceAll("_"," ");
     actions.append(badge);
-    if(item.status==="submitted"){
-      const load=document.createElement("button");load.type="button";load.className="en-btn secondary";load.textContent="Review & place";
-      load.addEventListener("click",()=>loadApplicationIntoForm(item));actions.append(load);
-      const need=document.createElement("button");need.type="button";need.className="en-btn secondary";need.textContent="Needs info";
-      need.addEventListener("click",()=>void reviewApplication(item,"needs_information"));actions.append(need);
-      const reject=document.createElement("button");reject.type="button";reject.className="en-btn secondary";reject.textContent="Reject";
-      reject.addEventListener("click",()=>void reviewApplication(item,"rejected"));actions.append(reject);
-    }
+    const addAction=(label,callback,primary=false)=>{
+      const control=document.createElement("button");control.type="button";control.className="en-btn"+(primary?"":" secondary");
+      control.textContent=label;control.addEventListener("click",callback);actions.append(control);
+    };
+    if(item.status==="accepted")addAction("Enroll",()=>loadApplicationIntoForm(item),true);
+    if(["submitted","needs_information"].includes(item.status))addAction("Accept",()=>void reviewApplication(item,"accepted"),true);
+    if(["submitted","accepted"].includes(item.status))addAction("Needs info",()=>void reviewApplication(item,"needs_information"));
+    if(item.status==="needs_information")addAction("Reopen review",()=>void reviewApplication(item,"submitted"));
+    if(["submitted","needs_information","accepted"].includes(item.status))addAction("Reject",()=>void reviewApplication(item,"rejected"));
     row.append(info,actions);host.append(row);
   }
   if(saving)for(const button of host.querySelectorAll("button"))button.disabled=true;
 }
+async function loadApplications(){
+  const result=await latest("applications","list_applications");
+  if(!result)return;
+  applications=result.items||[];renderApplications();
+}
+get("en-application-search").addEventListener("input",renderApplications);
+get("en-application-status").addEventListener("change",renderApplications);
 async function refreshAll(){
   const version=++refreshVersion;
   status.textContent="Loading enrollment configuration…";
@@ -1129,6 +1143,7 @@ form.addEventListener("submit",event=>{
     try{
       const result=await perform("register_student",{
         applicationId:String(data.get("applicationId")||""),
+        applicationRevision:loadedApplication?Number(loadedApplication.revision)||1:null,
         personId:String(data.get("personId")||""),
         displayName:String(data.get("displayName")||"").trim(),
         birthDate:String(data.get("birthDate")||""),
@@ -1174,6 +1189,7 @@ picker=createTenantSchoolPicker({
     if(get("en-progression-dialog").open)get("en-progression-dialog").close();
     if(get("en-history-dialog").open)get("en-history-dialog").close();
     form.reset();cohortForm().reset();clearLoadedApplication({resetIdentity:true});
+    applications=[];get("en-application-search").value="";get("en-application-status").value="pending";
     get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
     get("en-cohort-results").replaceChildren();get("en-cohort-status").textContent="Choose a source cohort and decision.";
     renderActivation("");get("en-admin-tools").hidden=true;workspace.hidden=true;
