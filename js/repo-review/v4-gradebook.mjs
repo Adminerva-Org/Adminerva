@@ -355,7 +355,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
         notice.append(make("h3","font-bold text-violet-950","Historical GitHub evidence · V4 review interface"));
         notice.append(make("p","text-violet-900 mt-1",
-          "Actual student-submitted commit selections are eligible for V4 grading. Historical teacher-discovered repository snapshots are retained as context but excluded from new grades, even if previously approved. Existing historical grades are preserved."));
+          "Actual student-submitted commit selections are eligible for V4 grading. Historical teacher-discovered repository snapshots are retained as context but excluded from new grades, even if previously approved. Existing historical grades are preserved. "+
+          (result.coverage?result.coverage.gradeCount+" original grade records ("+
+            result.coverage.publishedCount+" published, "+result.coverage.draftCount+" draft) · "+
+            result.coverage.evidenceCount+" evidence records · "+
+            result.coverage.evidenceWithoutGrade+" evidence-only · "+
+            result.coverage.gradeOnly+" grade-only.":"")));
         inbox.append(notice);
       }
       if(historicalStudio){
@@ -417,9 +422,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         details.append(
           make("h3","font-extrabold text-slate-900",row.studentName||"Student"),
           make("p","text-xs text-slate-500 mt-1",
-            "Version "+row.version+" · "+
+            (row.gradeOnly?"Original historical grade (no matching submission receipt)":
+              "Version "+row.version+" · "+
               (historicalGithub&&row.hasSubmission===false?"no student submission (teacher discovery only)":row.status)+
-              " · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently"))
+              " · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently")))
         );
         const resultLine=grade?
           (grade.status==="published"?"Published result":"Grade draft")+" · "+grade.awarded+" / "+grade.total+
@@ -431,9 +437,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           view==="results"?(grade?"Open result":"Grade response"):
             task.submissionSource==="github"?"Review submitted commits":"Review response");
         button.type="button";
+        if(row.gradeOnly){
+          button.textContent="Original score — read only";
+          button.disabled=true;button.title="No matching frozen student submission. The saved original score is preserved but cannot be edited through evidence review.";
+          button.classList.add("opacity-60","cursor-not-allowed");
+        }
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
-        if(pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
+        if(!row.gradeOnly&&pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
         button.addEventListener("click",()=>void openReview(normalized));
         card.append(details,button);inbox.append(card);
       }
