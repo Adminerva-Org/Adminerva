@@ -396,8 +396,7 @@ function createSchoolGradebookService({db}){
    if(!Number.isInteger(expectedRevision)||expectedRevision<1)
     deny("invalid-argument","The currently published grade revision is required.");
    const reason=String(input.reason||"").trim();
-   if(reason.length<12||reason.length>2000)
-    deny("invalid-argument","Explain the published-grade correction in 12–2000 characters.");
+   if(reason.length>2000)deny("invalid-argument","Correction note is too long.");
    const feedback=String(input.feedback||"").trim();
    if(feedback.length>5000)deny("invalid-argument","Teacher feedback is too long.");
    const auditRef=db.collection(prefix+"grade_audit").doc();
@@ -434,10 +433,10 @@ function createSchoolGradebookService({db}){
     tx.update(gradeRef,corrected);
     tx.create(gradeRef.collection("revisions").doc(String(revision)),{
       ...previous,...corrected,status:"published",action:"grade_corrected",
-      correctionReason:reason,previousRevision:expectedRevision,createdAt:now
+      correctionReason:reason||null,previousRevision:expectedRevision,createdAt:now
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,studentUid,actorUid:ctx.uid,
-      action:"grade_corrected",reason,previousRevision:expectedRevision,revision,createdAt:now});
+      action:"grade_corrected",reason:reason||null,previousRevision:expectedRevision,revision,createdAt:now});
     result={taskId,studentUid,status:"published",revision,
       awarded:scores.awarded,total:scores.total,corrected:true};
    });
