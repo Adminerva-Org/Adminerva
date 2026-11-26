@@ -79,6 +79,10 @@ function createSchoolAssessmentMigrationService({db}){
  const legacyGithubReview=createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegacyRubric});
  return async request=>{
   const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["teacher"]});
+  if(ctx.compatibilityMode==="v4_only"){
+    if(["list_legacy","list_legacy_deployments"].includes(input.action))return {items:[]};
+    deny("failed-precondition","Historical assessment recovery is not available in V4-only schools.");
+  }
   if(/^legacy_review_(?:inbox|inspect|save_draft|publish|bulk_publish)$/.test(String(input.action||"")))
    return legacyStudioReview({ctx,input});
   if(/^legacy_github_(?:inbox|inspect|save_draft|publish|bulk_publish)$/.test(String(input.action||"")))
