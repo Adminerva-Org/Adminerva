@@ -27,6 +27,18 @@ function canReviewApplication(from,to){
 }
 const REQUIREMENT_STATES=new Set(["missing","received","verified"]);
 const ADMISSION_TYPES=["new","returning","transferee"];
+function normalizeClearanceTypes(value){
+  if(!Array.isArray(value)||value.some(type=>!ADMISSION_TYPES.includes(type))||new Set(value).size!==value.length)
+    deny("invalid-argument","Choose valid applicant types for clearance.");
+  return ADMISSION_TYPES.filter(type=>value.includes(type));
+}
+function enrollmentClearanceReady(row,policy){
+  const type=ADMISSION_TYPES.includes(row?.applicationType)?row.applicationType:"new";
+  if(!policy.requiredTypes.includes(type))return true;
+  const clearance=row?.enrollmentClearance;
+  return Boolean(row.status==="accepted"&&clearance?.state==="cleared"&&clearance.policyRevision===policy.revision&&
+    clearance.applicationRevision===(Number(row.revision)||1)&&typeof clearance.reference==="string"&&clearance.reference.trim());
+}
 function admissionType(value){
   if(!ADMISSION_TYPES.includes(value))deny("invalid-argument","Choose a valid applicant type.");
   return value;
@@ -220,6 +232,48 @@ function createSchoolEnrollmentService({db}){
         deny("permission-denied","A verified School Administrator membership is required to change admission templates.");
     }
 
+    const clearanceRef=db.doc(root+"configuration/enrollment_clearance");
+    function readClearancePolicy(doc){
+      if(!doc.exists)return {revision:0,requiredTypes:[]};
+      const row=doc.data();
+      if(row.schoolId!==ctx.schoolId||!Number.isSafeInteger(row.revision)||row.revision<1)
+        deny("data-loss","Enrollment clearance policy requires review.");
+      return {revision:row.revision,requiredTypes:normalizeClearanceTypes(row.requiredTypes)};
+    }
+    if(input.action==="get_enrollment_clearance_policy")return readClearancePolicy(await clearanceRef.get());
+    if(input.action==="save_enrollment_clearance_policy"){
+      const requiredTypes=normalizeClearanceTypes(input.requiredTypes),expectedRevision=input.expectedRevision,reason=text(input.reason,"Change reason",500);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<0||reason.length<8)deny("invalid-argument","Refresh policy and record the change reason.");
+      await db.runTransaction(async tx=>{
+        await requireTemplateAdmin(tx);const current=await tx.get(clearanceRef),prior=readClearancePolicy(current);
+        if(prior.revision!==expectedRevision)deny("failed-precondition","Clearance policy changed. Refresh.");
+        const now=FieldValue.serverTimestamp(),revision=expectedRevision+1,payload={schoolId:ctx.schoolId,requiredTypes,revision,updatedAt:now,updatedByUid:ctx.uid};
+        if(current.exists)tx.update(clearanceRef,payload);else tx.create(clearanceRef,payload);
+        tx.create(db.collection(root+"directory_audit").doc(),{schoolId:ctx.schoolId,actorUid:ctx.uid,action:"enrollment_clearance_policy_saved",previousTypes:prior.requiredTypes,requiredTypes,revision,reason,createdAt:now});
+      });
+      return {requiredTypes,revision:expectedRevision+1};
+    }
+    if(input.action==="record_enrollment_clearance"){
+      const applicationId=checkId(input.applicationId,"Application ID",128),expectedRevision=input.expectedRevision,expectedPolicyRevision=input.expectedPolicyRevision,
+        state=input.state,reference=optionalText(input.reference,150),reason=text(input.reason,"Clearance reason",500);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1||!Number.isSafeInteger(expectedPolicyRevision)||expectedPolicyRevision<1||
+         !["cleared","held"].includes(state)||reason.length<8||(state==="cleared"&&(!reference||input.confirmSourceReviewed!==true)))
+        deny("invalid-argument","Refresh the application and confirm documented clearance or hold.");
+      const ref=db.doc(root+"enrollment_applications/"+applicationId);
+      await db.runTransaction(async tx=>{
+        await requireTemplateAdmin(tx);
+        const [current,config]=await Promise.all([tx.get(ref),tx.get(clearanceRef)]),policy=readClearancePolicy(config);
+        if(!current.exists||current.data().schoolId!==ctx.schoolId||!isReviewedApplicationRevision(current.data(),expectedRevision))
+          deny("failed-precondition","Clearance can only be recorded for the current accepted application.");
+        const row=current.data(),type=ADMISSION_TYPES.includes(row.applicationType)?row.applicationType:"new";
+        if(policy.revision!==expectedPolicyRevision||!policy.requiredTypes.includes(type))deny("failed-precondition","Clearance policy changed or does not apply. Refresh.");
+        const revision=expectedRevision+1,now=FieldValue.serverTimestamp(),enrollmentClearance={state,reference:reference||null,policyRevision:policy.revision,applicationRevision:revision,recordedByUid:ctx.uid,recordedAt:now};
+        tx.update(ref,{enrollmentClearance,revision,updatedAt:now});
+        tx.create(db.collection(root+"directory_audit").doc(),{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,personId:row.personId||null,action:"enrollment_clearance_recorded",
+          state,reference:reference||null,policyRevision:policy.revision,previousState:row.enrollmentClearance?.state||null,reason,revision,createdAt:now});
+      });
+      return {applicationId,revision:expectedRevision+1,state};
+    }
     if(input.action==="get_admission_templates"){
       const docs=await Promise.all(ADMISSION_TYPES.map(type=>templateRef(type).get()));
       return {templates:ADMISSION_TYPES.map((type,index)=>readTemplate(docs[index],type))};
@@ -367,10 +421,13 @@ function createSchoolEnrollmentService({db}){
         const admissions=await read(db.collection(root+"enrollment_applications").where("personId","==",personId).limit(101));
         if(admissions.size===101)deny("resource-exhausted","Returning admission history requires pagination.");
         const pending=admissions.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().yearId===yearId&&doc.data().applicationType==="returning"&&["submitted","needs_information","accepted"].includes(doc.data().status));
+        const clearancePolicy=readClearancePolicy(await read(clearanceRef));
+        if(clearancePolicy.requiredTypes.includes("returning")&&!pending.length)blockers.push({type:"returning_clearance_required",message:"Create and clear a returning application for the target year before progression."});
         if(pending.length>1)blockers.push({type:"duplicate_returning_applications",message:"Resolve duplicate returning applications for the target year."});
         if(pending.length===1){
           const app=pending[0],data=app.data();
           if(!isReviewedApplicationRevision(data,Number(data.revision)||1))blockers.push({type:"returning_application_not_ready",message:"Complete returning admission requirements and acceptance before progression."});
+          else if(!enrollmentClearanceReady(data,clearancePolicy))blockers.push({type:"returning_clearance_pending",message:"Enrollment clearance is pending or outdated for this returning applicant."});
           else if(String(data.incomingLevel||"")!==String(targetGrade||"")||(data.preferredProgramId&&data.preferredProgramId!==programId)||(data.preferredTermId&&data.preferredTermId!==termId)||(data.preferredSectionId&&data.preferredSectionId!==sectionId))blockers.push({type:"returning_placement_mismatch",message:"The target does not match the accepted returning application. Correct the application first."});
           else if(data.displayName!==person.data().displayName||(person.data().birthDate&&data.birthDate!==person.data().birthDate)||(data.studentNumber&&data.studentNumber!==person.data().studentNumber)||(targetStudentEmailRequired&&(!data.studentEmail||(!person.data().activationEmailHash&&!person.data().authUid)||(person.data().activationEmailHash&&person.data().activationEmailHash!==rosterEmailHash(data.studentEmail)))))blockers.push({type:"returning_identity_mismatch",message:"The accepted returning application no longer matches the existing student identity."});
           else {admissionRef=app.ref;admissionApplication={applicationId:app.id,revision:Number(data.revision)||1,reference:applicationReference(app)};}
@@ -580,7 +637,8 @@ function createSchoolEnrollmentService({db}){
       let scan=db.collection(root+"enrollment_applications").orderBy(FieldPath.documentId()).limit(pageSize+1);
       if(cursor)scan=scan.startAfter(cursor);
       const exactId=input.applicationId?checkId(input.applicationId,"Application ID",128):null;
-      const [snap,...templateDocs]=await Promise.all([exactId?db.doc(root+"enrollment_applications/"+exactId).get():scan.get(),...ADMISSION_TYPES.map(type=>templateRef(type).get())]);
+      const [snap,clearanceDoc,...templateDocs]=await Promise.all([exactId?db.doc(root+"enrollment_applications/"+exactId).get():scan.get(),clearanceRef.get(),...ADMISSION_TYPES.map(type=>templateRef(type).get())]);
+      const clearancePolicy=readClearancePolicy(clearanceDoc);
       const templates=Object.fromEntries(ADMISSION_TYPES.map((type,index)=>[type,readTemplate(templateDocs[index],type)]));
       if(exactId&&(!snap.exists||snap.data().schoolId!==ctx.schoolId))deny("not-found","Application not found.");
       const page=exactId?[snap]:snap.docs.slice(0,pageSize),nextCursor=!exactId&&snap.size>pageSize?page.at(-1).id:null;
@@ -606,6 +664,8 @@ function createSchoolEnrollmentService({db}){
         requirementsReady:row.status==="accepted"?admissionRequirementsReady(row):pendingRequirementsReady(row,template),
         templateLabels:template.labels,templateRevision:template.revision,
         reviewedTemplateRevision:Number(row.requirementsTemplateRevision)||0,
+        clearanceRequired:clearancePolicy.requiredTypes.includes(type),clearancePolicyRevision:clearancePolicy.revision,
+        clearanceReady:enrollmentClearanceReady(row,clearancePolicy),clearanceState:row.enrollmentClearance?.policyRevision===clearancePolicy.revision&&row.enrollmentClearance?.applicationRevision===(Number(row.revision)||1)?row.enrollmentClearance.state:"pending",
         revision:Number(doc.data().revision)||1,
         updatedAt:doc.data().updatedAt?.toMillis?.()||doc.data().createdAt?.toMillis?.()||0
       });});
@@ -1454,6 +1514,7 @@ function createSchoolEnrollmentService({db}){
         const app=application.data();
         if(!isReviewedApplicationRevision(app,applicationRevision))
           deny("failed-precondition","Accept the current application revision before enrolling.");
+        if(!enrollmentClearanceReady(app,readClearancePolicy(await clearanceRef.get())))deny("failed-precondition","Documented enrollment clearance is pending or outdated.");
         if(app.incomingLevel&&String(app.incomingLevel).toLowerCase()!==gradeLevel)
           deny("failed-precondition","The official section must match the accepted incoming grade level.");
         if(app.yearId&&app.yearId!==yearId)
@@ -1577,6 +1638,8 @@ function createSchoolEnrollmentService({db}){
         if(currentApplication&&(!currentApplication.exists||currentApplication.data().schoolId!==ctx.schoolId||
           !isReviewedApplicationRevision(currentApplication.data(),applicationRevision)))
           deny("failed-precondition","The online application changed before enrollment. Refresh and review it again.");
+        if(!currentApplication||!enrollmentClearanceReady(currentApplication.data(),readClearancePolicy(await tx.get(clearanceRef))))
+          deny("failed-precondition","Documented enrollment clearance changed before registration. Refresh.");
 
         if((explicitPersonId||currentApplication?.data().personId)&&!person.exists)
           deny("failed-precondition","The linked student no longer exists. Review Student Records.");
@@ -1759,6 +1822,7 @@ module.exports={
   normalizeRequirementTemplate,
   templateCovered,
   pendingRequirementsReady,
+  normalizeClearanceTypes,enrollmentClearanceReady,
   admissionApplicationId,
   acceptedIdentityMatches
 };
