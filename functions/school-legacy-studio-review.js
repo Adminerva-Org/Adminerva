@@ -229,12 +229,12 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
           version:data.revision,
           gradeStatus:grade?grade.published===true?"published":"draft":null,
           gradeRevision:grade?Number(grade.gradeVersion||1):0,reviewSuggested:!!grade&&grade.published!==true&&(grade.reviewSuggested===true||grade.score===0||Number(grade.pending||0)>0),
-          awarded:grade?Number(grade.score||0):null,
+          awarded:grade?Number(grade.score||0):null,maxScore:grade?Number(grade.maxScore||original.maxScore||20):null,pending:grade?Number(grade.pending||0):0,
           updatedAt:data.submittedAt?.toMillis?.()||null};
       });
       const drafts=submissions.filter(x=>x.gradeStatus==="draft");
       return {task:taskInfo,submissions,
-        publishableDrafts:drafts.filter(x=>x.awarded>0).length,
+        publishableDrafts:drafts.filter(x=>Number.isFinite(x.awarded)&&x.awarded>=0&&x.pending===0).length,
         zeroDrafts:drafts.filter(x=>x.awarded===0).length};
     }
     if(input.action==="legacy_review_inspect"){
