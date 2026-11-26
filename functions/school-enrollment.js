@@ -331,6 +331,7 @@ function createSchoolEnrollmentService({db}){
           releasedRevision,ready};
       });
 
+      let admissionApplication=null,admissionRef=null;
       let target=null,targetRegistrationRef=null,targetSlotRef=null,targetOfferings=[],targetEnrollmentRefs=[],
         targetEnrollmentDocs=[],targetRegistration=null,targetSlot=null;
       if(progressionType!=="graduation"){
@@ -361,6 +362,17 @@ function createSchoolEnrollmentService({db}){
         }
         const targetGrade=section.exists?section.data().gradeLevel:null,
           targetStudentEmailRequired=gradeRequiresStudentEmail(targetGrade);
+        const admissions=await read(db.collection(root+"enrollment_applications").where("personId","==",personId).limit(101));
+        if(admissions.size===101)deny("resource-exhausted","Returning admission history requires pagination.");
+        const pending=admissions.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().yearId===yearId&&doc.data().applicationType==="returning"&&["submitted","needs_information","accepted"].includes(doc.data().status));
+        if(pending.length>1)blockers.push({type:"duplicate_returning_applications",message:"Resolve duplicate returning applications for the target year."});
+        if(pending.length===1){
+          const app=pending[0],data=app.data();
+          if(!isReviewedApplicationRevision(data,Number(data.revision)||1))blockers.push({type:"returning_application_not_ready",message:"Complete returning admission requirements and acceptance before progression."});
+          else if(String(data.incomingLevel||"")!==String(targetGrade||"")||(data.preferredProgramId&&data.preferredProgramId!==programId)||(data.preferredTermId&&data.preferredTermId!==termId)||(data.preferredSectionId&&data.preferredSectionId!==sectionId))blockers.push({type:"returning_placement_mismatch",message:"The target does not match the accepted returning application. Correct the application first."});
+          else if(data.displayName!==person.data().displayName||(person.data().birthDate&&data.birthDate!==person.data().birthDate)||(data.studentNumber&&data.studentNumber!==person.data().studentNumber)||(targetStudentEmailRequired&&(!data.studentEmail||(!person.data().activationEmailHash&&!person.data().authUid)||(person.data().activationEmailHash&&person.data().activationEmailHash!==rosterEmailHash(data.studentEmail)))))blockers.push({type:"returning_identity_mismatch",message:"The accepted returning application no longer matches the existing student identity."});
+          else {admissionRef=app.ref;admissionApplication={applicationId:app.id,revision:Number(data.revision)||1,reference:applicationReference(app)};}
+        }
         if(!progressionGradeValid(progressionType,source.gradeLevel,targetGrade))
           blockers.push({type:"grade_progression_mismatch",message:progressionType==="retention"
             ?"Retention must keep the learner in the same grade level."
@@ -397,7 +409,7 @@ function createSchoolEnrollmentService({db}){
       }
       return {registrationId,registrationRef,registration,source,personId,personRef,person,progressionType,
         completion,sourceEnrollments,offeringMap,blockers,target,targetRegistrationRef,targetSlotRef,
-        targetOfferings,targetEnrollmentRefs,targetEnrollmentDocs,targetRegistration,targetSlot,
+        targetOfferings,targetEnrollmentRefs,targetEnrollmentDocs,targetRegistration,targetSlot,admissionApplication,admissionRef,
         canApply:blockers.length===0};
     }
 
@@ -1253,7 +1265,7 @@ function createSchoolEnrollmentService({db}){
       return {
         registrationId:review.registrationId,progressionType:review.progressionType,
         canApply:review.canApply,blockers:review.blockers,completion:review.completion,
-        target:review.target,source:{
+        target:review.target,admissionApplication:review.admissionApplication,source:{
           yearId:review.source.yearId,programId:review.source.programId,termId:review.source.termId,
           sectionId:review.source.sectionId,gradeLevel:review.source.gradeLevel||null,
           courseCount:review.sourceEnrollments.length
@@ -1270,6 +1282,9 @@ function createSchoolEnrollmentService({db}){
         const review=await reviewProgression(input,tx);
         if(!review.canApply)
           deny("failed-precondition",review.blockers[0]?.message||"This student is not ready for progression.");
+        if((input.expectedAdmissionApplicationId||null)!==(review.admissionApplication?.applicationId||null)||
+          (input.expectedAdmissionRevision||null)!==(review.admissionApplication?.revision||null))
+          deny("failed-precondition","Returning admission changed. Run progression preview again.");
         const {source,registrationRef,registrationId,personId,personRef,person,progressionType}=review;
         const sourceSlotRef=db.doc(root+"student_registration_slots/"+key(personId,source.yearId,source.termId)),
           sourceSlot=await tx.get(sourceSlotRef),now=FieldValue.serverTimestamp(),
@@ -1310,11 +1325,14 @@ function createSchoolEnrollmentService({db}){
             yearId:target.yearId,programId:target.programId,termId:target.termId,
             sectionId:target.sectionId,gradeLevel:target.gradeLevel||null,status:"active",
             courseCount:review.targetOfferings.length,accountLinked:Boolean(source.accountLinked||person.data().authUid),
-            source:"progression",applicationId:null,
+            source:"progression",applicationId:review.admissionApplication?.applicationId||null,
             previousRegistrationId:registrationId,progressionType,progressionReason:reason,
             revision:1,createdByUid:ctx.uid,createdAt:now,updatedByUid:ctx.uid,updatedAt:now
           };
           tx.create(review.targetRegistrationRef,targetData);
+          if(review.admissionRef)tx.update(review.admissionRef,{status:"enrolled",personId,registrationId:target.registrationId,
+            officialProgramId:target.programId,officialTermId:target.termId,officialSectionId:target.sectionId,
+            enrolledByUid:ctx.uid,enrolledAt:now,updatedAt:now,revision:review.admissionApplication.revision+1});
           if(person.data().accountResponsibility!==target.accountResponsibility)
             tx.update(personRef,{accountResponsibility:target.accountResponsibility,
               updatedByUid:ctx.uid,updatedAt:now,revision:(Number(person.data().revision)||1)+1});
@@ -1336,7 +1354,7 @@ function createSchoolEnrollmentService({db}){
         }
         const auditRef=db.collection(root+"directory_audit").doc();
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
-          registrationId,targetRegistrationId,action:"student_registration_progressed",
+          registrationId,targetRegistrationId,applicationId:review.admissionApplication?.applicationId||null,action:"student_registration_progressed",
           progressionType,fromYearId:source.yearId,fromProgramId:source.programId,
           fromTermId:source.termId,fromSectionId:source.sectionId,
           ...(review.target?{toYearId:review.target.yearId,toProgramId:review.target.programId,
@@ -1498,6 +1516,11 @@ function createSchoolEnrollmentService({db}){
           ];
         if(applicationRef)reads.push(tx.get(applicationRef));
         const records=await Promise.all(reads);
+        const placementHistory=await tx.get(db.collection(root+"student_registrations").where("personId","==",personId).limit(101));
+        if(placementHistory.size===101)deny("resource-exhausted","Review the full registration history before enrolling.");
+        const schoolHistory=placementHistory.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>doc.data());
+        if(schoolHistory.some(row=>row.status==="active"&&row.yearId!==yearId&&!schoolHistory.some(done=>done.yearId===row.yearId&&done.endReasonType==="progression"&&done.status==="ended")))
+          deny("failed-precondition","A prior academic year still has an active registration. Use year-end Progression to complete released-grade review and enroll the accepted returning application.");
         const guardianRelationships=await tx.get(db.collection(root+"guardian_relationships")
           .where("studentPersonId","==",personId).limit(51));
         if(guardianRelationships.size===51)
