@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">
+<title>Connect Adminerva Desktop</title>
+<link rel="icon" href="assets/adminerva-favicon-32.png" type="image/png">
+<link rel="stylesheet" href="css/adminerva-ui.css">
+<link rel="stylesheet" href="css/public-shell.css">
+<style>
+body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#0d2034;color:#eaf5ff;font-family:system-ui,sans-serif}
+main{width:min(540px,calc(100% - 2rem));padding:clamp(1.5rem,4vw,2.5rem);border:1px solid #30506b;border-radius:20px;background:#12304b;text-align:center}
+h1{font-size:clamp(1.5rem,4vw,2.3rem);line-height:1.2;margin:1rem 0}
+p{color:#b6d4e5;line-height:1.6;overflow-wrap:anywhere}
+img{width:72px;height:72px;object-fit:contain}
+a{color:#8ceafa;display:inline-flex;min-height:44px;align-items:center}
+</style>
+</head>
+<body><main aria-labelledby="desktop-session-title">
+<img src="assets/adminerva-emblem.png" width="72" height="72" alt="">
+<h1 id="desktop-session-title">Connecting to your school workspace</h1>
+<p id="desktop-session-status" role="status" aria-live="polite">Verifying your desktop sign-in…</p>
+<p><a href="downloads.html">Return to download information</a></p>
+</main>
+<script type="module" src="js/core/desktop-session.mjs"></script>
+<script src="js/core/adminerva-loader.js"></script>
+</body></html>

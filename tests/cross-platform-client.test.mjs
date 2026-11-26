@@ -31,9 +31,13 @@ test("desktop window is sandboxed, denies native permissions and has no privileg
   /setPermissionCheckHandler\(\(\)=>false\)/,
   /will-attach-webview/,/setWindowOpenHandler/])
   assert.match(source,assertion);
- assert.doesNotMatch(source,/ipcMain|desktopCapturer|globalShortcut|autoUpdater/);
+ assert.doesNotMatch(source,/desktopCapturer|globalShortcut|autoUpdater/);
+ assert.match(source,/const DEV_SIGNIN=!app\.isPackaged/);
+ assert.match(source,/DEV_SIGNIN\?"preload-auth-dev\.cjs":"preload\.cjs"/);
  assert.match(preload,/capabilities:Object\.freeze\(\[\]\)/);
  assert.doesNotMatch(preload,/ipcRenderer|desktopCapturer|shell\.openExternal/);
+ const developerBridge=readFileSync(new URL("../apps/desktop/preload-auth-dev.cjs",import.meta.url),"utf8");
+ assert.match(developerBridge,/ipcRenderer\.invoke\("adminerva:consume-signin-token"\)/);
  assert.equal(pkg.version,"0.1.1");
  assert.equal(CLIENT_PROTOCOL,1);
 });
@@ -85,4 +89,37 @@ test("mobile preview staging generates a canonical public bundle without native 
  }finally{
   rmSync(output,{recursive:true,force:true});
  }
+});
+
+test("native app stays public until the paired session completes in the trusted bootstrap",()=>{
+ const boot="https://adminerva-org.github.io/Adminerva/desktop-session.html";
+ const privatePage="https://adminerva-org.github.io/Adminerva/student-playground.html";
+ assert.equal(classifyNavigation(boot).action,"external");
+ assert.equal(classifyNavigation(boot,{allowBootstrap:true}).action,"internal");
+ assert.equal(classifyNavigation(privatePage).action,"external");
+ assert.equal(classifyNavigation(privatePage,{allowPrivate:true}).action,"internal");
+ assert.equal(classifyNavigation("https://evil.example/Adminerva/student-playground.html",{allowPrivate:true}).action,"block");
+ assert.equal(classifyNavigation("https://adminerva-org.github.io/Adminerva/login.html",{allowPrivate:true}).action,"external");
+});
+
+test("desktop sign-in is one-shot and cannot switch accounts during unfinished Studio work",()=>{
+ assert.match(source,/let tokenConsumedForBootstrap=false/);
+ assert.match(source,/tokenConsumedForBootstrap\)return null/);
+ assert.match(source,/!tokenConsumedForBootstrap\)return false/);
+ assert.match(source,/tokenConsumedForBootstrap=true/);
+ assert.match(source,/if\(allowPrivate\)\{/);
+ assert.match(source,/Finish saving your Studio work/);
+ assert.match(source,/did-start-navigation/);
+ const bootstrap=readFileSync(new URL("../js/core/desktop-session.mjs",import.meta.url),"utf8");
+ assert.match(bootstrap,/eligibleNativeWorkspace\(credential\.user,access\)/);
+ assert.match(bootstrap,/if\(!eligibleNativeWorkspace\(credential\.user,access\)\)/);
+ assert.match(bootstrap,/resolveAccountAccess\(credential\.user\)/);
+});
+
+test("desktop navigation hardening reads current Electron navigation details",()=>{
+ assert.match(source,/did-start-navigation",details=>/);
+ assert.match(source,/details\.isMainFrame&&!details\.isSameDocument/);
+ assert.match(source,/will-navigate",details=>/);
+ assert.match(source,/const url=details\.url/);
+ assert.match(source,/target\.pathname===APP_PREFIX\+"login\.html"/);
 });

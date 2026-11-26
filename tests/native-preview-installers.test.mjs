@@ -33,7 +33,10 @@ test("CI builds Windows EXE, macOS DMGs and Android debug APK with checksums",()
  assert.equal(config.server?.url,undefined);
 });
 test("packaged desktop preview does not enable authentication or exam monitoring",()=>{
- assert.doesNotMatch(main,/ipcMain|desktopCapturer|autoUpdater|ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI/);
+ assert.doesNotMatch(main,/desktopCapturer|autoUpdater/);
+ assert.match(main,/const DEV_SIGNIN=!app\.isPackaged/);
+ for(const dev of ["preload-auth-dev.cjs","native-auth-protocol.cjs","native-handoff-client.cjs"])
+  assert.equal(desktop.build.files.includes(dev),false,"Developer auth must not ship in previews");
  assert.match(main,/setPermissionRequestHandler\([\s\S]*?callback\(false\)/);
  assert.match(main,/contextIsolation:true,nodeIntegration:false/);
  assert.match(preload,/capabilities:Object\.freeze\(\[\]\)/);

@@ -41,3 +41,25 @@ The GitHub Actions workflow **Native public-preview installation artifacts** bui
 These packages are **public-only**, have no native account sign-in, device monitoring, teacher-controlled examinations, or privileged file/screen access. Signed, tested official applications are still pending. Windows SmartScreen and macOS Gatekeeper may warn because these are unsigned. Test only on a disposable or authorized development device, respecting organization endpoint policies; do not install these in a production school laboratory or give them to students for exams.
 
 The authenticated desktop implementation in PR #295 is intentionally excluded from this public preview. This installer exists to evaluate the install/uninstall experience, window/navigation, responsive UI and platform compatibility.
+
+## Restricted native sign-in development only
+
+The optional draft PR #295 desktop pairing is **unpackaged-only** (`!app.isPackaged`) and additionally requires the explicit `ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI=true` developer flag. Public preview installers ship only `preload.cjs` and exclude the development `preload-auth-dev.cjs`, pairing client, and native credential bridge. The development client uses a separate UID-hashed persistent school partitions partition; the public preview's local cache does not grant access. Backend token issuance also remains disabled until a deliberate security review, abuse-edge controls and physical-device acceptance.
+
+## Pending browser-to-device sign-in
+
+`native-auth-protocol.cjs` generates an unpredictable flow ID, 256-bit PKCE verifier/challenge and eight-digit confirmation code. The system browser authorization page is `native-connect.html` and only receives the flow ID. A gated, TTL-backed callable approves the pairing only after a verified recent login and manually entered confirmation code. It releases a one-time Firebase custom token only to the original verifier. The current desktop preview includes **development-only** redeem and one-shot token consumption, gated behind `ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI=true` in the app and a separate disabled-by-default backend flag. The Firebase completion page reuses the existing role resolution and server-verification paths. Pairing cannot begin again while a private school workspace is open; a one-shot token must be consumed before private-route confirmation. The remaining sign-out and cloud-save lifecycle needs real-device acceptance. There is still **no published native application**, production auth approval, or student-exam acceptance.
+
+
+## Abuse control and reauthorization
+
+The unreleased callable now requires a **minimum 32-byte server-only `ADMINERVA_NATIVE_HANDOFF_RATE_SECRET`** and reads the Firebase/Express raw request IP to count 10-minute server-side quota windows. It refuses sign-in when the secret or source IP is unavailable. It never trusts an IP supplied in JSON and stores only keyed HMAC identifiers; records expire by Firestore TTL. The browser requires explicit fresh Google/GitHub reauthentication even when a previous Adminerva session is still active. The pairing page cannot sign the existing browser account out: doing so could interrupt an examination in another browser tab. Use a separate browser profile to authorize a different account. Verify proxy trust and deploy edge protection before ever enabling the rollout flag; shared school laboratory IPs may require tuning with a documented policy. Do not put secrets in source control.
+
+## Shared computer sign-out and cloud saves
+
+In the development preview, Firebase Auth uses **session-only** persistence inside the desktop shell instead of persistent web-account login. This does not delete per-learner local Studio recovery drafts. A verified Firebase sign-out sends a revoke-only main-frame message to Electron, which clears private navigation and replaces the prior student's window with public Adminerva. Normal Studio sign-out and page unload first preserve an editor snapshot and block departure while cloud confirmation, in-flight writes, or unsaved memory-only drafts remain. This is still subject to real Windows/macOS crash, forced-quit and student switching acceptance; do not enable classroom sign-in from source alone.
+
+
+## Per-user local recovery partitions (development only)
+
+After a cryptographically verified pairing, the backend returns the existing Firebase UID to the native process. The development Electron app hashes this UID into a dedicated persistent browser partition before running the Firebase session bootstrap. Returning to the same UID selects the same local recovery namespace; different accounts have different localStorage/IndexedDB namespaces and the public guest window uses a separate partition. Student drafts are not copied, deleted or silently migrated across accounts. This behavior still needs physical-device logout/crash/recovery acceptance; unsigned public installers contain no sign-in capability.

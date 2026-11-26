@@ -151,6 +151,20 @@ exports.schoolAttendance=onCall(callOptions,safeCallable(createSchoolAttendanceS
 
 const {createSchoolAssessmentService}=require("./school-assessments.js");
 exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db}),{diagnosticsService:"schoolAssessments"}));
+// Native sign-in stays fail-closed until signed-client and school acceptance.
+const {createNativeClientHandoffService}=require("./native-client-handoff.js");
+const {createNativeHandoffLimiter}=require("./native-handoff-rate-limit.js");
+exports.nativeClientHandoff=onCall(
+ {...callOptions,maxInstances:1,concurrency:5,timeoutSeconds:20},
+ safeCallable(createNativeClientHandoffService({
+  db,auth:getAuth(),Timestamp,
+  enabled:()=>process.env.ADMINERVA_NATIVE_AUTH_HANDOFF_ENABLED==="true",
+  limiter:createNativeHandoffLimiter({
+   db,Timestamp,secret:process.env.ADMINERVA_NATIVE_HANDOFF_RATE_SECRET
+  })
+ }))
+);
+
 // Teacher Open/Close writes a durable outbox atomically with its exam state.
 // Delivery and roster capture must never block the teacher's callable.
 const {createSchoolStudioExamSessionFanout}=require("./school-studio-exam-fanout.js");

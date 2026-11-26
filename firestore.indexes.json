@@ -219,6 +219,18 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "native_client_handoff_rate_limits",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "native_client_handoffs",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "practice_attempts",
       "fieldPath": "expiresAt",
       "ttl": true,
