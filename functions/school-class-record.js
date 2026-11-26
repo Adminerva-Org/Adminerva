@@ -16,7 +16,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
-const {custodyRef,validCustody,authorizedTeacherCustody,historicalCustodianRecord,normalized,identityOnlyCustody}=require("./school-legacy-custody.js");
+const {custodyRef,validCustody,authorizedTeacherCustody,historicalCustodianRecord,normalized,identityOnlyCustody,custodyMaximum}=require("./school-legacy-custody.js");
 
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
@@ -900,7 +900,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         if(!validOrigin(task,ctx.schoolId)){stats.originMismatchCount++;continue;}
         const matchesSubject=historicalSubjectMatches(task.subject,labels.subjectName);
         if(!matchesSubject)stats.subjectMismatchCount++;
-        const maximum=Number(task.maxScore);
+        const maximum=custodyMaximum(task,custodyGrant);
         if(!Number.isFinite(maximum)||maximum<=0||maximum>10000){stats.invalidScoreCount++;continue;}
         if(!sections.length&&!identityOnlyCustody(custodyGrant)){stats.noSectionCount++;continue;}
         const mapping=historicalMapping({task,taskId:doc.id,schoolId:ctx.schoolId,
@@ -1835,7 +1835,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
                (mapping.identityProof!=="original_student_section"||
                 !Number.isInteger(mapping.identityVerifiedCount)||mapping.identityVerifiedCount<1||
                 mapping.originalSubjectName!==String(original.data().subject||"").trim()))||
-             Number(original.data().maxScore)!==column.maxPoints)
+             custodyMaximum(original.data(),granted)!==column.maxPoints)
             deny("failed-precondition","The original historical assessment changed. Reload before linking.");
           if(prior.exists&&(prior.data().schoolId!==ctx.schoolId||prior.data().offeringId!==offeringId))
             deny("failed-precondition","This historical assessment section is already mapped to another academic period. Review its original Class Record.");
