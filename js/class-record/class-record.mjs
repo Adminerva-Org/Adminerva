@@ -1986,7 +1986,7 @@ async function findEarlierAssessment(){
   const query=sourceSearchInput.value.trim();
   sourceSearchResults.replaceChildren();
   if(query.length<2){
-    sourceSearchResults.append(make("p","cr-muted","Enter at least two characters from the assessment title."));
+    sourceSearchResults.append(make("p","cr-muted","Enter an assessment title or document ID."));
     return;
   }
   sourceSearchButton.disabled=true;
@@ -2000,11 +2000,18 @@ async function findEarlierAssessment(){
     const checked=(Number(inspected.originalAssessments)||0)+
       (Number(inspected.schoolAssessments)||0)+(Number(inspected.importedBlueprints)||0);
     sourceSearchResults.append(make("p","cr-help",
-      "Checked "+checked+" sources belonging to your verified teacher account. "+
+      (result.exactId?"Exact ID lookup · "+result.exactId+" · ":"Checked "+checked+" sources belonging to your verified teacher account. ")+
       candidates.length+" match"+(candidates.length===1?"":"es")+" found."));
     const legacyCandidates=Array.isArray(result.legacyRepositoryCandidates)?
       result.legacyRepositoryCandidates:[];
-    if(!candidates.length&&!legacyCandidates.length){
+    if(!candidates.length&&!legacyCandidates.length&&result.exactId){
+      sourceSearchResults.append(make("p","cr-help","No accessible match for this ID. The source may require school custody verification or may not exist."));
+      if(result.canRequestCustody){
+        const link=make("a","inline-flex mt-2 text-sm font-bold text-indigo-700 underline","Verify ID in School Admin custody");
+        link.href="school-class-records.html?"+new URLSearchParams({offeringId:currentOfferingId,assessmentId:result.exactId}).toString();
+        sourceSearchResults.append(link);
+      }
+    }else if(!candidates.length&&!legacyCandidates.length){
       sourceSearchResults.append(make("p","cr-help",
         "No matching assessment was found under this teacher identity in the current school. "+
         "The missing work may belong to an earlier login, another school, or a source outside "+
@@ -2020,6 +2027,7 @@ async function findEarlierAssessment(){
         (item.subject?" · Subject: "+item.subject:"")+
         (item.status?" · "+item.status:"")));
       card.append(make("p","",item.summary||""));
+      if(result.exactId)card.append(make("p","","Assessment ID: "+item.taskId));
       if(item.sourceType==="imported_blueprint"&&item.originalAssessmentId)
         card.append(make("p","","Original source reference: "+item.originalAssessmentId));
       if(item.sourceType==="school_assessment"&&item.inSelectedOffering){
