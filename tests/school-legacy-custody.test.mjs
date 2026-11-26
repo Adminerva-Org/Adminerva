@@ -129,3 +129,35 @@ test("original historical grades project only from an active custody grant and v
  assert.deepEqual(await historicalPublishedGrades(args),[],
    "a different original student section cannot be used to populate this class");
 });
+
+
+test("sectionless original assessment projects only independently approved exact student identities",async()=>{
+ const source={...task,deployments:[],subject:""};
+ const scoped={...grant,originalSubject:"",originalSection:"",sectionProof:"assessment_student_identity",
+   verifiedPersonCount:2,sourceDigest:custodySourceDigest(source)};
+ const offering={yearId:"year",termId:"q3",sectionId:"section",subjectId:"course"};
+ const labels={yearName:"AY 2026",termName:"Q3",sectionName:"Current SIS class",subjectName:"Computer Programming 4"};
+ const args={task:source,taskId:assessmentId,schoolId,ownerUid:teacherUid,offering,offeringId,labels,
+   verifiedSection:true,custodyGrant:scoped};
+ assert.equal(historicalMapping({...args,custodyGrant:null}),null);
+ assert.equal(validCustody(scoped,{schoolId,assessmentId,offeringId,teacherUid,task:source}),true);
+ assert.equal(validCustody(scoped,{schoolId,assessmentId,offeringId,teacherUid,task:{...source,targetSections:["Old class"]}}),false);
+ const mapping=historicalMapping(args);
+ assert.equal(mapping.sectionProof,"assessment_student_identity");
+ const columns=[{kind:"assessment",assessmentSource:"legacy_historical",columnId:"mp1",
+   taskId:assessmentId,historicalMapping:mapping,maxPoints:20}];
+ const roster=[{personId:"p1",legacyStudentIds:["legacy-one"]},{personId:"p3",legacyStudentIds:["legacy-three"]}];
+ const saved=new Map([
+   ["assessments/"+assessmentId,source],
+   [prefix+"legacy_assessment_custody/"+custodyId(assessmentId,offeringId),scoped],
+   ["student_grades/legacy-one_"+assessmentId,{taskId:assessmentId,studentId:"legacy-one",score:17,maxScore:20,published:false}],
+   ["student_grades/legacy-three_"+assessmentId,{taskId:assessmentId,studentId:"legacy-three",score:20,maxScore:20,published:true}]
+ ]);
+ const db={doc:path=>({path,get:async()=>({exists:saved.has(path),data:()=>saved.get(path)})}),
+   getAll:async(...refs)=>refs.map(ref=>({exists:saved.has(ref.path),data:()=>saved.get(ref.path)}))};
+ const input={db,schoolId,offeringId,offering,columns,roster};
+ assert.deepEqual(await historicalPublishedGrades(input),[]);
+ const grades=await historicalPublishedGrades({...input,acceptSavedLegacy:true});
+ assert.equal(grades.length,1);assert.equal(grades[0].personId,"p1");assert.equal(grades[0].awarded,17);
+ assert.equal(grades[0].legacyAccepted,true);
+});
