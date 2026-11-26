@@ -63,8 +63,7 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
     sectionId:offering.sectionId,subjectId:offering.subjectId,
     sectionName:section,offeringSectionName:labels.sectionName,
     subjectName:labels.subjectName,ownerUid,
-    ...(delegated?{custodyGrantId:custodyId(taskId,offeringId),
-      originalOwnerUid:String(task.ownerUid||""),taskId}:{}),
+    ...(delegated?{custodyGrantId:custodyId(taskId,offeringId),taskId}:{}),
     ...(matchesSubject?{}:{originalSubjectName:task.subject.trim()})};
 }
 /**
@@ -228,7 +227,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
       validCustody(delegation.data(),{
         schoolId,assessmentId:column.taskId,offeringId,teacherUid:mapping.ownerUid,
         task:original,section:mapping.sectionName
-      })&&mapping.originalOwnerUid===String(original?.ownerUid||"");
+      });
     if(!validOrigin(original,schoolId)||(!delegated&&original.ownerUid!==mapping.ownerUid)||
        (mapping.custodyGrantId&&!delegated)||
        !historicalSections(original).some(section=>canonical(section)===canonical(mapping.sectionName))||
