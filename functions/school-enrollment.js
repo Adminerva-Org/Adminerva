@@ -13,7 +13,21 @@ const {rosterEmailHash,normalizedRosterEmail}=require("./school-roster-identity.
 const {guardianContactIdForEmail,guardianRelationshipId}=require("./school-guardian-identity.js");
 
 const EMAIL_TYPES=new Set(["personal","institutional"]);
-const APPLICATION_REVIEW_STATUSES=new Set(["needs_information","rejected"]);
+const APPLICATION_REVIEW_TRANSITIONS={
+  submitted:new Set(["needs_information","accepted","rejected"]),
+  needs_information:new Set(["submitted","accepted","rejected"]),
+  accepted:new Set(["needs_information","rejected"]),
+  rejected:new Set(),
+  withdrawn:new Set(),
+  enrolled:new Set()
+};
+function canReviewApplication(from,to){
+  return Object.hasOwn(APPLICATION_REVIEW_TRANSITIONS,from)&&APPLICATION_REVIEW_TRANSITIONS[from].has(to);
+}
+function isReviewedApplicationRevision(row,revision){
+  return row?.status==="accepted"&&Number.isSafeInteger(revision)&&revision>=1&&
+    (Number(row.revision)||1)===revision;
+}
 const REGISTRATION_END_TYPES=new Set(["withdrawal","transfer_out","registration_cancelled","other"]);
 const PROGRESSION_TYPES=new Set(["promotion","retention","graduation"]);
 
@@ -338,11 +352,11 @@ function createSchoolEnrollmentService({db}){
       if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
         deny("invalid-argument","Refresh this application before saving a review decision.");
       const status=String(input.status||"").trim().toLowerCase();
-      if(!APPLICATION_REVIEW_STATUSES.has(status))
-        deny("invalid-argument","Choose Needs information or Rejected.");
+      if(!["submitted","needs_information","accepted","rejected"].includes(status))
+        deny("invalid-argument","Choose a valid admissions decision.");
       const reason=text(input.reason,"Review reason",500);
       if(reason.length<8)deny("invalid-argument","Explain the enrollment review decision.");
-      const ref=db.doc(root+"enrollment_applications/"+applicationId);
+      const ref=db.doc(root+"enrollment_applications/"+applicationId),auditRef=db.collection(root+"directory_audit").doc();
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
         const application=await tx.get(ref);
@@ -351,11 +365,14 @@ function createSchoolEnrollmentService({db}){
         const currentRevision=Number(application.data().revision)||1;
         if(currentRevision!==expectedRevision)
           deny("failed-precondition","This enrollment application changed after you opened it. Refresh before saving the review.");
-        if(["enrolled","withdrawn"].includes(application.data().status))
-          deny("failed-precondition","This application already has a final enrollment state.");
+        const previousStatus=application.data().status||"submitted";
+        if(!canReviewApplication(previousStatus,status))
+          deny("failed-precondition","This admissions decision is no longer available. Refresh the application.");
+        const now=FieldValue.serverTimestamp();
         tx.update(ref,{status,reviewReason:reason,reviewedByUid:ctx.uid,
-          reviewedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),
-          revision:currentRevision+1});
+          reviewedAt:now,updatedAt:now,revision:currentRevision+1});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,
+          action:"admissions_review",previousStatus,status,reason,revision:currentRevision+1,createdAt:now});
       });
       return {applicationId,status,revision:expectedRevision+1};
     }
@@ -1074,6 +1091,9 @@ function createSchoolEnrollmentService({db}){
       const termId=checkId(input.termId,"Academic period");
       const sectionId=checkId(input.sectionId,"Section");
       const applicationId=input.applicationId?checkId(input.applicationId,"Application ID",128):null;
+      const applicationRevision=Number(input.applicationRevision);
+      if(applicationId&&(!Number.isSafeInteger(applicationRevision)||applicationRevision<1))
+        deny("failed-precondition","Reopen the accepted application before enrolling.");
       const explicitPersonId=input.personId?checkId(input.personId,"Person ID",128):null;
       const applicationRef=applicationId?db.doc(root+"enrollment_applications/"+applicationId):null;
 
@@ -1112,8 +1132,10 @@ function createSchoolEnrollmentService({db}){
 
       if(application?.exists){
         const app=application.data();
-        if(["rejected","withdrawn","enrolled"].includes(app.status))
-          deny("failed-precondition","This online application already has a final decision.");
+        if(!isReviewedApplicationRevision(app,applicationRevision))
+          deny("failed-precondition","Accept the current application revision before enrolling.");
+        if(app.incomingLevel&&String(app.incomingLevel).toLowerCase()!==gradeLevel)
+          deny("failed-precondition","The official section must match the accepted incoming grade level.");
         if(app.yearId&&app.yearId!==yearId)
           deny("failed-precondition","The online application belongs to another school year.");
       }
@@ -1217,7 +1239,7 @@ function createSchoolEnrollmentService({db}){
             "Another official registration currently owns this student's selected academic period.");
 
         if(currentApplication&&(!currentApplication.exists||currentApplication.data().schoolId!==ctx.schoolId||
-          ["rejected","withdrawn","enrolled"].includes(currentApplication.data().status)))
+          !isReviewedApplicationRevision(currentApplication.data(),applicationRevision)))
           deny("failed-precondition","The online application changed before enrollment. Refresh and review it again.");
 
         if(person.exists){
@@ -1387,5 +1409,7 @@ module.exports={
   standardSchool,
   gradeRequiresStudentEmail,
   registrationOwnsEnrollment,
-  progressionGradeValid
+  progressionGradeValid,
+  canReviewApplication,
+  isReviewedApplicationRevision
 };
