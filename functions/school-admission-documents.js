@@ -5,7 +5,7 @@ const {FieldValue}=require("firebase-admin/firestore");
 const {getStorage}=require("firebase-admin/storage");
 const {createHash}=require("node:crypto");
 const {TenantAccessError}=require("./tenant-access.js");
-const ACTIONS=new Set(["list_admission_documents","save_admission_document","download_admission_document"]);
+const ACTIONS=new Set(["list_admission_documents","save_admission_document","download_admission_document","cancel_admission_document"]);
 const MAX_BYTES=2*1024*1024,MAX_DOCUMENTS=48;
 function deny(code,message){throw new TenantAccessError(code,message);}
 function id(raw){if(typeof raw!=="string"||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(raw))deny("invalid-argument","Invalid record identifier.");return raw;}
@@ -61,7 +61,7 @@ async function admissionDocumentAction({db,ctx,input,studentView=false,bucketFor
   if(studentView){
     const person=await db.doc(root+"people/"+personId).get();
     if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student")deny("not-found","Student not found.");
-    if(input.action==="save_admission_document")deny("permission-denied","Upload from the admissions application.");
+    if(["save_admission_document","cancel_admission_document"].includes(input.action))deny("permission-denied","Upload from the admissions application.");
   }
   function checkApplication(doc){
     if(!doc.exists||doc.data().schoolId!==ctx.schoolId||
@@ -78,7 +78,7 @@ async function admissionDocumentAction({db,ctx,input,studentView=false,bucketFor
     }else docs=[await db.doc(root+"enrollment_applications/"+id(input.applicationId)).get()];
     return {items:docs.flatMap(doc=>{
       const app=checkApplication(doc);
-      return (app.admissionDocuments||[]).filter(row=>safeRow(row,ctx.schoolId,doc.id)&&row.state==="stored").map(describe);
+      return (app.admissionDocuments||[]).filter(row=>safeRow(row,ctx.schoolId,doc.id)&&(row.state==="stored"||(!studentView&&row.state==="pending"))).map(describe);
     })};
   }
   const applicationId=id(input.applicationId),ref=db.doc(root+"enrollment_applications/"+applicationId),
@@ -99,6 +99,20 @@ async function admissionDocumentAction({db,ctx,input,studentView=false,bucketFor
     });
     return {contentType:row.contentType,base64:bytes.toString("base64"),documentId};
   }
+  if(input.action==="cancel_admission_document"){
+    const documentId=id(input.documentId),revision=input.expectedRevision;
+    await db.runTransaction(async tx=>{
+      await authority(r=>tx.get(r));const current=checkApplication(await tx.get(ref));
+      if(!["submitted","needs_information"].includes(current.status)||Number(current.revision)!==revision)
+        deny("failed-precondition","Refresh the application before cancelling the upload.");
+      const rows=current.admissionDocuments||[],row=rows.find(item=>item.documentId===documentId);
+      if(!safeRow(row,ctx.schoolId,applicationId)||row.state!=="pending")deny("failed-precondition","Only pending uploads can be cancelled.");
+      const now=FieldValue.serverTimestamp();
+      tx.update(ref,{admissionDocuments:rows.map(item=>item.documentId===documentId?{...item,state:"cancelled"}:item),requirementsReviewed:false,revision:revision+1,updatedAt:now});
+      tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,documentId,action:"admission_document_cancelled",createdAt:now});
+    });
+    return {documentId,state:"cancelled"};
+  }
   if(input.action!=="save_admission_document")deny("invalid-argument","Unknown document action.");
   const revision=input.expectedRevision,label=String(input.label||"").trim(),type=input.contentType;
   if(!Number.isSafeInteger(revision)||revision<1||!label||label.length>100)deny("invalid-argument","Choose a saved requirement and refresh the application.");
@@ -115,6 +129,11 @@ async function admissionDocumentAction({db,ctx,input,studentView=false,bucketFor
     const rows=current.admissionDocuments||[],existing=rows.find(row=>row.documentId===documentId);
     if(existing){
       if(!safeRow(existing,ctx.schoolId,applicationId)||existing.sha256!==digest)deny("data-loss","Document reservation mismatch.");
+      if(existing.state==="cancelled"){
+        const now=FieldValue.serverTimestamp();
+        tx.update(ref,{admissionDocuments:rows.map(item=>item.documentId===documentId?{...item,state:"pending"}:item),requirementsReviewed:false,revision:revision+1,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,documentId,action:"admission_document_retried",createdAt:now});
+      }
       return;
     }
     if(rows.length>=MAX_DOCUMENTS)deny("resource-exhausted","This application has reached its document history limit.");
