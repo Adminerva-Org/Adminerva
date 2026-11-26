@@ -101,8 +101,8 @@ test("wide-screen compact workspace retains canonical log controls and responsiv
   assert.match(css,/\.pl-live-line\{grid-template-columns:77px 48px minmax\(0,1fr\)/);
   assert.match(css,/\.pl-analysis-drawer>summary/);
   assert.match(css,/\.pl-filter-bar\{display:flex;flex-direction:column/);
-  assert.match(page,/css\/platform-logs\.css\?v=20261126-console-3/);
-  assert.match(page,/js\/core\/platform-logs\.mjs\?v=20261126-console-3/);
+  assert.match(page,/css\/platform-logs\.css\?v=20261126-trace-4/);
+  assert.match(page,/js\/core\/platform-logs\.mjs\?v=20261126-trace-4/);
   assert.doesNotMatch(viewer,/setDoc|updateDoc|deleteDoc/);
 });
 
@@ -194,4 +194,19 @@ test("inspector is bounded to authorized loaded operations and resets with view 
 
 test("stream-first workspace preserves audit reason and adds quick filters",()=>{
  assert.match(page,/id="pl-access-disclosure"/);assert.match(page,/data-filter="failure"/);assert.match(page,/id="pl-focus-mode"/);assert.match(page,/id="pl-milliseconds"/);assert.match(viewer,/function markAudited/);assert.match(viewer,/reason changed/i);assert.match(css,/pl-directory-collapsed/);
+});
+
+test("operation timeline connects explicit parent spans but excludes other accounts, sessions and unrelated overlap",()=>{
+ const start=viewer.indexOf("function relatedOperationRows("),end=viewer.indexOf("function loadedRows(",start);
+ const {relatedOperationRows,operationStatus}=new Function(viewer.slice(start,end)+";return {relatedOperationRows,operationStatus};")();
+ const root={id:"r",ownerUid:"a",sessionId:"s",operationId:"root",action:"process_started",at:1};
+ const child={...root,id:"c",operationId:"child",context:{parentOperationId:"root"},at:2};
+ const server={...child,id:"b",action:"api_failed",provenance:"server_confirmed",at:3};
+ const overlap={...root,id:"o",operationId:"other",context:{active:[{id:"root",ageMs:65000}]},at:4};
+ const alien={...child,id:"x",ownerUid:"b"},otherSession={...child,id:"y",sessionId:"t"};
+ const unrelated={...root,id:"z",operationId:"other",at:5};
+ const rows=[root,child,server,overlap,alien,otherSession,unrelated];
+ assert.deepEqual(relatedOperationRows(rows,root,"a").map(x=>x.id),["r","c","b","o"]);
+ assert.equal(operationStatus(rows,"child"),"Backend rejection recorded; browser completion not loaded");
+ assert.match(operationStatus(rows,"root"),/Observed active for 65s/);
 });
