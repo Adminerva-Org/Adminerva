@@ -46,7 +46,7 @@ function validatedBulkLinkReview(source,input){
  // A frozen HTTPS link proves that a URL was submitted, not what it shows.
  // Bulk AI scoring requires the teacher's per-student review of the actual link.
  const note=String(input?.artifactReviewNote||"").trim();
- if(source==="link"&&input?.onlyIfUngraded===true&&
+ if(source==="link"&&(input?.onlyIfUngraded===true||input?.expectedDraftRevision!==undefined)&&
     (input.externalArtifactVerified!==true||note.length<15||note.length>3000))
   deny("failed-precondition","Bulk grading of an external submission link requires individual teacher artifact verification and a 15–3000 character review note.");
  return note;
@@ -330,7 +330,7 @@ function createSchoolGradebookService({db}){
      gradeSchema:"rubric_v1",criteria:scores.criteria,awarded:scores.awarded,pending:scores.pending,total:scores.total,
      feedback,draftSource,status:"draft",revision,updatedAt:now,
      reviewSuggested:source==="github"||scores.pending>0||scores.awarded===0||input.reviewSuggested===true,
-     ...(source==="link"&&input.onlyIfUngraded===true?{
+     ...(source==="link"&&(input.onlyIfUngraded===true||input.expectedDraftRevision!==undefined)?{
        linkedArtifactReviewedByUid:ctx.uid,linkedArtifactReviewNote:artifactReviewNote
      }:{})};
     if(grade.exists)tx.update(gradeRef,values);
@@ -340,7 +340,7 @@ function createSchoolGradebookService({db}){
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,studentUid,actorUid:ctx.uid,
      action:"grade_draft_saved",revision,createdAt:now,
-     ...(source==="link"&&input.onlyIfUngraded===true?{
+     ...(source==="link"&&(input.onlyIfUngraded===true||input.expectedDraftRevision!==undefined)?{
        linkedArtifactReviewedByUid:ctx.uid,linkedArtifactReviewNote:artifactReviewNote
      }:{})});
    });
