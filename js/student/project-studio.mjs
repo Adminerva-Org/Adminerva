@@ -229,6 +229,19 @@ export function createProjectStudio({
   };
 
   function markerKey(id){return "Adminerva_Studio_Cloud_State_"+uid+"_"+id;}
+  let lastPeerMarkerAt=0;
+  function observePeerMarker(event){
+    if(guest||!cloudEnabled||auth.currentUser?.uid!==uid||!activeProject?.id||event.storageArea!==localStorage)return;
+    const id=activeProject.id,key=(scopeToken?"Adminerva_Scoped_Studio_"+scopeToken+"_":"")+markerKey(id);
+    if(event.key!==key||event.oldValue===event.newValue||Date.now()-lastPeerMarkerAt<10000)return;
+    const localSaveState=cloudWrites.has(id)?"writing":cloudPending.has(id)?"pending":"idle";
+    if(localSaveState==="idle")return;
+    let peerMarker="changed";
+    if(event.newValue===null)peerMarker="removed";else try{const marker=JSON.parse(event.newValue);if(marker?.pending===true)peerMarker="pending";else if(marker?.pending===false)peerMarker="confirmed";}catch{}
+    lastPeerMarkerAt=Date.now();
+    // Observe only: do not refresh the cached revision, mutate work, or bypass conflicts.
+    try{globalThis.AdminervaDiagnostic?.emit?.("studio_peer_marker_changed",{kind:"system",module:"studio",state:"unavailable",phase:"observed",context:{peerMarker,localSaveState}});}catch{}
+  }
   function readMarker(id){if(!markerCache.has(id)){try{markerCache.set(id,JSON.parse(projectStorage.getItem(markerKey(id))||"null")||{});}catch{markerCache.set(id,{});}}return markerCache.get(id);}
   function writeMarker(id,value){markerCache.set(id,value);try{projectStorage.setItem(markerKey(id),JSON.stringify(value));}catch(error){console.warn("Studio sync recovery marker unavailable",error);}}
   function stable(value){
@@ -710,6 +723,7 @@ export function createProjectStudio({
     });
     el("enableProjectDbBtn")?.addEventListener("click",()=>updateConfig({database:true}));
     document.querySelectorAll("[data-studio-view]").forEach(button=>button.addEventListener("click",()=>switchStudioView(button.dataset.studioView)));
+    window.addEventListener("storage",observePeerMarker);
     window.addEventListener("online",()=>{
       for(const timer of cloudRetryTimers.values())clearTimeout(timer);
       cloudRetryTimers.clear();cloudRetryAttempts.clear();
