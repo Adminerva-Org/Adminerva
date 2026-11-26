@@ -58,10 +58,10 @@ const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_s
 const CONTEXT_ENUMS={visibility:["visible","hidden","other"],network:["online","offline"],focus:["focused","unfocused"],ready:["loading","interactive","complete","other"],dialog:["open","none"],busy:["busy","idle"]};
 function checkedContext(value){
   if(!value||typeof value!=="object"||Array.isArray(value))deny("invalid-argument","Invalid diagnostic context.");
-  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery"];
+  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery","deviceBackup","retryState"];
   if(Object.keys(value).some(k=>!allowed.includes(k)))deny("invalid-argument","Diagnostic context accepts only approved metadata.");
   const out={};
-  for(const [key,options] of [["reasonCode",STUDIO_REASONS],["projectCategory",new Set(["personal","assessment","unknown"])],["recovery",new Set(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"])]] ){
+  for(const [key,options] of [["reasonCode",STUDIO_REASONS],["projectCategory",new Set(["personal","assessment","unknown"])],["recovery",new Set(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"])],["deviceBackup",new Set(["available","unavailable","unknown"])],["retryState",new Set(["scheduled","not_scheduled"])]] ){
     if(value[key]!==undefined){if(!options.has(value[key]))deny("invalid-argument","Invalid diagnostic context category.");out[key]=value[key];}
   }
   for(const [key,options] of Object.entries(CONTEXT_ENUMS)){
@@ -160,7 +160,8 @@ function traceFromRequest(request){
 }
 function fingerprint(row){
   if(!["failure","warning"].includes(diagnosticSeverity(row)))return "";
-  const values=[row.module||"other",row.service||"",row.action||"",row.errorCode||"unknown",row.context?.reasonCode||""];
+  const values=[row.module||"other",row.service||"",row.action||"",row.errorCode||"unknown"];
+  if(row.context?.reasonCode)values.push(row.context.reasonCode);
   return createHash("sha256").update(values.join("|")).digest("hex").slice(0,20);
 }
 function diagnosticSeverity(row){
