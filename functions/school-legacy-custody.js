@@ -6,6 +6,7 @@
  */
 const {createHash}=require("node:crypto");
 const {SCHOOL_ID}=require("./legacy-student-identity.js");
+const {rowKey}=require("./school-academics.js");
 const {TenantAccessError}=require("./tenant-access.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message)};
 const normalized=value=>String(value||"").trim().toLocaleLowerCase("en").replace(/\s+/g," ");
@@ -46,7 +47,7 @@ function validCustody(grant,{schoolId,assessmentId,offeringId,teacherUid,task,se
 async function authorizedTeacherCustody({db,schoolId,teacherUid,assessmentId,offeringId,task}){
  const [doc,assignment,offering,membership]=await Promise.all([
    custodyRef(db,schoolId,assessmentId,offeringId).get(),
-   db.doc("schools/"+schoolId+"/staff_assignments/"+teacherUid+"_"+offeringId).get(),
+   db.doc("schools/"+schoolId+"/staff_assignments/"+rowKey(teacherUid,offeringId)).get(),
    db.doc("schools/"+schoolId+"/course_offerings/"+offeringId).get(),
    db.doc("schools/"+schoolId+"/memberships/"+teacherUid).get()
  ]);
