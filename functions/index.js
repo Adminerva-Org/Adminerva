@@ -16,7 +16,7 @@ const {createMonitoringService}=require("./monitoring-service.js");
 const {legacyStudentRecordsForAccount}=require("./legacy-student-identity.js");
 initializeApp();
 const db=getFirestore();
-const {createPlatformAccountDiagnostics,studioDiagnosticReason}=require("./platform-account-diagnostics.js");
+const {createPlatformAccountDiagnostics,studioDiagnosticReason,clientCorrelation}=require("./platform-account-diagnostics.js");
 const platformAccountDiagnostics=createPlatformAccountDiagnostics({db,FieldValue,Timestamp});
 const messaging=getMessaging();
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
@@ -49,8 +49,13 @@ function safeCallable(handler,options={}){return async request=>{
   const startedAt=Date.now();
   try{
   const platformContext=await rejectPlatformPreviewMutation(request,options);
-  const result=await handler(request);
-  if(options.diagnosticsService&&DIAGNOSTIC_WRITE_ACTION.test(String(request?.data?.action||""))){
+  // Strip observability-only metadata before the domain handler sees the request.
+  let domainRequest=request;
+  if(["schoolStudioProjects","schoolStudioSubmissions","schoolStudioAssessmentVariant"].includes(options.diagnosticsService)&&request?.data&&Object.hasOwn(request.data,"_diagnostic")){
+    const {_diagnostic,...data}=request.data;domainRequest={...request,data};
+  }
+  const result=await handler(domainRequest);
+  if(options.diagnosticsService&&(DIAGNOSTIC_WRITE_ACTION.test(String(request?.data?.action||""))||(options.diagnosticsService==="schoolStudioProjects"&&request?.data?.action==="get"&&clientCorrelation(request,options.diagnosticsService).operationId))){
     // Diagnostics are best-effort and never block an academic save, assessment,
     // identity change or financial transaction.
     // This write is an operational side effect AFTER the canonical mutation.
