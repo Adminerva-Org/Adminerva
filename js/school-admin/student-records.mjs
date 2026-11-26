@@ -5,6 +5,7 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 const get=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolStudentRecords");
 const status=get("sr-status"),workspace=get("sr-workspace"),fileHost=get("sr-file");
+const requestedSchoolId=(()=>{try{return new URL(location.href).searchParams.get("schoolId")||"";}catch{return "";}})();
 let requestedPersonId=(()=>{try{
   const value=new URL(location.href).searchParams.get("personId")||"";
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)?value:"";
@@ -99,9 +100,9 @@ async function searchStudents({more=false}={}){
     students=[...unique.values()].sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.personId.localeCompare(b.personId));
     directoryCursor=result.nextCursor||null;
     renderStudents();
-    get("sr-more").hidden=!directoryCursor;
+    get("sr-more").hidden=!directoryCursor||String(get("sr-search").value||"").trim()!==directoryQuery;
     get("sr-more").textContent=query?"Search more records":"Load more";
-    get("sr-search-progress").textContent=students.length+" found"+(directoryCursor?" · More records available.":" · End of directory.");
+    get("sr-search-progress").textContent=students.length+" found"+(directoryCursor?" · More records available.":result.truncated?" · Results limited by the current server version.":" · End of directory.");
   }catch(error){
     if(run===searchRun)get("sr-search-progress").textContent=error?.message||"Search failed. Retry.";
   }finally{
@@ -397,7 +398,9 @@ picker=createTenantSchoolPicker({
     workspace.hidden=false;status.textContent="Select a student.";
     const personId=requestedPersonId;requestedPersonId="";
     void searchStudents();
-    if(personId&&!current)void openStudent(personId);
+    if(personId&&requestedSchoolId&&requestedSchoolId!==currentScope.schoolId){
+      setUrlPerson("");status.textContent="The linked student belongs to a different school. Select the intended school.";
+    }else if(personId&&!current)void openStudent(personId);
   }
 });
 try{
