@@ -27,12 +27,19 @@ function originalSections(task){
  return [...new Map(values.filter(x=>typeof x==="string"&&x.trim().length&&x.trim().length<=160)
    .map(x=>[normalized(x),x.trim()])).values()];
 }
+function historicalCustodianRecord(task){
+  // Delegate only unattributed early sources or records explicitly marked
+  // as administrator-held custody. Ordinary teacher-private preparations
+  // must never be reassigned through this administrative recovery route.
+  return !!task&&(task.ownerUid===undefined||task.ownerUid===null||task.ownerUid===""||
+    String(task.ownershipBasis||"").startsWith("legacy-administrator-custody"));
+}
 function validCustody(grant,{schoolId,assessmentId,offeringId,teacherUid,task,section=""}){
  if(!grant||grant.status!=="active"||grant.schoolId!==schoolId||schoolId!==SCHOOL_ID||
     grant.assessmentId!==assessmentId||grant.offeringId!==offeringId||
     grant.teacherUid!==teacherUid||!validId(teacherUid)||
     !grant.reviewedBySchoolAdminUid||grant.reviewedBySchoolAdminUid===teacherUid||
-    !task||(task.schoolId&&task.schoolId!==schoolId)||
+    !task||!historicalCustodianRecord(task)||(task.schoolId&&task.schoolId!==schoolId)||
     grant.originalOwnerUid!==String(task.ownerUid||"")||
     grant.originalTitle!==String(task.title||"")||
     Number(grant.originalMaxScore)!==Number(task.maxScore)||
@@ -62,4 +69,4 @@ async function authorizedTeacherCustody({db,schoolId,teacherUid,assessmentId,off
    return null;
  return {ref:doc.ref,grant};
 }
-module.exports={custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,normalized};
+module.exports={custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,normalized,historicalCustodianRecord};
