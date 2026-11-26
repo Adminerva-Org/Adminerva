@@ -10,6 +10,7 @@
 const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+const {ACTIONS:ADMISSION_DOCUMENT_ACTIONS,admissionDocumentAction}=require("./school-admission-documents.js");
 const {
   normalizeGuardianEmail,guardianContactIdForEmail,guardianRelationshipId
 }=require("./school-guardian-identity.js");
@@ -83,6 +84,7 @@ function createSchoolStudentRecordsService({db}){
         deny("not-found","The student record was not found in this school.");
       return {ref,doc,data:doc.data()};
     }
+    if(ADMISSION_DOCUMENT_ACTIONS.has(input.action))return admissionDocumentAction({db,ctx,input,studentView:true});
     if(input.action==="search_students"){
       const query=(optional(input.query,160)||"").toLocaleLowerCase("en");
       const cursor=input.cursor?id(input.cursor,"Student directory cursor"):"";
