@@ -208,3 +208,20 @@ test("Studio server policy denials preserve callable and exact reason without re
  assert.throws(()=>checkedEvent(event({context:{reasonCode:"private reason"}})),/Invalid diagnostic context/);
  assert.equal(diagnosticSeverity({...rows[0],source:"browser"}),"failure");
 });
+
+test("callable correlation is bounded and never changes authenticated ownership",async()=>{
+ const {clientCorrelation}=require("../functions/platform-account-diagnostics.js");
+ const parent="cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+ const diagnostic={sessionId:SESSION,operationId:EVENT,parentOperationId:parent};
+ const req=request(USER,{action:"sync",_diagnostic:diagnostic});
+ assert.deepEqual(clientCorrelation(req,"schoolStudioProjects"),diagnostic);
+ assert.deepEqual(clientCorrelation(req,"otherService"),{});
+ assert.deepEqual(clientCorrelation(request(USER,{action:"sync",_diagnostic:{...diagnostic,ownerUid:ADMIN}}),"schoolStudioProjects"),{});
+ assert.deepEqual(clientCorrelation(request(USER,{action:"sync",_diagnostic:{...diagnostic,parentOperationId:EVENT}}),"schoolStudioProjects"),{});
+ const db=fakeDb(),collector=service(db);
+ await collector.writeServerFailure(req,{code:"failed-precondition",diagnosticReason:"STUDIO_EXAM_CLOSED"},T,"schoolStudioProjects");
+ await collector.recordServerProcess(req,{service:"schoolStudioProjects",startedAt:T});
+ const rows=[...db.values.values()].filter(row=>["api_failed","api_succeeded"].includes(row.action));
+ assert.equal(rows.length,2);
+ for(const row of rows){assert.equal(row.ownerUid,USER);assert.equal(row.operationId,EVENT);assert.equal(row.sessionId,SESSION);assert.equal(row.context.parentOperationId,parent);}
+});
