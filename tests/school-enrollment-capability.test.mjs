@@ -107,3 +107,15 @@ test("registrar summary counts canonical school-scoped records without exporting
   assert.match(block,/query.count\(\).get\(\)/);assert.doesNotMatch(block,/studentEmail|guardianEmail|displayName/);
   assert.match(source,/System Admin preview is read-only/);
 });
+
+
+test("optional enrollment clearance requires current policy and accepted application revisions",()=>{
+  const {normalizeClearanceTypes,enrollmentClearanceReady}=require("../functions/school-enrollment.js");
+  assert.deepEqual(normalizeClearanceTypes(["returning","new"]),["new","returning"]);assert.throws(()=>normalizeClearanceTypes(["other"]));
+  const app={status:"accepted",applicationType:"returning",revision:5,enrollmentClearance:{state:"cleared",policyRevision:2,applicationRevision:5,reference:"Finance office ref"}};
+  assert.equal(enrollmentClearanceReady(app,{revision:2,requiredTypes:["returning"]}),true);
+  assert.equal(enrollmentClearanceReady(app,{revision:3,requiredTypes:["returning"]}),false);
+  assert.equal(enrollmentClearanceReady({...app,revision:6},{revision:2,requiredTypes:["returning"]}),false);
+  assert.equal(enrollmentClearanceReady({...app,enrollmentClearance:{...app.enrollmentClearance,state:"held"}},{revision:2,requiredTypes:["returning"]}),false);
+  assert.equal(enrollmentClearanceReady({}, {revision:0,requiredTypes:[]}),true);
+});
