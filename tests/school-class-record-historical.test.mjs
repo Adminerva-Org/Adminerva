@@ -397,3 +397,39 @@ test("exact ID discovery for a sectionless source requires assessment-specific p
  grades[1].studentId="s1";
  assert.equal(await exactCustodyCandidate(input),null);
 });
+
+
+test("Class Record recovers exact-ID activity grades only when the primary grade is absent",async()=>{
+ const records=new Map([["assessments/legacy-task",task]]);
+ let activityRows=[{...row,published:false,score:0},{...row,studentId:"other",score:12},{...row,taskId:undefined,activity:"same title"}];
+ const db={doc:path=>({path,get:async()=>({exists:records.has(path),data:()=>records.get(path)})}),
+  getAll:async(...refs)=>Promise.all(refs.map(ref=>ref.get())),
+  collection:name=>({where:()=>({limit:()=>({get:async()=>{
+   const rows=name==="activity_grades"?activityRows:[];return {size:rows.length,docs:rows.map(data=>({data:()=>data}))};
+  }})})})};
+ const roster=[{personId:"p1",authUid:"u1",legacyStudentIds:["old_student"]}];
+ const input={db,schoolId,offeringId,offering,columns:[column],roster,acceptSavedLegacy:true};
+ const results=await historicalPublishedGrades(input);
+ assert.equal(results.length,1);assert.equal(results[0].awarded,0);
+ assert.equal(results[0].legacyAccepted,true);
+ assert.deepEqual(await historicalPublishedGrades({...input,acceptSavedLegacy:false}),[]);
+ records.set("student_grades/old_student_legacy-task",{...row,published:false,score:15});
+ assert.equal((await historicalPublishedGrades(input))[0].awarded,15);
+ records.set("student_grades/old_student_legacy-task",{...row,score:null});
+ assert.deepEqual(await historicalPublishedGrades(input),[]);
+ records.delete("student_grades/old_student_legacy-task");
+ activityRows=[row,{...row,score:18}];
+ assert.deepEqual(await historicalPublishedGrades(input),[]);
+});
+test("sectionless custody can discover exact earlier student receipt and activity grade proof",async()=>{
+ const assessmentId="OriginalLegacy",schoolId="mcs-manila",sha="a".repeat(40);
+ const task={title:"Original UI/XML",ownerUid:"old-admin",ownershipBasis:"legacy-administrator-custody",maxScore:20};
+ const receipt={studentId:"s1",assessmentId,submittedByUid:"old-uid",revisionSha:sha,repoUrl:"https://github.com/learner/project",section:"A",submittedAt:{toMillis:()=>1000}};
+ const collections={student_submissions:[{id:"s1_"+assessmentId+"_"+sha,data:()=>receipt}],activity_grades:[{data:()=>({taskId:assessmentId,studentId:"s2",score:0,maxScore:20})}]};
+ const db={collection:name=>({where:()=>({limit:()=>({get:async()=>({size:(collections[name]||[]).length,docs:collections[name]||[]})})})})};
+ const identities=new Map([["s1","p1"],["s2","p2"]]);
+ const input={db,schoolId,assessmentId,task,identities,rosterSize:4};
+ assert.equal((await exactCustodyCandidate(input)).sectionProof,"assessment_student_identity");
+ receipt.revisionSha="invalid";
+ assert.equal(await exactCustodyCandidate(input),null);
+});
