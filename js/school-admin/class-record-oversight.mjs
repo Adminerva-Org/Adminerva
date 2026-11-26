@@ -300,8 +300,9 @@ custodyForm.addEventListener("submit",event=>void (async()=>{
     custodyStatus.textContent=(result.originalTitle||"Historical assessment")+" · "+
       result.originalSection+" · "+result.verifiedStudentCount+" / "+result.rosterCount+
       " student identities verified (minimum "+result.requiredStudentCount+"). "+
-      (result.eligible?"Ready for a different School Administrator to approve custody.":
-        "Not eligible: reconcile the official class roster and original identities first.");
+      result.originalSourceRecordCount+" original submitted-evidence or grade record(s) matched. "+
+      (result.eligible?"Ready for School Administrator approval.":
+        "Not eligible: reconcile the class identities and confirm the original assessment has real submissions or grades.");
     el("cro-legacy-approve").disabled=!result.eligible;
   }catch(error){custodyStatus.textContent=error?.message||"Historical source could not be verified.";}
   finally{setCustodyBusy(false);if(verifiedCustody&&!verifiedCustody.eligible)
