@@ -183,3 +183,16 @@ test("previous-school academic evidence is school-local, revisioned and separate
   const credential=readFileSync(new URL("../functions/school-record-credentials.js",import.meta.url),"utf8");
   assert.match(credential,/mode==="sf10"&&!yearId/);assert.match(credential,/doc.data\(\).state==="verified"/);
 });
+
+
+test("institutional credential eligibility requires exact canonical outcomes and explicit moral attestation",()=>{
+  const {eligibleRegistration,CREDENTIAL_TYPES}=require("../functions/school-record-credentials.js");
+  assert.equal(eligibleRegistration("graduation_certificate",{status:"ended",endReasonType:"progression",progressionType:"graduation"}),true);
+  assert.equal(eligibleRegistration("graduation_certificate",{status:"ended",endReasonType:"progression",progressionType:"promotion"}),false);
+  assert.equal(eligibleRegistration("transfer_certificate",{status:"ended",endReasonType:"withdrawal"}),false);
+  assert.equal(eligibleRegistration("transfer_certificate",{status:"ended",endReasonType:"transfer_out"}),true);
+  assert.equal(eligibleRegistration("certificate_of_enrollment",{status:"ended"}),false);
+  assert.equal(CREDENTIAL_TYPES.good_moral_certificate.prefix,"GMC");
+  const source=readFileSync(new URL("../functions/school-record-credentials.js",import.meta.url),"utf8");
+  assert.match(source,/confirmSourceReviewed!==true/);assert.match(source,/attestation.registrationRevision/);assert.match(source,/A verified School Administrator must record/);
+});
