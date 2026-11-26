@@ -109,7 +109,7 @@ function createSchoolGradebookService({db}){
         gradeId:doc.id,studentUid:data.studentUid,personId:data.personId,
         studentName:person.exists&&person.data().schoolId===ctx.schoolId?person.data().displayName:"Student",
         status:data.status,awarded:data.awarded,total:data.total,pending:data.pending||0,
-        reviewSuggested:data.status==="draft"&&(data.reviewSuggested===true||source==="github"),
+        reviewSuggested:data.status==="draft"&&(data.reviewSuggested===true||source==="github"||data.awarded===0),
         evidenceType:data.evidenceType||source,submissionVersion:data.submissionVersion,
         revision:data.revision||1,publishedAt:data.publishedAt?.toMillis?.()||null,
         updatedAt:data.updatedAt?.toMillis?.()||null
@@ -130,8 +130,8 @@ function createSchoolGradebookService({db}){
    if(snap.size===201)deny("resource-exhausted","Bulk publication requires pagination for this assessment.");
    const rows=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
      doc.data().offeringId===offeringId&&doc.data().status==="draft");
-   const zeroSkipped=rows.filter(doc=>Number(doc.data().awarded)===0).length;
-   const candidates=rows.filter(doc=>Number(doc.data().awarded)>0);
+   const zeroSkipped=0;
+   const candidates=rows;
    const collectionName=source==="studio"?"studio_submissions":
      source==="github"?"github_evidence":"assessment_submissions";
    const digestOf=data=>source==="studio"?data.contentDigest:
@@ -159,7 +159,7 @@ function createSchoolGradebookService({db}){
        deny("failed-precondition","Draft changed before publication.");
       const grade=current.data();
       if(grade.schoolId!==ctx.schoolId||grade.taskId!==taskId||grade.offeringId!==offeringId||
-         !Number.isFinite(Number(grade.awarded))||Number(grade.awarded)<=0||
+         typeof grade.awarded!=="number"||!Number.isFinite(grade.awarded)||grade.awarded<0||grade.awarded>taskTotal||
          Number(grade.pending||0)!==0||Number(grade.total)!==taskTotal)
        deny("failed-precondition","Draft score is incomplete or no longer matches the published rubric.");
       const submissionRef=db.doc(prefix+collectionName+"/"+checkId(grade.submissionId,"Submission ID",128));
@@ -281,7 +281,7 @@ function createSchoolGradebookService({db}){
       gradeSchema:grade.data().gradeSchema||"rubric_v1",criteria:Array.isArray(grade.data().criteria)?grade.data().criteria:[],
       awarded:grade.data().awarded,total:grade.data().total,
       pending:grade.data().pending,feedback:grade.data().feedback,
-      reviewSuggested:grade.data().status==="draft"&&(grade.data().reviewSuggested===true||source==="github"),
+      reviewSuggested:grade.data().status==="draft"&&(grade.data().reviewSuggested===true||source==="github"||grade.data().awarded===0),
       draftSource:grade.data().draftSource||"teacher",
       version:grade.data().submissionVersion,revision:grade.data().revision,
       publishedAt:grade.data().publishedAt?.toMillis?.()||null,
@@ -302,6 +302,9 @@ function createSchoolGradebookService({db}){
     const grade=await tx.get(gradeRef);
     if(grade.exists&&grade.data().gradeSchema==="legacy_scalar_v1")
      deny("failed-precondition","This imported historical grade has no saved rubric breakdown. Reconstruct the breakdown without changing its historical score before editing the draft.");
+    if(input.expectedDraftRevision!==undefined&&(!Number.isInteger(input.expectedDraftRevision)||input.expectedDraftRevision<1||
+       !grade.exists||grade.data().status!=="draft"||grade.data().revision!==input.expectedDraftRevision))
+     deny("failed-precondition","The draft changed during re-evaluation. Reload before replacing it.");
     if(input.onlyIfUngraded===true&&grade.exists)
      deny("failed-precondition","This submission already has a saved grade. Bulk evaluation cannot replace an existing private or published grade.");
     if(grade.exists&&grade.data().status==="published")
@@ -326,7 +329,7 @@ function createSchoolGradebookService({db}){
      evidenceType:source,submissionId:submissionRef.id,submissionVersion,submissionDigest:evidenceDigest(submission),
      gradeSchema:"rubric_v1",criteria:scores.criteria,awarded:scores.awarded,pending:scores.pending,total:scores.total,
      feedback,draftSource,status:"draft",revision,updatedAt:now,
-     reviewSuggested:source==="github"||scores.pending>0,
+     reviewSuggested:source==="github"||scores.pending>0||scores.awarded===0||input.reviewSuggested===true,
      ...(source==="link"&&input.onlyIfUngraded===true?{
        linkedArtifactReviewedByUid:ctx.uid,linkedArtifactReviewNote:artifactReviewNote
      }:{})};
