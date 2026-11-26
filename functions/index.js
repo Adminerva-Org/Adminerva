@@ -160,7 +160,7 @@ const {createSchoolStudioAssessmentVariantService}=require("./school-studio-asse
 exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioProjectService({db}),{diagnosticsService:"schoolStudioProjects"}));
 exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db}),{diagnosticsService:"schoolStudioSubmissions"}));
 exports.studioAssessmentVariant=onCall(callOptions,safeCallable(createStudioAssessmentVariantService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)})));
-exports.schoolStudioAssessmentVariant=onCall(callOptions,safeCallable(createSchoolStudioAssessmentVariantService({db})));
+exports.schoolStudioAssessmentVariant=onCall(callOptions,safeCallable(createSchoolStudioAssessmentVariantService({db}),{diagnosticsService:"schoolStudioAssessmentVariant"}));
 const {createStudioAutoVerification}=require("./studio-auto-verification.js");
 const studioAutoVerification=createStudioAutoVerification({db});
 const verificationTriggerOptions={
