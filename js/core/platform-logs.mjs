@@ -141,7 +141,7 @@ function contextFields(record){
   const c=record.context;if(!c)return [];
   const active=Array.isArray(c.active)?c.active:[];
   return [["Control",c.control],["Tracked process",c.process],["Parent operation (client)",c.parentOperationId],["Client time (unverified)",Number.isSafeInteger(c.clientAt)?time(c.clientAt):""],
-    ["Rejection reason",c.reasonCode],["Project category",c.projectCategory],["Recovery",c.recovery],["Device backup (client)",c.deviceBackup],["Retry",c.retryState],["Save stage",c.saveStage?humanize(c.saveStage):""],["Scheduled retry count at start",c.retryAttempt],["Requests waiting behind this save",c.waitingRequests],["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
+    ["Rejection reason",c.reasonCode],["Project category",c.projectCategory],["Recovery",c.recovery],["Device backup (client)",c.deviceBackup],["Retry",c.retryState],["Save stage",c.saveStage?humanize(c.saveStage):""],["Scheduled retry count at start",c.retryAttempt],["Save-lock wait observations",c.waitingRequests],["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
     ["Elapsed (ms)",c.elapsedMs],["Tracked active processes",Array.isArray(c.active)?active.length+(c.overflow||0):null],
     ["Overlap (same tracked operation)",active.some((p,i)=>active.slice(0,i).some(q=>q.name===p.name))?"Observed; not proof of a duplicate write":""],
     ...active.map(p=>["Active "+p.name,p.id+" · "+p.ageMs+" ms"])];
