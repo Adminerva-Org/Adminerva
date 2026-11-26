@@ -97,6 +97,7 @@ jobs:
         run: |
           npm run add:android
           npm run sync
+          npm run set:native-version
       - name: Assemble Android debug APK
         working-directory: apps/mobile/android
         run: |
