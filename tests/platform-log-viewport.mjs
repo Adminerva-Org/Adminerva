@@ -101,7 +101,12 @@ try{
     }));
     assert.ok(inspector.docWidth<=width+3,"Inspector document overflow at "+width);
     assert.ok(inspector.rect.right<=width+3,"Inspector overflow at "+width);
-    if(width>=1280)assert.ok(inspector.feed.right<=inspector.rect.left,"Inspector should sit beside the feed");
+    if(width>=1280){
+      assert.ok(inspector.feed.right<=inspector.rect.left,"Inspector should sit beside the feed");
+      await page.evaluate(()=>{const workspace=document.getElementById("pl-workspace");workspace.style.setProperty("--pl-directory-width","320px");workspace.style.setProperty("--pl-inspector-width","440px");});
+      const wide=await page.evaluate(()=>({docWidth:document.documentElement.scrollWidth,inspector:document.getElementById("pl-inspector").getBoundingClientRect().toJSON(),feed:document.querySelector(".pl-event-feed").getBoundingClientRect().toJSON()}));
+      assert.ok(wide.docWidth<=width+3&&wide.inspector.right<=width+3&&wide.feed.right<=wide.inspector.left,"Expanded panels overflow at "+width);
+    }
     else assert.ok(inspector.rect.bottom<=inspector.feed.top+1,"Inspector should stack above the feed");
     if(width===320||width===1920)
       await page.screenshot({path:"/tmp/adminerva-platform-log-"+width+".png",fullPage:true});
