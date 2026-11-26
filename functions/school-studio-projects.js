@@ -75,8 +75,20 @@ function digestSource(files,language=""){
  return createHash("sha256").update(canonicalJson({language:String(language||""),files})).digest("hex");
 }
 function digestFiles(files){return digestProject(files,{});}
+// Observes SDK transaction callback invocations, not individual Firestore RPCs.
+async function observedStudioTransaction(db,callback,observe){
+ if(typeof observe!=="function")return db.runTransaction(callback);
+ const started=Date.now();let attempts=0,outcome="rejected";
+ try{
+  const result=await db.runTransaction(tx=>{attempts=Math.min(100,attempts+1);return callback(tx);});
+  outcome="returned";return result;
+ }finally{
+  try{observe({transactionAttempts:attempts,transactionMs:Math.max(0,Math.min(120000,Date.now()-started)),transactionOutcome:outcome});}catch{}
+ }
+}
 function createSchoolStudioProjectService({db}){
  return async request=>{
+  const runObservedTransaction=callback=>observedStudioTransaction(db,callback,request.observeStudioTransaction);
   const input=request.data||{},ctx=await getSchoolContext({
    db,request,schoolId:input.schoolId,roles:["student"]
   });
@@ -197,7 +209,7 @@ function createSchoolStudioProjectService({db}){
    if(!["java","web","python","csharp","cpp","dart","text"].includes(language))
     deny("invalid-argument","Choose a supported Studio project language.");
    const ref=projectCollection.doc(),now=FieldValue.serverTimestamp();
-   await db.runTransaction(async tx=>{
+   await runObservedTransaction(async tx=>{
     await authorizeTransaction(tx);
     await authorizeAssessmentProject(tx,artifacts);
     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,
@@ -217,7 +229,7 @@ function createSchoolStudioProjectService({db}){
    if(closingEpoch&&(!Number.isSafeInteger(closingEpoch)||closingEpoch<1))
     deny("invalid-argument","The closing exam session number is invalid.");
    let result;
-   await db.runTransaction(async tx=>{
+   await runObservedTransaction(async tx=>{
     const identity=await authorizeTransaction(tx),
       located=await findProject(identity,projectId,tx),ref=located.ref,current=located.doc;
     const access=await authorizeAssessmentProject(tx,artifacts,{closingEpoch});
@@ -351,7 +363,7 @@ function createSchoolStudioProjectService({db}){
     deny("invalid-argument","The current school project revision is required.");
    const restoring=action==="restore";
    let result;
-   await db.runTransaction(async tx=>{
+   await runObservedTransaction(async tx=>{
     const identity=await authorizeTransaction(tx),
       located=await findProject(identity,projectId,tx),ref=located.ref,doc=located.doc;
     if(!doc.exists||doc.data().schoolId!==ctx.schoolId||
@@ -387,7 +399,7 @@ function createSchoolStudioProjectService({db}){
    if(!Number.isInteger(revision)||revision<1)
     deny("invalid-argument","The existing saved project revision is required.");
    const digest=digestProject(files,artifacts);
-   await db.runTransaction(async tx=>{
+   await runObservedTransaction(async tx=>{
     const identity=await authorizeTransaction(tx),
       located=await findProject(identity,projectId,tx),ref=located.ref,doc=located.doc;
     if(!doc.exists||doc.data().schoolId!==ctx.schoolId||
