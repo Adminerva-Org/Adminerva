@@ -14,7 +14,7 @@ const MAX_PAGE_EVENTS=90;
 const ID=()=>crypto.randomUUID();
 const allowedRoutes=/(?:^\/$|^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]{1,80}\.html$)/;
 const allowedCodes=/^[-a-zA-Z0-9_./]{1,64}$/;
-const release="v20261124-global"; // The emitter revision, not the full app release.
+const release="v20261126-context"; // The emitter revision, not the full app release.
 function environment(){
   // Convert the browser environment to coarse allowlisted categories; never
   // transmit a full user-agent string, fingerprint, IP address or screen size.
@@ -31,6 +31,35 @@ function environment(){
     /iPhone|Android.*Mobile|iPod/i.test(ua)?"phone":
     /Android/i.test(ua)?"tablet":"desktop";
   return {osFamily,browserFamily,deviceClass,viewport};
+}
+
+const controls=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
+const processes=new Map();
+const MAX_TRACKED=24;
+const elapsed=start=>Math.min(3600000,Math.max(0,Math.round(performance.now()-start)));
+function snapshotContext(extra={}){
+  const active=[...processes].slice(0,6).map(([id,p])=>({name:p.name,id,ageMs:elapsed(p.start)}));
+  return {clientAt:Date.now(),visibility:["visible","hidden"].includes(document.visibilityState)?document.visibilityState:"other",
+    network:navigator.onLine===false?"offline":"online",focus:document.hasFocus()?"focused":"unfocused",
+    ready:["loading","interactive","complete"].includes(document.readyState)?document.readyState:"other",
+    dialog:document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]:not([hidden])[aria-hidden="false"]')?"open":"none",
+    busy:document.querySelector('[aria-busy="true"]')?"busy":"idle",active,overflow:Math.max(0,processes.size-active.length),...extra};
+}
+function beginProcess(name){
+  if(!enabled||name!=="studio_cloud_save"||processes.size>=MAX_TRACKED)return ()=>{};
+  const id=ID(),start=performance.now(),turn=epoch;
+  processes.set(id,{name,start});
+  emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name}});
+  let finished=false;
+  return (success)=>{
+    if(finished)return;finished=true;
+    if(turn!==epoch)return;
+    const context={process:name,elapsedMs:elapsed(start)};
+    processes.delete(id);
+    emit(success===true?"process_finished":"process_failed",{module:"studio",kind:success===true?"action":"error",
+      state:success===true?"ok":"error",operationId:id,phase:success===true?"completed":"failed",
+      errorCode:success===true?"":"cloud_save_failed",context});
+  };
 }
 function queueDelayed(event){
   if(pending.length<MAX_DELAYED_EVENTS)pending.push(event);
@@ -93,11 +122,11 @@ async function send(event,replay=false){
     }
   }
 }
-function emit(action,{kind="action",module=moduleForRoute(),state="info",errorCode="",operationId="",phase=""}={}){
+function emit(action,{kind="action",module=moduleForRoute(),state="info",errorCode="",operationId="",phase="",context={}}={}){
   if(!enabled||!activeUid||!sessionId||eventsSent>=MAX_PAGE_EVENTS)return;
   const event={eventId:ID(),sessionId,kind,module,action,state,
     errorCode:kind==="error"?code(errorCode):"",route:route(),release,
-    ...environment(),
+    ...environment(),context:snapshotContext(context),
     ...(operationId?{operationId}:{}),...(phase?{phase}:{})};
   void send(event);
 }
@@ -121,7 +150,7 @@ function initializeSession(user){
   if(fresh)emit("session_started",{kind:"session",state:"ok",phase:"observed"});
 }
 onAuthStateChanged(auth,user=>{
-  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();
+  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();processes.clear();
   if(!user?.emailVerified)return;
   activeUid=user.uid;enabled=true;
   initializeSession(user);
@@ -166,11 +195,11 @@ const buttonActions={
 };
 document.addEventListener("click",event=>{
   const button=event.target?.closest?.("button");
-  if(!event.isTrusted||!button||button.disabled||!buttonActions[button.id])return;
-  const [action,module]=buttonActions[button.id];
+  if(!event.isTrusted||!button||button.disabled||!controls.has(button.id))return;
+  const [action,module]=buttonActions[button.id]||["control_clicked",moduleForRoute()];
   const operationId=ID();
   if(action==="studio_run_requested")pendingRunOperationId=operationId;
-  emit(action,{module,state:"info",operationId,phase:"started"});
+  emit(action,{module,state:"info",operationId,phase:action==="control_clicked"?"observed":"started",context:{control:button.id}});
 },true);
 document.addEventListener("adminerva:diagnostic-event",event=>{
   const data=event?.detail||{};
@@ -179,6 +208,6 @@ document.addEventListener("adminerva:diagnostic-event",event=>{
     ["studio","assessments","classroom","school","games","grades","notifications","settings","api"].includes(data.module)?data.module:"api");
   else if(data.action==="support_report_submitted")emit("support_report_submitted",{module:"other",state:"ok"});
 });
-window.AdminervaDiagnostic=Object.freeze({emit,apiFailed:(error,module="api")=>{
+window.AdminervaDiagnostic=Object.freeze({emit,beginProcess,apiFailed:(error,module="api")=>{
   diagnosticError("api_failed",error?.code||error?.name||"unavailable",module);
 }});
