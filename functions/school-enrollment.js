@@ -440,7 +440,9 @@ function createSchoolEnrollmentService({db}){
     }
     if(input.action==="catalog"){
       const names=["academic_years","academic_programs","terms","sections","subjects","course_offerings"];
-      const snaps=await Promise.all(names.map(name=>db.collection(root+name).limit(250).get()));
+      const caps=names.map(name=>name==="course_offerings"?2000:500);
+      const snaps=await Promise.all(names.map((name,index)=>db.collection(root+name).where("status","==","active").limit(caps[index]+1).get()));
+      if(snaps.some((snap,index)=>snap.size>caps[index]))deny("resource-exhausted","Active academic configuration is too large for this workspace. Placement-specific catalog loading is required.");
       const by=Object.fromEntries(names.map((name,index)=>[name,snaps[index].docs
         .filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
         .map(doc=>({id:doc.id,...doc.data()}))]));
@@ -1420,7 +1422,7 @@ function createSchoolEnrollmentService({db}){
         db.doc(root+"academic_programs/"+programId).get(),
         db.doc(root+"terms/"+termId).get(),
         db.doc(root+"sections/"+sectionId).get(),
-        db.collection(root+"course_offerings").where("sectionId","==",sectionId).limit(251).get(),
+        db.collection(root+"course_offerings").where("sectionId","==",sectionId).where("yearId","==",yearId).where("termId","==",termId).limit(251).get(),
         applicationRef?applicationRef.get():Promise.resolve(null)
       ]);
       for(const [record,label] of [[year,"academic year"],[program,"program"],[term,"academic period"],[section,"section"]]){
@@ -1545,7 +1547,7 @@ function createSchoolEnrollmentService({db}){
           ];
         if(applicationRef)reads.push(tx.get(applicationRef));
         const records=await Promise.all(reads);
-        const [liveYear,liveProgram,liveTerm,liveSection,liveOfferings]=await Promise.all([tx.get(year.ref),tx.get(program.ref),tx.get(term.ref),tx.get(section.ref),tx.get(db.collection(root+"course_offerings").where("sectionId","==",sectionId).limit(251))]);
+        const [liveYear,liveProgram,liveTerm,liveSection,liveOfferings]=await Promise.all([tx.get(year.ref),tx.get(program.ref),tx.get(term.ref),tx.get(section.ref),tx.get(db.collection(root+"course_offerings").where("sectionId","==",sectionId).where("yearId","==",yearId).where("termId","==",termId).limit(251))]);
         if([liveYear,liveProgram,liveTerm,liveSection].some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active")||liveTerm.data().yearId!==yearId||liveTerm.data().programId!==programId||liveSection.data().programId!==programId||String(liveSection.data().gradeLevel||"").trim().toLowerCase()!==gradeLevel||liveOfferings.size===251)
           deny("failed-precondition","Academic placement changed. Refresh before enrolling.");
         const liveIds=liveOfferings.docs.filter(doc=>{const row=doc.data();return row.schoolId===ctx.schoolId&&row.status==="active"&&row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.sectionId===sectionId&&row.rosterMode!=="selective";}).map(doc=>doc.id).sort();
