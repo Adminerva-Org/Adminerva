@@ -13,6 +13,7 @@ let requestedPersonId=(()=>{try{
 let picker=null,students=[],current=null,saving=false,searchRun=0,fileRun=0,
   guardianChange=null,guardianLifecycle=null,requestLifecycle=null;
 let directoryCursor=null,directoryQuery="",directoryBusy=false;
+let fileView="registrations",historyBusy=false;
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -29,6 +30,7 @@ function setSaving(value,message=""){
     get("sr-search").disabled=false;get("sr-search-button").disabled=directoryBusy;get("sr-more").disabled=directoryBusy;
     get("sr-guardian-close").disabled=false;get("sr-guardian-lifecycle-close").disabled=false;
     get("sr-request-close").disabled=false;get("sr-request-lifecycle-close").disabled=false;
+    renderHistoryControls();
   }
   if(message)status.textContent=message;
 }
@@ -227,6 +229,44 @@ async function loadAdmissionDocuments(){
   }catch(error){if(run===fileRun)host.textContent=error?.message||"Documents unavailable.";}
 }
 get("sr-load-admission-docs").addEventListener("click",()=>void loadAdmissionDocuments());
+const historyKeys={registrations:"registrationId",guardians:"relationshipId",documentRequests:"requestId",releasedGrades:"offeringId",audit:"auditId"};
+const historyRenderers={registrations:renderRegistrations,guardians:renderGuardians,documentRequests:renderRequests,releasedGrades:renderGrades,audit:renderAudit};
+function showFileView(view){
+  if(!["registrations","releasedGrades","guardians","documents","audit"].includes(view))return;
+  fileView=view;
+  for(const panel of document.querySelectorAll("[data-sr-panel]"))panel.hidden=panel.dataset.srPanel!==view;
+  for(const control of document.querySelectorAll("[data-sr-view]"))control.setAttribute("aria-pressed",String(control.dataset.srView===view));
+}
+function renderHistoryControls(){
+  for(const section of Object.keys(historyKeys)){
+    const cursor=current?.nextCursors?.[section];
+    get("sr-history-more-"+section).hidden=!cursor;get("sr-history-more-"+section).disabled=saving||historyBusy;
+    get("sr-history-count-"+section).textContent=current?((current[section]||[]).length+" loaded"+(cursor?" · more history available":"")):"";
+  }
+}
+function sortHistory(section,rows){
+  if(section==="guardians")return rows.sort((a,b)=>Number(b.isPrimary)-Number(a.isPrimary)||a.displayName.localeCompare(b.displayName));
+  const time=section==="releasedGrades"?"finalizedAt":section==="documentRequests"?"updatedAt":"createdAt";
+  return rows.sort((a,b)=>(b[time]||0)-(a[time]||0));
+}
+async function loadHistory(section){
+  if(saving||historyBusy||!current||!Object.hasOwn(historyKeys,section)||!current.nextCursors?.[section])return;
+  const run=fileRun,personId=current.person.personId,cursor=current.nextCursors[section];historyBusy=true;renderHistoryControls();
+  try{
+    const data=await perform("student_file",{personId,historySection:section,cursor});
+    if(run!==fileRun||current?.person.personId!==personId)return;
+    if(data.historySection!==section||!data.nextCursors)throw new Error("History pagination is not available on this backend.");
+    const key=historyKeys[section],rows=new Map((current[section]||[]).map(row=>[row[key],row]));
+    for(const row of data[section]||[])rows.set(row[key],row);
+    current[section]=sortHistory(section,[...rows.values()]);current.nextCursors[section]=data.nextCursors[section]||null;
+    // Adoption is a mutation; only the complete first-page check can offer it.
+    if(section==="guardians")current.legacyGuardianAvailable=false;
+    historyRenderers[section](current);
+  }catch(error){if(run===fileRun)status.textContent=error?.message||"More history could not be loaded.";}
+  finally{if(run===fileRun){historyBusy=false;renderHistoryControls();}}
+}
+for(const control of document.querySelectorAll("[data-sr-view]"))control.addEventListener("click",()=>showFileView(control.dataset.srView));
+for(const control of document.querySelectorAll("[data-sr-history]"))control.addEventListener("click",()=>void loadHistory(control.dataset.srHistory));
 function renderFile(data){
   get("sr-admission-docs").replaceChildren();
   current=data;const p=data.person;
@@ -241,11 +281,12 @@ function renderFile(data){
   get("sr-open-enrollment").hidden=picker.scope.current.enrollmentMode!=="canonical";
   get("sr-open-enrollment").href="school-enrollment.html?personId="+encodeURIComponent(p.personId)+schoolQuery;
   renderGuardians(data);renderRegistrations(data);renderGrades(data);renderRequests(data);renderAudit(data);
-  renderStudents();
+  renderHistoryControls();showFileView(fileView);renderStudents();
 }
 async function openStudent(personId,{force=false}={}){
   if(saving&&!force)return;
-  const run=++fileRun;status.textContent="Loading canonical Student Records file…";
+  if(current?.person.personId!==personId){fileView="registrations";fileHost.hidden=true;}
+  historyBusy=false;const run=++fileRun;status.textContent="Loading student record…";
   try{
     const data=await perform("student_file",{personId});
     if(run!==fileRun)return;
@@ -413,7 +454,7 @@ picker=createTenantSchoolPicker({
   host:get("sr-school-picker"),status,
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current Student Records change before switching schools.");
-    ++searchRun;++fileRun;requestedPersonId="";students=[];current=null;guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
+    ++searchRun;++fileRun;requestedPersonId="";students=[];current=null;historyBusy=false;fileView="registrations";guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
     directoryCursor=null;directoryQuery="";directoryBusy=false;get("sr-more").hidden=true;get("sr-search-progress").textContent="";
     setUrlPerson("");get("sr-search").value="";get("sr-student-list").replaceChildren();fileHost.hidden=true;get("sr-empty-file").hidden=false;get("sr-open-people").hidden=true;workspace.hidden=true;
     for(const dialog of document.querySelectorAll("dialog"))if(dialog.open)dialog.close();
