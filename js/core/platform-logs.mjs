@@ -16,7 +16,7 @@ const flags=["normal","warning","failure","unknown"];
 const deepLink=new URLSearchParams(location.search).get("uid")||"";
 const initialUid=/^[A-Za-z0-9_-]{1,128}$/.test(deepLink)?deepLink:"";
 const state={
-  accounts:[],byUid:new Map(),directoryReady:false,eligible:false,selectedUid:initialUid,
+  inspected:null,inspectorTrigger:null,inspectorSignature:"",accounts:[],byUid:new Map(),directoryReady:false,eligible:false,selectedUid:initialUid,
   view:initialUid?"user":"global",global:[],globalNext:null,fingerprint:"",
   recent:[],events:[],audit:[],auditCapped:false,impact:null,impactBusy:false,trends:null,trendsBusy:false,loading:false,
   recentNext:null,eventNext:null,canMore:false,epoch:0,readEpoch:0,
@@ -31,7 +31,130 @@ const make=(tag,className="",value)=>{
   return element;
 };
 const humanize=value=>String(value||"unknown").replaceAll("_"," ").replaceAll("-"," ");
+// Only correlate the authorized loaded sample within the same account and session.
+function linkedOperationIds(scoped,operationId){
+  if(!operationId)return new Set();
+  const ids=new Set([operationId]);
+  // Follow only explicit parent links. Active snapshots supply context but do not
+  // merge separate operation trees. Cycles terminate because each ID is visited once.
+  for(let changed=true;changed;){
+    changed=false;
+    for(const row of scoped){
+      const op=row.operationId,parent=row.context?.parentOperationId;
+      if(!op||!parent)continue;
+      if(ids.has(op)&&!ids.has(parent)){ids.add(parent);changed=true;}
+      if(ids.has(parent)&&!ids.has(op)){ids.add(op);changed=true;}
+    }
+  }
+  return ids;
+}
+function relatedOperationRows(rows,selected,ownerUid){
+  if(!selected.operationId||!selected.sessionId)return [];
+  const scoped=rows.filter(row=>(row.ownerUid||ownerUid)===ownerUid&&row.sessionId===selected.sessionId);
+  const ids=linkedOperationIds(scoped,selected.operationId);
+  return scoped.filter(row=>ids.has(row.operationId)||row.context?.active?.some(p=>ids.has(p.id)))
+    .sort((a,b)=>a.at-b.at||String(a.id).localeCompare(String(b.id)));
+}
+function operationStatus(rows,operationId){
+  const own=rows.filter(row=>row.operationId===operationId);
+  const terminal=own.filter(row=>["process_finished","process_failed"].includes(row.action));
+  if(terminal.length)return terminal.some(row=>row.action==="process_failed")?"Failure observed":"Completion observed";
+  const backend=own.filter(row=>row.provenance==="server_confirmed"&&["api_succeeded","api_failed"].includes(row.action));
+  if(backend.length)return backend.some(row=>row.action==="api_failed")?"Backend rejection recorded; browser completion not loaded":"Backend returned; browser completion not loaded";
+  if(own.some(row=>row.action==="process_started")){
+    const age=Math.max(0,...own.filter(row=>row.action==="process_prolonged").map(row=>row.context?.elapsedMs||0),...rows.flatMap(row=>(row.context?.active||[]).filter(p=>p.id===operationId).map(p=>p.ageMs||0)));
+    if(age>=60000)return "Observed active for "+Math.floor(age/1000)+"s; no completion loaded";
+    return "No completion in loaded sample";
+  }
+  return "No tracked lifecycle in loaded sample";
+}
+function summarizeOperationFamily(related,selected){
+  const ids=linkedOperationIds(related,selected.operationId);
+  const linked=related.filter(row=>ids.has(row.operationId));
+  return {operations:ids.size,events:linked.length,backendReturns:linked.filter(row=>row.provenance==="server_confirmed"&&row.action==="api_succeeded").length,backendRejections:linked.filter(row=>row.provenance==="server_confirmed"&&row.action==="api_failed").length,contextEvents:related.length-linked.length};
+}
+function loadedRows(){
+  return state.view==="user"?state.events:state.view==="live"?state.live.rows:state.view==="global"?state.global:state.recent;
+}
+function closeInspector({restoreFocus=false}={}){
+  const trigger=state.inspectorTrigger;
+  state.inspected=null;state.inspectorTrigger=null;state.inspectorSignature="";
+  $("pl-inspector").hidden=true;$("pl-inspector-body").replaceChildren();
+  $("pl-investigation-grid").classList.remove("pl-inspecting");
+  if(restoreFocus){if(trigger?.isConnected)trigger.focus();else $("pl-event-search").focus();}
+}
+function inspectEvent(row,ownerUid,trigger){
+  if(!state.eligible||!row.id||!ownerUid)return;
+  state.inspected={id:row.id,ownerUid};state.inspectorTrigger=trigger;state.inspectorSignature="";
+  renderInspector();
+  if(!$("pl-inspector").hidden)$("pl-inspector-title").focus();
+}
+function inspectButton(row,ownerUid){
+  const b=make("button","pl-inspect-button","Inspect");b.type="button";
+  b.setAttribute("aria-label","Inspect "+diagnosticActionLabel(row.action));
+  b.addEventListener("click",()=>inspectEvent(row,ownerUid,b));return b;
+}
+function renderInspector(){
+  if(!state.inspected||!state.eligible)return;
+  const {id,ownerUid}=state.inspected,rows=loadedRows();
+  const row=rows.find(r=>r.id===id&&(r.ownerUid||state.selectedUid)===ownerUid);
+  if(!row){closeInspector();return;}
+  const related=relatedOperationRows(rows,row,ownerUid);
+  const signature=JSON.stringify([id,ownerUid,related.map(r=>r.id)]);
+  if(signature===state.inspectorSignature)return;
+  state.inspectorSignature=signature;
+  const host=$("pl-inspector-body");host.replaceChildren();
+  const top=make("div","pl-inspector-event");
+  top.append(flag(row.severity),make("strong","",diagnosticActionLabel(row.action)),make("span","",labelFor(ownerUid)+" · "+time(row.at)));
+  host.append(top);
+  const shortcuts=make("div","pl-inspector-shortcuts");
+  for(const [label,query] of [["Find operation",row.operationId],["Find session",row.sessionId],["Find page instance",row.context?.pageInstanceId]])if(query){
+    const button=make("button","pl-inspect-button",label);button.type="button";button.title="Search loaded records only";button.addEventListener("click",()=>{$("pl-event-search").value=query;$("pl-event-search").dispatchEvent(new Event("input"));});shortcuts.append(button);
+  }
+  if(shortcuts.childElementCount)host.append(shortcuts);
+  const data=make("dl","pl-inspector-fields");
+  for(const [key,value] of [
+    ["Page",row.route],["Module",row.module],["Phase",row.phase],["State",row.state],
+    ["Provenance",row.provenance],["Service",row.service],["Error",row.errorCode],
+    ["Duration (ms)",row.durationMs],["Account ID",ownerUid],["Event ID",row.id],["Session ID",row.sessionId],
+    ["Operation ID",row.operationId],["Cloud trace",row.traceId],["Release",row.release],
+    ["Device",[row.deviceClass,row.browserFamily,row.osFamily,row.viewport].filter(Boolean).join(" · ")],...contextFields(row)
+  ])if(value!==undefined&&value!==null&&value!==""){
+    const field=make("div");field.append(make("dt","",key),make("dd","",value));data.append(field);
+  }
+  host.append(data,make("h4","","Related operation · "+related.length+" loaded"));
+  host.append(make("p","pl-inspector-note",operationStatus(related,row.operationId)+". Client-supplied links, same account/session. Server receipt order; missing completion is not proof of a stuck process."));
+  if(row.operationId){
+    const summary=summarizeOperationFamily(related,row),group=make("div","pl-inspector-summary");
+    for(const [label,value] of [["Linked operations",summary.operations],["Linked events",summary.events],["Backend returns",summary.backendReturns],["Backend rejections",summary.backendRejections],["Context-only events",summary.contextEvents]]){
+      const cell=make("div");cell.append(make("span","",label),make("strong","",value));group.append(cell);
+    }
+    host.append(group);
+  }
+  const list=make("ol","pl-operation-timeline");
+  for(const e of related){
+    const item=make("li");item.dataset.severity=severity(e.severity);
+    const b=make("button","pl-operation-event",diagnosticActionLabel(e.action));b.type="button";
+    b.addEventListener("click",()=>inspectEvent(e,ownerUid,b));
+    if(e.id===row.id)b.setAttribute("aria-current","true");
+    item.append(make("time","",liveTime(e.at)),b,make("small","",e.operationId===row.operationId?([e.context?.process||e.service||e.phase,e.context?.saveStage?humanize(e.context.saveStage):""].filter(Boolean).join(" · ")):e.context?.parentOperationId===row.operationId?"Child · "+(e.context?.process||e.service||e.action):row.context?.parentOperationId===e.operationId?"Parent · "+(e.context?.process||e.service||e.action):e.context?.parentOperationId?"Linked operation · "+(e.context?.process||e.service||e.action):"Related operation or active snapshot"));list.append(item);
+  }
+  host.append(list);
+  $("pl-inspector").hidden=false;$("pl-investigation-grid").classList.add("pl-inspecting");
+}
+function contextFields(record){
+  const c=record.context;if(!c)return [];
+  const active=Array.isArray(c.active)?c.active:[];
+  return [["Control",c.control],["Tracked process",c.process],["Parent operation (client)",c.parentOperationId],["Page instance (client)",c.pageInstanceId],["Client time (unverified)",Number.isSafeInteger(c.clientAt)?time(c.clientAt):""],
+    ["Rejection reason",c.reasonCode],["Project category",c.projectCategory],["Recovery",c.recovery],["Device backup (client)",c.deviceBackup],["Retry",c.retryState],["Save stage",c.saveStage?humanize(c.saveStage):""],["Scheduled retry count at start",c.retryAttempt],["Save-lock wait observations",c.waitingRequests],["Peer save marker (client)",c.peerMarker==="confirmed"?"Pending cleared (not proof of cloud confirmation)":c.peerMarker],["Local save at peer change",c.localSaveState],["Transaction callback attempts",record.provenance==="server_confirmed"?c.transactionAttempts:null],["Transaction duration (ms)",record.provenance==="server_confirmed"?c.transactionMs:null],["Transaction outcome",record.provenance==="server_confirmed"?c.transactionOutcome:null],["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
+    ["Elapsed (ms)",c.elapsedMs],["Tracked active processes",Array.isArray(c.active)?active.length+(c.overflow||0):null],
+    ["Overlap (same tracked operation)",active.some((p,i)=>active.slice(0,i).some(q=>q.name===p.name))?"Observed; not proof of a duplicate write":""],
+    ...active.map(p=>["Active "+p.name,p.id+" · "+p.ageMs+" ms"])];
+}
 function diagnosticActionLabel(action){
+  if(action==="studio_peer_marker_changed")return "Peer save-marker change observed";
+  if(action==="process_progress")return "Save state changed";
+  if(action==="process_prolonged")return "Prolonged process observed";
   if(action==="api_succeeded")return "Backend callable returned";
   if(action==="api_failed")return "Backend callable failed";
   if(action==="auth_session_observed")return "Authenticated session observed";
@@ -57,7 +180,7 @@ function requiredReason(){
   if(!state.eligible){$("pl-purpose-status").textContent="Verified Platform Administrator access is required.";return null;}
   const value=$("pl-reason").value.trim();
   if(value.length<12||value.length>300){
-    $("pl-purpose-status").textContent="Enter a support or security reason of 12–300 characters to view logs.";
+    $("pl-access-disclosure").open=true;$("pl-purpose-status").textContent="Enter a support or security reason of 12–300 characters to view logs.";
     $("pl-reason").focus();
     return null;
   }
@@ -83,7 +206,7 @@ function flag(level){
   return element;
 }
 function resetRead({clearRecent=false}={}){
-  stopLive();
+  stopLive();closeInspector();
   state.readEpoch++;state.loading=false;state.canMore=false;state.eventNext=null;
   state.events=[];state.audit=[];state.auditCapped=false;
   state.globalNext=null;state.global=[];state.impact=null;state.impactBusy=false;
@@ -148,7 +271,7 @@ function renderAudit(){
 }
 function eventRow(record,ownerUid,overview){
   const tr=make("tr");
-  const when=make("td");when.textContent=time(record.at);
+  const when=make("td");when.textContent=Number.isFinite(record.at)&&record.at>0?liveTime(record.at):"—";when.title=time(record.at);when.append(make("small","pl-event-date",record.at>0?new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",month:"short",day:"numeric"}).format(new Date(record.at)):""));
   const owner=make("td");
   if(overview){
     const button=make("button","pl-inline-button",labelFor(ownerUid));
@@ -167,11 +290,15 @@ function eventRow(record,ownerUid,overview){
     Number.isInteger(record.durationMs)?"Duration: "+record.durationMs+" ms":"",
     record.service?"Service: "+record.service:"",
     record.route?"Page: "+record.route:"",
+    record.context?.control?"Control: "+record.context.control:"",
+    record.context?.process?"Process: "+record.context.process:"",
+    record.context?.reasonCode||"",record.context?.saveStage?humanize(record.context.saveStage):"",record.context?.peerMarker?"Peer marker changed":"",record.context?.transactionAttempts>1?"Transaction callback ×"+record.context.transactionAttempts:"",
     record.source?"Source: "+record.source:"",
     record.provenance?"Evidence: "+(record.provenance==="server_confirmed"?"Server-confirmed":"Client-observed"):""
   ].filter(Boolean);
   if(record.action==="api_succeeded")pieces.push("Callable returned without throwing; not proof of a committed record");
   context.append(make("span","",pieces.join(" · ")||"No additional diagnostic metadata"));
+  if(record.id)context.append(inspectButton(record,ownerUid));
   const details=make("details","pl-event-detail");
   details.append(make("summary","","Developer details"));
   const detailGrid=make("dl","pl-event-fields");
@@ -184,7 +311,7 @@ function eventRow(record,ownerUid,overview){
     ["Phase",record.phase],["Duration (ms)",record.durationMs],
     ["Device class",record.deviceClass],["Browser family",record.browserFamily],
     ["Operating system",record.osFamily],["Viewport category",record.viewport],
-    ["Page path",record.route]
+    ["Page path",record.route],...contextFields(record)
   ])if(value!==undefined&&value!==null&&value!==""){
     const item=make("div");item.append(make("dt","",label),make("dd","",value));
     detailGrid.append(item);
@@ -205,6 +332,11 @@ function eventRow(record,ownerUid,overview){
   return tr;
 }
 
+function markAudited(reason){
+  if($("pl-reason").value.trim()!==reason)return;
+  $("pl-access-summary").textContent="Audited · "+reason;
+  $("pl-access-disclosure").open=false;
+}
 function renderFilterSummary(visibleCount,totalCount){
   const view=state.view;
   const severityFilter=$("pl-level").value,module=$("pl-module").value;
@@ -212,8 +344,9 @@ function renderFilterSummary(visibleCount,totalCount){
   const filters=[severityFilter&&"flag: "+severityFilter,module&&"module: "+module,
     search&&"text: "+search,(view==="global"&&fingerprint)&&"error signature: "+fingerprint].filter(Boolean);
   $("pl-clear-filters").disabled=!filters.length;
+  for(const button of document.querySelectorAll(".pl-quick-filter"))button.setAttribute("aria-pressed",String(button.dataset.filter===severityFilter));
   const scope=view==="global"
-    ?"Flag/module/error signature are queried on the server. Text search affects loaded rows only."
+    ?(severityFilter==="unknown"?"Unknown flag and text search affect loaded rows only; the indexed feed may contain no unclassified events.":"Flag/module/error signature are queried on the server. Text search affects loaded rows only.")
     :view==="live"
       ?"The watch still collects all events; filters affect visible console lines only."
       :"Filters affect loaded rows only; older events are available through pagination.";
@@ -238,9 +371,9 @@ function renderEvents(){
   for(const key of flags)$(["pl",key,"count"].join("-")).textContent=summary[key];
   const level=$("pl-level").value,module=$("pl-module").value;
   const search=$("pl-event-search").value.trim().toLocaleLowerCase();
-  const filtered=rows.filter(row=>(state.view==="global"||(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
+  const filtered=rows.filter(row=>(state.view==="global"?(level!=="unknown"||severity(row.severity)==="unknown"):(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
     (!search||[row.ownerUid,state.selectedUid,row.action,row.errorCode,row.fingerprint,
-      row.traceId,row.service,row.sessionId,row.module].some(value=>String(value||"").toLowerCase().includes(search))));
+      row.traceId,row.service,row.sessionId,row.module,row.route,row.operationId,row.context?.control,row.context?.process,row.context?.reasonCode,row.context?.saveStage,row.context?.peerMarker,row.context?.localSaveState,row.context?.pageInstanceId,row.context?.transactionOutcome,row.context?.parentOperationId,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search))));
   if(state.view==="live"){
     $("pl-audit-wrap").hidden=true;$("pl-impact").hidden=true;
     renderLive();return;
@@ -254,7 +387,7 @@ function renderEvents(){
     cell.colSpan=5;empty.append(cell);host.append(empty);
   }
   $("pl-more").hidden=!state.canMore;$("pl-more").disabled=state.loading||!state.canMore;
-  renderAudit();
+  renderAudit();renderInspector();
 }
 function refreshEnabled(){
   $("pl-refresh").disabled=!state.eligible||state.loading;
@@ -288,7 +421,7 @@ async function loadRecent({older=false}={}){
     $("pl-log-status").textContent=state.recent.length
       ?"Showing "+state.recent.length+" recently active accounts, with their last recorded event and flags. This is an account index, not every event; select any account for its complete available timeline."
       :"No accounts have recorded diagnostic events yet. The directory still lists available logins.";
-    $("pl-purpose-status").textContent="Authorized log read completed. This inspection was audited.";
+    $("pl-purpose-status").textContent="Authorized log read completed. This inspection was audited.";markAudited(reason);
   }catch(error){
     if(epoch===state.epoch&&token===state.readEpoch)$("pl-log-status").textContent=permissionError(error);
   }finally{
@@ -321,7 +454,7 @@ async function loadAccount({older=false}={}){
     $("pl-log-status").textContent=state.events.length
       ?"Showing "+state.events.length+" loaded events for "+labelFor(selected)+". Older events are available using pagination where supported. Every read is audited."
       :"No logged events were found for this account. That does not establish that no activity occurred.";
-    $("pl-purpose-status").textContent="Authorized log read completed. This inspection was audited.";
+    $("pl-purpose-status").textContent="Authorized log read completed. This inspection was audited.";markAudited(reason);
   }catch(error){
     if(epoch===state.epoch&&token===state.readEpoch&&state.selectedUid===selected)
       $("pl-log-status").textContent=permissionError(error);
@@ -547,7 +680,7 @@ async function loadGlobal({older=false}={}){
   try{
     const filter={
       action:"global_feed",reason,windowHours:Number($("pl-window").value),
-      severity:state.fingerprint?"":$("pl-level").value,
+      severity:state.fingerprint||$("pl-level").value==="unknown"?"":$("pl-level").value,
       module:state.fingerprint?"":$("pl-module").value,
       ...(state.fingerprint?{fingerprint:state.fingerprint}:{}),
       limit:LIMIT,...(cursor?{cursor}:{})
@@ -564,7 +697,7 @@ async function loadGlobal({older=false}={}){
         (state.fingerprint?" matching error signature "+state.fingerprint:"")+
         ". Sorted by server time; filters apply across available indexed events. Expand Developer details or open an account to investigate."
       : "No indexed events match these filters. Earlier events remain available under individual user histories.";
-    $("pl-purpose-status").textContent="Global diagnostic read authorized and audited.";
+    $("pl-purpose-status").textContent="Global diagnostic read authorized and audited.";markAudited(reason);
     if(!older&&!state.impactBusy)void loadImpact(reason,epoch,token);
   }catch(error){
     if(epoch===state.epoch&&token===state.readEpoch)
@@ -610,7 +743,7 @@ function liveStatus(message,{error=false}={}){
 function liveTime(at){
   if(!Number.isFinite(at)||at<=0)return "No timestamp";
   try{return new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",
-    hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date(at));}
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false,...($("pl-milliseconds").checked?{fractionalSecondDigits:3}:{})}).format(new Date(at));}
   catch{return "Unknown time";}
 }
 function liveMatches(row){
@@ -619,7 +752,7 @@ function liveMatches(row){
   return (!level||severity(row.severity)===level)&&(!module||row.module===module)&&
     (!search||[row.ownerUid,labelFor(row.ownerUid),row.action,row.module,
       row.errorCode,row.service,row.traceId,row.operationId,row.sessionId,
-      row.fingerprint].some(value=>String(value||"").toLowerCase().includes(search)));
+      row.fingerprint,row.route,row.context?.control,row.context?.process,row.context?.reasonCode,row.context?.saveStage,row.context?.peerMarker,row.context?.localSaveState,row.context?.pageInstanceId,row.context?.transactionOutcome,row.context?.parentOperationId,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search)));
 }
 function liveLine(row){
   const line=make("div","pl-live-line");
@@ -630,16 +763,17 @@ function liveLine(row){
   const when=make("time","",liveTime(row.at));
   if(Number.isFinite(row.at))when.dateTime=new Date(row.at).toISOString();
   const label=make("span","pl-live-severity",severity(row.severity)==="failure"?"FAIL":
-    severity(row.severity)==="warning"?"WARN":severity(row.severity)==="normal"?"OK":"INFO");
+    severity(row.severity)==="warning"?"WARN":severity(row.severity)==="normal"&&row.state==="ok"?"OK":"INFO");
   const actor=make("button","pl-live-actor",labelFor(row.ownerUid));
   actor.type="button";actor.title="Open this account's diagnostic timeline";
   actor.addEventListener("click",()=>chooseAccount(row.ownerUid));
   const content=make("div","pl-live-content");
-  content.append(make("span","pl-live-action",diagnosticActionLabel(row.action)));
+  const title=make("div","pl-line-title");title.append(make("span","pl-live-action",diagnosticActionLabel(row.action)),inspectButton(row,row.ownerUid));content.append(title);
   const descriptors=[row.module||"other",row.phase||row.state||"observed",
     row.source||"",row.provenance==="server_confirmed"?"server-confirmed":"client-observed",
-    row.service||"",row.errorCode?"error: "+row.errorCode:"",
-    Number.isInteger(row.durationMs)?row.durationMs+"ms":""].filter(Boolean);
+    row.route||"",row.context?.control||"",row.context?.process||"",row.context?.reasonCode||"",row.context?.saveStage?humanize(row.context.saveStage):"",row.context?.peerMarker?"Peer marker changed":"",row.context?.transactionAttempts>1?"Transaction callback ×"+row.context.transactionAttempts:"",row.service||"",row.errorCode?"error: "+row.errorCode:"",
+    Number.isInteger(row.durationMs)?row.durationMs+"ms":Number.isInteger(row.context?.elapsedMs)?row.context.elapsedMs+"ms":"",
+    row.context?.active?.length?"active: "+(row.context.active.length+(row.context.overflow||0)):""].filter(Boolean);
   content.append(make("div","pl-live-meta",descriptors.join(" · ")));
   const details=make("details");
   details.append(make("summary","","Diagnostic context"));
@@ -654,7 +788,7 @@ function liveLine(row){
     ["Duration (ms)",row.durationMs],["Source",row.source],["Provenance",row.provenance],
     ["Page",row.route],["Release",row.release],
     ["Device class",row.deviceClass],["Browser",row.browserFamily],
-    ["Operating system",row.osFamily],["Viewport",row.viewport]
+    ["Operating system",row.osFamily],["Viewport",row.viewport],...contextFields(row)
   ];
   for(const [key,value] of info){
     if(value===null||value===undefined||value==="")continue;
@@ -698,8 +832,8 @@ function renderLive({append=[]}={}){
     "Waiting for matching recorded events. The watch remains active for all accounts.":
     "No watch running. Enter a reason and start live monitoring."));
   renderFilterSummary(live.rows.filter(liveMatches).length,live.rows.length);
-  liveStats();
-  if(shouldFollow)host.scrollTop=host.scrollHeight;
+  liveStats();renderInspector();
+  if(shouldFollow&&!state.inspected)host.scrollTop=host.scrollHeight;
 }
 function scheduleLive(delay=LIVE_INTERVAL_MS){
   const live=state.live;
@@ -726,6 +860,7 @@ async function pollLive(generation){
     if(generation!==live.generation||state.view!=="live"||!live.running||live.paused)return;
     if(result.scope!=="live_indexed_account_events")
       throw Error("Unexpected live feed response");
+    markAudited(live.reason);
     const first=!live.baseline;
     const additions=[];
     for(const row of Array.isArray(result.events)?result.events:[]){
@@ -781,7 +916,7 @@ function startLive(){
   stopLive();
   const live=state.live;
   live.reason=reason;live.cursor="";live.baseline=false;
-  live.seen.clear();live.rows=[];live.highlighted.clear();
+  closeInspector();live.seen.clear();live.rows=[];live.highlighted.clear();
   live.added=0;live.lastBatch=0;live.lastChecked=0;live.errors=0;
   live.running=true;live.paused=false;
   liveStatus("Connecting to the authorized global diagnostic stream…");
@@ -833,6 +968,34 @@ async function loadDirectory(user,epoch){
   }
 }
 $("pl-clear-filters").addEventListener("click",clearInvestigationFilters);
+$("pl-inspector-close").addEventListener("click",()=>closeInspector({restoreFocus:true}));
+for(const [id,property] of [["pl-directory-width","--pl-directory-width"],["pl-inspector-width","--pl-inspector-width"]]){
+  const input=$(id);input.addEventListener("input",()=>{
+    const value=Math.max(Number(input.min),Math.min(Number(input.max),Number(input.value)));
+    if(Number.isFinite(value))$("pl-workspace").style.setProperty(property,value+"px");
+  });
+}
+$("pl-reason").addEventListener("input",()=>{
+  $("pl-access-summary").textContent="Reason changed · next read audited";
+  if(state.live.running&&!state.live.paused)toggleLive();
+});
+for(const button of document.querySelectorAll(".pl-quick-filter"))button.addEventListener("click",()=>{
+  const select=$("pl-level");select.value=select.value===button.dataset.filter?"":button.dataset.filter;
+  select.dispatchEvent(new Event("change"));
+});
+$("pl-milliseconds").addEventListener("change",()=>{state.inspectorSignature="";state.view==="live"?renderLive():renderEvents();});
+function syncDirectory(){
+  const open=$("pl-directory-disclosure").open;
+  $("pl-toggle-directory").setAttribute("aria-expanded",String(open));
+  $("pl-workspace").classList.toggle("pl-directory-collapsed",!open);
+}
+$("pl-directory-disclosure").addEventListener("toggle",syncDirectory);
+$("pl-toggle-directory").addEventListener("click",()=>{if($("pl-workspace").classList.contains("pl-focus-mode")){$("pl-workspace").classList.remove("pl-focus-mode");$("pl-focus-mode").setAttribute("aria-pressed","false");$("pl-directory-disclosure").open=true;}else $("pl-directory-disclosure").open=!$("pl-directory-disclosure").open;syncDirectory();});
+$("pl-focus-mode").addEventListener("click",()=>{
+  const focused=$("pl-workspace").classList.toggle("pl-focus-mode");
+  $("pl-focus-mode").setAttribute("aria-pressed",String(focused));
+});
+
 
 // The account list and advanced filters are persistent on desktop, but
 // compact disclosures on narrow screens. Only update on breakpoint changes
@@ -901,7 +1064,7 @@ onAuthStateChanged(auth,user=>{
   state.live.cursor="";state.live.reason="";state.live.baseline=false;
   state.accounts=[];state.byUid.clear();state.directoryReady=false;state.eligible=false;
   $("pl-search").disabled=true;$("pl-show-recent").disabled=true;$("pl-show-global").disabled=true;$("pl-show-live").disabled=true;$("pl-load-recent").disabled=true;
-  $("pl-refresh").disabled=true;$("pl-reason").value="";
+  $("pl-refresh").disabled=true;$("pl-reason").value="";$("pl-access-summary").textContent="Reason required";$("pl-access-disclosure").open=true;
   $("pl-purpose-status").textContent=user?"Checking Platform Administrator access…":"Sign in with an authorized Platform Administrator account.";
   liveStatus(user?"Monitoring stopped while Platform Administrator access is rechecked.":"Signed out. Live monitoring is stopped.");
   renderAccounts();renderEvents();

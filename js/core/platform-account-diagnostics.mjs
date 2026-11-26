@@ -10,11 +10,13 @@ const record=httpsCallable(getFunctions(app,"asia-southeast1"),"platformAccountD
 let activeUid="",sessionId="",enabled=false,eventsSent=0,epoch=0,pendingRunOperationId="";
 let pending=[],flushing=false;const MAX_DELAYED_EVENTS=20;
 let errors=new Map();
-const MAX_PAGE_EVENTS=90;
+const MAX_PAGE_EVENTS=90,MAX_PAGE_FAILURE_EVENTS=30;
+let failureEventsSent=0;
 const ID=()=>crypto.randomUUID();
+let pageInstanceId="";
 const allowedRoutes=/(?:^\/$|^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]{1,80}\.html$)/;
 const allowedCodes=/^[-a-zA-Z0-9_./]{1,64}$/;
-const release="v20261124-global"; // The emitter revision, not the full app release.
+const release="v20261126-trace-6"; // The emitter revision, not the full app release.
 function environment(){
   // Convert the browser environment to coarse allowlisted categories; never
   // transmit a full user-agent string, fingerprint, IP address or screen size.
@@ -32,23 +34,78 @@ function environment(){
     /Android/i.test(ua)?"tablet":"desktop";
   return {osFamily,browserFamily,deviceClass,viewport};
 }
+
+const controls=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
+const processes=new Map();
+const studioReasons=new Set(["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_STATE_CHANGED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_CLOSED","STUDIO_FINAL_CHECKPOINT_REQUIRED","STUDIO_FINAL_CHECKPOINT_CONFLICT","STUDIO_FINAL_CHECKPOINT_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EMPTY_SNAPSHOT_REJECTED","STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_NOT_ARCHIVED"]);
+const processNames=new Set(["studio_cloud_save","studio_api_sync","studio_api_get","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery"]);
+const MAX_TRACKED=24,PROLONGED_MS=60000;
+const saveStages=new Set(["scope_verification","school_sync","legacy_transaction","cloud_confirmed","newer_snapshot_pending","save_failed"]);
+const elapsed=start=>Math.min(3600000,Math.max(0,Math.round(performance.now()-start)));
+function snapshotContext(extra={}){
+  const active=[...processes].slice(0,6).map(([id,p])=>({name:p.name,id,ageMs:elapsed(p.start)}));
+  return {clientAt:Date.now(),...(pageInstanceId?{pageInstanceId}:{}),visibility:["visible","hidden"].includes(document.visibilityState)?document.visibilityState:"other",
+    network:navigator.onLine===false?"offline":"online",focus:document.hasFocus()?"focused":"unfocused",
+    ready:["loading","interactive","complete"].includes(document.readyState)?document.readyState:"other",
+    dialog:document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]:not([hidden])[aria-hidden="false"]')?"open":"none",
+    busy:document.querySelector('[aria-busy="true"]')?"busy":"idle",active,overflow:Math.max(0,processes.size-active.length),...extra};
+}
+function beginProcess(name,metadata={}){
+  if(!enabled||!processNames.has(name)||processes.size>=MAX_TRACKED)return ()=>{};
+  const id=ID(),start=performance.now(),turn=epoch;
+  const parent=processes.has(metadata.parentOperationId)?metadata.parentOperationId:"";
+  const parentContext=parent?{parentOperationId:parent}:{};
+  const correlation=Object.freeze({sessionId,operationId:id,...parentContext});
+  const tracked={name,start,timer:null};
+  processes.set(id,tracked);
+  let saveStage="",retryAttempt=Number.isInteger(metadata.retryAttempt)&&metadata.retryAttempt>=0&&metadata.retryAttempt<=4?metadata.retryAttempt:undefined;
+  const fixedContext={process:name,...parentContext,...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{}),...(retryAttempt!==undefined?{retryAttempt}:{})};
+  const stageContext=()=>saveStage?{saveStage}:{};
+  const observeProlonged=()=>{
+    if(turn!==epoch||processes.get(id)!==tracked)return;
+    const age=elapsed(start);
+    if(age<PROLONGED_MS){tracked.timer=setTimeout(observeProlonged,Math.max(1,PROLONGED_MS-age));return;}
+    try{emit("process_prolonged",{kind:"system",module:"studio",state:"unavailable",operationId:id,phase:"observed",context:{...fixedContext,...stageContext(),elapsedMs:elapsed(start)}});}catch{}
+  };
+  tracked.timer=setTimeout(observeProlonged,PROLONGED_MS);
+  try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:fixedContext});}catch{}
+  let finished=false;
+  const finish=(success,errorCode,reasonCode,outcome={})=>{
+    if(finished)return;finished=true;
+    if(turn!==epoch)return;
+    clearTimeout(tracked.timer);
+    const context={...fixedContext,...stageContext(),...(Number.isInteger(outcome.waitingRequests)&&outcome.waitingRequests>=0&&outcome.waitingRequests<=100?{waitingRequests:outcome.waitingRequests}:{}),elapsedMs:elapsed(start),...(["available","unavailable","unknown"].includes(outcome.deviceBackup)?{deviceBackup:outcome.deviceBackup}:{}),...(["scheduled","not_scheduled"].includes(outcome.retryState)?{retryState:outcome.retryState}:{}),...(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"].includes(outcome.recovery)?{recovery:outcome.recovery}:{}),...(studioReasons.has(reasonCode)?{reasonCode}:{}),...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})};
+    processes.delete(id);
+    emit(success===true?"process_finished":"process_failed",{module:"studio",kind:success===true?"action":"error",
+      state:success===true?"ok":"error",operationId:id,phase:success===true?"completed":"failed",
+      errorCode:success===true?"":code(errorCode)||(name==="studio_cloud_save"?"cloud_save_failed":"unavailable"),context});
+  };
+  finish.progress=(stage)=>{
+    if(finished||turn!==epoch||name!=="studio_cloud_save"||!saveStages.has(stage)||stage===saveStage)return;
+    saveStage=stage;
+    // Emit only meaningful stages, never every editor change.
+    try{emit("process_progress",{module:"studio",state:"info",operationId:id,phase:"observed",context:{...fixedContext,saveStage,elapsedMs:elapsed(start)}});}catch{}
+  };
+  finish.correlation=correlation;
+  return finish;
+}
 function queueDelayed(event){
   if(pending.length<MAX_DELAYED_EVENTS)pending.push(event);
 }
 async function flushPending(){
   if(flushing||!enabled||navigator.onLine===false||!pending.length)return;
-  flushing=true;
+  flushing=true;const flushEpoch=epoch;
   try{
     const batch=pending.splice(0,MAX_DELAYED_EVENTS);
     for(let i=0;i<batch.length;i++){
-      if(!enabled)return;
+      if(!enabled||epoch!==flushEpoch)return;
       if(navigator.onLine===false){
         pending=batch.slice(i).concat(pending).slice(0,MAX_DELAYED_EVENTS);
         break;
       }
       await send(batch[i],true);
     }
-  }finally{flushing=false;}
+  }finally{if(epoch===flushEpoch)flushing=false;}
 }
 function route(){
   const candidate=location.pathname||"/";
@@ -75,17 +132,18 @@ function code(value){
   return allowedCodes.test(raw)?raw:"";
 }
 async function send(event,replay=false){
-  if(!enabled||!activeUid||auth.currentUser?.uid!==activeUid||(!replay&&eventsSent>=MAX_PAGE_EVENTS))return;
+  if(!enabled||!activeUid||auth.currentUser?.uid!==activeUid||(!replay&&(event.kind==="error"?failureEventsSent>=MAX_PAGE_FAILURE_EVENTS:eventsSent>=MAX_PAGE_EVENTS)))return;
   const uid=activeUid,turn=epoch;
-  if(!replay)eventsSent++;
+  if(!replay){if(event.kind==="error")failureEventsSent++;else eventsSent++;}
   if(navigator.onLine===false){queueDelayed(event);return;}
   for(let attempt=0;attempt<2;attempt++){
     if(auth.currentUser?.uid!==uid||turn!==epoch)return;
     try{
       await record({action:"record",event});
-      if(!flushing&&pending.length)void flushPending();
+      if(turn===epoch&&!flushing&&pending.length)void flushPending();
       return;
     }catch(error){
+      if(turn!==epoch||auth.currentUser?.uid!==uid)return;
       const raw=String(error?.code||"");
       if(/permission-denied|unauthenticated|resource-exhausted|invalid-argument/.test(raw))return;
       if(attempt===0)await new Promise(resolve=>setTimeout(resolve,600));
@@ -93,21 +151,22 @@ async function send(event,replay=false){
     }
   }
 }
-function emit(action,{kind="action",module=moduleForRoute(),state="info",errorCode="",operationId="",phase=""}={}){
-  if(!enabled||!activeUid||!sessionId||eventsSent>=MAX_PAGE_EVENTS)return;
+function emit(action,{kind="action",module=moduleForRoute(),state="info",errorCode="",operationId="",phase="",context={}}={}){
+  if(!enabled||!activeUid||!sessionId||(kind==="error"?failureEventsSent>=MAX_PAGE_FAILURE_EVENTS:eventsSent>=MAX_PAGE_EVENTS))return;
   const event={eventId:ID(),sessionId,kind,module,action,state,
     errorCode:kind==="error"?code(errorCode):"",route:route(),release,
-    ...environment(),
+    ...environment(),context:snapshotContext(context),
     ...(operationId?{operationId}:{}),...(phase?{phase}:{})};
   void send(event);
 }
-function diagnosticError(action,value,module=moduleForRoute(),operationId=""){
+function diagnosticError(action,value,module=moduleForRoute(),operationId="",reasonCode=""){
   const errorCode=code(value)||"unknown";
-  const key=action+"|"+errorCode+"|"+route(),now=Date.now();
+  const safeReason=studioReasons.has(reasonCode)?reasonCode:"";
+  const key=action+"|"+errorCode+"|"+safeReason+"|"+route(),now=Date.now();
   if(now-(errors.get(key)||0)<60000)return;
   errors.set(key,now);
   if(errors.size>40)errors=new Map([...errors].slice(-25));
-  emit(action,{kind:"error",module,state:"error",errorCode,operationId,phase:"failed"});
+  emit(action,{kind:"error",module,state:"error",errorCode,operationId,phase:"failed",context:safeReason?{reasonCode:safeReason}:{}});
 }
 function initializeSession(user){
   const key="Adminerva_diagnostic_session_"+user.uid;
@@ -121,9 +180,9 @@ function initializeSession(user){
   if(fresh)emit("session_started",{kind:"session",state:"ok",phase:"observed"});
 }
 onAuthStateChanged(auth,user=>{
-  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();
+  epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;failureEventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();for(const p of processes.values())clearTimeout(p.timer);processes.clear();
   if(!user?.emailVerified)return;
-  activeUid=user.uid;enabled=true;
+  activeUid=user.uid;enabled=true;pageInstanceId=ID();
   initializeSession(user);
   emit("auth_session_observed",{kind:"session",module:"auth",state:"ok",phase:"observed"});
   emit("page_open",{kind:"navigation",state:"ok",phase:"observed"});
@@ -152,7 +211,9 @@ document.addEventListener("adminerva:notification-opened",()=>emit("notification
 document.addEventListener("adminerva:studio-submitted",()=>emit("assessment_submitted",{module:"assessments",state:"ok"}));
 window.addEventListener("adminerva:studio-run-recorded",event=>{
   const run=event.detail||{};
-  const operationId=pendingRunOperationId;pendingRunOperationId="";
+  // Completion evidence is asynchronous and does not carry the original run ID.
+  // Do not infer a match to the latest click when executions can overlap.
+  const operationId="";pendingRunOperationId="";
   if(run.compileSucceeded===false)diagnosticError("studio_run_failed","compile_error","studio",operationId);
   else if(run.runSucceeded===false)diagnosticError("studio_run_failed","runtime_error","studio",operationId);
   else if(run.runSucceeded===true)emit("studio_run_completed",{module:"studio",state:"ok",operationId,phase:"completed"});
@@ -166,19 +227,19 @@ const buttonActions={
 };
 document.addEventListener("click",event=>{
   const button=event.target?.closest?.("button");
-  if(!event.isTrusted||!button||button.disabled||!buttonActions[button.id])return;
-  const [action,module]=buttonActions[button.id];
+  if(!event.isTrusted||!button||button.disabled||!controls.has(button.id))return;
+  const [action,module]=buttonActions[button.id]||["control_clicked",moduleForRoute()];
   const operationId=ID();
   if(action==="studio_run_requested")pendingRunOperationId=operationId;
-  emit(action,{module,state:"info",operationId,phase:"started"});
+  emit(action,{module,state:"info",operationId,phase:action==="control_clicked"?"observed":"started",context:{control:button.id}});
 },true);
 document.addEventListener("adminerva:diagnostic-event",event=>{
   const data=event?.detail||{};
-  if(data.action==="cloud_save_failed")diagnosticError("cloud_save_failed",data.errorCode||"unavailable","studio");
+  if(data.action==="cloud_save_failed")diagnosticError("cloud_save_failed",data.errorCode||"unavailable","studio","",data.reasonCode);
   else if(data.action==="api_failed")diagnosticError("api_failed",data.errorCode||"unavailable",
-    ["studio","assessments","classroom","school","games","grades","notifications","settings","api"].includes(data.module)?data.module:"api");
+    ["studio","assessments","classroom","school","games","grades","notifications","settings","api"].includes(data.module)?data.module:"api","",data.reasonCode);
   else if(data.action==="support_report_submitted")emit("support_report_submitted",{module:"other",state:"ok"});
 });
-window.AdminervaDiagnostic=Object.freeze({emit,apiFailed:(error,module="api")=>{
+window.AdminervaDiagnostic=Object.freeze({emit,beginProcess,apiFailed:(error,module="api")=>{
   diagnosticError("api_failed",error?.code||error?.name||"unavailable",module);
 }});
