@@ -67,7 +67,7 @@ function harness(){
       {offeringId:"elective-offering",yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"other-section",subjectId:"elective-subject",rosterMode:"selective"}
     ]};
   context.setCatalog(catalog);
-  const applicant={applicationId:"app-new",status:"accepted",revision:7,reference:"MCS-NEW",displayName:"New student",birthDate:"2013-03-01",guardianEmail:"new.parent@example.test",incomingLevel:"7",yearId:"new-year",preferredProgramId:"new-program"};
+  const applicant={applicationId:"app-new",status:"accepted",requirementsReady:true,revision:7,reference:"MCS-NEW",displayName:"New student",birthDate:"2013-03-01",guardianEmail:"new.parent@example.test",incomingLevel:"7",yearId:"new-year",preferredProgramId:"new-program"};
   return {context,form,get,applicant,requests,actionButton,setDiscard:value=>{allowDiscard=value;},get pickerOptions(){return pickerOptions;}};
 }
 
@@ -299,4 +299,11 @@ test("enrollment sends the exact accepted application revision",()=>{
   h.form.dispatch("submit");
   assert.equal(h.requests[0].payload.applicationId,"app-new");
   assert.equal(h.requests[0].payload.applicationRevision,7);
+});
+
+
+test("acceptance is blocked until admission requirements are reviewed",()=>{
+  const h=harness();h.context.reviewApplication({applicationId:"app-review",status:"submitted",revision:1,requirementsReady:false},"accepted");
+  assert.equal(h.requests.length,0);
+  assert.match(h.get("en-status").textContent,/Verify admission requirements/);
 });
