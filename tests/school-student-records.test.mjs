@@ -191,8 +191,16 @@ test("institutional credential eligibility requires exact canonical outcomes and
   assert.equal(eligibleRegistration("graduation_certificate",{status:"ended",endReasonType:"progression",progressionType:"promotion"}),false);
   assert.equal(eligibleRegistration("transfer_certificate",{status:"ended",endReasonType:"withdrawal"}),false);
   assert.equal(eligibleRegistration("transfer_certificate",{status:"ended",endReasonType:"transfer_out"}),true);
+  assert.equal(eligibleRegistration("transfer_certificate",{status:"ended",endReasonType:"transfer_out",progressionType:"promotion"}),true);
   assert.equal(eligibleRegistration("certificate_of_enrollment",{status:"ended"}),false);
   assert.equal(CREDENTIAL_TYPES.good_moral_certificate.prefix,"GMC");
   const source=readFileSync(new URL("../functions/school-record-credentials.js",import.meta.url),"utf8");
   assert.match(source,/confirmSourceReviewed!==true/);assert.match(source,/attestation.registrationRevision/);assert.match(source,/A verified School Administrator must record/);
+});
+
+
+test("withdrawn office approval invalidates the unissued Good Moral draft",()=>{
+  const source=readFileSync(new URL("../functions/school-record-credentials.js",import.meta.url),"utf8");
+  const block=source.slice(source.indexOf('if(input.action==="withdraw_good_moral_attestation")'),source.indexOf('if(input.action==="record_good_moral_attestation")'));
+  assert.match(block,/certificateDraft:FieldValue.delete\(\)/);assert.match(block,/status:"withdrawn"/);assert.match(block,/school_admin/);assert.match(block,/revision:expected\+1/);
 });
