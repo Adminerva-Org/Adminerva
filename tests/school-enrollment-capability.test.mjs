@@ -13,7 +13,7 @@ test("canonical enrollment is enabled by verified school capability, not by scho
 });
 
 
-const {canReviewApplication,isReviewedApplicationRevision,normalizeAdmissionRequirements,admissionRequirementsReady}=require("../functions/school-enrollment.js");
+const {canReviewApplication,isReviewedApplicationRevision,normalizeAdmissionRequirements,admissionRequirementsReady,normalizeRequirementTemplate,templateCovered,pendingRequirementsReady}=require("../functions/school-enrollment.js");
 test("admissions transitions permit reviewed acceptance and correction, not terminal reversal",()=>{
   assert.equal(canReviewApplication("submitted","accepted"),true);
   assert.equal(canReviewApplication("needs_information","submitted"),true);
@@ -42,4 +42,17 @@ test("admission requirements must be explicitly reviewed and verified",()=>{
   assert.throws(()=>normalizeAdmissionRequirements([{label:"A",status:"waived"}],false));
   assert.throws(()=>normalizeAdmissionRequirements([{label:"A",status:"verified"},{label:" a ",status:"missing"}],false));
   assert.deepEqual(normalizeAdmissionRequirements([{label:"  School record ",status:"missing"}],false),[{label:"School record",status:"missing"}]);
+});
+
+
+test("school templates cannot be bypassed with an empty or incomplete checklist",()=>{
+  const template={revision:2,labels:["Birth certificate","Prior school record"]};
+  const reviewed={requirementsReviewed:true,noRequirements:false,requirementsTemplateRevision:2,requirements:[{label:"Birth certificate",status:"verified"},{label:"Prior school record",status:"verified"}]};
+  assert.equal(pendingRequirementsReady(reviewed,template),true);
+  assert.equal(pendingRequirementsReady({...reviewed,requirementsTemplateRevision:1},template),false);
+  assert.equal(pendingRequirementsReady({...reviewed,requirements:reviewed.requirements.slice(0,1)},template),false);
+  assert.equal(pendingRequirementsReady({...reviewed,noRequirements:true,requirements:[]},template),false);
+  assert.equal(templateCovered([{label:" birth certificate "}],["Birth certificate"]),true);
+  assert.throws(()=>normalizeRequirementTemplate(["A"," a "]));
+  assert.deepEqual(normalizeRequirementTemplate(["  School record "]),["School record"]);
 });
