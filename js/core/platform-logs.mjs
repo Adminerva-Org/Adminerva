@@ -31,6 +31,15 @@ const make=(tag,className="",value)=>{
   return element;
 };
 const humanize=value=>String(value||"unknown").replaceAll("_"," ").replaceAll("-"," ");
+function contextFields(record){
+  const c=record.context;if(!c)return [];
+  const active=Array.isArray(c.active)?c.active:[];
+  return [["Control",c.control],["Tracked process",c.process],["Client time (unverified)",Number.isSafeInteger(c.clientAt)?time(c.clientAt):""],
+    ["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
+    ["Elapsed (ms)",c.elapsedMs],["Tracked active processes",Array.isArray(c.active)?active.length+(c.overflow||0):null],
+    ["Overlap (same tracked operation)",active.some((p,i)=>active.slice(0,i).some(q=>q.name===p.name))?"Observed; not proof of a duplicate write":""],
+    ...active.map(p=>["Active "+p.name,p.id+" · "+p.ageMs+" ms"])];
+}
 function diagnosticActionLabel(action){
   if(action==="api_succeeded")return "Backend callable returned";
   if(action==="api_failed")return "Backend callable failed";
@@ -167,6 +176,8 @@ function eventRow(record,ownerUid,overview){
     Number.isInteger(record.durationMs)?"Duration: "+record.durationMs+" ms":"",
     record.service?"Service: "+record.service:"",
     record.route?"Page: "+record.route:"",
+    record.context?.control?"Control: "+record.context.control:"",
+    record.context?.process?"Process: "+record.context.process:"",
     record.source?"Source: "+record.source:"",
     record.provenance?"Evidence: "+(record.provenance==="server_confirmed"?"Server-confirmed":"Client-observed"):""
   ].filter(Boolean);
@@ -184,7 +195,7 @@ function eventRow(record,ownerUid,overview){
     ["Phase",record.phase],["Duration (ms)",record.durationMs],
     ["Device class",record.deviceClass],["Browser family",record.browserFamily],
     ["Operating system",record.osFamily],["Viewport category",record.viewport],
-    ["Page path",record.route]
+    ["Page path",record.route],...contextFields(record)
   ])if(value!==undefined&&value!==null&&value!==""){
     const item=make("div");item.append(make("dt","",label),make("dd","",value));
     detailGrid.append(item);
@@ -638,7 +649,7 @@ function liveLine(row){
   content.append(make("span","pl-live-action",diagnosticActionLabel(row.action)));
   const descriptors=[row.module||"other",row.phase||row.state||"observed",
     row.source||"",row.provenance==="server_confirmed"?"server-confirmed":"client-observed",
-    row.service||"",row.errorCode?"error: "+row.errorCode:"",
+    row.route||"",row.context?.control||"",row.context?.process||"",row.service||"",row.errorCode?"error: "+row.errorCode:"",
     Number.isInteger(row.durationMs)?row.durationMs+"ms":""].filter(Boolean);
   content.append(make("div","pl-live-meta",descriptors.join(" · ")));
   const details=make("details");
@@ -654,7 +665,7 @@ function liveLine(row){
     ["Duration (ms)",row.durationMs],["Source",row.source],["Provenance",row.provenance],
     ["Page",row.route],["Release",row.release],
     ["Device class",row.deviceClass],["Browser",row.browserFamily],
-    ["Operating system",row.osFamily],["Viewport",row.viewport]
+    ["Operating system",row.osFamily],["Viewport",row.viewport],...contextFields(row)
   ];
   for(const [key,value] of info){
     if(value===null||value===undefined||value==="")continue;
