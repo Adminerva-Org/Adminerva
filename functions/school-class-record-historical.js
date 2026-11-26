@@ -7,7 +7,7 @@
  */
 const {legacyStudentRecordsForAccount,SCHOOL_ID}=require("./legacy-student-identity.js");
 const HISTORICAL_SOURCE="legacy_historical";
-const {custodyId,custodyRef,validCustody,originalSections}=require("./school-legacy-custody.js");
+const {custodyId,custodyRef,validCustody,originalSections,identityOnlyCustody}=require("./school-legacy-custody.js");
 const canonical=value=>String(value||"").trim().toLocaleLowerCase("en");
 const courseName=value=>canonical(value).replace(/\s+/g," ").trim();
 /**
@@ -55,7 +55,8 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
      (!matchesSubject&&!delegated&&!(verifiedSubject===true&&typeof task.subject==="string"&&
        task.subject.trim().length>0&&task.subject.trim().length<=120)))return null;
   const sections=historicalSections(task),requested=String(sourceSectionName||labels.sectionName).trim();
-  const section=sections.find(s=>canonical(s)===canonical(requested));
+  const identityOnly=delegated&&identityOnlyCustody(custodyGrant);
+  const section=identityOnly?labels.sectionName:sections.find(s=>canonical(s)===canonical(requested));
   if(!section||canonical(section)!==canonical(labels.sectionName)&&verifiedSection!==true)return null;
   const maximum=Number(task.maxScore);
   if(!Number.isFinite(maximum)||maximum<=0||maximum>10000)return null;
@@ -64,6 +65,7 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
     sectionName:section,offeringSectionName:labels.sectionName,
     subjectName:labels.subjectName,ownerUid,
     ...(delegated?{custodyGrantId:custodyId(taskId,offeringId),taskId}:{}),
+    ...(identityOnly?{sectionProof:"assessment_student_identity"}:{}),
     ...(matchesSubject?{}:{originalSubjectName:String(task.subject||"").trim()})};
 }
 /**
@@ -119,9 +121,9 @@ function legacySavedScoreEligible(data){
   const pending=Number(data?.pending??0);
   return Number.isFinite(pending)&&pending===0;
 }
-function projectedGrade(data,{taskId,studentId,sectionName,allowDraft=false,originalMaximum=null,verifiedReceiptSection=""}){
+function projectedGrade(data,{taskId,studentId,sectionName,allowDraft=false,originalMaximum=null,verifiedReceiptSection="",identityOnly=false}){
   if(!data||(!allowDraft&&data.published!==true)||data.taskId!==taskId||data.studentId!==studentId||
-     canonical(data.section||verifiedReceiptSection)!==canonical(sectionName))return null;
+     (!identityOnly&&canonical(data.section||verifiedReceiptSection)!==canonical(sectionName)))return null;
   const maximum=data.maxScore??originalMaximum;
   if(data.score===null||data.score===undefined||data.score===""||maximum===null||maximum===undefined||maximum==="")return null;
   const awarded=Number(data.score),total=Number(maximum);
@@ -223,6 +225,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
         schoolId,assessmentId:column.taskId,offeringId,teacherUid:mapping.ownerUid,
         task:original,section:mapping.sectionName
       });
+    const identityOnly=delegated&&identityOnlyCustody(delegation.data())&&mapping.sectionProof==="assessment_student_identity";
     const verifiedSubjectReview=!!original&&
       mapping.originalSubjectName===String(original.subject||"").trim()&&
       ((mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"&&
@@ -230,7 +233,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
         Number(mapping.identityVerifiedCount)>0)||delegated);
     if(!validOrigin(original,schoolId)||(!delegated&&original.ownerUid!==mapping.ownerUid)||
        (mapping.custodyGrantId&&!delegated)||
-       !historicalSections(original).some(section=>canonical(section)===canonical(mapping.sectionName))||
+       (!identityOnly&&!historicalSections(original).some(section=>canonical(section)===canonical(mapping.sectionName)))||
        !(historicalSubjectMatches(original.subject,mapping.subjectName)||verifiedSubjectReview)){
       for(const state of states.values())state.status="source_unavailable";
       finish();continue;
@@ -248,7 +251,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
       let verifiedReceiptSection="";
       // Early rows can omit their section. Only an exact original submission
       // receipt can supply it; never substitute a student's current section.
-      if(!canonical(data.section)){
+      if(!identityOnly&&!canonical(data.section)){
         const id=studentId+"_"+column.taskId;
         if(Buffer.byteLength(id,"utf8")<=1500){
           const collection=original.schemaVersion===3||original.submissionSource==="studio"||
@@ -259,11 +262,11 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
             verifiedReceiptSection=String(evidence.section||"");
         }
       }
-      if(canonical(data.section||verifiedReceiptSection)!==canonical(mapping.sectionName)){
+      if(!identityOnly&&canonical(data.section||verifiedReceiptSection)!==canonical(mapping.sectionName)){
         if(!matches.has(personId))state.status="section_mismatch";return;
       }
       const grade=projectedGrade(data,{taskId:column.taskId,studentId,sectionName:mapping.sectionName,
-        allowDraft:true,originalMaximum:original.maxScore??null,verifiedReceiptSection});
+        allowDraft:true,originalMaximum:original.maxScore??null,verifiedReceiptSection,identityOnly});
       if(!grade){if(!matches.has(personId))state.status="invalid_grade";return;}
       if(matches.has(personId)){ambiguous.add(personId);return;}
       matches.set(personId,{grade:{...grade,sourceType:HISTORICAL_SOURCE,taskId:column.taskId,personId},
