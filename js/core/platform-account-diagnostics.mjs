@@ -37,7 +37,7 @@ function environment(){
 const controls=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
 const processes=new Map();
 const studioReasons=new Set(["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_STATE_CHANGED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_CLOSED","STUDIO_FINAL_CHECKPOINT_REQUIRED","STUDIO_FINAL_CHECKPOINT_CONFLICT","STUDIO_FINAL_CHECKPOINT_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EMPTY_SNAPSHOT_REJECTED","STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_NOT_ARCHIVED"]);
-const processNames=new Set(["studio_cloud_save","studio_api_sync","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery"]);
+const processNames=new Set(["studio_cloud_save","studio_api_sync","studio_api_get","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery"]);
 const MAX_TRACKED=24;
 const elapsed=start=>Math.min(3600000,Math.max(0,Math.round(performance.now()-start)));
 function snapshotContext(extra={}){
@@ -51,18 +51,23 @@ function snapshotContext(extra={}){
 function beginProcess(name,metadata={}){
   if(!enabled||!processNames.has(name)||processes.size>=MAX_TRACKED)return ()=>{};
   const id=ID(),start=performance.now(),turn=epoch;
+  const parent=processes.has(metadata.parentOperationId)?metadata.parentOperationId:"";
+  const parentContext=parent?{parentOperationId:parent}:{};
+  const correlation=Object.freeze({sessionId,operationId:id,...parentContext});
   processes.set(id,{name,start});
-  try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name,...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})}});}catch{}
+  try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name,...parentContext,...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})}});}catch{}
   let finished=false;
-  return (success,errorCode,reasonCode,outcome={})=>{
+  const finish=(success,errorCode,reasonCode,outcome={})=>{
     if(finished)return;finished=true;
     if(turn!==epoch)return;
-    const context={process:name,elapsedMs:elapsed(start),...(["available","unavailable","unknown"].includes(outcome.deviceBackup)?{deviceBackup:outcome.deviceBackup}:{}),...(["scheduled","not_scheduled"].includes(outcome.retryState)?{retryState:outcome.retryState}:{}),...(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"].includes(outcome.recovery)?{recovery:outcome.recovery}:{}),...(studioReasons.has(reasonCode)?{reasonCode}:{}),...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})};
+    const context={process:name,...parentContext,elapsedMs:elapsed(start),...(["available","unavailable","unknown"].includes(outcome.deviceBackup)?{deviceBackup:outcome.deviceBackup}:{}),...(["scheduled","not_scheduled"].includes(outcome.retryState)?{retryState:outcome.retryState}:{}),...(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"].includes(outcome.recovery)?{recovery:outcome.recovery}:{}),...(studioReasons.has(reasonCode)?{reasonCode}:{}),...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})};
     processes.delete(id);
     emit(success===true?"process_finished":"process_failed",{module:"studio",kind:success===true?"action":"error",
       state:success===true?"ok":"error",operationId:id,phase:success===true?"completed":"failed",
       errorCode:success===true?"":code(errorCode)||(name==="studio_cloud_save"?"cloud_save_failed":"unavailable"),context});
   };
+  finish.correlation=correlation;
+  return finish;
 }
 function queueDelayed(event){
   if(pending.length<MAX_DELAYED_EVENTS)pending.push(event);
