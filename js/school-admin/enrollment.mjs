@@ -1297,7 +1297,7 @@ async function reviewApplication(item,nextStatus){
 }
 let reportData=null,reportRun=0;
 function clearReport(){
-  ++reportRun;reportData=null;get("en-report-results").replaceChildren();get("en-report-export").disabled=true;get("en-report-status").textContent="";
+  ++reportRun;reportData=null;get("en-report-results").replaceChildren();get("en-report-headcount").replaceChildren();get("en-report-headcount").hidden=true;get("en-report-export").disabled=true;get("en-report-status").textContent="";
 }
 function refreshReportTerms(){
   const yearId=get("en-report-year").value,term=get("en-report-term");term.replaceChildren(new Option("All periods",""));
@@ -1322,7 +1322,16 @@ function renderReport(data){
     }
     host.append(card);
   }
-  get("en-report-status").textContent="Generated "+dateLabel(data.asOf)+" · Counts are records, not unique student headcounts.";
+  const head=get("en-report-headcount");head.replaceChildren();head.hidden=!data.headcount;
+  if(data.headcount){
+    const counts=data.headcount,title=document.createElement("h3");title.className="font-bold";title.textContent="Active learners · selected registration period";head.append(title);
+    const summary=document.createElement("div");summary.className="en-summary";const metric=document.createElement("strong");metric.textContent=counts.uniqueLearners+" distinct registered learners";summary.append(metric);
+    const detail=document.createElement("p");detail.className="en-muted";detail.textContent=counts.assignedLearners+" with a single resolved placement · "+counts.duplicateLearners+" duplicate placements · "+counts.unresolvedLearners+" unresolved placements · "+counts.invalidRecords+" invalid records";summary.append(detail);head.append(summary);
+    if(counts.duplicateLearners||counts.unresolvedLearners||counts.invalidRecords){const warning=document.createElement("p");warning.className="en-notice";warning.textContent="Resolve placement conflicts before using section or grade totals. Conflicted learners are excluded from the breakdown.";head.append(warning);}
+    for(const row of counts.byGrade){const line=document.createElement("p");line.className="en-muted";line.textContent=levelLabel(row.gradeLevel)+" · "+row.learnerCount+" learners";head.append(line);}
+    for(const row of counts.bySection){const line=document.createElement("div");line.className="en-row";const name=document.createElement("strong"),total=document.createElement("span");name.textContent=row.sectionName+" · "+levelLabel(row.gradeLevel);total.textContent=String(row.learnerCount);line.append(name,total);head.append(line);}
+  }
+  get("en-report-status").textContent="Generated "+dateLabel(data.asOf)+(data.headcount?" · Active registration records as currently stored; headcount is distinct person IDs for the selected period.":" · Record counts. Choose one registration period for distinct headcount.");
   get("en-report-export").disabled=false;
 }
 get("en-report-load").addEventListener("click",()=>void (async()=>{
@@ -1335,7 +1344,13 @@ get("en-report-load").addEventListener("click",()=>void (async()=>{
 get("en-report-export").addEventListener("click",()=>{
   if(!reportData||saving)return;
   const rows=[["year_id","term_id","scope","status","record_count","generated_at"],...reportGroups.flatMap(([key])=>[["total",reportData[key].total],...Object.entries(reportData[key].statuses)].map(([state,count])=>[key==="documentRequests"?"all":reportData.yearId,key==="registrations"?reportData.termId||"all":"all",key,state,count,new Date(reportData.asOf).toISOString()]))];
-  const csv=rows.map(row=>row.map(value=>'"'+String(value).replaceAll('"','""')+'"').join(",")).join("\r\n");
+  const counts=reportData.headcount;
+  if(counts){
+    for(const key of ["activeRegistrationCount","uniqueLearners","assignedLearners","duplicateLearners","unresolvedLearners","invalidRecords"])rows.push([reportData.yearId,reportData.termId,"headcount",key,counts[key],new Date(reportData.asOf).toISOString()]);
+    for(const row of counts.byGrade)rows.push([reportData.yearId,reportData.termId,"headcount_grade",row.gradeLevel,row.learnerCount,new Date(reportData.asOf).toISOString()]);
+    for(const row of counts.bySection)rows.push([reportData.yearId,reportData.termId,"headcount_section",row.sectionName+" ("+row.sectionId+")",row.learnerCount,new Date(reportData.asOf).toISOString()]);
+  }
+  const csv=rows.map(row=>row.map(value=>{let cell=String(value??"");if(/^[\s]*[=+@-]/.test(cell)||/^[\t\r\n]/.test(cell))cell="'"+cell;return '"'+cell.replaceAll('"','""')+'"';}).join(",")).join("\r\n");
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="registrar-summary.csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 let applications=[],applicationCursor=null,applicationBusy=false;
