@@ -146,8 +146,8 @@ function createPublicSchoolEnrollmentService({db}){
           const prior=current.data();
           if(prior.schoolId!==PUBLIC_PILOT_SCHOOL_ID)
             deny("failed-precondition","Enrollment application identity collision requires school review.");
-          if(["enrolled","rejected","withdrawn"].includes(prior.status))
-            deny("failed-precondition","This application has already reached a final school decision.");
+          if(["accepted","enrolled","rejected","withdrawn"].includes(prior.status))
+            deny("failed-precondition","This application is locked for school review. Contact the Registrar if corrections are needed.");
           revision=(Number(prior.revision)||1)+1;
           status=prior.status==="needs_information"?"submitted":(prior.status||"submitted");
           tx.set(ref,{
