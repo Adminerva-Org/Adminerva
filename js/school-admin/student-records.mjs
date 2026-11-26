@@ -14,6 +14,7 @@ let picker=null,students=[],current=null,saving=false,searchRun=0,fileRun=0,
   guardianChange=null,guardianLifecycle=null,requestLifecycle=null;
 let directoryCursor=null,directoryQuery="",directoryBusy=false;
 let fileView="registrations",historyBusy=false;
+let recordsMode="students",queueRows=[],queueCursor=null,queueRun=0,queueBusy=false,queueSkipped=0;
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -30,7 +31,7 @@ function setSaving(value,message=""){
     get("sr-search").disabled=false;get("sr-search-button").disabled=directoryBusy;get("sr-more").disabled=directoryBusy;
     get("sr-guardian-close").disabled=false;get("sr-guardian-lifecycle-close").disabled=false;
     get("sr-request-close").disabled=false;get("sr-request-lifecycle-close").disabled=false;
-    renderHistoryControls();
+    renderHistoryControls();renderQueueControls();
   }
   if(message)status.textContent=message;
 }
@@ -413,8 +414,9 @@ get("sr-request-form").addEventListener("submit",event=>{
   })();
 });
 
-function openRequestLifecycle(request,nextStatus){
-  requestLifecycle={request,nextStatus};
+function openRequestLifecycle(request,nextStatus,fromQueue=false){
+  if(saving)return;
+  requestLifecycle={request,nextStatus,fromQueue,personId:fromQueue?request.personId:current?.person.personId};
   const form=get("sr-request-lifecycle-form");form.reset();
   get("sr-request-lifecycle-title").textContent=requestStateLabel(nextStatus);
   get("sr-request-lifecycle-target").textContent=request.label+" · "+requestStateLabel(request.status)+" → "+requestStateLabel(nextStatus);
@@ -429,8 +431,8 @@ function closeRequestLifecycle(){
 get("sr-request-lifecycle-close").addEventListener("click",closeRequestLifecycle);
 get("sr-request-lifecycle-dialog").addEventListener("cancel",event=>{if(saving)event.preventDefault();else requestLifecycle=null;});
 get("sr-request-lifecycle-form").addEventListener("submit",event=>{
-  event.preventDefault();if(saving||!current||!requestLifecycle||!event.currentTarget.reportValidity())return;
-  const change=requestLifecycle,data=new FormData(event.currentTarget),personId=current.person.personId;
+  event.preventDefault();if(saving||!requestLifecycle?.personId||!event.currentTarget.reportValidity())return;
+  const change=requestLifecycle,data=new FormData(event.currentTarget),personId=change.personId;
   void (async()=>{
     setSaving(true,"Updating document request…");
     try{
@@ -439,11 +441,62 @@ get("sr-request-lifecycle-form").addEventListener("submit",event=>{
         reason:String(data.get("reason")||"").trim(),
         releaseReference:String(data.get("releaseReference")||"").trim()});
       requestLifecycle=null;get("sr-request-lifecycle-dialog").close();
-      await openStudent(personId,{force:true});status.textContent="Document request updated.";
+      if(change.fromQueue){
+        try{await loadRequestQueue({force:true});}catch{status.textContent="Request updated. Refresh the queue.";}
+        if(current?.person.personId===personId){current=null;fileHost.hidden=true;get("sr-empty-file").hidden=false;}
+      }else await openStudent(personId,{force:true});
+      status.textContent="Document request updated.";
     }catch(error){status.textContent=error?.message||"Document request was not updated.";}
     finally{setSaving(false);}
   })();
 });
+
+function renderQueueControls(){
+  get("sr-queue-more").hidden=!queueCursor;get("sr-queue-more").disabled=saving||queueBusy;
+  get("sr-queue-refresh").disabled=saving||queueBusy;
+}
+function renderRequestQueue(){
+  const host=get("sr-queue-list"),query=String(get("sr-queue-search").value||"").trim().toLowerCase();host.replaceChildren();
+  const rows=queueRows.filter(row=>!query||[row.displayName,row.studentNumber,row.label,row.releaseReference].some(value=>String(value||"").toLowerCase().includes(query)));
+  if(!rows.length)empty(host,queueCursor?"No matches in loaded requests. Load more.":"No matching requests.");
+  for(const row of rows){
+    const card=document.createElement("article");card.className="sr-row";
+    const info=document.createElement("div");info.append(textNode("strong",row.displayName+(row.studentNumber?" · "+row.studentNumber:"")),
+      textNode("p",[row.label,requestStateLabel(row.status),fmt(row.updatedAt||row.requestedAt)].filter(Boolean).join(" · "),"sr-muted"),
+      textNode("p",row.purpose||"","sr-muted"));card.append(info);
+    const controls=actions();controls.append(button("201 file",{tone:"secondary",onClick:()=>void (async()=>{
+      if(saving)return;showRecordsMode("students");await openStudent(row.personId);if(current?.person.personId===row.personId)showFileView("documents");
+    })()}));
+    for(const [label,next,tone] of requestTransitions(row))controls.append(button(label,{tone,onClick:()=>openRequestLifecycle(row,next,true)}));
+    card.append(controls);host.append(card);
+  }
+  get("sr-queue-status").textContent=rows.length+" matching · "+queueRows.length+" loaded"+(queueCursor?" · more requests available":"")+(queueSkipped?" · some requests require identity review":"");renderQueueControls();
+}
+async function loadRequestQueue({more=false,force=false}={}){
+  if((saving&&!force)||(more&&(!queueCursor||queueBusy)))return;
+  const run=++queueRun,cursor=more?queueCursor:null,filter=get("sr-queue-filter").value||"open";queueBusy=true;renderQueueControls();
+  get("sr-queue-status").textContent="Loading requests…";
+  try{
+    const result=await perform("list_document_requests",{status:filter,...(cursor?{cursor}:{})});
+    if(run!==queueRun)return;
+    const rows=new Map((more?queueRows:[]).map(row=>[row.requestId,row]));for(const row of result.items||[])rows.set(row.requestId,row);
+    queueRows=[...rows.values()].sort((a,b)=>(b.updatedAt||b.requestedAt||0)-(a.updatedAt||a.requestedAt||0));
+    queueCursor=result.nextCursor||null;queueSkipped=(more?queueSkipped:0)+(result.skippedCount||0);renderRequestQueue();
+  }catch(error){if(run===queueRun)get("sr-queue-status").textContent=error?.message||"Request queue unavailable.";}
+  finally{if(run===queueRun){queueBusy=false;renderQueueControls();}}
+}
+function showRecordsMode(mode){
+  if(saving||!["students","requests"].includes(mode))return;
+  recordsMode=mode;workspace.hidden=mode!=="students";get("sr-requests-workspace").hidden=mode!=="requests";
+  get("sr-mode-students").setAttribute("aria-pressed",String(mode==="students"));get("sr-mode-requests").setAttribute("aria-pressed",String(mode==="requests"));
+  if(mode==="requests")void loadRequestQueue();
+}
+get("sr-mode-students").addEventListener("click",()=>showRecordsMode("students"));
+get("sr-mode-requests").addEventListener("click",()=>showRecordsMode("requests"));
+get("sr-queue-refresh").addEventListener("click",()=>void loadRequestQueue());
+get("sr-queue-more").addEventListener("click",()=>void loadRequestQueue({more:true}));
+get("sr-queue-filter").addEventListener("change",()=>{queueRows=[];queueCursor=null;renderRequestQueue();void loadRequestQueue();});
+get("sr-queue-search").addEventListener("input",renderRequestQueue);
 
 get("sr-search-button").addEventListener("click",()=>void searchStudents());
 get("sr-more").addEventListener("click",()=>void searchStudents({more:true}));
@@ -456,15 +509,16 @@ picker=createTenantSchoolPicker({
     if(saving)throw new Error("Finish the current Student Records change before switching schools.");
     ++searchRun;++fileRun;requestedPersonId="";students=[];current=null;historyBusy=false;fileView="registrations";guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
     directoryCursor=null;directoryQuery="";directoryBusy=false;get("sr-more").hidden=true;get("sr-search-progress").textContent="";
+    ++queueRun;queueRows=[];queueCursor=null;queueBusy=false;queueSkipped=0;recordsMode="students";get("sr-requests-workspace").hidden=true;get("sr-workspace-nav").hidden=true;get("sr-queue-list").replaceChildren();get("sr-queue-search").value="";get("sr-queue-filter").value="open";get("sr-queue-status").textContent="";
     setUrlPerson("");get("sr-search").value="";get("sr-student-list").replaceChildren();fileHost.hidden=true;get("sr-empty-file").hidden=false;get("sr-open-people").hidden=true;workspace.hidden=true;
     for(const dialog of document.querySelectorAll("dialog"))if(dialog.open)dialog.close();
   },
   onReady:scope=>{
     const currentScope=scope.current;
     if(!currentScope?.roles.some(role=>["school_admin","registrar"].includes(role))){
-      workspace.hidden=true;status.textContent="School Administrator or Registrar access is required for Student Records.";return;
+      workspace.hidden=true;get("sr-workspace-nav").hidden=true;get("sr-requests-workspace").hidden=true;status.textContent="School Administrator or Registrar access is required for Student Records.";return;
     }
-    workspace.hidden=false;status.textContent="Select a student.";
+    get("sr-workspace-nav").hidden=false;showRecordsMode("students");status.textContent="Select a student.";
     const personId=requestedPersonId;requestedPersonId="";
     void searchStudents();
     if(personId&&requestedSchoolId&&requestedSchoolId!==currentScope.schoolId){
