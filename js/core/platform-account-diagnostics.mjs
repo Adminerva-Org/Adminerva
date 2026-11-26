@@ -60,10 +60,13 @@ function beginProcess(name,metadata={}){
   let saveStage="",retryAttempt=Number.isInteger(metadata.retryAttempt)&&metadata.retryAttempt>=0&&metadata.retryAttempt<=4?metadata.retryAttempt:undefined;
   const fixedContext={process:name,...parentContext,...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{}),...(retryAttempt!==undefined?{retryAttempt}:{})};
   const stageContext=()=>saveStage?{saveStage}:{};
-  tracked.timer=setTimeout(()=>{
+  const observeProlonged=()=>{
     if(turn!==epoch||processes.get(id)!==tracked)return;
+    const age=elapsed(start);
+    if(age<PROLONGED_MS){tracked.timer=setTimeout(observeProlonged,Math.max(1,PROLONGED_MS-age));return;}
     try{emit("process_prolonged",{kind:"system",module:"studio",state:"unavailable",operationId:id,phase:"observed",context:{...fixedContext,...stageContext(),elapsedMs:elapsed(start)}});}catch{}
-  },PROLONGED_MS);
+  };
+  tracked.timer=setTimeout(observeProlonged,PROLONGED_MS);
   try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:fixedContext});}catch{}
   let finished=false;
   const finish=(success,errorCode,reasonCode,outcome={})=>{
