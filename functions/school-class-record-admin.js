@@ -6,7 +6,7 @@
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {checkId,rowKey}=require("./school-academics.js");
 const {resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
-const {custodyRef,originalSections,normalized,historicalCustodianRecord,custodySourceDigest,verifiedOriginalMaximum}=require("./school-legacy-custody.js");
+const {custodyRef,originalSections,normalized,historicalCustodianRecord,custodySourceDigest,verifiedOriginalMaximum,validCustody}=require("./school-legacy-custody.js");
 const {FieldValue}=require("firebase-admin/firestore");
 const {schemeMatchesOffering,schemeSpecificity}=require("./school-class-record.js");
 
@@ -44,12 +44,98 @@ function actionLabel(action){
   })[action]||String(action||"Class Record activity");
 }
 
+// Candidate class membership is constrained by the explicitly selected
+// academic period, subject and Primary Teacher; never infer a term from titles.
+function sameRecoveryCohort(anchor,offering,schoolId){
+  return !!anchor?.yearId&&!!anchor.termId&&!!anchor.subjectId&&!!anchor.primaryTeacherUid&&
+    offering?.schoolId===schoolId&&offering.yearId===anchor.yearId&&
+    offering.termId===anchor.termId&&offering.subjectId===anchor.subjectId&&
+    offering.primaryTeacherUid===anchor.primaryTeacherUid&&offering.status!=="archived";
+}
+function markRecoveryOverlaps(rows){
+  const seen=new Map(),conflicts=new Set();
+  for(const row of rows){
+    if(!row.eligible)continue;
+    for(const person of new Set(row.matchedPersonIds||[])){
+      if(seen.has(person)&&seen.get(person)!==row.offeringId){
+        conflicts.add(seen.get(person));conflicts.add(row.offeringId);
+      }else seen.set(person,row.offeringId);
+    }
+  }
+  return rows.map(({matchedPersonIds,...row})=>conflicts.has(row.offeringId)?
+    {...row,eligible:false,status:"overlapping_class_rosters"}:row);
+}
 function createSchoolClassRecordAdminService({db,resolveUsers=null}){
-  return async request=>{
+  async function handle(request,recoverySource=null){
     const input=request.data||{};
     const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["school_admin"]});
     const prefix="schools/"+ctx.schoolId+"/";
 
+    if(input.action==="discover_legacy_custody_classes"){
+      if(ctx.platformOverride)
+        deny("permission-denied","Use an active school administrator membership.");
+      const assessmentId=checkId(String(input.assessmentId||""),"Original assessment ID",128);
+      const anchorId=checkId(String(input.offeringId||""),"Destination class",330);
+      // Restrict the root legacy collection to its verified originating school.
+      custodyRef(db,ctx.schoolId,assessmentId,anchorId);
+      const [original,anchorDoc]=await Promise.all([
+        db.doc("assessments/"+assessmentId).get(),
+        db.doc(prefix+"course_offerings/"+anchorId).get()
+      ]);
+      if(!original.exists||!validOrigin(original.data(),ctx.schoolId)||!historicalCustodianRecord(original.data())||
+         !anchorDoc.exists||!sameRecoveryCohort(anchorDoc.data(),anchorDoc.data(),ctx.schoolId))
+        deny("not-found","Original assessment or destination class is unavailable for historical recovery.");
+      const anchor=anchorDoc.data(),data=original.data();
+      if(anchor.primaryTeacherUid===ctx.uid||data.ownerUid===anchor.primaryTeacherUid)
+        deny("failed-precondition","Use an independent school administrator for custody approval.");
+      const [offeringPage,receiptPage,gradePage,grants]=await Promise.all([
+        db.collection(prefix+"course_offerings").where("primaryTeacherUid","==",anchor.primaryTeacherUid).limit(101).get(),
+        db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
+        db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get(),
+        db.collection(prefix+"legacy_assessment_custody").where("assessmentId","==",assessmentId).limit(101).get()
+      ]);
+      if(offeringPage.size>=101||receiptPage.size>=501||gradePage.size>=501||grants.size>=101)
+        deny("resource-exhausted","Historical recovery requires pagination for this source or teacher.");
+      const offerings=offeringPage.docs.filter(doc=>sameRecoveryCohort(anchor,doc.data(),ctx.schoolId));
+      if(offerings.length>12)deny("resource-exhausted","More than 12 matching classes. Verify individual classes instead.");
+      const sections=originalSections(data);
+      const sectionNames=await docsById(db,prefix,"sections",offerings.map(doc=>doc.data().sectionId));
+      const schoolGrants=grants.docs.map(doc=>doc.data()).filter(row=>row.schoolId===ctx.schoolId);
+      const existing=new Map(schoolGrants.filter(row=>row.status==="active").map(row=>[row.offeringId,row]));
+      const rows=[];
+      // Bounded concurrency and shared immutable source snapshots for preview.
+      for(let offset=0;offset<offerings.length;offset+=3){
+        const batch=offerings.slice(offset,offset+3);
+        rows.push(...await Promise.all(batch.map(async doc=>{
+          const offering=doc.data(),sectionName=catalogName(sectionNames,offering.sectionId,offering.sectionId);
+          const selected=doc.id===anchorId?String(input.originalSection||"").trim():"";
+          const originalSection=sections.find(section=>normalized(section)===normalized(selected||sectionName))||"";
+          const label={offeringId:doc.id,sectionName,originalSection};
+          if(sections.length&&!originalSection)return {...label,eligible:false,status:"original_section_review_required"};
+          try{
+            const preview=await handle({...request,data:{schoolId:ctx.schoolId,action:"preview_legacy_custody",
+              assessmentId,offeringId:doc.id,originalSection}},{assessmentId,original,receiptPage,gradePage});
+            const prior=existing.get(doc.id);
+            if(prior)return {...preview,...label,eligible:false,status:validCustody(prior,{
+              schoolId:ctx.schoolId,assessmentId,offeringId:doc.id,teacherUid:offering.primaryTeacherUid,task:data
+            })?"already_approved":"existing_custody_review_required"};
+            const matched=new Set(preview.matchedPersonIds||[]);
+            const legacy=new Set(preview.matchedLegacyIds||[]);
+            const overlaps=schoolGrants.some(grant=>grant.offeringId!==doc.id&&
+              (!sections.length||grant.sectionProof==="assessment_student_identity"||grant.status==="active")&&
+              ((grant.verifiedPersonIds||[]).some(id=>matched.has(id))||
+               (grant.verifiedLegacyStudentIds||[]).some(id=>legacy.has(id))));
+            return {...preview,...label,...(overlaps?{eligible:false,status:"overlapping_class_rosters"}:{})};
+          }catch(error){
+            if(!(error instanceof TenantAccessError))throw error;
+            return {...label,eligible:false,status:"verification_required",message:error.message};
+          }
+        })));
+      }
+      return {assessmentId,originalTitle:String(data.title||""),originalSections:sections,
+        candidates:markRecoveryOverlaps(rows).map(({matchedLegacyIds,originalOwnerUid,teacherUid,...row})=>row)
+          .sort((a,b)=>a.sectionName.localeCompare(b.sectionName))};
+    }
     if(["preview_legacy_custody","approve_legacy_custody","revoke_legacy_custody"].includes(input.action)){
       // School Admin verifies original provenance; Platform/System Admin never
       // silently acquires School Admin authority over historical grading.
@@ -86,7 +172,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
         });
         return {status:"revoked",assessmentId,offeringId};
       }
-      const [original,offering]=await Promise.all([originalRef.get(),offeringRef.get()]);
+      const cached=input.action==="preview_legacy_custody"&&recoverySource?.assessmentId===assessmentId?recoverySource:null;
+      const [original,offering]=await Promise.all([cached?Promise.resolve(cached.original):originalRef.get(),offeringRef.get()]);
       if(!original.exists||!validOrigin(original.data(),ctx.schoolId)||
          !offering.exists||offering.data().schoolId!==ctx.schoolId)
         deny("not-found","Original assessment and official class must belong to the verified legacy school.");
@@ -143,7 +230,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       // preparation. Require assessment-specific original student evidence
       // (a real submission receipt, or an existing grade) before delegation.
       const verifiedIds=new Set(validStudentIds);
-      const [receiptPage,gradePage]=await Promise.all([
+      const [receiptPage,gradePage]=cached?[cached.receiptPage,cached.gradePage]:await Promise.all([
         db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
         db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get()
       ]);
@@ -178,7 +265,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
         eligible:!!scoreBasis&&verifiedPeople.size>=required&&sourceProof.size>0,
         status:!scoreBasis?"maximum_reconciliation_required":verifiedPeople.size<required?"identity_reconciliation_required":
           sourceProof.size===0?"original_submission_or_grade_not_found":"ready_for_school_admin_approval"};
-      if(input.action==="preview_legacy_custody")return preview;
+      if(input.action==="preview_legacy_custody")return cached?{...preview,matchedPersonIds:[...verifiedPeople],matchedLegacyIds:validStudentIds}:preview;
       if(!preview.eligible)
         deny("failed-precondition",!scoreBasis?"Original score maximum is missing, inconsistent or invalid. Verify it from original records before approving.":"Verify original roster identities AND at least one assessment-specific student submission or saved original grade before approving custody.");
       const reason=String(input.reason||"").trim();
@@ -207,7 +294,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
           const other=doc.data();
           return other.schoolId===ctx.schoolId&&other.offeringId!==offeringId&&
             (identityOnly||other.sectionProof==="assessment_student_identity")&&
-            (other.verifiedLegacyStudentIds||[]).some(id=>selected.has(id));
+            ((other.verifiedLegacyStudentIds||[]).some(id=>selected.has(id))||
+             (other.verifiedPersonIds||[]).some(id=>verifiedPeople.has(id)));
         }))deny("failed-precondition","An original student record is already reserved for another official class. Reconcile the earlier custody before linking.");
         const freshBasis=task.exists&&freshGrades.size<501?
           verifiedOriginalMaximum(task.data(),freshGrades.docs.map(row=>row.data()),assessmentId,validStudentIds):null;
@@ -234,6 +322,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
           originalSubject:preview.originalSubject,originalSection:section,sectionProof:preview.sectionProof,
           originalMaxScore:maximum,maximumProof:scoreBasis.proof,sourceDigest:custodySourceDigest(data),
           verifiedLegacyStudentIds:[...new Set(validStudentIds)].sort(),
+          verifiedPersonIds:[...verifiedPeople].sort(),
           verifiedPersonCount:verifiedPeople.size,rosterCount:roster.length,
           status:"active",reviewReason:reason,reviewedBySchoolAdminUid:ctx.uid,
           reviewedAt:FieldValue.serverTimestamp(),revision:Number(current.data()?.revision||0)+1});
@@ -433,7 +522,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
     }
 
     deny("invalid-argument","Unknown Class Record administration operation.");
-  };
+  }
+  return request=>handle(request);
 }
 
-module.exports={createSchoolClassRecordAdminService};
+module.exports={createSchoolClassRecordAdminService,sameRecoveryCohort,markRecoveryOverlaps};
