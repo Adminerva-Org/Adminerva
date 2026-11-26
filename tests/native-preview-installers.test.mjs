@@ -40,3 +40,20 @@ test("packaged desktop preview does not enable authentication or exam monitoring
  assert.doesNotMatch(preload,/ipcRenderer|desktopCapturer/);
  assert.match(main,/contents\.on\("will-navigate",details=>/);
 });
+
+test("iOS Simulator preview is a non-installable, public-only Xcode build",()=>{
+ assert.match(pipeline,/ios-simulator-preview:/);
+ assert.match(pipeline,/--packagemanager SPM/);
+ assert.match(pipeline,/xcodebuild -project ios\/App\/App\.xcodeproj/);
+ assert.match(pipeline,/generic\/platform=iOS Simulator/);
+ assert.match(pipeline,/CODE_SIGNING_ALLOWED=NO build/);
+ assert.match(pipeline,/Adminerva-iOS-Simulator-Public-Preview-NOT-IPA/);
+ assert.doesNotMatch(pipeline,/xcodebuild[^\n]*-exportArchive|altool|notarytool/);
+ const page=readFileSync(new URL("../apps/mobile/preview-index.html",import.meta.url),"utf8");
+ const source=readFileSync(new URL("../apps/mobile/preview-device-check.mjs",import.meta.url),"utf8");
+ const prep=readFileSync(new URL("../apps/mobile/prepare-preview.mjs",import.meta.url),"utf8");
+ assert.match(page,/id="preview-check-connection"/);
+ assert.match(source,/data\.channel!=="public-preview"/);
+ assert.match(source,/no project data was changed/);
+ assert.match(prep,/preview-device-check\.mjs/);
+});

@@ -10,6 +10,52 @@ on:
 permissions:
   contents: read
 jobs:
+  ios-simulator-preview:
+    name: iOS Simulator public-preview build (not device-installable)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify public-only mobile build contract
+        run: node --test tests/native-preview-installers.test.mjs tests/native-app-updates.test.mjs
+      - name: Install Capacitor dependencies
+        working-directory: apps/mobile
+        run: npm install --no-audit --no-fund
+      - name: Generate disposable iOS Simulator project using Capacitor 8 SPM
+        working-directory: apps/mobile
+        run: |
+          npm run add:ios -- --packagemanager SPM
+          npm run sync
+      - name: Build unsigned app for iOS Simulator
+        working-directory: apps/mobile
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/DerivedData \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Package Simulator app with SHA-256
+        working-directory: apps/mobile
+        run: |
+          mkdir -p ios-preview-dist
+          test -d ios/DerivedData/Build/Products/Debug-iphonesimulator/App.app
+          ditto -c -k --sequesterRsrc --keepParent \
+            ios/DerivedData/Build/Products/Debug-iphonesimulator/App.app \
+            ios-preview-dist/Adminerva-iOS-Simulator-Public-Preview.zip
+          cd ios-preview-dist
+          shasum -a 256 Adminerva-iOS-Simulator-Public-Preview.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Adminerva-iOS-Simulator-Public-Preview-NOT-IPA
+          path: |
+            apps/mobile/ios-preview-dist/Adminerva-iOS-Simulator-Public-Preview.zip
+            apps/mobile/ios-preview-dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
   windows-preview:
     name: Windows public-preview installer
     runs-on: windows-latest
