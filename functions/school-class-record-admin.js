@@ -344,7 +344,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       }).sort((a,b)=>
         (a.subjectName+" "+a.sectionName+" "+a.termName).localeCompare(
           b.subjectName+" "+b.sectionName+" "+b.termName,undefined,{sensitivity:"base"}));
-      return {records:result};
+      return {records:result,historicalRecoveryAllowed:ctx.compatibilityMode!=="v4_only"&&validOrigin({},ctx.schoolId)};
     }
 
     if(input.action==="audit"){
