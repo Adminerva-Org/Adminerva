@@ -189,6 +189,7 @@
               <select id="en-registration-section" class="en-input mt-1"><option value="">All sections</option></select>
             </label>
           </div>
+          <div class="flex flex-wrap gap-2 items-center mt-3"><button id="en-registrations-more" class="en-btn secondary" type="button" hidden>Load more</button><span id="en-registrations-count" class="en-muted" aria-live="polite"></span></div>
           <div id="en-registration-list" class="en-list mt-3" role="list" aria-live="polite"></div>
         </section>
 
@@ -200,6 +201,7 @@
             </div>
             <span class="en-badge" data-state="ended">Migration safety</span>
           </div>
+          <div class="flex gap-2 flex-wrap items-center mt-3"><button id="en-legacy-scan" type="button" class="en-btn secondary">Scan legacy records</button><span id="en-legacy-scan-status" class="en-muted" aria-live="polite"></span></div>
           <div id="en-legacy-registration-list" class="en-list mt-3" role="list" aria-live="polite"></div>
         </section>
 
@@ -473,7 +475,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar10"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar11"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
