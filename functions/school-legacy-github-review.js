@@ -11,7 +11,7 @@
 const {createHash}=require("node:crypto");
 const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {TenantAccessError}=require("./tenant-access.js");
-const {authorizedTeacherCustody,validCustody,normalized}=require("./school-legacy-custody.js");
+const {authorizedTeacherCustody,validCustody,normalized,custodySectionMatches}=require("./school-legacy-custody.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message)};
 const hash=(...items)=>createHash("sha256").update(JSON.stringify(items)).digest("hex");
 const validSha=value=>typeof value==="string"&&/^[a-f0-9]{40}$/i.test(value);
@@ -122,7 +122,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    const grantedStudentIds=custody?new Set(custody.grant.verifiedLegacyStudentIds):null;
    function inScope(studentId,section){
      return !custody||grantedStudentIds.has(studentId)&&
-       normalized(section)===normalized(custody.grant.originalSection);
+       custodySectionMatches(custody.grant,section);
    }
    if(taskData.schemaVersion===3||taskData.submissionSource==="studio"||
       taskData.assessmentFormat==="studio_code")
@@ -348,7 +348,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      const approvedCustody=sourceUnchanged&&!!custody&&
        validCustody(freshCustody?.exists?freshCustody.data():null,{
          schoolId:ctx.schoolId,assessmentId:id,offeringId:legacyOfferingId,
-         teacherUid:ctx.uid,task:freshTask.data(),section:record.data.section
+         teacherUid:ctx.uid,task:freshTask.data(),section:freshEvidence.data()?.section
        })&&freshOffering?.exists&&freshOffering.data().schoolId===ctx.schoolId&&
        freshOffering.data().primaryTeacherUid===ctx.uid&&
        freshAssignment?.exists&&freshAssignment.data().schoolId===ctx.schoolId&&freshAssignment.data().status==="active"&&
