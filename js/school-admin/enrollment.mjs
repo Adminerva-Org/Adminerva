@@ -59,6 +59,7 @@ function setSaving(value){
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
+  get("en-applicant-type").disabled=value||Boolean(loadedPerson);
   for(const control of document.querySelectorAll("#en-application-list button, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
@@ -169,7 +170,8 @@ function updateCoursePreview(){
         (subjectSummary?": "+subjectSummary:"")+" · "+
         (required?"student email required for Adminerva sign-in":"guardian-managed; student login not required")
       :"No active subject offerings match this placement. Configure the section subjects before enrolling students.";
-  get("en-register-button").disabled=saving||count===0;
+  get("en-register-button").disabled=saving||(loadedApplication?count===0:!yearId||!programId||!termId||!sectionId);
+  get("en-register-button").textContent=loadedApplication?"Register & enroll student":"Save application";
 }
 async function loadCatalog(){
   const result=await latest("catalog","catalog");
@@ -881,13 +883,18 @@ function applicationMeta(item){
 function loadApplicationIntoForm(item){
   if(saving||item.status!=="accepted"||!item.requirementsReady||!discardDraft())return;
   if(loadedApplication?.applicationId===item.applicationId&&loadedApplication.revision===item.revision){showEnrollmentView("register");return;}
-  loadedPerson=null;form.elements.personId.value="";
-  form.elements.displayName.readOnly=false;
+  loadedPerson=null;form.elements.personId.value=item.personId||"";
+  get("en-applicant-type-row").hidden=true;get("en-find-existing").hidden=true;
+  for(const name of ["displayName","birthDate","guardianName","guardianRelationship","guardianEmail","guardianMobile","studentEmail","studentEmailType"]) {
+    form.elements[name].readOnly=true;
+    if(["guardianRelationship","studentEmailType"].includes(name))form.elements[name].style.pointerEvents="none";
+  }
   loadedApplication=item;
   form.elements.applicationId.value=item.applicationId;
   form.elements.displayName.value=item.displayName||"";
   form.elements.birthDate.value=item.birthDate||"";
-  form.elements.studentNumber.value="";
+  form.elements.studentNumber.value=item.studentNumber||"";
+  form.elements.studentNumber.readOnly=Boolean(item.studentNumber);
   form.elements.guardianName.value=item.guardianName||"";
   form.elements.guardianRelationship.value=item.guardianRelationship||"";
   form.elements.guardianEmail.value=item.guardianEmail||"";
@@ -902,6 +909,9 @@ function loadApplicationIntoForm(item){
     ". Confirm official program, period and section before enrollment.";
   get("en-clear-application").hidden=false;
   refreshPlacement();
+  if(item.preferredTermId&&(catalog.terms||[]).some(row=>row.id===item.preferredTermId))form.elements.termId.value=item.preferredTermId;
+  if(item.preferredSectionId&&(catalog.sections||[]).some(row=>row.id===item.preferredSectionId))form.elements.sectionId.value=item.preferredSectionId;
+  updateCoursePreview();
   draftDirty=false;
   showEnrollmentView("register");
   form.scrollIntoView({behavior:"smooth",block:"start"});
@@ -911,14 +921,15 @@ function clearLoadedApplication({resetIdentity=false}={}){
   const hadLoadedPerson=Boolean(loadedPerson);
   loadedApplication=null;loadedPerson=null;
   form.elements.applicationId.value="";form.elements.personId.value="";
-  form.elements.displayName.readOnly=false;
+  for(const name of ["displayName","birthDate","studentNumber","guardianName","guardianRelationship","guardianEmail","guardianMobile","studentEmail","studentEmailType"]){form.elements[name].readOnly=false;form.elements[name].style.pointerEvents="";}
+  get("en-applicant-type-row").hidden=false;get("en-applicant-type").value="new";get("en-applicant-type").disabled=false;get("en-find-existing").hidden=false;
   if(hadLoadedPerson){
     try{
       const url=new URL(location.href);url.searchParams.delete("personId");
       history.replaceState({},"",url);
     }catch{}
   }
-  get("en-register-title").textContent="Onsite / manual enrollment";
+  get("en-register-title").textContent="Onsite application";
   get("en-register-help").textContent="";
   get("en-clear-application").hidden=true;
   get("en-clear-application").textContent="Clear loaded student";
@@ -970,7 +981,8 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
       return false;
     }
     if(draftDirty&&!discardDraft())return false;
-    loadedApplication=null;loadedPerson=person;
+    clearLoadedApplication();loadedApplication=null;loadedPerson=person;
+    get("en-applicant-type").value="returning";get("en-applicant-type").disabled=true;get("en-find-existing").hidden=true;
     form.elements.applicationId.value="";form.elements.personId.value=person.personId;
     form.elements.displayName.value=person.displayName||"";
     form.elements.displayName.readOnly=true;
@@ -984,9 +996,8 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
     form.elements.studentEmailType.value=person.studentEmailType||"personal";
     form.elements.yearId.value="";form.elements.programId.value="";
     form.elements.termId.value="";form.elements.sectionId.value="";
-    get("en-register-title").textContent="Place existing student";
-    get("en-register-help").textContent="This form is bound to the reviewed school directory record for "+person.displayName+
-      ". Complete any missing registrar details, then choose the official academic placement. Adminerva will not create a second person record.";
+    get("en-register-title").textContent="Returning student application";
+    get("en-register-help").textContent="Existing student · "+(person.studentNumber||person.displayName);
     get("en-clear-application").hidden=false;
     get("en-clear-application").textContent="Clear loaded student";
     refreshPlacement();draftDirty=false;
@@ -1182,6 +1193,17 @@ get("en-requirements-form").addEventListener("submit",event=>{
     finally{setSaving(false);if(requirementsReview)renderRequirementRows();}
   })();
 });
+async function linkReturningApplication(item){
+  if(saving)return;
+  const studentNumber=prompt("Enter the student's existing school student number:");
+  if(!studentNumber?.trim())return;
+  setSaving(true);status.textContent="Linking student…";
+  try{
+    await perform("bind_returning_application",{applicationId:item.applicationId,expectedRevision:item.revision,studentNumber:studentNumber.trim()});
+    await loadApplications();status.textContent="Existing student linked. Review requirements.";
+  }catch(error){status.textContent=error?.message||"Student link failed.";}
+  finally{setSaving(false);}
+}
 async function reviewApplication(item,nextStatus){
   if(saving)return;
   if(nextStatus==="accepted"&&!item.requirementsReady){status.textContent="Verify admission requirements before accepting.";return;}
@@ -1242,8 +1264,9 @@ function renderApplications(){
     addAction("Documents",()=>void openDocuments(item));
     if(item.status==="accepted"&&item.requirementsReady)addAction("Enroll",()=>loadApplicationIntoForm(item),true);
     if(["submitted","needs_information"].includes(item.status)){
+      if(item.applicationType==="returning"&&!item.personId)addAction("Link student",()=>void linkReturningApplication(item),true);
       addAction("Requirements",()=>openRequirements(item),!item.requirementsReady);
-      if(item.requirementsReady)addAction("Accept",()=>void reviewApplication(item,"accepted"),true);
+      if(item.requirementsReady&&(item.applicationType!=="returning"||item.personId))addAction("Accept",()=>void reviewApplication(item,"accepted"),true);
     }
     if(["submitted","accepted"].includes(item.status))addAction("Needs info",()=>void reviewApplication(item,"needs_information"));
     if(item.status==="needs_information")addAction("Reopen review",()=>void reviewApplication(item,"submitted"));
@@ -1315,6 +1338,8 @@ form.addEventListener("submit",event=>{
   event.preventDefault();updateStudentEmailPolicy();
   if(saving||!form.reportValidity())return;
   const data=new FormData(form);
+  const applicationType=loadedPerson?"returning":get("en-applicant-type").value||"new";
+  if(!loadedApplication&&applicationType==="returning"&&!loadedPerson){status.textContent="Find the existing student in Student Records first.";return;}
   const studentEmail=String(data.get("studentEmail")||"").trim().toLowerCase();
   const guardianEmail=String(data.get("guardianEmail")||"").trim().toLowerCase();
   if(studentEmail&&studentEmail===guardianEmail){
@@ -1329,7 +1354,8 @@ form.addEventListener("submit",event=>{
         ?"Creating official placement for the reviewed directory student…"
         :"Registering onsite student and creating section subject enrollments…";
     try{
-      const result=await perform("register_student",{
+      const result=await perform(loadedApplication?"register_student":"create_onsite_application",{
+        applicationType,
         applicationId:String(data.get("applicationId")||""),
         applicationRevision:loadedApplication?Number(loadedApplication.revision)||1:null,
         personId:String(data.get("personId")||""),
@@ -1343,6 +1369,11 @@ form.addEventListener("submit",event=>{
         yearId:String(data.get("yearId")||""),programId:String(data.get("programId")||""),
         termId:String(data.get("termId")||""),sectionId:String(data.get("sectionId")||"")
       });
+      if(!loadedApplication){
+        clearLoadedApplication({resetIdentity:true});get("en-application-search").value=result.reference||"";get("en-application-status").value="pending";
+        showEnrollmentView("applications");status.textContent="Application saved. Review requirements and accept before enrollment.";
+        await loadApplications();return;
+      }
       status.textContent=result.displayName+" enrolled · "+result.courseCount+
         " active subject enrollment"+(result.courseCount===1?"":"s")+" · "+
         (result.accountResponsibility==="guardian"
@@ -1400,6 +1431,7 @@ picker=createTenantSchoolPicker({
       return;
     }
     get("en-template-open").hidden=!current.roles.includes("school_admin")||current.platformOverride===true;
+    get("en-find-existing").href="school-student-records.html?schoolId="+encodeURIComponent(current.schoolId);
     showEnrollmentView(activeEnrollmentView);
     renderActivation(current.schoolId);workspace.hidden=false;
     void refreshAll().catch(error=>{status.textContent=error?.message||"Enrollment data could not be loaded.";});
