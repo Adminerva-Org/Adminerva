@@ -169,8 +169,8 @@ function renderGrades(data){
 }
 function requestTransitions(row){
   if(row.status==="requested")return [["Start review","in_review",""],["Cancel","cancelled","danger"]];
-  if(row.status==="in_review")return [["Mark ready","ready","success"],["Cancel","cancelled","danger"]];
-  if(row.status==="ready")return [["Release","released","success"],["Return to review","in_review",""],["Cancel","cancelled","danger"]];
+  if(row.status==="in_review")return [...(row.generationMode==="institutional"&&!row.hasCertificateDraft?[]:[["Mark ready","ready","success"]]),["Cancel","cancelled","danger"]];
+  if(row.status==="ready")return [...(row.generationMode==="institutional"?[]:[["Release","released","success"]]),["Return to review","in_review",""],["Cancel","cancelled","danger"]];
   if(row.status==="cancelled")return [["Reopen review","in_review",""]];
   return [];
 }
@@ -187,6 +187,7 @@ function renderRequests(data){
       .filter(Boolean).join(" · ");
     info.append(title,textNode("p",meta,"sr-muted"));row.append(info);
     const controls=actions();
+    if(request.generationMode==="institutional"&&["in_review","ready","released"].includes(request.status))controls.append(button("Certificate",{tone:"secondary",onClick:()=>void openCertificate(request)}));
     for(const [label,next,tone] of requestTransitions(request))
       controls.append(button(label,{tone,onClick:()=>openRequestLifecycle(request,next)}));
     if(controls.children.length)row.append(controls);
@@ -298,6 +299,136 @@ get("sr-profile-form").addEventListener("submit",event=>{
     catch(error){get("sr-profile-status").textContent=error?.message||"Profile save failed.";}finally{setSaving(false);}
   })();
 });
+let academicData=null,academicRun=0,certificateData=null,certificateRun=0,certificateSettings=null,settingsRun=0,verifyRun=0;
+function resetAcademic(){++academicRun;academicData=null;get("sr-academic-results").replaceChildren();get("sr-academic-blockers").replaceChildren();get("sr-academic-export").disabled=true;get("sr-academic-status").textContent="";}
+function academicOptions(){
+  const mode=get("sr-academic-mode").value,select=get("sr-academic-year"),prior=select.value;select.replaceChildren(new Option(mode==="sf9"?"Choose academic year":"All school years",""));
+  const years=new Map((current?.registrations||[]).filter(row=>row.yearId).map(row=>[row.yearId,row.yearName||row.yearId]));
+  for(const [id,label] of years)select.append(new Option(label,id));select.required=mode==="sf9";
+  if(years.has(prior))select.value=prior;else if(mode==="sf9"&&years.size===1)select.value=years.keys().next().value;
+  resetAcademic();
+}
+get("sr-academic-prepare").addEventListener("click",()=>{if(!current||saving)return;academicOptions();get("sr-academic-dialog").showModal();});
+get("sr-academic-mode").addEventListener("change",academicOptions);get("sr-academic-year").addEventListener("change",resetAcademic);
+get("sr-academic-close").addEventListener("click",()=>{resetAcademic();get("sr-academic-dialog").close();});
+get("sr-academic-dialog").addEventListener("cancel",resetAcademic);
+get("sr-academic-form").addEventListener("submit",event=>{
+  event.preventDefault();if(!current||saving||!event.currentTarget.reportValidity())return;
+  resetAcademic();const run=academicRun,personId=current.person.personId,mode=get("sr-academic-mode").value,yearId=get("sr-academic-year").value;
+  get("sr-academic-status").textContent="Checking released academic records…";
+  void (async()=>{try{
+    const data=await perform("academic_record_packet",{personId,mode,yearId});
+    if(run!==academicRun||current?.person.personId!==personId)return;
+    academicData=data;get("sr-academic-status").textContent=data.rows.length+" class results · "+(data.completeWithinScope?"No evidence blockers in selected scope":"Review missing evidence")+" · Working data only";
+    for(const issue of data.blockers)get("sr-academic-blockers").append(textNode("p",issue,"sr-muted"));
+    for(const row of data.rows){
+      const line=document.createElement("div");line.className="sr-row";line.append(textNode("strong",row.subjectName||row.subjectId||"Unknown subject"),
+        textNode("p",[row.yearName,row.termName,row.sectionName,row.state==="released"?"Grade "+row.finalGrade+" · r"+row.releasedRevision:row.state.replaceAll("_"," ")].filter(Boolean).join(" · "),"sr-muted"));
+      get("sr-academic-results").append(line);
+    }
+    get("sr-academic-export").disabled=!data.rows.length;
+  }catch(error){if(run===academicRun)get("sr-academic-status").textContent=error?.message||"Academic data unavailable.";}})();
+});
+function csvCell(value){
+  let s=String(value??"");if(/^[\s]*[=+@-]/.test(s)||/^[\t\r\n]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';
+}
+get("sr-academic-export").addEventListener("click",()=>{
+  if(!academicData||saving)return;
+  const data=academicData,rows=[["WORKING DATA ONLY — NOT AN OFFICIAL SCHOOL FORM"],["Record type",data.mode,"Student",data.studentName,"Student number",data.studentNumber],["Year","Period","Subject","Section","Final grade","Released revision","Evidence status","Offering ID","Grade record ID"],...data.rows.map(row=>[row.yearName,row.termName,row.subjectName,row.sectionName,row.finalGrade,row.releasedRevision,row.state,row.offeringId,row.gradeRecordId||""]),...data.blockers.map(issue=>["REVIEW",issue])];
+  const url=URL.createObjectURL(new Blob([rows.map(row=>row.map(csvCell).join(",")).join("\r\n")],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");
+  link.href=url;link.download="academic-record-working-data.csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+function closeCertificateSettings(){++settingsRun;certificateSettings=null;get("sr-certificate-settings-form").reset();get("sr-certificate-settings-save").disabled=true;get("sr-certificate-settings-dialog").close();}
+get("sr-certificate-settings").addEventListener("click",()=>void (async()=>{
+  if(saving)return;
+  const run=++settingsRun;certificateSettings=null;get("sr-certificate-settings-save").disabled=true;get("sr-certificate-settings-form").reset();get("sr-certificate-settings-status").textContent="Loading…";get("sr-certificate-settings-dialog").showModal();
+  try{const data=await perform("get_certificate_template");if(run!==settingsRun)return;certificateSettings=data;
+    for(const key of ["signatoryName","signatoryTitle","schoolAddress","schoolIdentifier"])get("sr-certificate-settings-form").elements[key].value=data[key]||"";
+    get("sr-certificate-settings-status").textContent=data.revision?"Template revision "+data.revision:"Not configured.";get("sr-certificate-settings-save").disabled=false;
+  }catch(error){if(run===settingsRun)get("sr-certificate-settings-status").textContent=error?.message||"Settings unavailable.";}
+})());
+get("sr-certificate-settings-close").addEventListener("click",()=>{if(!saving)closeCertificateSettings();});
+get("sr-certificate-settings-dialog").addEventListener("cancel",event=>{event.preventDefault();if(!saving)closeCertificateSettings();});
+get("sr-certificate-settings-form").addEventListener("submit",event=>{
+  event.preventDefault();if(saving||!certificateSettings||!event.currentTarget.reportValidity())return;
+  const data=Object.fromEntries(new FormData(event.currentTarget)),expectedRevision=certificateSettings.revision;
+  void (async()=>{setSaving(true,"Saving certificate settings…");try{certificateSettings=await perform("save_certificate_template",{...data,expectedRevision});
+    get("sr-certificate-settings-form").elements.reason.value="";get("sr-certificate-settings-status").textContent="Saved · revision "+certificateSettings.revision;
+  }catch(error){get("sr-certificate-settings-status").textContent=error?.message||"Settings save failed.";}finally{setSaving(false);}})();
+});
+function certificatePreview(data){
+  const host=get("sr-certificate-preview");host.replaceChildren();const c=data?.certificate;
+  if(!c)return;
+  for(const [tag,value] of [["strong",c.schoolName],["span",c.schoolAddress],["strong","Certificate of Enrollment"],["p",c.studentName+" · "+(c.studentNumber||"")],["p",[c.yearName,c.termName,c.programName,c.sectionName].join(" · ")],["p","Purpose: "+c.purpose],["p",c.signatoryName+" · "+c.signatoryTitle],["p",data.reference||"DRAFT — not issued"],["p","Requires authorized signature. Digital signature not provided."]])if(value)host.append(textNode(tag,value,tag==="p"?"sr-muted":""));
+}
+function renderCertificate(){
+  const data=certificateData?.data;certificatePreview(data);
+  const state=data?.state||"",editable=["in_review","ready"].includes(state);
+  get("sr-certificate-prepare-form").hidden=!editable;
+  get("sr-certificate-print").hidden=!data?.certificate||state==="revoked";
+  get("sr-certificate-issue").hidden=state!=="ready"||!data?.certificate;
+  get("sr-certificate-revoke").hidden=state!=="issued";
+  get("sr-certificate-status").textContent=state==="revoked"?"Revoked — no valid institutional release.":state==="issued"?"Issued record · signature must be verified separately.":state==="ready"?"Approved for release.":state==="in_review"?"Prepare or review draft. Mark ready in the request queue.":"";
+  const select=get("sr-certificate-registration");select.replaceChildren(new Option("Choose registration",""));
+  for(const row of data?.placements||[])select.append(new Option(row.label,row.registrationId));
+  if(data?.certificate?.registrationId)select.value=data.certificate.registrationId;else if(data?.placements?.length===1)select.value=data.placements[0].registrationId;
+}
+function closeCertificate(){++certificateRun;certificateData=null;get("sr-certificate-preview").replaceChildren();get("sr-certificate-registration").replaceChildren();get("sr-certificate-dialog").close();}
+async function openCertificate(row,fromQueue=false){
+  if(saving)return;const run=++certificateRun;
+  certificateData={requestId:row.requestId,personId:fromQueue?row.personId:current?.person.personId,fromQueue,data:null};
+  get("sr-certificate-preview").replaceChildren();get("sr-certificate-status").textContent="Loading…";
+  for(const id of ["sr-certificate-prepare-form","sr-certificate-print","sr-certificate-issue","sr-certificate-revoke"])get(id).hidden=true;
+  get("sr-certificate-dialog").showModal();
+  try{const data=await perform("get_enrollment_certificate",{requestId:row.requestId});if(run!==certificateRun||!certificateData)return;certificateData.data=data;renderCertificate();}
+  catch(error){if(run===certificateRun)get("sr-certificate-status").textContent=error?.message||"Certificate unavailable.";}
+}
+get("sr-certificate-close").addEventListener("click",()=>{if(!saving)closeCertificate();});
+get("sr-certificate-dialog").addEventListener("cancel",event=>{event.preventDefault();if(!saving)closeCertificate();});
+async function refreshCredentialOwner(owner){
+  if(owner.fromQueue){await loadRequestQueue({force:true});if(current?.person.personId===owner.personId){current=null;fileHost.hidden=true;get("sr-empty-file").hidden=false;}}
+  else await openStudent(owner.personId,{force:true});
+}
+async function mutateCertificate(action,details){
+  if(saving||!certificateData?.data)return;
+  const owner=certificateData,requestId=owner.requestId,expectedRevision=owner.data.revision;
+  setSaving(true,"Updating certificate…");
+  try{
+    await perform(action,{requestId,expectedRevision,...details});closeCertificate();
+    await refreshCredentialOwner(owner);status.textContent=action==="prepare_enrollment_certificate"?"Draft prepared. Review and mark ready.":action==="issue_enrollment_certificate"?"Institutional certificate issued. Print unsigned copy for authorized signature.":"Certificate revoked.";
+  }catch(error){get("sr-certificate-status").textContent=error?.message||"Certificate update failed.";}finally{setSaving(false);}
+}
+get("sr-certificate-prepare-form").addEventListener("submit",event=>{event.preventDefault();if(event.currentTarget.reportValidity())void mutateCertificate("prepare_enrollment_certificate",{registrationId:get("sr-certificate-registration").value});});
+get("sr-certificate-issue").addEventListener("click",()=>{
+  if(saving||!certificateData?.data)return;const reason=prompt("Confirm institutional release and record the reason (at least 12 characters).");
+  if(reason?.trim().length>=12)void mutateCertificate("issue_enrollment_certificate",{reason:reason.trim(),confirmRelease:true});
+});
+get("sr-certificate-revoke").addEventListener("click",()=>{
+  if(saving||!certificateData?.data)return;const reason=prompt("Record the reason for revocation (at least 12 characters).");
+  if(reason?.trim().length>=12&&confirm("Revoke this institutional certificate? Its reference and history will be preserved."))void mutateCertificate("revoke_enrollment_certificate",{reason:reason.trim()});
+});
+get("sr-certificate-print").addEventListener("click",()=>{
+  const data=certificateData?.data,c=data?.certificate;if(!c||saving||data.state==="revoked")return;
+  const popup=window.open("","_blank");if(!popup){get("sr-certificate-status").textContent="Allow pop-ups to print the certificate.";return;}
+  popup.opener=null;const doc=popup.document;doc.title="Enrollment certificate";
+  const style=doc.createElement("style");style.textContent="body{font:15pt Georgia,serif;margin:18mm;color:#111}header{text-align:center;margin-bottom:38px}h1{font-size:22pt}h2{font-size:18pt}p{line-height:1.6}footer{margin-top:60px}small{font:10pt Arial,sans-serif}";doc.head.append(style);
+  const add=(host,tag,value)=>{const node=doc.createElement(tag);node.textContent=value;host.append(node);return node;};
+  const header=doc.createElement("header");doc.body.append(header);add(header,"h2",c.schoolName);if(c.schoolAddress)add(header,"small",c.schoolAddress);if(c.schoolIdentifier)add(header,"p",c.schoolIdentifier);
+  add(header,"h1","Certificate of Enrollment");add(header,"small",data.state==="issued"?"UNSIGNED COPY — AUTHORIZED SIGNATURE REQUIRED":"DRAFT — NOT ISSUED");
+  add(doc.body,"p","This certifies that "+c.studentName+(c.studentNumber?" (Student no. "+c.studentNumber+")":"")+" is recorded as officially enrolled in "+c.programName+", "+c.sectionName+", for "+c.termName+" of "+c.yearName+".");
+  add(doc.body,"p","Purpose: "+c.purpose);if(data.reference)add(doc.body,"p","Institutional reference: "+data.reference);
+  const footer=doc.createElement("footer");doc.body.append(footer);add(footer,"p","________________________________");add(footer,"strong",c.signatoryName);add(footer,"p",c.signatoryTitle);
+  add(doc.body,"small","No digital signature is attached. Confirm the authorized signature and institutional reference with the issuing school.");
+  popup.focus();popup.print();
+});
+function clearVerify(){++verifyRun;get("sr-certificate-reference").value="";get("sr-certificate-verify-result").replaceChildren();}
+get("sr-certificate-verify").addEventListener("click",()=>{if(saving)return;clearVerify();get("sr-certificate-verify-dialog").showModal();});
+get("sr-certificate-verify-close").addEventListener("click",()=>{clearVerify();get("sr-certificate-verify-dialog").close();});
+get("sr-certificate-verify-dialog").addEventListener("cancel",clearVerify);
+get("sr-certificate-verify-form").addEventListener("submit",event=>{
+  event.preventDefault();if(!event.currentTarget.reportValidity()||saving)return;const run=++verifyRun,reference=get("sr-certificate-reference").value.trim(),host=get("sr-certificate-verify-result");host.textContent="Checking…";
+  void (async()=>{try{const data=await perform("verify_enrollment_certificate",{reference});if(run!==verifyRun)return;host.replaceChildren();host.append(textNode("strong",data.state==="recorded"?"Recorded issuance":data.state==="revoked"?"Revoked":"Reference not found"));if(data.state!=="not_found")host.append(textNode("p",[data.studentName,data.yearName,data.termName,fmt(data.issuedAt)].filter(Boolean).join(" · "),"sr-muted"));host.append(textNode("p","Signature verification remains separate.","sr-muted"));}catch(error){if(run===verifyRun)host.textContent=error?.message||"Verification failed.";}})();
+});
 function renderFile(data){
   get("sr-admission-docs").replaceChildren();
   current=data;const p=data.person;
@@ -317,7 +448,7 @@ function renderFile(data){
 async function openStudent(personId,{force=false}={}){
   if(saving&&!force)return;
   if(profileDirty&&!force&&!confirm("Discard unsaved profile changes?"))return;
-  clearProfile();
+  clearProfile();resetAcademic();
   if(current?.person.personId!==personId){fileView="registrations";fileHost.hidden=true;}
   historyBusy=false;const run=++fileRun;status.textContent="Loading student record…";
   try{
@@ -499,6 +630,7 @@ function renderRequestQueue(){
     const controls=actions();controls.append(button("201 file",{tone:"secondary",onClick:()=>void (async()=>{
       if(saving)return;showRecordsMode("students");await openStudent(row.personId);if(current?.person.personId===row.personId)showFileView("documents");
     })()}));
+    if(row.generationMode==="institutional"&&["in_review","ready","released"].includes(row.status))controls.append(button("Certificate",{tone:"secondary",onClick:()=>void openCertificate(row,true)}));
     for(const [label,next,tone] of requestTransitions(row))controls.append(button(label,{tone,onClick:()=>openRequestLifecycle(row,next,true)}));
     card.append(controls);host.append(card);
   }
@@ -542,7 +674,7 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current Student Records change before switching schools.");
     if(profileDirty&&!confirm("Discard unsaved profile changes?"))throw new Error("Finish the profile edit before switching schools.");
-    clearProfile();
+    clearProfile();resetAcademic();closeCertificate();closeCertificateSettings();clearVerify();
     ++searchRun;++fileRun;requestedPersonId="";students=[];current=null;historyBusy=false;fileView="registrations";guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
     directoryCursor=null;directoryQuery="";directoryBusy=false;get("sr-more").hidden=true;get("sr-search-progress").textContent="";
     ++queueRun;queueRows=[];queueCursor=null;queueBusy=false;queueSkipped=0;recordsMode="students";get("sr-requests-workspace").hidden=true;get("sr-workspace-nav").hidden=true;get("sr-queue-list").replaceChildren();get("sr-queue-search").value="";get("sr-queue-filter").value="open";get("sr-queue-status").textContent="";
@@ -554,7 +686,7 @@ picker=createTenantSchoolPicker({
     if(!currentScope?.roles.some(role=>["school_admin","registrar"].includes(role))){
       workspace.hidden=true;get("sr-workspace-nav").hidden=true;get("sr-requests-workspace").hidden=true;status.textContent="School Administrator or Registrar access is required for Student Records.";return;
     }
-    get("sr-workspace-nav").hidden=false;showRecordsMode("students");status.textContent="Select a student.";
+    get("sr-workspace-nav").hidden=false;get("sr-certificate-settings").hidden=!currentScope.roles.includes("school_admin")||currentScope.platformOverride===true;showRecordsMode("students");status.textContent="Select a student.";
     const personId=requestedPersonId;requestedPersonId="";
     void searchStudents();
     if(personId&&requestedSchoolId&&requestedSchoolId!==currentScope.schoolId){
