@@ -87,7 +87,10 @@ test("People & Access no longer submits guardian contact fields as ordinary prof
 test("Student Records UI deep-links to owning identity and enrollment workspaces",()=>{
   assert.match(recordsUi,/people-access\.html\?personId=/);
   assert.match(recordsUi,/school-enrollment\.html\?personId=/);
-  assert.match(recordsHtml,/One record, not another student table/);
+  assert.doesNotMatch(recordsHtml,/One record, not another student table/);
+  assert.match(recordsHtml,/id="sr-open-people" hidden/);
+  assert.match(recordsUi,/get\("sr-open-people"\)\.hidden=!picker\.scope\.current\.roles\.includes\("school_admin"\)/);
+  assert.match(recordsUi,/schoolQuery="&schoolId="/);
   assert.match(recordsHtml,/js\/core\/adminerva-loader\.js/);
 });
 
