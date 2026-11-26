@@ -531,6 +531,7 @@ async function previewCohort(){
     message.textContent="Choose the complete target placement before previewing the cohort.";return;
   }
   const run=++cohortRun,signature=cohortSignature(selection);let candidates;
+  cohortPreview=null;get("en-cohort-apply").disabled=true;get("en-cohort-results").replaceChildren();
   message.textContent="Loading the full selected cohort…";
   try{const result=await perform("list_progression_cohort",{yearId:selection.sourceYearId,termId:selection.sourceTermId,sectionId:selection.sourceSectionId});if(run!==cohortRun)return;candidates=result.items||[];}catch(error){if(run===cohortRun)invalidateCohortPreview(error?.message||"Cohort could not be loaded.");return;}
   if(!candidates.length){invalidateCohortPreview("No active registrations match the selected source cohort.");return;}
@@ -1304,7 +1305,7 @@ get("en-report-load").addEventListener("click",()=>void (async()=>{
 })());
 get("en-report-export").addEventListener("click",()=>{
   if(!reportData||saving)return;
-  const rows=[["year_id","term_id","scope","status","record_count","generated_at"],...reportGroups.flatMap(([key])=>[["total",reportData[key].total],...Object.entries(reportData[key].statuses)].map(([state,count])=>[reportData.yearId,key==="registrations"?reportData.termId||"all":"all",key,state,count,new Date(reportData.asOf).toISOString()]))];
+  const rows=[["year_id","term_id","scope","status","record_count","generated_at"],...reportGroups.flatMap(([key])=>[["total",reportData[key].total],...Object.entries(reportData[key].statuses)].map(([state,count])=>[key==="documentRequests"?"all":reportData.yearId,key==="registrations"?reportData.termId||"all":"all",key,state,count,new Date(reportData.asOf).toISOString()]))];
   const csv=rows.map(row=>row.map(value=>'"'+String(value).replaceAll('"','""')+'"').join(",")).join("\r\n");
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="registrar-summary.csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
@@ -1403,7 +1404,7 @@ function renderApplications(){
     if(item.status==="accepted"&&item.requirementsReady){
       const selectLabel=document.createElement("label");selectLabel.className="en-muted";
       const checkbox=document.createElement("input");checkbox.type="checkbox";checkbox.checked=selectedApplications.has(item.applicationId);checkbox.disabled=saving;
-      checkbox.addEventListener("change",()=>selectBulkApplication(item,checkbox.checked));selectLabel.append(checkbox,document.createTextNode(" Select for bulk enrollment"));info.append(selectLabel);
+      checkbox.addEventListener("change",()=>selectBulkApplication(item,checkbox.checked));const selectText=document.createElement("span");selectText.textContent=" Select for bulk enrollment";selectLabel.append(checkbox,selectText);info.append(selectLabel);
     }
     if(["submitted","needs_information","accepted"].includes(item.status)){
       const requirements=document.createElement("p");requirements.className="en-muted";
