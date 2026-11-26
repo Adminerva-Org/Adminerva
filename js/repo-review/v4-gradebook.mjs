@@ -90,7 +90,20 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       copy=document.getElementById("gbV4ClassRecordStatus"),
       link=document.getElementById("gbV4ClassRecordLink");
     if(!panel||!copy||!link)return;
-    if(!currentTask||currentTask.legacyCompatibility){panel.hidden=true;return;}
+    if(!currentTask){panel.hidden=true;return;}
+    if(currentTask.legacyCompatibility){
+      const classId=currentTask.legacyOfferingId||requestedOfferingId;
+      panel.hidden=!classId;
+      if(!classId)return;
+      link.href="class-record.html?"+new URLSearchParams({
+        offering:classId,assessment:currentTask.legacyAssessmentId,source:"legacy_historical"
+      }).toString();
+      link.textContent="Open historical Class Record";
+      copy.textContent="This original historical assessment retains its grades and submissions. "+
+        "The assigned teacher may link it to the official Class Record after confirming the "+
+        "academic period and School Admin-verified custody. Existing scores are not copied.";
+      return;
+    }
     panel.hidden=false;
     link.href="class-record.html?"+new URLSearchParams({
       offering:currentTask.offeringId,assessment:currentTask.taskId,source:"school"
@@ -232,9 +245,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const v4Items=(result.assessments||[]).filter(item=>
       ["studio","github","text","link"].includes(item.submissionSource)&&item.status==="deployed"&&
       (!requestedOfferingId||item.offeringId===requestedOfferingId));
-    const legacyItems=requestedOfferingId?[]:(legacyResult.items||[]).map(item=>({
-      taskId:"legacy:"+item.legacyAssessmentId,
+    const legacyItems=(legacyResult.items||[]).filter(item=>
+      !requestedOfferingId||item.legacyOfferingId===requestedOfferingId).map(item=>({
+      taskId:"legacy:"+item.legacyAssessmentId+
+        (item.legacyOfferingId?"@"+item.legacyOfferingId:""),
       legacyAssessmentId:item.legacyAssessmentId,
+      legacyOfferingId:item.legacyOfferingId||"",
+      custodyApproved:item.custodyApproved===true,
       legacyCompatibility:true,
       title:item.title,
       subject:item.subject||"Computer Programming",
@@ -290,7 +307,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       let result,resultData=null,classRecordStatus={status:"unavailable"};
       if(historical){
         result=await scoped(migrationApi,historicalStudio?"legacy_review_inbox":"legacy_github_inbox",{
-          legacyAssessmentId:task.legacyAssessmentId
+          legacyAssessmentId:task.legacyAssessmentId,
+          ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{})
         });
         currentTask={...task,...result.task};
       }else{
@@ -714,11 +732,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         {taskId:currentTask.taskId,submissionId:row.recordId};
       const result=historicalStudio?
         await scoped(migrationApi,"legacy_review_inspect",{
-          legacyAssessmentId:currentTask.legacyAssessmentId,legacySubmissionId:row.recordId
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),legacySubmissionId:row.recordId
         }):
         historicalGithub?
         await scoped(migrationApi,"legacy_github_inspect",{
-          legacyAssessmentId:currentTask.legacyAssessmentId,legacyEvidenceId:row.recordId
+          legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),legacyEvidenceId:row.recordId
         }):null;
       if(historicalStudio||historicalGithub){
         currentSnapshot=result.snapshot;
@@ -946,6 +966,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           const part=await scoped(migrationApi,currentTask.submissionSource==="github"
             ?"legacy_github_bulk_publish":"legacy_review_bulk_publish",{
             legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
             ...(cursor?{cursor}:{})
           });
           totals.published+=Number(part.published||0);
@@ -990,6 +1011,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           throw Error("Review the student's submitted commit evidence and enter a grading note of at least 15 characters. No separate contribution approval is required.");
         await scoped(migrationApi,"legacy_github_save_draft",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
           legacyEvidenceId:currentRow.recordId,
           expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
           expectedCheckpointSha:currentSnapshot.checkpointSha,
@@ -1001,6 +1023,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       }else if(currentTask.legacyCompatibility){
         await scoped(migrationApi,"legacy_review_save_draft",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
           legacySubmissionId:currentRow.recordId,criteria,
           feedback:document.getElementById("gbV4Feedback").value.trim(),
           draftSource:currentDraftSource
@@ -1018,6 +1041,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         await scoped(migrationApi,currentTask.submissionSource==="github"?
           "legacy_github_inspect":"legacy_review_inspect",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
           ...(currentTask.submissionSource==="github"?
             {legacyEvidenceId:currentRow.recordId}:{legacySubmissionId:currentRow.recordId})
         }):
@@ -1043,6 +1067,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         await scoped(migrationApi,currentTask.submissionSource==="github"?
           "legacy_github_publish":"legacy_review_publish",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
+          ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
           ...(currentTask.submissionSource==="github"?{
             legacyEvidenceId:currentRow.recordId,
             expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
