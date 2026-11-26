@@ -91,6 +91,7 @@ test("Student Records UI deep-links to owning identity and enrollment workspaces
   assert.match(recordsHtml,/id="sr-open-people" hidden/);
   assert.match(recordsUi,/get\("sr-open-people"\)\.hidden=!picker\.scope\.current\.roles\.includes\("school_admin"\)/);
   assert.match(recordsUi,/schoolQuery="&schoolId="/);
+  assert.match(recordsUi,/requestedSchoolId!==currentScope\.schoolId/);
   assert.match(recordsHtml,/js\/core\/adminerva-loader\.js/);
 });
 
