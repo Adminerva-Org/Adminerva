@@ -267,6 +267,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
          results.push({...row,studentName:clean(person.name||row.studentId,160),
            ...(gradeException?{gradeException:true,hasSubmission:false}:{}),
            gradeStatus:gradeException?null:grade?.published===true?"published":grade?"draft":null,
+           reviewSuggested:!gradeException&&!!grade&&grade.published!==true,
            awarded:gradeException||!grade?null:Number(grade.score),
            maxScore:gradeException||!grade?null:Number(grade.maxScore??(custody?total:null)),
            pending:gradeException||!grade?0:Number(grade.pending||0)});
@@ -305,7 +306,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
          studentName:clean(person.exists?person.data().name:grade.studentId,160),
          section:clean(grade.section,160),status:"grade_only",
          gradeOnly:true,hasSubmission:false,discoveryOnly:false,
-         gradeStatus:grade.published===true?"published":"draft",awarded,
+         gradeStatus:grade.published===true?"published":"draft",reviewSuggested:grade.published!==true,awarded,
          maxScore:maximum});
      }
      return {task:taskInfo,evidence:results,coverage:{
@@ -443,7 +444,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        const values={studentId:meta.studentId,taskId:id,
          section:clean(record.data.section,160),score:scores.awarded,maxScore:scores.total,
          criteria:scores.criteria,pending:scores.pending,
-         feedback,published:false,reviewRequired:scores.pending>0,manuallyAdjusted:true,
+         feedback,published:false,reviewRequired:scores.pending>0,reviewSuggested:true,manuallyAdjusted:true,
          gradeVersion:revision,gradeSource:draftSource==="teacher"?"teacher_manual":"teacher_ai_reviewed",
          evaluationSource:draftSource,
          reviewedBy:ctx.uid,reviewedAt:now,gradedAt:now,
