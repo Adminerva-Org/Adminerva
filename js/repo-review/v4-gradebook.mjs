@@ -8,7 +8,7 @@ import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResp
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
-import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261126-historical-scalar";
+import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261126-streamlined-grade";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -326,7 +326,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const gradeMap=new Map(historical?
         rows.filter(item=>item.gradeStatus).map(item=>[item.studentUid,{
           studentUid:item.studentUid,status:item.gradeStatus,awarded:item.awarded,
-          total:item.maxScore??currentTask.rubric.reduce((sum,part)=>sum+Number(part.points),0),pending:Number(item.pending||0)
+          total:item.maxScore??currentTask.rubric.reduce((sum,part)=>sum+Number(part.points),0),pending:Number(item.pending||0),reviewSuggested:item.reviewSuggested===true
         }]):
         (resultData.results||[]).map(item=>[item.studentUid,item]));
       if(view==="results")rows=[...rows].sort((a,b)=>{
@@ -431,8 +431,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
               " · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently")))
         );
         const resultLine=grade?
-          (grade.status==="published"?"Published result":"Grade draft")+" · "+grade.awarded+" / "+grade.total+
-            (grade.pending?" · "+grade.pending+" pending":""):
+          (grade.status==="published"?"Published result":"Draft")+" · "+grade.awarded+" / "+grade.total+
+            (grade.pending?" · "+grade.pending+" pending":"")+(grade.status==="draft"&&grade.reviewSuggested?" · Review suggested":""):
           (row.gradeException?"Grade conflict · excluded from evaluation":row.evidenceException?"Incompatible original evidence · excluded from evaluation":
           historicalGithub&&row.hasSubmission===false?
             "No student submission · excluded from evaluation":"Needs grading");
@@ -536,8 +536,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       snapshot?.hasSubmission===false?
       "Historical teacher discovery only: there is no student submission, so no new grade is permitted.":
       "Student-submitted commit evidence is checked automatically against the frozen checkpoint during evaluation. Git metadata alone does not establish authorship.";
-    document.getElementById("gbV4GithubApproval").classList.add("hidden");
-    document.getElementById("gbV4GithubApprovalNote").value="";
+
     githubVerification=null;
   }
   function renderGeneralEvidence(snapshot){
@@ -572,15 +571,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const missing=selected.filter(value=>!map.has(value));
       renderGithubEvidence(currentSnapshot,map);
       if(missing.length){
-        verifyStatus.textContent="Cannot approve yet: "+missing.length+
+        verifyStatus.textContent="Evidence check: "+missing.length+
           " selected commit(s) were not found in the loaded checkpoint history. Increase repository access or inspect the evidence manually.";
         githubVerification=null;return;
       }
       githubVerification={verifiedCheckpointSha:checkpoint,verifiedCommitShas:selected};
       verifyStatus.textContent="All "+selected.length+
-        " frozen evidence commit(s) are reachable from the selected checkpoint. Inspect the diffs, then record your verification note.";
-      if(currentSnapshot.status==="submitted")
-        document.getElementById("gbV4GithubApproval").classList.remove("hidden");
+        " frozen evidence commit(s) are reachable from the selected checkpoint. No approval is needed."
     }catch(error){
       githubVerification=null;
       verifyStatus.textContent=(error?.message||"GitHub verification failed")+
@@ -705,7 +702,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
       currentTask.title+" · version "+row.version+" · "+row.status;
-    document.getElementById("gbV4ReviewStatus").textContent="Loading frozen evidence, private grade draft and learner conversation…";
+    document.getElementById("gbV4ReviewStatus").textContent="Loading frozen evidence, grade draft and learner conversation…";
     document.getElementById("gbV4ConversationBody").value="";
     document.getElementById("gbV4Conversation").replaceChildren(make("p","text-sm text-slate-500","Loading private messages…"));
     document.getElementById("gbV4ConversationStatus").textContent="";
@@ -723,11 +720,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4ExternalEvaluationPanel").classList.remove("hidden");
     const legacyGithub=currentTask.legacyCompatibility&&currentTask.submissionSource==="github";
     document.getElementById("gbV4LegacyGithubPanel").hidden=!legacyGithub;
-    document.getElementById("gbV4LegacyGithubReviewNote").value="";
-    document.getElementById("gbV4LegacyGithubConfirm").checked=false;
     document.getElementById("gbV4LegacyGithubAttribution").textContent="";
-    document.getElementById("gbV4LegacyGithubVerifyLink").hidden=true;
-    document.getElementById("gbV4GithubVerify").hidden=true;
+    document.getElementById("gbV4GithubVerify").hidden=currentTask.submissionSource!=="github";
     document.getElementById("gbV4LegacyGradePanel").hidden=true;
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
     document.getElementById("gbV4StudioEvidence").classList.toggle("hidden",currentTask.submissionSource!=="studio");
@@ -816,12 +810,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         renderGithubEvidence(currentSnapshot);
         if(historicalGithub){
           const approved=currentSnapshot?.status==="approved";
-          document.getElementById("gbV4GithubApproval").classList.add("hidden");
-          const link=document.getElementById("gbV4LegacyGithubVerifyLink");
-          link.href="assessment-evidence-review.html?"+
-            new URLSearchParams({assessment:currentTask.legacyAssessmentId,
-              student:currentRow.studentUid}).toString();
-          link.hidden=true;
+
           document.getElementById("gbV4GithubVerifyStatus").textContent=
             currentSnapshot.hasSubmission===false?
               "Teacher-discovered checkpoint only: no student-submitted commits, so no new grade can be created.":
@@ -883,35 +872,6 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   })());
   document.getElementById("gbV4GithubVerify").addEventListener("click",()=>
     void verifyGithubEvidence());
-  document.getElementById("gbV4GithubApprove").addEventListener("click",()=>void (async()=>{
-    if(busy||currentTask?.submissionSource!=="github"||!currentSnapshot||!githubVerification)return;
-    const note=document.getElementById("gbV4GithubApprovalNote").value.trim();
-    if(note.length<12){
-      document.getElementById("gbV4GithubVerifyStatus").textContent=
-        "Add a verification note of at least 12 characters before approving evidence.";return;
-    }
-    if(!confirm("Approve this exact frozen repository checkpoint and commit set for grading?"))return;
-    try{
-      setBusy(true,"Recording teacher approval for the exact frozen GitHub evidence…");
-      await scoped(githubEvidenceApi,"approve",{
-        taskId:currentTask.taskId,evidenceId:currentRow.recordId,note,
-        verifiedCheckpointSha:githubVerification.verifiedCheckpointSha,
-        verifiedCommitShas:githubVerification.verifiedCommitShas
-      });
-      currentSnapshot={...currentSnapshot,status:"approved"};
-      currentRow={...currentRow,status:"approved"};
-      document.getElementById("gbV4GithubApproval").classList.add("hidden");
-      document.getElementById("gbV4GithubVerifyStatus").textContent=
-        "Evidence approved for grading. The exact commit set and checkpoint are frozen in the audit record.";
-      refreshReviewControls();
-      document.getElementById("gbV4ReviewStatus").textContent=
-        "GitHub evidence approved. You can now save a grade draft.";
-      await loadInbox();
-    }catch(error){
-      document.getElementById("gbV4GithubVerifyStatus").textContent=
-        error?.message||"Evidence approval was not recorded.";
-    }finally{setBusy(false);}
-  })());
   document.getElementById("gbV4SystemCheck").addEventListener("click",()=>void (async()=>{
     const output=document.getElementById("gbV4ExternalStatus");
     const button=document.getElementById("gbV4SystemCheck");
@@ -974,7 +934,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(busy||!currentTask||bulkPublish.dataset.ready!=="true")return;
     const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
     if(!count)return;
-    if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? This confirmation is the teacher approval step. Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
+    if(!confirm("Publish all "+count+" valid non-zero draft"+(count===1?"":"s")+" for "+currentTask.title+"? Zero-score drafts and any draft that no longer matches frozen evidence will remain unpublished."))return;
     try{
       setBusy(true,"Publishing all valid drafts…");
       let result;
@@ -1025,9 +985,6 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const criteria=collectCriteria();
       setBusy(true,"Saving grade draft…");
       if(currentTask.legacyCompatibility&&currentTask.submissionSource==="github"){
-        const reviewNote=document.getElementById("gbV4LegacyGithubReviewNote").value.trim();
-        if(reviewNote.length<15||!document.getElementById("gbV4LegacyGithubConfirm").checked)
-          throw Error("Review the student's submitted commit evidence and enter a grading note of at least 15 characters. No separate contribution approval is required.");
         await scoped(migrationApi,"legacy_github_save_draft",{
           legacyAssessmentId:currentTask.legacyAssessmentId,
           ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
@@ -1035,7 +992,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
           expectedCheckpointSha:currentSnapshot.checkpointSha,
           expectedGradeRevision:currentGrade?.revision||0,
-          criteria,reviewNote,
+          criteria,
           feedback:document.getElementById("gbV4Feedback").value.trim(),
           draftSource:currentDraftSource
         });
@@ -1073,8 +1030,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       document.getElementById("gbV4ReviewStatus").textContent=
         "Draft saved against frozen submission version "+currentSnapshot.version+".";
     }catch(error){
-      if(saved){reviewNeedsRefresh=true;document.getElementById("gbV4ReviewStatus").textContent="Grade draft saved. Refresh the review before publishing; the saved revision could not reload.";}
-      else document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade draft was not saved.";
+      if(saved){reviewNeedsRefresh=true;document.getElementById("gbV4ReviewStatus").textContent="Draft saved. Refresh the review before publishing; the saved revision could not reload.";}
+      else document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Draft was not saved.";
     }finally{setBusy(false);if(saved)await loadInbox();}
   })());
   document.getElementById("gbV4Publish").addEventListener("click",()=>void (async()=>{
@@ -1159,10 +1116,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   document.getElementById("gbV4Correct").addEventListener("click",()=>void (async()=>{
     if(busy||reviewNeedsRefresh||!currentTask||!currentRow||currentGrade?.status!=="published")return;
     const reason=document.getElementById("gbV4CorrectionReason").value.trim();
-    if(reason.length<12){
-      document.getElementById("gbV4ReviewStatus").textContent=
-        "Explain why this published grade is being corrected in at least 12 characters.";return;
-    }
+
     let criteria;
     try{criteria=collectCriteria();}catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error.message;return;
@@ -1201,9 +1155,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       return;
     }
     const reason=document.getElementById("gbV4RevisionReason").value.trim();
-    if(reason.length<12){
-      document.getElementById("gbV4ReviewStatus").textContent="Explain the revision request in at least 12 characters.";return;
-    }
+
     const raw=document.getElementById("gbV4RevisionDue").value;
     const originalDeadlinePassed=Number(currentTask.dueAt||0)>0&&Date.now()>Number(currentTask.dueAt);
     if(originalDeadlinePassed&&!raw){
