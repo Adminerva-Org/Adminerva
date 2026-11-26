@@ -12,6 +12,7 @@ const progressionTypeLabel=value=>({
 })[value]||"Progression";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
+const requestedSchoolId=(()=>{try{return new URL(location.href).searchParams.get("schoolId")||"";}catch{return "";}})();
 let requestedPersonId=(()=>{try{
   const value=new URL(location.href).searchParams.get("personId")||"";
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)?value:"";
@@ -1066,6 +1067,9 @@ async function refreshAll(){
   status.textContent=unavailable.length?unavailable.join(" and ")+" could not refresh. Available results remain usable; use Refresh to retry.":"";
   if(requestedPersonId&&!loadedApplication&&!loadedPerson&&version===refreshVersion){
     const personId=requestedPersonId;requestedPersonId="";
+    if(requestedSchoolId&&requestedSchoolId!==picker.scope.current.schoolId){
+      status.textContent="The linked student belongs to a different school. Select the intended school.";return;
+    }
     await loadStudentCandidate(personId);
   }
 }
