@@ -56,3 +56,16 @@ test("school templates cannot be bypassed with an empty or incomplete checklist"
   assert.throws(()=>normalizeRequirementTemplate(["A"," a "]));
   assert.deepEqual(normalizeRequirementTemplate(["  School record "]),["School record"]);
 });
+
+
+test("admissions document custody validates file size, encoding, type and scoped paths",()=>{
+  const {fileBytes,documentPath}=require("../functions/school-admission-documents.js");
+  const pdf=Buffer.from("%PDF-1.7 sample");
+  assert.deepEqual(fileBytes(pdf.toString("base64"),"application/pdf"),pdf);
+  assert.throws(()=>fileBytes(pdf.toString("base64"),"image/png"));
+  assert.throws(()=>fileBytes("abcd==","application/pdf"));
+  assert.throws(()=>fileBytes(Buffer.alloc(2*1024*1024+1).toString("base64"),"application/pdf"));
+  assert.throws(()=>documentPath("school","../other","doc"));
+  assert.equal(documentPath("school-a","app-1","doc-1"),"registrar/school-a/applications/app-1/doc-1");
+  assert.equal(admissionRequirementsReady({requirementsReviewed:true,noRequirements:true,requirements:[],admissionDocuments:[{state:"pending"}]}),false);
+});
