@@ -51,6 +51,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
     const prefix="schools/"+ctx.schoolId+"/";
 
     if(["preview_legacy_custody","approve_legacy_custody","revoke_legacy_custody"].includes(input.action)){
+      if(ctx.compatibilityMode==="v4_only"&&input.action!=="revoke_legacy_custody")
+        deny("failed-precondition","Historical assessment recovery is not available in V4-only schools.");
       // School Admin verifies original provenance; Platform/System Admin never
       // silently acquires School Admin authority over historical grading.
       if(ctx.platformOverride)
