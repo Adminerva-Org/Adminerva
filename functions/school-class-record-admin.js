@@ -4,7 +4,10 @@
  * Teachers remain the owners of score corrections and finalization changes.
  */
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
-const {checkId}=require("./school-academics.js");
+const {checkId,rowKey}=require("./school-academics.js");
+const {resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
+const {custodyRef,originalSections,normalized,historicalCustodianRecord,custodySourceDigest}=require("./school-legacy-custody.js");
+const {FieldValue}=require("firebase-admin/firestore");
 const {schemeMatchesOffering,schemeSpecificity}=require("./school-class-record.js");
 
 const MAX_RECORDS=200;
@@ -41,11 +44,185 @@ function actionLabel(action){
   })[action]||String(action||"Class Record activity");
 }
 
-function createSchoolClassRecordAdminService({db}){
+function createSchoolClassRecordAdminService({db,resolveUsers=null}){
   return async request=>{
     const input=request.data||{};
     const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["school_admin"]});
     const prefix="schools/"+ctx.schoolId+"/";
+
+    if(["preview_legacy_custody","approve_legacy_custody","revoke_legacy_custody"].includes(input.action)){
+      // School Admin verifies original provenance; Platform/System Admin never
+      // silently acquires School Admin authority over historical grading.
+      if(ctx.platformOverride)
+        deny("permission-denied","Use an active school-administrator membership to approve historical academic custody.");
+      const assessmentId=checkId(String(input.assessmentId||""),"Original assessment ID",128),
+        offeringId=checkId(String(input.offeringId||""),"Official class offering",330);
+      const originalRef=db.doc("assessments/"+assessmentId),
+        offeringRef=db.doc(prefix+"course_offerings/"+offeringId),
+        grantRef=custodyRef(db,ctx.schoolId,assessmentId,offeringId);
+      if(input.action==="revoke_legacy_custody"){
+        const reason=String(input.reason||"").trim();
+        if(reason.length<20||reason.length>500)
+          deny("invalid-argument","Explain the historical custody revocation (20–500 characters).");
+        await db.runTransaction(async tx=>{
+          const [grant,original,approver]=await Promise.all([
+            tx.get(grantRef),tx.get(originalRef),tx.get(db.doc(prefix+"memberships/"+ctx.uid))
+          ]);
+          if(!approver.exists||approver.data().schoolId!==ctx.schoolId||
+             approver.data().status!=="active"||
+             !approver.data().roles?.includes("school_admin"))
+            deny("permission-denied","A current active School Administrator must authorize custody changes.");
+          if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+            grant.data().assessmentId!==assessmentId||grant.data().offeringId!==offeringId||
+            grant.data().status!=="active")
+            deny("failed-precondition","No active historical custody grant exists for this class and assessment.");
+          tx.update(grantRef,{status:"revoked",revokedAt:FieldValue.serverTimestamp(),
+            revokedBySchoolAdminUid:ctx.uid,revokedReason:reason});
+          tx.create(db.collection(prefix+"class_record_audit").doc(),{
+            schoolId:ctx.schoolId,offeringId,assessmentId,actorUid:ctx.uid,
+            action:"legacy_assessment_custody_revoked",reason,
+            priorTeacherUid:grant.data().teacherUid,createdAt:FieldValue.serverTimestamp()
+          });
+        });
+        return {status:"revoked",assessmentId,offeringId};
+      }
+      const [original,offering]=await Promise.all([originalRef.get(),offeringRef.get()]);
+      if(!original.exists||!validOrigin(original.data(),ctx.schoolId)||
+         !offering.exists||offering.data().schoolId!==ctx.schoolId)
+        deny("not-found","Original assessment and official class must belong to the verified legacy school.");
+      if(!historicalCustodianRecord(original.data()))
+        deny("permission-denied","This is a teacher-owned private assessment, not an administrator-held legacy custody source.");
+      const data=original.data(),classData=offering.data(),
+        teacherUid=String(classData.primaryTeacherUid||"");
+      if(!teacherUid||teacherUid===ctx.uid||data.ownerUid===teacherUid)
+        deny("failed-precondition","Select an official class with a different active Primary Teacher. Already-owned assessments do not need custody delegation.");
+      const section=String(input.originalSection||"").trim();
+      if(!originalSections(data).some(value=>normalized(value)===normalized(section)))
+        deny("failed-precondition","The original assessment was not deployed to that exact historical section.");
+      const maximum=Number(data.maxScore);
+      if(!Number.isFinite(maximum)||maximum<=0||maximum>10000)
+        deny("failed-precondition","The original assessment maximum score is invalid.");
+      const [assignment,membership,enrollments]=await Promise.all([
+        db.doc(prefix+"staff_assignments/"+rowKey(teacherUid,offeringId)).get(),
+        db.doc(prefix+"memberships/"+teacherUid).get(),
+        db.collection(prefix+"enrollments").where("offeringId","==",offeringId).limit(101).get()
+      ]);
+      if(!assignment.exists||assignment.data().schoolId!==ctx.schoolId||
+         assignment.data().teacherUid!==teacherUid||assignment.data().offeringId!==offeringId||
+         assignment.data().status!=="active"||
+         !membership.exists||membership.data().schoolId!==ctx.schoolId||
+         membership.data().status!=="active"||!membership.data().roles?.includes("teacher"))
+        deny("permission-denied","The current Primary Teacher must have an active school appointment to this class.");
+      if(enrollments.size>=101)
+        deny("resource-exhausted","This class roster needs pagination before historical custody can be approved.");
+      const active=enrollments.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+        doc.data().status==="active"&&doc.data().offeringId===offeringId);
+      const people=await Promise.all(active.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
+      const roster=active.map((row,i)=>{
+        const person=people[i].exists&&people[i].data().schoolId===ctx.schoolId?people[i].data():null;
+        return {personId:row.data().personId,authUid:person?.authUid||"",
+          legacyStudentIds:Array.isArray(person?.legacyStudentIds)?person.legacyStudentIds:[]};
+      });
+      if(!roster.length)deny("failed-precondition","The selected class has no official active student roster.");
+      const identities=await resolveHistoricalRoster({db,schoolId:ctx.schoolId,roster,resolveUsers});
+      const ids=[...identities.keys()];
+      if(ids.length>350)deny("resource-exhausted","Historic identity reconciliation exceeds safe class size.");
+      const validStudentIds=[];
+      for(let offset=0;offset<ids.length;offset+=100){
+        const chunk=ids.slice(offset,offset+100);
+        const snapshots=await db.getAll(...chunk.map(id=>db.doc("students/"+id)));
+        for(let i=0;i<chunk.length;i++){
+          const record=snapshots[i].exists?snapshots[i].data():null;
+          if(normalized(record?.section||record?.sectionName||record?.classSection)===normalized(section))
+            validStudentIds.push(chunk[i]);
+        }
+      }
+      const verifiedPeople=new Set(validStudentIds.map(id=>identities.get(id)));
+      // A targetSections list could be only a teacher's unpublished
+      // preparation. Require assessment-specific original student evidence
+      // (a real submission receipt, or an existing grade) before delegation.
+      const verifiedIds=new Set(validStudentIds);
+      const [receiptPage,gradePage]=await Promise.all([
+        db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
+        db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get()
+      ]);
+      if(receiptPage.size>=501||gradePage.size>=501)
+        deny("resource-exhausted","Historical assessment source evidence requires paginated verification.");
+      const sourceProof=new Set();
+      for(const receipt of receiptPage.docs){
+        const evidence=receipt.data();
+        if(evidence.assessmentId===assessmentId&&verifiedIds.has(evidence.studentId)&&
+           evidence.submittedAt)sourceProof.add(evidence.studentId);
+      }
+      for(const row of gradePage.docs){
+        const grade=row.data();
+        if(grade.taskId===assessmentId&&verifiedIds.has(grade.studentId)&&
+           grade.score!==undefined&&grade.score!==null&&
+           Number.isFinite(Number(grade.score)))
+          sourceProof.add(grade.studentId);
+      }
+      const required=roster.length===1?1:Math.max(2,Math.ceil(roster.length/3));
+      const preview={assessmentId,offeringId,originalTitle:String(data.title||""),
+        originalSubject:String(data.subject||""),originalSection:section,
+        originalMaxScore:maximum,teacherUid,originalOwnerUid:String(data.ownerUid||""),
+        verifiedStudentCount:verifiedPeople.size,requiredStudentCount:required,
+        rosterCount:roster.length,originalSourceRecordCount:sourceProof.size,
+        eligible:verifiedPeople.size>=required&&sourceProof.size>0,
+        status:verifiedPeople.size<required?"identity_reconciliation_required":
+          sourceProof.size===0?"original_submission_or_grade_not_found":"ready_for_school_admin_approval"};
+      if(input.action==="preview_legacy_custody")return preview;
+      if(!preview.eligible)
+        deny("failed-precondition","Verify original roster identities AND at least one assessment-specific student submission or saved original grade before approving custody.");
+      const reason=String(input.reason||"").trim();
+      if(reason.length<30||reason.length>1000)
+        deny("invalid-argument","Document the original teacher and section custody proof (30–1000 characters).");
+      if(input.confirmTitle!==preview.originalTitle)
+        deny("failed-precondition","Confirm the exact original assessment title before delegating custody.");
+      await db.runTransaction(async tx=>{
+        const [current,task,classRecord,appointment,member,approver]=await Promise.all([
+          tx.get(grantRef),tx.get(originalRef),tx.get(offeringRef),
+          tx.get(db.doc(prefix+"staff_assignments/"+rowKey(teacherUid,offeringId))),
+          tx.get(db.doc(prefix+"memberships/"+teacherUid)),
+          tx.get(db.doc(prefix+"memberships/"+ctx.uid))
+        ]);
+        if(!approver.exists||approver.data().schoolId!==ctx.schoolId||
+           approver.data().status!=="active"||
+           !approver.data().roles?.includes("school_admin"))
+          deny("permission-denied","A current active School Administrator must authorize custody changes.");
+        if(current.exists&&current.data().status==="active")
+          deny("already-exists","This legacy source is already verified for this offering.");
+        if(!task.exists||!historicalCustodianRecord(task.data())||
+           task.data().schoolId&&task.data().schoolId!==ctx.schoolId||
+           String(task.data().title||"")!==preview.originalTitle||
+           String(task.data().ownerUid||"")!==preview.originalOwnerUid||
+           String(task.data().subject||"")!==preview.originalSubject||
+           custodySourceDigest(task.data())!==custodySourceDigest(data)||
+           Number(task.data().maxScore)!==maximum||
+           !originalSections(task.data()).some(x=>normalized(x)===normalized(section))||
+           !classRecord.exists||classRecord.data().schoolId!==ctx.schoolId||
+           classRecord.data().primaryTeacherUid!==teacherUid||
+           !appointment.exists||appointment.data().status!=="active"||
+           appointment.data().teacherUid!==teacherUid||appointment.data().offeringId!==offeringId||
+           !member.exists||member.data().status!=="active"||
+           !member.data().roles?.includes("teacher"))
+          deny("failed-precondition","Original assessment or official teacher assignment changed during custody review.");
+        tx.set(grantRef,{schoolId:ctx.schoolId,assessmentId,offeringId,teacherUid,
+          originalOwnerUid:preview.originalOwnerUid,originalTitle:preview.originalTitle,
+          originalSubject:preview.originalSubject,originalSection:section,
+          originalMaxScore:maximum,sourceDigest:custodySourceDigest(data),
+          verifiedLegacyStudentIds:[...new Set(validStudentIds)].sort(),
+          verifiedPersonCount:verifiedPeople.size,rosterCount:roster.length,
+          status:"active",reviewReason:reason,reviewedBySchoolAdminUid:ctx.uid,
+          reviewedAt:FieldValue.serverTimestamp(),revision:Number(current.data()?.revision||0)+1});
+        tx.create(db.collection(prefix+"class_record_audit").doc(),{
+          schoolId:ctx.schoolId,offeringId,assessmentId,actorUid:ctx.uid,
+          action:"legacy_assessment_custody_approved",teacherUid,
+          originalSection:section,verifiedPersonCount:verifiedPeople.size,reason,
+          createdAt:FieldValue.serverTimestamp()
+        });
+      });
+      return {...preview,status:"active",approved:true};
+    }
 
     if(input.action==="overview"){
       const records=await db.collection(prefix+"class_records").limit(MAX_RECORDS+1).get();

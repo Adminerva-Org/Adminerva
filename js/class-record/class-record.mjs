@@ -2046,7 +2046,15 @@ async function findEarlierAssessment(){
             "This assessment predates teacher ownership fields. Its historical section matches verified student identities, but the original owner must still be reviewed.":
             "This assessment belongs to a different historical login or teacher identity. It cannot be reassigned from this screen."));
         card.append(make("p","",
-          "NOT LINKABLE / NOT GRADABLE YET — ask School Administration to review original author, deployed section and account history. No scores were copied, published or created."));
+          "NOT LINKABLE / NOT GRADABLE YET — School Administration must verify original custody. No scores were copied, published or created."));
+        const link=make("a","inline-flex mt-2 text-sm font-bold text-indigo-700 underline",
+          "Open School Admin custody review");
+        link.href="school-class-records.html?"+new URLSearchParams({
+          offeringId:currentOfferingId,assessmentId:item.assessmentId,
+          originalSection:item.originalSections?.[0]||""
+        }).toString();
+        link.title="Requires an active School Administrator; access is not granted by this link.";
+        card.append(link);
         sourceSearchResults.append(card);
       }
     }

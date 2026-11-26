@@ -35,7 +35,7 @@
       <div>
         <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">School administration</p>
         <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Class Record oversight</h1>
-        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Monitor teacher Class Records, finalization and student release state, then inspect the audit trail. This workspace is read-only: score corrections stay with the assigned teacher workflow.</p>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Monitor teacher Class Records, finalization and student release state, then inspect the audit trail. Class Record scores remain teacher-owned. School administrators may verify or revoke narrowly scoped legacy assessment custody after reviewing original student identities.</p>
       </div>
       <div id="cro-school-switcher" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
     </div>
@@ -74,6 +74,38 @@
     </div>
     <div id="cro-list" class="grid md:grid-cols-2 gap-3 mt-4"></div>
   </section>
+  <section class="cro-panel" aria-labelledby="cro-legacy-heading">
+    <h2 id="cro-legacy-heading" class="text-lg font-extrabold">Historical assessment custody</h2>
+    <p class="text-sm text-slate-600 mt-1 max-w-3xl">Recover Repository Management assessments held by a legacy administrator. This approves an assigned Primary Teacher's class-scoped access; it never changes the original owner, submissions, scores, or audits.</p>
+    <form id="cro-legacy-form" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-4">
+      <label class="block text-sm font-bold">Original assessment ID
+        <input id="cro-legacy-id" class="cro-input mt-1" required maxlength="128" autocomplete="off" placeholder="Firestore assessment document ID">
+      </label>
+      <label class="block text-sm font-bold">Official course offering
+        <select id="cro-legacy-offering" class="cro-input mt-1" required><option value="">Choose an offering…</option></select>
+      </label>
+      <label class="block text-sm font-bold">Original deployed section
+        <input id="cro-legacy-section" class="cro-input mt-1" required maxlength="160" placeholder="e.g. St. Carlo Acutis">
+      </label>
+      <div class="sm:col-span-2 xl:col-span-3 flex flex-wrap gap-2">
+        <button id="cro-legacy-preview" type="submit" class="cro-btn">Verify historical identities</button>
+      </div>
+    </form>
+    <div id="cro-legacy-result" class="text-sm text-slate-700 mt-3" role="status" aria-live="polite"></div>
+    <div id="cro-legacy-approval" class="mt-4 border-t border-slate-200 pt-4 grid gap-3" hidden>
+      <label class="block text-sm font-bold">Confirm exact original assessment title
+        <input id="cro-legacy-title" class="cro-input mt-1" maxlength="160" autocomplete="off" placeholder="Type the complete title exactly">
+      </label>
+      <label class="block text-sm font-bold">School administrator's evidence and reason
+        <textarea id="cro-legacy-reason" class="cro-input mt-1 min-h-[92px]" maxlength="1000" placeholder="Explain the original assessment, school, class, and teacher relationship."></textarea>
+      </label>
+      <p class="text-xs text-amber-800">Approval is audited and requires a different school administrator than the receiving teacher. It applies only to this class. Existing published grades stay protected.</p>
+      <div class="flex flex-wrap gap-2">
+        <button id="cro-legacy-approve" class="cro-btn primary" type="button">Approve verified custody</button>
+        <button id="cro-legacy-revoke" class="cro-btn" type="button">Revoke existing custody</button>
+      </div>
+    </div>
+  </section>
 </main>
 
 <dialog id="cro-audit-dialog" class="cro-dialog" aria-labelledby="cro-audit-heading">
@@ -95,7 +127,7 @@
 <script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
 <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
-<script type="module" src="js/school-admin/class-record-oversight.mjs?v=20261121-policy-oversight1"></script>
+<script type="module" src="js/school-admin/class-record-oversight.mjs?v=20261126-legacy-custody1"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>

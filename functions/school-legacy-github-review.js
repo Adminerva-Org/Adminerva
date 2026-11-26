@@ -11,6 +11,7 @@
 const {createHash}=require("node:crypto");
 const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {TenantAccessError}=require("./tenant-access.js");
+const {authorizedTeacherCustody,validCustody,normalized}=require("./school-legacy-custody.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message)};
 const hash=(...items)=>createHash("sha256").update(JSON.stringify(items)).digest("hex");
 const validSha=value=>typeof value==="string"&&/^[a-f0-9]{40}$/i.test(value);
@@ -108,24 +109,38 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    const id=input.legacyAssessmentId;
    if(!validAssessmentId(id))deny("invalid-argument","Invalid historical assessment identifier.");
    const taskRef=db.doc("assessments/"+id),task=await taskRef.get();
-   if(!task.exists||task.data().ownerUid!==ctx.uid)
-     deny("permission-denied","Only the original assessment owner may review historical GitHub evidence.");
+   if(!task.exists)deny("not-found","Original historical assessment not found.");
    const taskData=task.data();
+   const isOwner=taskData.ownerUid===ctx.uid;
+   const legacyOfferingId=String(input.legacyOfferingId||"");
+   const custody=!isOwner&&legacyOfferingId?await authorizedTeacherCustody({
+     db,schoolId:ctx.schoolId,teacherUid:ctx.uid,assessmentId:id,
+     offeringId:legacyOfferingId,task:taskData
+   }):null;
+   if(!isOwner&&!custody)
+     deny("permission-denied","Original assessment ownership or School Admin-approved class custody is required.");
+   const grantedStudentIds=custody?new Set(custody.grant.verifiedLegacyStudentIds):null;
+   function inScope(studentId,section){
+     return !custody||grantedStudentIds.has(studentId)&&
+       normalized(section)===normalized(custody.grant.originalSection);
+   }
    if(taskData.schemaVersion===3||taskData.submissionSource==="studio"||
       taskData.assessmentFormat==="studio_code")
      deny("failed-precondition","This historical assessment uses the Studio review adapter.");
    const prefix="schools/"+ctx.schoolId+"/";
    const importRef=db.doc(prefix+"assessment_blueprints/legacy_"+hash(ctx.schoolId,ctx.uid,id).slice(0,48));
    const imported=await importRef.get();
-   if(!imported.exists||imported.data().schoolId!==ctx.schoolId||
-      imported.data().ownerUid!==ctx.uid||imported.data().legacyImport?.assessmentId!==id)
+   if(isOwner&&(!imported.exists||imported.data().schoolId!==ctx.schoolId||
+      imported.data().ownerUid!==ctx.uid||imported.data().legacyImport?.assessmentId!==id))
      deny("failed-precondition","Import this original assessment blueprint into the selected school before using V4 historical review.");
    const total=Number(taskData.maxScore||20);
    if(!Number.isFinite(total)||total<=0||total>2000)
      deny("failed-precondition","Historical assessment maximum is invalid.");
    const rubric=parseLegacyRubric(taskData.evalCriteria,total);
    const taskInfo={
-     taskId:"legacy:"+id,legacyAssessmentId:id,legacyCompatibility:true,
+     taskId:legacyOfferingId&&custody?"legacy:"+id+"@"+legacyOfferingId:"legacy:"+id,
+     legacyAssessmentId:id,legacyCompatibility:true,
+     ...(custody?{legacyOfferingId,custodyApproved:true,originalSection:custody.grant.originalSection}:{ }),
      submissionSource:"github",title:clean(taskData.title||"Historical GitHub assessment",140),
      description:clean(taskData.description,2000),
      instructions:clean(taskData.taskContext||taskData.description,16000),
@@ -144,6 +159,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      if(!snapshot.exists)deny("not-found","The original GitHub submission could not be found.");
      const data=snapshot.data();
      const meta=approvedEvidence(data,id,safe);
+     if(!inScope(meta.studentId,data.section))
+       deny("permission-denied","This student evidence is outside the verified historical class.");
      return {ref,snapshot,data,meta};
    }
    function checkGrade(grade,studentId){
@@ -164,6 +181,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        let evidence;
        try{evidence=approvedEvidence(row.data(),id,row.id,{requireSubmitted:true});}
        catch{unverifiedSkipped++;continue;}
+       if(!inScope(evidence.studentId,row.data().section))continue;
        const current=await gradeRef(row.id).get();
        if(!current.exists||current.data().published===true)continue;
        const grade=current.data();
@@ -172,6 +190,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        try{
          await review({ctx,input:{
            action:"legacy_github_publish",legacyAssessmentId:id,legacyEvidenceId:row.id,
+           ...(custody?{legacyOfferingId}:{}),
            expectedEvidenceRevision:evidence.revision,
            expectedCheckpointSha:evidence.checkpointSha,
            expectedGradeRevision:Number(grade.gradeVersion||0)
@@ -201,6 +220,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
            selectedCount:meta.selected.length,verifiedCount:meta.verified.length,
            approved:meta.approved,hasSubmission:meta.hasSubmission,
            discoveryOnly:meta.discoveryOnly});
+         if(!inScope(meta.studentId,data.section))rows.pop();
        }
        if(page.size<80)break;
        cursor=page.docs[page.docs.length-1].id;
@@ -223,7 +243,37 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
            awarded:grade?Number(grade.score):null});
        }
      }
-     return {task:taskInfo,evidence:results};
+     // Original scalar grades can outlive evidence or use a different receipt
+     // key. Show them as protected outcomes, but NEVER treat such rows as new
+     // student-submitted evidence or enable edits without a verified receipt.
+     const gradePage=await db.collection("student_grades").where("taskId","==",id).limit(1001).get();
+     if(gradePage.size>=1001)
+       deny("resource-exhausted","The original grade ledger requires pagination.");
+     const seen=new Set(results.map(row=>row.studentId));
+     let gradeOnly=0,publishedCount=0,draftCount=0;
+     for(const doc of gradePage.docs){
+       const grade=doc.data();
+       if(grade.taskId!==id||typeof grade.studentId!=="string"||
+          !inScope(grade.studentId,grade.section))continue;
+       const awarded=Number(grade.score),maximum=Number(grade.maxScore||total);
+       if(!Number.isFinite(awarded)||!Number.isFinite(maximum)||awarded<0||
+          awarded>maximum||maximum<=0)continue;
+       if(grade.published===true)publishedCount++;else draftCount++;
+       if(seen.has(grade.studentId))continue;
+       seen.add(grade.studentId);gradeOnly++;
+       const person=await db.doc("students/"+grade.studentId).get();
+       results.push({evidenceId:null,studentId:grade.studentId,studentUid:grade.studentId,
+         studentName:clean(person.exists?person.data().name:grade.studentId,160),
+         section:clean(grade.section,160),status:"grade_only",
+         gradeOnly:true,hasSubmission:false,discoveryOnly:false,
+         gradeStatus:grade.published===true?"published":"draft",awarded,
+         maxScore:maximum});
+     }
+     return {task:taskInfo,evidence:results,coverage:{
+       evidenceCount:rows.length,gradeCount:publishedCount+draftCount,
+       publishedCount,draftCount,gradeOnly,evidenceWithoutGrade:
+         results.filter(row=>!row.gradeStatus&&!row.gradeOnly).length
+     }};
    }
    const recordId=legacyDocumentId(input.legacyEvidenceId,"Historical submission ID");
    const record=await verifiedRecord(recordId);
@@ -236,9 +286,9 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      const cfg=privateTask.exists&&privateTask.data().ownerUid===ctx.uid?privateTask.data():{};
      const rules=Array.isArray(cfg.rules)?cfg.rules.slice(0,40)
        .map(rule=>clean((rule?.type?rule.type+": ":"")+String(rule?.value||""),400)):[];
-     const checkingInstructions=[clean(cfg.systemPersona||taskData.systemPersona,6000),
+     const checkingInstructions=[clean(isOwner?(cfg.systemPersona||taskData.systemPersona):"",6000),
        rules.length?"Legacy checking rules: "+rules.join("; "):"",
-       clean(imported.data().checkingInstructions,5000)].filter(Boolean).join("\n\n").slice(0,8000);
+       clean(imported.exists?imported.data().checkingInstructions:"",5000)].filter(Boolean).join("\n\n").slice(0,8000);
      return {task:taskInfo,
        snapshot:{status:record.data.status||"submitted",version:meta.revision||1,
          hasSubmission:meta.hasSubmission,discoveryOnly:meta.discoveryOnly,
@@ -282,16 +332,30 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    const auditRef=db.collection("grade_revisions").doc();
    let outcome;
    await db.runTransaction(async tx=>{
-     const [freshTask,freshImport,freshEvidence,prior]=await Promise.all([
-       tx.get(taskRef),tx.get(importRef),tx.get(record.ref),tx.get(gradeDocument)
+     const [freshTask,freshImport,freshEvidence,prior,freshCustody,freshAssignment,freshMembership]=await Promise.all([
+       tx.get(taskRef),tx.get(importRef),tx.get(record.ref),tx.get(gradeDocument),
+       custody?tx.get(custody.ref):Promise.resolve(null),
+       custody?tx.get(db.doc(prefix+"staff_assignments/"+require("./school-academics.js").rowKey(ctx.uid,legacyOfferingId))):Promise.resolve(null),
+       custody?tx.get(db.doc(prefix+"memberships/"+ctx.uid)):Promise.resolve(null)
      ]);
-     if(!freshTask.exists||freshTask.data().ownerUid!==ctx.uid||
-        freshTask.data().evalCriteria!==taskData.evalCriteria||
-        Number(freshTask.data().maxScore||20)!==total||
-        !freshImport.exists||freshImport.data().schoolId!==ctx.schoolId||
-        freshImport.data().ownerUid!==ctx.uid||
-        freshImport.data().legacyImport?.assessmentId!==id)
-       deny("permission-denied","Historical assessment ownership or school access changed.");
+     const sourceUnchanged=freshTask.exists&&
+       freshTask.data().evalCriteria===taskData.evalCriteria&&
+       Number(freshTask.data().maxScore||20)===total;
+     const ownerActive=sourceUnchanged&&isOwner&&freshTask.data().ownerUid===ctx.uid&&
+       freshImport.exists&&freshImport.data().schoolId===ctx.schoolId&&
+       freshImport.data().ownerUid===ctx.uid&&freshImport.data().legacyImport?.assessmentId===id;
+     const approvedCustody=sourceUnchanged&&!!custody&&
+       validCustody(freshCustody?.exists?freshCustody.data():null,{
+         schoolId:ctx.schoolId,assessmentId:id,offeringId:legacyOfferingId,
+         teacherUid:ctx.uid,task:freshTask.data(),section:record.data.section
+       })&&freshAssignment?.exists&&freshAssignment.data().status==="active"&&
+       freshAssignment.data().teacherUid===ctx.uid&&
+       freshAssignment.data().offeringId===legacyOfferingId&&
+       freshMembership?.exists&&freshMembership.data().status==="active"&&
+       freshMembership.data().roles?.includes("teacher")&&
+       freshCustody.data().verifiedLegacyStudentIds.includes(meta.studentId);
+     if(!ownerActive&&!approvedCustody)
+       deny("permission-denied","Historical assessment ownership or verified school custody changed.");
      const latest=approvedEvidence(freshEvidence.exists?freshEvidence.data():null,id,recordId,
        {requireSubmitted:true});
      if(latest.revision!==expectedCanonicalRevision||latest.checkpointSha!==expectedSha||

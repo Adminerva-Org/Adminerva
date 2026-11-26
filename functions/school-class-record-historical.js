@@ -7,6 +7,7 @@
  */
 const {legacyStudentRecordsForAccount,SCHOOL_ID}=require("./legacy-student-identity.js");
 const HISTORICAL_SOURCE="legacy_historical";
+const {custodyId,custodyRef,validCustody,originalSections}=require("./school-legacy-custody.js");
 const canonical=value=>String(value||"").trim().toLocaleLowerCase("en");
 const courseName=value=>canonical(value).replace(/\s+/g," ").trim();
 /**
@@ -28,8 +29,7 @@ function validOrigin(task,schoolId){
   return schoolId===SCHOOL_ID&&task&&(!task.schoolId||task.schoolId===schoolId);
 }
 function historicalSections(task){
-  const sections=[...(Array.isArray(task?.sectionIds)?task.sectionIds:[]),
-    ...(Array.isArray(task?.deployments)?task.deployments.map(d=>d?.section):[])];
+  const sections=originalSections(task);
   const distinct=new Map();
   for(const raw of sections){
     if(typeof raw!=="string"||raw.trim().length===0||raw.trim().length>160)continue;
@@ -39,15 +39,20 @@ function historicalSections(task){
   return [...distinct.values()];
 }
 function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,labels,
-  sourceSectionName="",verifiedSection=false,verifiedSubject=false}){
+  sourceSectionName="",verifiedSection=false,verifiedSubject=false,custodyGrant=null}){
+  const isOwner=task?.ownerUid===ownerUid;
+  const delegated=!isOwner&&validCustody(custodyGrant,{
+    schoolId,assessmentId:taskId,offeringId,teacherUid:ownerUid,task,
+    section:sourceSectionName||custodyGrant?.originalSection||""
+  });
   // A subject mismatch must be acknowledged against the exact original
   // assessment and independently verified through source student identities.
   // Caller-supplied flags alone never authorize a save.
   const matchesSubject=historicalSubjectMatches(task?.subject,labels?.subjectName);
-  if(!validId(taskId)||!validOrigin(task,schoolId)||task.ownerUid!==ownerUid||
+  if(!validId(taskId)||!validOrigin(task,schoolId)||(!isOwner&&!delegated)||
      !labels.sectionName||!labels.subjectName||!labels.termName||!labels.yearName||
      !offering.termId||!offering.yearId||!offering.sectionId||!offering.subjectId||
-     (!matchesSubject&&!(verifiedSubject===true&&typeof task.subject==="string"&&
+     (!matchesSubject&&!delegated&&!(verifiedSubject===true&&typeof task.subject==="string"&&
        task.subject.trim().length>0&&task.subject.trim().length<=120)))return null;
   const sections=historicalSections(task),requested=String(sourceSectionName||labels.sectionName).trim();
   const section=sections.find(s=>canonical(s)===canonical(requested));
@@ -58,7 +63,8 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
     sectionId:offering.sectionId,subjectId:offering.subjectId,
     sectionName:section,offeringSectionName:labels.sectionName,
     subjectName:labels.subjectName,ownerUid,
-    ...(matchesSubject?{}:{originalSubjectName:task.subject.trim()})};
+    ...(delegated?{custodyGrantId:custodyId(taskId,offeringId),taskId}:{}),
+    ...(matchesSubject?{}:{originalSubjectName:String(task.subject||"").trim()})};
 }
 /**
  * A historical section name can differ after SIS adoption or placement changes.
@@ -68,13 +74,14 @@ function historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,la
  */
 async function verifiedHistoricalSectionMapping({db,schoolId,roster,resolveUsers,
   task,taskId,ownerUid,offering,offeringId,labels,sourceSectionName,
-  confirmOriginalSubject=""}){
+  confirmOriginalSubject="",custodyGrant=null}){
   const needsSubjectReview=!historicalSubjectMatches(task?.subject,labels?.subjectName);
   // The teacher must explicitly acknowledge the exact original subject before
   // attempting a different-subject source link; a guessed label cannot pass.
   if(needsSubjectReview&&(!task?.subject||confirmOriginalSubject!==task.subject.trim()))return null;
   const candidate=historicalMapping({task,taskId,schoolId,ownerUid,offering,offeringId,
-    labels,sourceSectionName,verifiedSection:true,verifiedSubject:needsSubjectReview});
+    labels,sourceSectionName,verifiedSection:true,verifiedSubject:needsSubjectReview,
+    custodyGrant});
   if(!candidate)return null;
   if(!needsSubjectReview&&canonical(candidate.sectionName)===canonical(labels.sectionName))
     return candidate;
@@ -102,7 +109,9 @@ function mappingMatches(mapping,schoolId,offeringId,offering){
   return !!mapping&&mapping.schoolId===schoolId&&mapping.offeringId===offeringId&&
     mapping.yearId===offering.yearId&&mapping.termId===offering.termId&&
     mapping.sectionId===offering.sectionId&&mapping.subjectId===offering.subjectId&&
-    !!mapping.sectionName&&!!mapping.subjectName&&validId(mapping.ownerUid);
+    !!mapping.sectionName&&!!mapping.subjectName&&validId(mapping.ownerUid)&&
+    (!mapping.custodyGrantId||(validId(mapping.taskId)&&
+      mapping.custodyGrantId===custodyId(mapping.taskId,offeringId)));
 }
 function legacySavedScoreEligible(data){
   // The school has accepted its saved legacy scores; a positive unresolved
@@ -206,20 +215,31 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
     }
     const task=await db.doc("assessments/"+column.taskId).get();
     const original=task.exists?task.data():null;
-    const verifiedSubjectReview=!!original&&mapping.subjectProof===
-      "teacher_confirmed_original_subject_with_roster"&&
-      mapping.identityProof==="original_student_section"&&
-      Number(mapping.identityVerifiedCount)>0&&
-      mapping.originalSubjectName===String(original.subject||"").trim();
-    if(!validOrigin(original,schoolId)||original.ownerUid!==mapping.ownerUid||
+    const delegatedRef=mapping.custodyGrantId?
+      custodyRef(db,schoolId,column.taskId,offeringId):null;
+    const delegation=delegatedRef?await delegatedRef.get():null;
+    const delegated=!!delegatedRef&&delegation?.exists&&
+      validCustody(delegation.data(),{
+        schoolId,assessmentId:column.taskId,offeringId,teacherUid:mapping.ownerUid,
+        task:original,section:mapping.sectionName
+      });
+    const verifiedSubjectReview=!!original&&
+      mapping.originalSubjectName===String(original.subject||"").trim()&&
+      ((mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"&&
+        mapping.identityProof==="original_student_section"&&
+        Number(mapping.identityVerifiedCount)>0)||delegated);
+    if(!validOrigin(original,schoolId)||(!delegated&&original.ownerUid!==mapping.ownerUid)||
+       (mapping.custodyGrantId&&!delegated)||
        !historicalSections(original).some(section=>canonical(section)===canonical(mapping.sectionName))||
        !(historicalSubjectMatches(original.subject,mapping.subjectName)||verifiedSubjectReview)){
       for(const state of states.values())state.status="source_unavailable";
       finish();continue;
     }
     const pairs=[...students.entries()],matches=new Map(),ambiguous=new Set(),missing=[];
-    const showDraft=Array.isArray(diagnosticRows)&&viewerUid===original.ownerUid;
+    const showDraft=Array.isArray(diagnosticRows)&&
+      (viewerUid===original.ownerUid||delegated&&viewerUid===mapping.ownerUid);
     const assess=async (data,studentId,personId)=>{
+      if(delegated&&!delegation.data().verifiedLegacyStudentIds.includes(studentId))return;
       const state=states.get(personId);
       if(!state)return;
       if(data?.taskId!==column.taskId||data?.studentId!==studentId){

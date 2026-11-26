@@ -16,6 +16,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
+const {custodyRef,validCustody,authorizedTeacherCustody}=require("./school-legacy-custody.js");
 
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
@@ -821,8 +822,24 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       if(snap.size===501)
         deny("resource-exhausted","Historical assessment library exceeds the bounded picker capacity.");
       stats.ownedCount=snap.size;
+      const candidates=new Map(snap.docs.map(doc=>[doc.id,{doc,custodyGrant:null}]));
+      const delegations=await db.collection(prefix+"legacy_assessment_custody")
+        .where("teacherUid","==",ctx.uid).limit(51).get();
+      if(delegations.size>=51)deny("resource-exhausted","Legacy custody approvals need pagination.");
+      for(const record of delegations.docs){
+        const grant=record.data();
+        if(grant.status!=="active"||grant.schoolId!==ctx.schoolId||
+           grant.offeringId!==offeringId||candidates.has(grant.assessmentId))continue;
+        const original=await db.doc("assessments/"+grant.assessmentId).get();
+        if(!original.exists)continue;
+        const verified=await authorizedTeacherCustody({
+          db,schoolId:ctx.schoolId,teacherUid:ctx.uid,assessmentId:grant.assessmentId,
+          offeringId,task:original.data()
+        });
+        if(verified)candidates.set(original.id,{doc:original,custodyGrant:verified.grant});
+      }
       const items=[];
-      for(const doc of snap.docs){
+      for(const {doc,custodyGrant} of candidates.values()){
         const task=doc.data(),sections=historicalSections(task);
         if(!validOrigin(task,ctx.schoolId)){stats.originMismatchCount++;continue;}
         const matchesSubject=historicalSubjectMatches(task.subject,labels.subjectName);
@@ -831,7 +848,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         if(!Number.isFinite(maximum)||maximum<=0||maximum>10000){stats.invalidScoreCount++;continue;}
         if(!sections.length){stats.noSectionCount++;continue;}
         const mapping=historicalMapping({task,taskId:doc.id,schoolId:ctx.schoolId,
-          ownerUid:ctx.uid,offering,offeringId,labels});
+          ownerUid:ctx.uid,offering,offeringId,labels,
+          ...(custodyGrant?{custodyGrant,sourceSectionName:custodyGrant.originalSection,
+            verifiedSection:true,verifiedSubject:true}:{})});
         if(mapping)stats.availableCount++;
         else if(!matchesSubject)stats.subjectReviewCount++;
         else stats.sectionReviewCount++;
@@ -846,7 +865,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           sourceSections:!mapping?sections.slice(0,40):[],
           historical:true,historicalMapping:mapping,
           periodLabel:labels.yearName+" · "+labels.termName,
-          gradeRoute:"school-gradebook.html?view=review&task="+encodeURIComponent("legacy:"+doc.id)
+          gradeRoute:"school-gradebook.html?view=review&task="+
+            encodeURIComponent("legacy:"+doc.id+(custodyGrant?"@"+offeringId:"")),
+          ...(custodyGrant?{custodyApproved:true,originalSection:custodyGrant.originalSection}:{})
         });
       }
       return {items,stats};
@@ -1661,7 +1682,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           const mapping=await verifiedHistoricalSectionMapping({db,schoolId:ctx.schoolId,roster,
             resolveUsers,task:original.exists?original.data():null,taskId,ownerUid:ctx.uid,
             offering,offeringId,labels,sourceSectionName:item.historicalSourceSection,
-            confirmOriginalSubject:item.confirmOriginalSubject});
+            confirmOriginalSubject:item.confirmOriginalSubject,
+            custodyGrant:available.historicalMapping?.custodyGrantId?
+              (await custodyRef(db,ctx.schoolId,taskId,offeringId).get()).data():null});
           if(!mapping)
             deny("failed-precondition","The selected original section could not be verified against enough enrolled students' historical school identities. Check the original section, identity recovery, or ask School Administration to reconcile the legacy roster.");
           available.historicalMapping=mapping;available.linkable=true;
@@ -1683,10 +1706,12 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       let revision;
       await db.runTransaction(async tx=>{
-        const [grant,currentOffering,current,priorMappings,originalTasks]=await Promise.all([
+        const [grant,currentOffering,current,priorMappings,originalTasks,custodyGrants]=await Promise.all([
           tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef),
           Promise.all(mappingRefs.map(ref=>tx.get(ref))),
-          Promise.all(newHistorical.map(column=>tx.get(db.doc("assessments/"+column.taskId))))
+          Promise.all(newHistorical.map(column=>tx.get(db.doc("assessments/"+column.taskId)))),
+          Promise.all(newHistorical.map(column=>column.historicalMapping.custodyGrantId?
+            tx.get(custodyRef(db,ctx.schoolId,column.taskId,offeringId)):Promise.resolve(null)))
         ]);
         if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
            grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")||
@@ -1698,11 +1723,21 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           if(!mappingMatches(mapping,ctx.schoolId,offeringId,currentOffering.data()))
             deny("failed-precondition","The selected academic period or class changed. Reload before linking.");
           const original=originalTasks[i];
-          const rechecked=historicalMapping({task:original.exists?original.data():null,taskId:column.taskId,
+          const granted=custodyGrants[i]?.exists?custodyGrants[i].data():null;
+          const originalData=original.exists?original.data():null;
+          if(mapping.custodyGrantId&&!validCustody(granted,{
+            schoolId:ctx.schoolId,assessmentId:column.taskId,offeringId,
+            teacherUid:ctx.uid,task:originalData,section:mapping.sectionName
+          }))
+            deny("failed-precondition","School Admin custody approval changed or was revoked.");
+          const rechecked=historicalMapping({task:originalData,taskId:column.taskId,
             schoolId:ctx.schoolId,ownerUid:ctx.uid,offering:currentOffering.data(),offeringId,labels,
-            sourceSectionName:mapping.sectionName,verifiedSection:mapping.identityProof==="original_student_section",
-            verifiedSubject:mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"});
+            sourceSectionName:mapping.sectionName,verifiedSection:mapping.identityProof==="original_student_section"||
+              Boolean(granted),
+            verifiedSubject:mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"||
+              Boolean(granted),custodyGrant:granted});
           if(!rechecked||rechecked.sectionName!==mapping.sectionName||
+             rechecked.custodyGrantId!==mapping.custodyGrantId||
              (mapping.subjectProof==="teacher_confirmed_original_subject_with_roster"&&
                (mapping.identityProof!=="original_student_section"||
                 !Number.isInteger(mapping.identityVerifiedCount)||mapping.identityVerifiedCount<1||
