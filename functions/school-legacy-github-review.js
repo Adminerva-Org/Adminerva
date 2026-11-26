@@ -268,6 +268,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
            ...(gradeException?{gradeException:true,hasSubmission:false}:{}),
            gradeStatus:gradeException?null:grade?.published===true?"published":grade?"draft":null,
            reviewSuggested:!gradeException&&!!grade&&grade.published!==true,
+           gradeRevision:gradeException||!grade?0:Number(grade.gradeVersion||1),
            awarded:gradeException||!grade?null:Number(grade.score),
            maxScore:gradeException||!grade?null:Number(grade.maxScore??(custody?total:null)),
            pending:gradeException||!grade?0:Number(grade.pending||0)});
