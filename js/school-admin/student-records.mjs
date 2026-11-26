@@ -5,12 +5,13 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 const get=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolStudentRecords");
 const status=get("sr-status"),workspace=get("sr-workspace"),fileHost=get("sr-file");
-const requestedPersonId=(()=>{try{
+let requestedPersonId=(()=>{try{
   const value=new URL(location.href).searchParams.get("personId")||"";
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)?value:"";
 }catch{return "";}})();
 let picker=null,students=[],current=null,saving=false,searchRun=0,fileRun=0,
   guardianChange=null,guardianLifecycle=null,requestLifecycle=null;
+let directoryCursor=null,directoryQuery="",directoryBusy=false;
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -24,7 +25,7 @@ function setSaving(value,message=""){
   saving=value;
   for(const control of document.querySelectorAll("button,input,select,textarea"))control.disabled=value;
   if(!value){
-    get("sr-search").disabled=false;get("sr-search-button").disabled=false;
+    get("sr-search").disabled=false;get("sr-search-button").disabled=directoryBusy;get("sr-more").disabled=directoryBusy;
     get("sr-guardian-close").disabled=false;get("sr-guardian-lifecycle-close").disabled=false;
     get("sr-request-close").disabled=false;get("sr-request-lifecycle-close").disabled=false;
   }
@@ -70,7 +71,7 @@ function empty(host,message){
 
 function renderStudents(){
   const host=get("sr-student-list");host.replaceChildren();
-  if(!students.length){empty(host,"No student records match this search.");return;}
+  if(!students.length){empty(host,directoryCursor?"No matches in the records searched so far.":"No student records match this search.");return;}
   for(const item of students){
     const row=document.createElement("article");row.className="sr-row";row.setAttribute("role","listitem");
     const info=document.createElement("div");info.append(textNode("strong",item.displayName),
@@ -81,19 +82,31 @@ function renderStudents(){
     row.append(info,open);host.append(row);
   }
 }
-async function searchStudents(){
-  if(saving)return;
-  const run=++searchRun,query=String(get("sr-search").value||"").trim();
-  get("sr-search-button").disabled=true;status.textContent="Searching canonical student directory…";
+async function searchStudents({more=false}={}){
+  if(saving||directoryBusy)return;
+  const query=String(get("sr-search").value||"").trim();
+  if(more&&(!directoryCursor||query!==directoryQuery))return;
+  const run=++searchRun,cursor=more?directoryCursor:null;
+  if(!more){directoryQuery=query;directoryCursor=null;students=[];get("sr-student-list").replaceChildren();}
+  directoryBusy=true;
+  get("sr-search-button").disabled=true;get("sr-more").disabled=true;
+  get("sr-search-progress").textContent="Searching…";
   try{
-    const result=await perform("search_students",{query});
+    const result=await perform("search_students",{query,...(cursor?{cursor}:{})});
     if(run!==searchRun)return;
-    students=result.items||[];renderStudents();
-    status.textContent=(result.truncated?"Showing the first matching records. ":"")+
-      students.length+" student"+(students.length===1?"":"s")+" loaded.";
+    const unique=new Map(students.map(item=>[item.personId,item]));
+    for(const item of result.items||[])unique.set(item.personId,item);
+    students=[...unique.values()].sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.personId.localeCompare(b.personId));
+    directoryCursor=result.nextCursor||null;
+    renderStudents();
+    get("sr-more").hidden=!directoryCursor;
+    get("sr-more").textContent=query?"Search more records":"Load more";
+    get("sr-search-progress").textContent=students.length+" found"+(directoryCursor?" · More records available.":" · End of directory.");
   }catch(error){
-    if(run===searchRun)status.textContent=error?.message||"Student directory search failed.";
-  }finally{if(run===searchRun)get("sr-search-button").disabled=false;}
+    if(run===searchRun)get("sr-search-progress").textContent=error?.message||"Search failed. Retry.";
+  }finally{
+    if(run===searchRun){directoryBusy=false;get("sr-search-button").disabled=saving;get("sr-more").disabled=saving;}
+  }
 }
 
 function renderGuardians(data){
@@ -363,13 +376,16 @@ get("sr-request-lifecycle-form").addEventListener("submit",event=>{
 });
 
 get("sr-search-button").addEventListener("click",()=>void searchStudents());
+get("sr-more").addEventListener("click",()=>void searchStudents({more:true}));
+get("sr-search").addEventListener("input",()=>{get("sr-more").hidden=String(get("sr-search").value||"").trim()!==directoryQuery||!directoryCursor;});
 get("sr-search").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();void searchStudents();}});
 
 picker=createTenantSchoolPicker({
   host:get("sr-school-picker"),status,
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current Student Records change before switching schools.");
-    ++searchRun;++fileRun;students=[];current=null;guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
+    ++searchRun;++fileRun;requestedPersonId="";students=[];current=null;guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
+    directoryCursor=null;directoryQuery="";directoryBusy=false;get("sr-more").hidden=true;get("sr-search-progress").textContent="";
     setUrlPerson("");get("sr-search").value="";get("sr-student-list").replaceChildren();fileHost.hidden=true;get("sr-empty-file").hidden=false;get("sr-open-people").hidden=true;workspace.hidden=true;
     for(const dialog of document.querySelectorAll("dialog"))if(dialog.open)dialog.close();
   },
@@ -379,9 +395,9 @@ picker=createTenantSchoolPicker({
       workspace.hidden=true;status.textContent="School Administrator or Registrar access is required for Student Records.";return;
     }
     workspace.hidden=false;status.textContent="Select a student.";
-    void searchStudents().then(()=>{
-      if(requestedPersonId&&!current)void openStudent(requestedPersonId);
-    });
+    const personId=requestedPersonId;requestedPersonId="";
+    void searchStudents();
+    if(personId&&!current)void openStudent(personId);
   }
 });
 try{
