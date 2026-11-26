@@ -11,6 +11,8 @@ let overviewRequest=0,auditRequest=0;
 const deepLinkParams=new URLSearchParams(location.search);
 const deepLinkOfferingId=String(deepLinkParams.get("offeringId")||"");
 const deepLinkAudit=deepLinkParams.get("audit")==="1";
+const deepLinkAssessment=String(deepLinkParams.get("assessmentId")||"").slice(0,128);
+const deepLinkSection=String(deepLinkParams.get("originalSection")||"").slice(0,160);
 let deepLinkHandled=false;
 
 function node(tag,className,text){
@@ -235,6 +237,12 @@ async function load(){
     if(request!==overviewRequest)return;
     records=result.records||[];
     showCustodyOfferings();
+    if(deepLinkAssessment&&!el("cro-legacy-id").value){
+      el("cro-legacy-id").value=deepLinkAssessment;
+      el("cro-legacy-section").value=deepLinkSection;
+      if(records.some(row=>row.offeringId===deepLinkOfferingId))
+        custodyOffering.value=deepLinkOfferingId;
+    }
     renderRecords();
     status.textContent=records.length+" Class Record"+(records.length===1?"":"s")+" loaded. Oversight is read-only.";
     if(!deepLinkHandled&&deepLinkOfferingId){
