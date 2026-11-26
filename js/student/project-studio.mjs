@@ -365,6 +365,7 @@ export function createProjectStudio({
     // call obtained the per-project lock. An empty queue is NOT proof of
     // the teacher-close receipt: only an examFinalized server response is.
     if(!snapshot||deletedProjects.has(id))return closingSessionEpoch?false:true;
+    const finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_cloud_save");
     const work=(async()=>{
       try{
         if(auth.currentUser?.uid!==uid)throw Error("Sign in with the original project account.");
@@ -431,7 +432,9 @@ export function createProjectStudio({
       }
     })();
     cloudWrites.set(id,work);
-    try{return await work;}finally{if(cloudWrites.get(id)===work)cloudWrites.delete(id);}
+    try{const saved=await work;finishDiagnostic?.(saved===true);return saved;}
+    catch(error){finishDiagnostic?.(false);throw error;}
+    finally{if(cloudWrites.get(id)===work)cloudWrites.delete(id);}
   }
   async function flushCloudSaves({closingSessionEpoch=0}={}){
     // Ordinary guest work can be saved locally, but an exam may never
