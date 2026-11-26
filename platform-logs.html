@@ -10,7 +10,7 @@
   <script defer src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=7fe6ab08fd82">
   <link rel="stylesheet" href="css/platform-admin-workflow.css?v=20261121-platform-flow1">
-  <link rel="stylesheet" href="css/platform-logs.css?v=20261126-trace-5">
+  <link rel="stylesheet" href="css/platform-logs.css?v=20261126-trace-6">
 </head>
 <body id="pageBody" class="hidden">
   <div id="adminerva-nav" data-module="admin" data-page="platform-logs"></div>
@@ -70,7 +70,7 @@
           <button id="pl-show-live" class="pl-button pl-primary" type="button" disabled>Live · 3s</button>
           <button id="pl-show-global" class="pl-button pl-secondary" type="button" disabled>Event history</button>
           <button id="pl-show-recent" class="pl-button pl-secondary" type="button" disabled>Account overview</button>
-        </nav><button id="pl-toggle-directory" type="button" class="pl-button pl-secondary" aria-controls="pl-directory-disclosure" aria-expanded="true">Accounts</button><button id="pl-focus-mode" type="button" class="pl-button pl-secondary" aria-pressed="false">Focus view</button></div>
+        </nav><button id="pl-toggle-directory" type="button" class="pl-button pl-secondary" aria-controls="pl-directory-disclosure" aria-expanded="true">Accounts</button><button id="pl-focus-mode" type="button" class="pl-button pl-secondary" aria-pressed="false">Focus view</button><details class="pl-panel-settings"><summary>Panels</summary><div><label>Accounts <input id="pl-directory-width" type="range" min="210" max="320" value="250" step="10"></label><label>Inspector <input id="pl-inspector-width" type="range" min="285" max="440" value="340" step="10"></label></div></details></div>
         <div class="pl-card-heading pl-view-heading">
           <div><p id="pl-view-eyebrow" class="pl-eyebrow">All accounts · chronological</p><h2 id="pl-view-title">Global Event Stream</h2>
             <p id="pl-view-description" class="pl-visually-hidden">Individual user and backend events across Adminerva, ordered by server receipt time. Select any event’s account for its longer diagnostic history.</p>
@@ -210,7 +210,7 @@
   <script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
   <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
   <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
-  <script type="module" src="js/core/platform-logs.mjs?v=20261126-trace-5"></script>
+  <script type="module" src="js/core/platform-logs.mjs?v=20261126-trace-6"></script>
   <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script>
   <script defer src="js/core/release-footer.js?v=7fe6ab08fd82"></script>
 </body>
