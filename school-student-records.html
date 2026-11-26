@@ -26,6 +26,7 @@
     .sr-badge[data-state="ready"]{background:#fef3c7;color:#92400e}.sr-badge[data-state="released"]{background:#dcfce7;color:#166534}
     .sr-dialog{border:0;border-radius:1rem;padding:0;width:min(94vw,580px);box-shadow:0 24px 70px #0f172a55}.sr-dialog::backdrop{background:#020617aa}
     .sr-table{width:100%;border-collapse:collapse}.sr-table th,.sr-table td{padding:.65rem;border-bottom:1px solid #e2e8f0;text-align:left;font-size:.85rem;vertical-align:top}
+    .sr-file-tabs{display:flex;gap:.4rem;overflow-x:auto;padding:.15rem 0}.sr-file-tabs button{white-space:nowrap;flex:none}.sr-file-tabs button[aria-pressed="true"]{background:#1d4ed8;color:white;border-color:#1d4ed8}.sr-history-controls{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:.75rem}
     [hidden]{display:none!important}@media(max-width:840px){.sr-grid{grid-template-columns:1fr}.sr-shell{padding:.7rem}.sr-row{flex-direction:column}.sr-table{display:block;overflow-x:auto}}
   </style>
   <link rel="stylesheet" href="css/school-admin-workflow.css?v=20261121-admin-flow1">
@@ -77,7 +78,8 @@
         </div>
       </section>
 
-      <section class="sr-card">
+      <nav class="sr-file-tabs" aria-label="Student file sections"><button class="sr-btn secondary" type="button" data-sr-view="registrations" aria-pressed="true">Registration</button><button class="sr-btn secondary" type="button" data-sr-view="releasedGrades" aria-pressed="false">Academics</button><button class="sr-btn secondary" type="button" data-sr-view="guardians" aria-pressed="false">Family</button><button class="sr-btn secondary" type="button" data-sr-view="documents" aria-pressed="false">Documents</button><button class="sr-btn secondary" type="button" data-sr-view="audit" aria-pressed="false">History</button></nav>
+      <section class="sr-card" data-sr-panel="guardians" hidden>
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div><h2 class="text-lg font-extrabold">Guardian relationships</h2></div>
           <div class="flex gap-2 flex-wrap">
@@ -86,33 +88,38 @@
           </div>
         </div>
         <div id="sr-guardian-list" class="sr-list mt-4"></div>
+        <div class="sr-history-controls"><button id="sr-history-more-guardians" class="sr-btn secondary" type="button" data-sr-history="guardians" hidden>Load more</button><span id="sr-history-count-guardians" class="sr-muted" aria-live="polite"></span></div>
       </section>
 
-      <section class="sr-card">
+      <section class="sr-card" data-sr-panel="registrations">
         <h2 class="text-lg font-extrabold">Official registration history</h2>
         <div id="sr-registration-list" class="sr-list mt-4"></div>
+        <div class="sr-history-controls"><button id="sr-history-more-registrations" class="sr-btn secondary" type="button" data-sr-history="registrations" hidden>Load more</button><span id="sr-history-count-registrations" class="sr-muted" aria-live="polite"></span></div>
       </section>
 
-      <section class="sr-card">
+      <section class="sr-card" data-sr-panel="releasedGrades" hidden>
         <h2 class="text-lg font-extrabold">Released Final Grades</h2>
         <div class="overflow-x-auto mt-3"><table class="sr-table"><thead><tr><th>Period</th><th>Subject</th><th>Section</th><th>Final Grade</th><th>Revision</th></tr></thead><tbody id="sr-grade-list"></tbody></table></div>
+        <div class="sr-history-controls"><button id="sr-history-more-releasedGrades" class="sr-btn secondary" type="button" data-sr-history="releasedGrades" hidden>Load more</button><span id="sr-history-count-releasedGrades" class="sr-muted" aria-live="polite"></span></div>
       </section>
 
-      <section class="sr-card">
+      <section class="sr-card" data-sr-panel="documents" hidden>
         <div class="flex items-center justify-between gap-2 flex-wrap"><h2 class="text-lg font-extrabold">Admission documents</h2><button id="sr-load-admission-docs" class="sr-btn secondary" type="button">Load documents</button></div>
         <div id="sr-admission-docs" class="sr-list mt-3"></div>
       </section>
-      <section class="sr-card">
+      <section class="sr-card" data-sr-panel="documents" hidden>
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div><h2 class="text-lg font-extrabold">Registrar document requests</h2></div>
           <button id="sr-new-request" class="sr-btn" type="button">New request</button>
         </div>
         <div id="sr-request-list" class="sr-list mt-4"></div>
+        <div class="sr-history-controls"><button id="sr-history-more-documentRequests" class="sr-btn secondary" type="button" data-sr-history="documentRequests" hidden>Load more</button><span id="sr-history-count-documentRequests" class="sr-muted" aria-live="polite"></span></div>
       </section>
 
-      <section class="sr-card">
+      <section class="sr-card" data-sr-panel="audit" hidden>
         <h2 class="text-lg font-extrabold">Student Records audit</h2>
         <div id="sr-audit-list" class="sr-list mt-3"></div>
+        <div class="sr-history-controls"><button id="sr-history-more-audit" class="sr-btn secondary" type="button" data-sr-history="audit" hidden>Load more</button><span id="sr-history-count-audit" class="sr-muted" aria-live="polite"></span></div>
       </section>
     </section>
   </section>
@@ -165,7 +172,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar3"></script>
+<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar4"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-student-records1"></script>
 </body>
 </html>
