@@ -60,7 +60,7 @@ function setSaving(value){
   }
   for(const control of form.elements)control.disabled=value;
   get("en-applicant-type").disabled=value||Boolean(loadedPerson);
-  for(const control of document.querySelectorAll("#en-application-list button, #en-applications-more, #en-correction-form button, #en-correction-form input, #en-correction-form select, #en-correction-form textarea, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-application-list input, #en-bulk-open, #en-bulk-clear, #en-bulk-form button, #en-bulk-form select, #en-applications-more, #en-correction-form button, #en-correction-form input, #en-correction-form select, #en-correction-form textarea, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
   if(!value){
@@ -74,6 +74,7 @@ function setSaving(value){
     const cohortReady=cohortPreview?.rows?.some(row=>row.preview?.canApply&&!row.applied)&&
       cohortPreview.signature===cohortSignature();
     get("en-cohort-apply").disabled=!cohortReady;
+    updateBulkControls();
   }
 }
 function discardDraft(){
@@ -1032,7 +1033,7 @@ get("en-correction-form").addEventListener("submit",event=>{
     try{
       await perform("correct_application",{applicationId:item.applicationId,expectedRevision:item.revision,guardianName:value("guardian"),guardianRelationship:value("relationship"),guardianMobile:value("mobile"),studentEmail:value("email"),studentEmailType:value("email-type"),preferredProgramId:value("program"),reason:value("reason")});
       closeCorrection();status.textContent="Correction saved. Review requirements again.";
-      try{await loadApplications();}catch{status.textContent="Correction saved. Refresh Admissions.";}
+      try{await loadApplications({refreshItem:item.applicationId});}catch{status.textContent="Correction saved. Refresh Admissions.";}
     }catch(error){get("en-correction-status").textContent=error?.message||"Correction failed.";}
     finally{setSaving(false);}
   })();
@@ -1073,7 +1074,7 @@ async function openDocuments(item){
           setSaving(true);get("en-documents-status").textContent="Working…";
           try{
             if(row.state==="stored"){saveDocumentDownload(await perform("download_admission_document",{applicationId:item.applicationId,documentId:row.documentId}));get("en-documents-status").textContent="Downloaded.";}
-            else{await perform("cancel_admission_document",{applicationId:item.applicationId,documentId:row.documentId,expectedRevision:item.revision});closeDocuments();await loadApplications();status.textContent="Pending upload cancelled.";}
+            else{await perform("cancel_admission_document",{applicationId:item.applicationId,documentId:row.documentId,expectedRevision:item.revision});closeDocuments();await loadApplications({refreshItem:item.applicationId});status.textContent="Pending upload cancelled.";}
           }catch(error){get("en-documents-status").textContent=error?.message||"Document action failed.";}
           finally{setSaving(false);}
         })());line.append(action);
@@ -1096,7 +1097,7 @@ get("en-documents-form").addEventListener("submit",event=>{
       const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
       for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
       await perform("save_admission_document",{applicationId:item.applicationId,expectedRevision:item.revision,label,contentType:file.type,base64:btoa(binary)});
-      closeDocuments();await loadApplications();status.textContent="Document stored. Verify the requirement.";
+      closeDocuments();await loadApplications({refreshItem:item.applicationId});status.textContent="Document stored. Verify the requirement.";
     }catch(error){get("en-documents-status").textContent=(error?.message||"Upload failed.")+" Close and refresh before retrying the same file.";}
     finally{setSaving(false);}
   })();
@@ -1208,7 +1209,7 @@ get("en-requirements-form").addEventListener("submit",event=>{
       await perform("save_application_requirements",{applicationId:item.applicationId,
         expectedRevision:Number(item.revision)||1,expectedTemplateRevision:Number(item.templateRevision)||0,requirements:rows.map(row=>({label:row.label.trim(),status:row.status})),noRequirements,reason});
       closeRequirements();status.textContent="Requirements review saved.";
-      try{await loadApplications();}catch{status.textContent="Requirements saved. Refresh applications.";}
+      try{await loadApplications({refreshItem:item.applicationId});}catch{status.textContent="Requirements saved. Refresh applications.";}
     }catch(error){get("en-requirements-status").textContent=error?.message||"Requirements review failed.";}
     finally{setSaving(false);if(requirementsReview)renderRequirementRows();}
   })();
@@ -1220,7 +1221,7 @@ async function linkReturningApplication(item){
   setSaving(true);status.textContent="Linking student…";
   try{
     await perform("bind_returning_application",{applicationId:item.applicationId,expectedRevision:item.revision,studentNumber:studentNumber.trim()});
-    await loadApplications();status.textContent="Existing student linked. Review requirements.";
+    await loadApplications({refreshItem:item.applicationId});status.textContent="Existing student linked. Review requirements.";
   }catch(error){status.textContent=error?.message||"Student link failed.";}
   finally{setSaving(false);}
 }
@@ -1239,11 +1240,77 @@ async function reviewApplication(item,nextStatus){
     if(loadedApplication?.applicationId===item.applicationId)clearLoadedApplication({resetIdentity:true});
     const message=({rejected:"Application rejected.",needs_information:"Information requested.",accepted:"Application accepted. Ready for enrollment.",submitted:"Application reopened for review."})[nextStatus];
     status.textContent=message;
-    try{await loadApplications();}catch{status.textContent=message+" The list could not refresh. Use Refresh applications.";}
+    try{await loadApplications({refreshItem:item.applicationId});}catch{status.textContent=message+" The list could not refresh. Use Refresh applications.";}
   }catch(error){status.textContent=error?.message||"Application review was not saved.";}
   finally{setSaving(false);}
 }
 let applications=[],applicationCursor=null,applicationBusy=false;
+let selectedApplications=new Map(),bulkReview=null;
+function updateBulkControls(){
+  get("en-bulk-open").disabled=saving||!selectedApplications.size;
+  get("en-bulk-open").textContent="Enroll selected ("+selectedApplications.size+")";
+  get("en-bulk-clear").hidden=!selectedApplications.size;
+  get("en-bulk-clear").disabled=saving;
+  get("en-applications-more").disabled=saving||applicationBusy;
+}
+function selectBulkApplication(item,checked){
+  if(saving)return;
+  if(!checked)selectedApplications.delete(item.applicationId);
+  else{
+    const first=selectedApplications.values().next().value;
+    if(selectedApplications.size>=20){status.textContent="Select up to 20 accepted applicants.";renderApplications();return;}
+    if(first&&(first.yearId!==item.yearId||first.incomingLevel!==item.incomingLevel)){status.textContent="Select applicants for the same school year and incoming grade.";renderApplications();return;}
+    selectedApplications.set(item.applicationId,item);
+  }
+  updateBulkControls();
+}
+function closeBulk(){bulkReview=null;get("en-bulk-results").replaceChildren();get("en-bulk-dialog").close();}
+function refreshBulkPlacement(){
+  if(!bulkReview)return;
+  const program=get("en-bulk-program").value;
+  options(get("en-bulk-term"),catalog.terms.filter(row=>row.yearId===bulkReview.yearId&&row.programId===program),"Choose academic period");
+  options(get("en-bulk-section"),catalog.sections.filter(row=>row.programId===program&&String(row.gradeLevel)===String(bulkReview.incomingLevel)),"Choose section");
+}
+function openBulk(){
+  if(saving||!selectedApplications.size)return;
+  const rows=[...selectedApplications.values()],first=rows[0];bulkReview={rows,yearId:first.yearId,incomingLevel:first.incomingLevel};
+  get("en-bulk-target").textContent=rows.length+" applicants · "+levelLabel(first.incomingLevel)+" · "+(catalog.years.find(row=>row.id===first.yearId)?.name||first.yearId);
+  get("en-bulk-results").replaceChildren();get("en-bulk-status").textContent="";get("en-bulk-apply").hidden=false;
+  get("en-bulk-program").value="";get("en-bulk-term").value="";get("en-bulk-section").value="";
+  options(get("en-bulk-program"),catalog.programs.filter(row=>catalog.sections.some(section=>section.programId===row.id&&String(section.gradeLevel)===String(first.incomingLevel))),"Choose program");
+  refreshBulkPlacement();get("en-bulk-dialog").showModal();
+}
+get("en-bulk-open").addEventListener("click",openBulk);
+get("en-bulk-clear").addEventListener("click",()=>{if(!saving){selectedApplications.clear();renderApplications();}});
+get("en-bulk-close").addEventListener("click",()=>{if(!saving)closeBulk();});
+get("en-bulk-dialog").addEventListener("cancel",event=>{event.preventDefault();if(!saving)closeBulk();});
+get("en-bulk-program").addEventListener("change",refreshBulkPlacement);
+function bulkRegistrationPayload(item,placement){
+  return {...placement,applicationId:item.applicationId,applicationRevision:item.revision,personId:item.personId||"",
+    displayName:item.displayName,birthDate:item.birthDate,studentNumber:item.studentNumber||"",guardianName:item.guardianName,
+    guardianRelationship:item.guardianRelationship,guardianEmail:item.guardianEmail,guardianMobile:item.guardianMobile||"",studentEmail:item.studentEmail||"",studentEmailType:item.studentEmailType||""};
+}
+get("en-bulk-form").addEventListener("submit",event=>{
+  event.preventDefault();if(saving||!bulkReview)return;
+  const rows=bulkReview.rows.slice(),placement={yearId:bulkReview.yearId,programId:get("en-bulk-program").value,termId:get("en-bulk-term").value,sectionId:get("en-bulk-section").value};
+  if(!placement.programId||!placement.termId||!placement.sectionId)return;
+  if(!confirm("Enroll "+rows.length+" accepted applicants in the selected section? Each is validated and committed independently."))return;
+  void (async()=>{
+    setSaving(true);let succeeded=0,failed=0;const host=get("en-bulk-results");host.replaceChildren();
+    try{
+      for(const item of rows){
+        get("en-bulk-status").textContent="Processing "+(succeeded+failed+1)+" / "+rows.length;
+        const line=document.createElement("p");line.className="en-muted";
+        try{await perform("register_student",bulkRegistrationPayload(item,placement));succeeded++;line.textContent=item.displayName+" · Enrolled";selectedApplications.delete(item.applicationId);}
+        catch(error){failed++;line.textContent=item.displayName+" · "+(error?.message||"Enrollment failed");}
+        host.append(line);
+      }
+      await Promise.allSettled([loadRegistrations(),loadApplications()]);
+      get("en-bulk-status").textContent=succeeded+" enrolled · "+failed+" not enrolled. Review individual results.";
+      get("en-bulk-apply").hidden=true;
+    }finally{setSaving(false);renderApplications();}
+  })();
+});
 function renderApplications(){
   const host=get("en-application-list");host.replaceChildren();
   const query=String(get("en-application-search").value||"").trim().toLowerCase();
@@ -1252,6 +1319,7 @@ function renderApplications(){
     const matchesStatus=filter==="all"||(filter==="pending"?["submitted","needs_information","accepted"].includes(item.status):item.status===filter);
     return matchesStatus&&(!query||[item.displayName,item.reference,item.applicationType].some(v=>String(v||"").toLowerCase().includes(query)));
   });
+  updateBulkControls();
   get("en-applications-more").hidden=!applicationCursor;
   get("en-applications-more").disabled=saving||applicationBusy;
   get("en-applications-count").textContent=items.length+" matching · "+applications.length+" scanned"+(applicationCursor?" · more records available":"");
@@ -1268,6 +1336,11 @@ function renderApplications(){
     contacts.textContent=item.guardianName+" · "+item.guardianEmail+
       (item.studentEmail?" · student: "+item.studentEmail:" · guardian-managed learner");
     info.append(name,meta,contacts);
+    if(item.status==="accepted"&&item.requirementsReady){
+      const selectLabel=document.createElement("label");selectLabel.className="en-muted";
+      const checkbox=document.createElement("input");checkbox.type="checkbox";checkbox.checked=selectedApplications.has(item.applicationId);checkbox.disabled=saving;
+      checkbox.addEventListener("change",()=>selectBulkApplication(item,checkbox.checked));selectLabel.append(checkbox,document.createTextNode(" Select for bulk enrollment"));info.append(selectLabel);
+    }
     if(["submitted","needs_information","accepted"].includes(item.status)){
       const requirements=document.createElement("p");requirements.className="en-muted";
       const total=item.requirements?.length||0,verified=(item.requirements||[]).filter(row=>row.status==="verified").length;
@@ -1299,15 +1372,16 @@ function renderApplications(){
   }
   if(saving)for(const button of host.querySelectorAll("button"))button.disabled=true;
 }
-async function loadApplications({more=false}={}){
+async function loadApplications({more=false,refreshItem=null}={}){
   if(more&&(!applicationCursor||applicationBusy||saving))return;
   const cursor=more?applicationCursor:null;applicationBusy=true;
   try{
-    const result=await latest("applications","list_applications",cursor?{cursor}:{});
+    const result=await latest("applications","list_applications",refreshItem?{applicationId:refreshItem}:cursor?{cursor}:{});
     if(!result)return;
-    const rows=new Map((more?applications:[]).map(item=>[item.applicationId,item]));
+    const rows=new Map((more||refreshItem?applications:[]).map(item=>[item.applicationId,item]));
     for(const item of result.items||[])rows.set(item.applicationId,item);
-    applications=[...rows.values()].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));applicationCursor=result.nextCursor||null;
+    applications=[...rows.values()].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));if(!refreshItem)applicationCursor=result.nextCursor||null;
+    for(const [id,old] of selectedApplications){const current=rows.get(id);if(!current||current.revision!==old.revision||current.status!=="accepted"||!current.requirementsReady)selectedApplications.delete(id);}
   }finally{applicationBusy=false;renderApplications();}
 }
 get("en-applications-more").addEventListener("click",()=>void loadApplications({more:true}).catch(error=>{status.textContent=error?.message||"More applications could not be loaded.";}));
@@ -1403,7 +1477,7 @@ form.addEventListener("submit",event=>{
       if(!loadedApplication){
         clearLoadedApplication({resetIdentity:true});get("en-application-search").value=result.reference||"";get("en-application-status").value="pending";
         showEnrollmentView("applications");status.textContent="Application saved. Review requirements and accept before enrollment.";
-        try{await loadApplications();}catch{status.textContent="Application saved. Refresh Admissions to continue review.";}return;
+        try{await loadApplications({refreshItem:result.applicationId});}catch{status.textContent="Application saved. Refresh Admissions to continue review.";}return;
       }
       status.textContent=result.displayName+" enrolled · "+result.courseCount+
         " active subject enrollment"+(result.courseCount===1?"":"s")+" · "+
@@ -1434,6 +1508,7 @@ picker=createTenantSchoolPicker({
     if(correctionReview&&!confirm("Discard the open correction?"))throw new Error("Finish the correction before switching schools.");
     if(correctionReview)closeCorrection();
     if(documentReview)closeDocuments();
+    if(bulkReview)closeBulk();selectedApplications.clear();
     if(get("en-template-dialog").open&&!confirm("Discard the open template editor?"))throw new Error("Finish the template edit before switching schools.");
     closeTemplateEditor();get("en-template-open").hidden=true;
     ++refreshVersion;requestedPersonId="";activeEnrollmentView="registrations";
