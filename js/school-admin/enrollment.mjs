@@ -1241,7 +1241,7 @@ function renderApplications(){
     const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p"),
       contacts=document.createElement("p");
     name.textContent=item.displayName;meta.className="en-muted";contacts.className="en-muted";
-    meta.textContent=applicationMeta(item)+" · "+(item.applicationType||"new");
+    meta.textContent=applicationMeta(item)+" · "+(item.applicationType||"new")+" · "+(item.source==="onsite"?"Onsite":"Online");
     contacts.textContent=item.guardianName+" · "+item.guardianEmail+
       (item.studentEmail?" · student: "+item.studentEmail:" · guardian-managed learner");
     info.append(name,meta,contacts);
@@ -1372,7 +1372,7 @@ form.addEventListener("submit",event=>{
       if(!loadedApplication){
         clearLoadedApplication({resetIdentity:true});get("en-application-search").value=result.reference||"";get("en-application-status").value="pending";
         showEnrollmentView("applications");status.textContent="Application saved. Review requirements and accept before enrollment.";
-        await loadApplications();return;
+        try{await loadApplications();}catch{status.textContent="Application saved. Refresh Admissions to continue review.";}return;
       }
       status.textContent=result.displayName+" enrolled · "+result.courseCount+
         " active subject enrollment"+(result.courseCount===1?"":"s")+" · "+
