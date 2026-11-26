@@ -59,7 +59,7 @@ function setSaving(value){
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
-  for(const control of document.querySelectorAll("#en-application-list button, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
   if(!value){
@@ -1005,7 +1005,52 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
   }
 }
 
-let requirementsReview=null;
+let requirementsReview=null,templateReview=null,templateLoadRun=0;
+function renderTemplateEditor(){
+  const type=get("en-template-type").value||"new",template=templateReview?.templates.find(row=>row.type===type);
+  get("en-template-labels").value=template?template.labels.join("\n"):"";
+  get("en-template-reason").value="";
+  get("en-template-save").disabled=!template||saving;
+  get("en-template-status").textContent=template?(template.revision?"":"Not configured yet."):"Loading templates…";
+}
+function closeTemplateEditor(){
+  ++templateLoadRun;templateReview=null;
+  get("en-template-labels").value="";get("en-template-reason").value="";
+  get("en-template-dialog").close();
+}
+async function openTemplateEditor(){
+  if(saving||!picker.scope.current?.roles.includes("school_admin")||picker.scope.current.platformOverride)return;
+  const run=++templateLoadRun;templateReview=null;
+  get("en-template-type").value="new";renderTemplateEditor();
+  get("en-template-dialog").showModal();
+  try{
+    const result=await perform("get_admission_templates");
+    if(run!==templateLoadRun)return;
+    templateReview={templates:result.templates||[]};renderTemplateEditor();
+  }catch(error){if(run===templateLoadRun)get("en-template-status").textContent=error?.message||"Templates unavailable.";}
+}
+get("en-template-open").addEventListener("click",()=>void openTemplateEditor());
+get("en-template-close").addEventListener("click",()=>{if(!saving)closeTemplateEditor();});
+get("en-template-dialog").addEventListener("cancel",event=>{event.preventDefault();if(!saving)closeTemplateEditor();});
+get("en-template-type").addEventListener("change",()=>{if(!saving)renderTemplateEditor();});
+get("en-template-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(saving||!templateReview)return;
+  const type=get("en-template-type").value,template=templateReview.templates.find(row=>row.type===type);
+  if(!template)return;
+  const labels=get("en-template-labels").value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean),
+    reason=get("en-template-reason").value.trim();
+  void (async()=>{
+    setSaving(true);get("en-template-status").textContent="Saving…";
+    try{
+      const saved=await perform("save_admission_template",{type,labels,reason,expectedRevision:template.revision});
+      templateReview.templates=templateReview.templates.map(row=>row.type===type?saved:row);
+      renderTemplateEditor();get("en-template-status").textContent="Template saved.";
+      try{await loadApplications();}catch{status.textContent="Template saved. Refresh applications.";}
+    }catch(error){get("en-template-status").textContent=error?.message||"Template save failed.";}
+    finally{setSaving(false);get("en-template-save").disabled=!templateReview;}
+  })();
+});
 function renderRequirementRows(){
   const host=get("en-requirements-list");host.replaceChildren();
   if(!requirementsReview)return;
@@ -1016,7 +1061,7 @@ function renderRequirementRows(){
   rows.forEach((item,index)=>{
     const row=document.createElement("div");row.className="en-requirement-row";
     const nameLabel=document.createElement("label");nameLabel.className="text-sm font-bold";nameLabel.textContent="Requirement";
-    const name=document.createElement("input");name.className="en-input";name.type="text";name.maxLength=100;name.required=true;name.value=item.label;
+    const name=document.createElement("input");name.className="en-input";name.type="text";name.maxLength=100;name.required=true;name.value=item.label;name.readOnly=Boolean(item.mandatory);
     name.addEventListener("input",()=>{item.label=name.value;});nameLabel.append(name);
     const statusLabel=document.createElement("label");statusLabel.className="text-sm font-bold";statusLabel.textContent="Status";
     const select=document.createElement("select");select.className="en-input";
@@ -1025,13 +1070,18 @@ function renderRequirementRows(){
     }
     select.value=item.status;select.addEventListener("change",()=>{item.status=select.value;});statusLabel.append(select);
     const remove=document.createElement("button");remove.type="button";remove.className="en-btn secondary";remove.textContent="Remove";
-    remove.addEventListener("click",()=>{rows.splice(index,1);renderRequirementRows();});
+    remove.disabled=Boolean(item.mandatory);
+    remove.addEventListener("click",()=>{if(!item.mandatory){rows.splice(index,1);renderRequirementRows();}});
     row.append(nameLabel,statusLabel,remove);host.append(row);
   });
 }
 function openRequirements(item){
   if(saving||!["submitted","needs_information"].includes(item.status))return;
-  requirementsReview={item,rows:(item.requirements||[]).map(row=>({label:row.label,status:row.status}))};
+  const normalize=value=>String(value||"").trim().toLowerCase();
+  const mandatory=new Set((item.templateLabels||[]).map(normalize));
+  const rows=(item.requirements||[]).map(row=>({label:row.label,status:row.status,mandatory:mandatory.has(normalize(row.label))}));
+  for(const label of item.templateLabels||[])if(!rows.some(row=>normalize(row.label)===normalize(label)))rows.push({label,status:"missing",mandatory:true});
+  requirementsReview={item,rows};
   get("en-requirements-target").textContent=item.displayName+" · "+item.reference;
   get("en-requirements-none").checked=item.noRequirements===true;
   get("en-requirements-reason").value="";
@@ -1061,7 +1111,7 @@ get("en-requirements-form").addEventListener("submit",event=>{
     setSaving(true);get("en-requirements-status").textContent="Saving…";
     try{
       await perform("save_application_requirements",{applicationId:item.applicationId,
-        expectedRevision:Number(item.revision)||1,requirements:rows.map(row=>({label:row.label.trim(),status:row.status})),noRequirements,reason});
+        expectedRevision:Number(item.revision)||1,expectedTemplateRevision:Number(item.templateRevision)||0,requirements:rows.map(row=>({label:row.label.trim(),status:row.status})),noRequirements,reason});
       closeRequirements();status.textContent="Requirements review saved.";
       try{await loadApplications();}catch{status.textContent="Requirements saved. Refresh applications.";}
     }catch(error){get("en-requirements-status").textContent=error?.message||"Requirements review failed.";}
@@ -1254,6 +1304,8 @@ picker=createTenantSchoolPicker({
     if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
     if(requirementsReview&&!confirm("Discard the open requirements review?"))throw new Error("Finish the requirements review before switching schools.");
     if(requirementsReview)closeRequirements();
+    if(get("en-template-dialog").open&&!confirm("Discard the open template editor?"))throw new Error("Finish the template edit before switching schools.");
+    closeTemplateEditor();get("en-template-open").hidden=true;
     ++refreshVersion;requestedPersonId="";activeEnrollmentView="registrations";
     for(const source of Object.keys(requestVersions))++requestVersions[source];
     loadedApplication=null;loadedPerson=null;registrationChange=null;progressionChange=null;cohortPreview=null;draftDirty=false;registrations=[];
@@ -1281,6 +1333,7 @@ picker=createTenantSchoolPicker({
         :"Compatibility enrollment: contact your School Administrator for placement.";
       return;
     }
+    get("en-template-open").hidden=!current.roles.includes("school_admin")||current.platformOverride===true;
     showEnrollmentView(activeEnrollmentView);
     renderActivation(current.schoolId);workspace.hidden=false;
     void refreshAll().catch(error=>{status.textContent=error?.message||"Enrollment data could not be loaded.";});
