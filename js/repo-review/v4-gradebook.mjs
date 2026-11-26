@@ -359,6 +359,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             result.coverage.evidenceCount+" evidence records · "+
             result.coverage.evidenceWithoutGrade+" evidence-only · "+
             result.coverage.gradeOnly+" grade-only · "+
+            (result.coverage.originalReceiptCount||0)+" earlier checkpoint receipts · "+
+            (result.coverage.activityGradeCount||0)+" activity scores · "+
             (result.coverage.evidenceExceptions||0)+" evidence exceptions · "+
             (result.coverage.gradeExceptions||0)+" grade conflicts.":"")));
         if(currentTask.historicalRubricMode==="scalar_manual")notice.append(make("p","text-sm text-amber-900 mt-2","Original rubric unavailable — individual numerical grading is available; AI evaluation is disabled."));
@@ -423,7 +425,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         details.append(
           make("h3","font-extrabold text-slate-900",row.studentName||"Student"),
           make("p","text-xs text-slate-500 mt-1",
-            (row.gradeException?"Original grade requires reconciliation":row.evidenceException?"Original evidence requires reconciliation":row.gradeOnly?"Original historical grade (no matching submission receipt)":
+            (row.gradeException?"Original grade requires reconciliation":row.activityOnly?"Original activity grade":row.receiptOnly?"Original submitted checkpoint":row.evidenceException?"Original evidence requires reconciliation":row.gradeOnly?"Original historical grade (no matching submission receipt)":
               "Version "+row.version+" · "+
               (historicalGithub&&row.hasSubmission===false?"no student submission (teacher discovery only)":row.status)+
               " · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently")))
@@ -431,7 +433,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         const resultLine=grade?
           (grade.status==="published"?"Published result":"Draft")+" · "+grade.awarded+" / "+grade.total+
             (grade.pending?" · "+grade.pending+" pending":"")+(grade.status==="draft"&&grade.reviewSuggested?" · Review suggested":""):
-          (row.gradeException?"Grade conflict · excluded from evaluation":row.evidenceException?"Incompatible original evidence · excluded from evaluation":
+          (row.gradeException?"Grade conflict · excluded from evaluation":row.receiptOnly?"Submitted checkpoint · inspect original source":row.evidenceException?"Incompatible original evidence · excluded from evaluation":
           historicalGithub&&row.hasSubmission===false?
             "No student submission · excluded from evaluation":"Needs grading");
         details.append(make("p","text-xs font-bold mt-1 "+(grade?.status==="published"?"text-emerald-700":grade?"text-amber-700":"text-slate-600"),resultLine));
@@ -439,15 +441,28 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           view==="results"?(grade?"Open result":"Grade response"):
             task.submissionSource==="github"?"Review submitted commits":"Review response");
         button.type="button";
-        if(row.gradeOnly||row.evidenceException||row.gradeException){
-          button.textContent=row.gradeException?"Reconcile original grade":row.evidenceException?"Evidence unavailable — read only":"Original score — read only";
+        if(row.gradeOnly||row.evidenceException||row.gradeException||row.receiptOnly||row.activityOnly){
+          button.textContent=row.gradeException?"Reconcile original grade":row.activityOnly?"Activity score — read only":row.receiptOnly?"Checkpoint receipt — read only":row.evidenceException?"Evidence unavailable — read only":"Original score — read only";
           button.disabled=true;button.title="No matching frozen student submission. The saved original score is preserved but cannot be edited through evidence review.";
           button.classList.add("opacity-60","cursor-not-allowed");
         }
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
-        if(!row.gradeOnly&&!row.evidenceException&&!row.gradeException&&pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
+        if(!row.gradeOnly&&!row.evidenceException&&!row.gradeException&&!row.receiptOnly&&!row.activityOnly&&pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
         button.addEventListener("click",()=>void openReview(normalized));
+        if(row.originalReceipts?.length){
+          const receipts=make("details","mt-2 text-xs text-slate-700");
+          receipts.append(make("summary","cursor-pointer font-bold",row.originalReceiptCount+" earlier submission receipt(s)"));
+          for(const receipt of row.originalReceipts){
+            const line=make("p","mt-2");
+            const link=make("a","font-bold text-indigo-700 underline","Inspect checkpoint "+receipt.checkpointSha.slice(0,12));
+            link.href=receipt.repository+"/tree/"+receipt.checkpointSha+
+              (receipt.sourcePath?"/"+receipt.sourcePath.split("/").map(encodeURIComponent).join("/"):"");
+            link.target="_blank";link.rel="noopener noreferrer";
+            line.append(link,document.createTextNode(" · "+new Date(receipt.submittedAt).toLocaleString()));receipts.append(line);
+          }
+          details.append(receipts);
+        }
         card.append(details,button);inbox.append(card);
       }
       if(deepLinkRow&&!dialog.open){
