@@ -28,3 +28,18 @@ test("public downloads page is navigable and never fabricates native release lin
  assert.match(shell,/\["downloads","Download","downloads\.html"\]/);
  assert.match(home,/href="downloads\.html"/);
 });
+
+test("public downloads visibly separates real unsigned QA artifacts from unavailable official installers",()=>{
+ const html=readFileSync(new URL("../downloads.html",import.meta.url),"utf8");
+ const css=readFileSync(new URL("../css/downloads.css",import.meta.url),"utf8");
+ const workflow="https://github.com/Adminerva-Org/Adminerva/actions/workflows/native-public-preview-builds.yml";
+ assert.equal(html.split('href="'+workflow+'"').length-1,3);
+ for(const label of ["Get Windows test build","Get macOS test build","Get Android test build"])
+  assert.match(html,new RegExp(label));
+ assert.match(html,/GitHub sign-in may be required/);
+ assert.match(html,/builds expire after seven days/);
+ assert.match(html,/School accounts, Studio exams and Companion are not enabled/);
+ assert.match(html,/iOS test installation requires Apple signing/);
+ assert.match(css,/downloads-preview-link/);
+ assert.doesNotMatch(html,/href="[^"]+\.(exe|dmg|apk|ipa)"/i);
+});

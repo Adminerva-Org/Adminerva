@@ -40,11 +40,11 @@ function createWindow(){
   if(decision.action!=="internal")launchExternalIfAllowed(url);
   return {action:"deny"};
  });
- contents.on("will-navigate",(event,url)=>{
-  const decision=classifyNavigation(url);
+ contents.on("will-navigate",details=>{
+  const decision=classifyNavigation(details.url);
   if(decision.action==="internal")return;
-  event.preventDefault();
-  launchExternalIfAllowed(url);
+  details.preventDefault();
+  launchExternalIfAllowed(details.url);
  });
  win.on("page-title-updated",event=>event.preventDefault());
  contents.once("did-finish-load",()=>{if(!win.isDestroyed())win.show();});
