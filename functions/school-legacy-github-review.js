@@ -332,11 +332,12 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    const auditRef=db.collection("grade_revisions").doc();
    let outcome;
    await db.runTransaction(async tx=>{
-     const [freshTask,freshImport,freshEvidence,prior,freshCustody,freshAssignment,freshMembership]=await Promise.all([
+     const [freshTask,freshImport,freshEvidence,prior,freshCustody,freshAssignment,freshMembership,freshOffering]=await Promise.all([
        tx.get(taskRef),tx.get(importRef),tx.get(record.ref),tx.get(gradeDocument),
        custody?tx.get(custody.ref):Promise.resolve(null),
        custody?tx.get(db.doc(prefix+"staff_assignments/"+require("./school-academics.js").rowKey(ctx.uid,legacyOfferingId))):Promise.resolve(null),
-       custody?tx.get(db.doc(prefix+"memberships/"+ctx.uid)):Promise.resolve(null)
+       custody?tx.get(db.doc(prefix+"memberships/"+ctx.uid)):Promise.resolve(null),
+       custody?tx.get(db.doc(prefix+"course_offerings/"+legacyOfferingId)):Promise.resolve(null)
      ]);
      const sourceUnchanged=freshTask.exists&&
        freshTask.data().evalCriteria===taskData.evalCriteria&&
@@ -348,10 +349,12 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
        validCustody(freshCustody?.exists?freshCustody.data():null,{
          schoolId:ctx.schoolId,assessmentId:id,offeringId:legacyOfferingId,
          teacherUid:ctx.uid,task:freshTask.data(),section:record.data.section
-       })&&freshAssignment?.exists&&freshAssignment.data().status==="active"&&
+       })&&freshOffering?.exists&&freshOffering.data().schoolId===ctx.schoolId&&
+       freshOffering.data().primaryTeacherUid===ctx.uid&&
+       freshAssignment?.exists&&freshAssignment.data().schoolId===ctx.schoolId&&freshAssignment.data().status==="active"&&
        freshAssignment.data().teacherUid===ctx.uid&&
        freshAssignment.data().offeringId===legacyOfferingId&&
-       freshMembership?.exists&&freshMembership.data().status==="active"&&
+       freshMembership?.exists&&freshMembership.data().schoolId===ctx.schoolId&&freshMembership.data().status==="active"&&
        freshMembership.data().roles?.includes("teacher")&&
        freshCustody.data().verifiedLegacyStudentIds.includes(meta.studentId);
      if(!ownerActive&&!approvedCustody)
