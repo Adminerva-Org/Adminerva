@@ -286,7 +286,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      const cfg=privateTask.exists&&privateTask.data().ownerUid===ctx.uid?privateTask.data():{};
      const rules=Array.isArray(cfg.rules)?cfg.rules.slice(0,40)
        .map(rule=>clean((rule?.type?rule.type+": ":"")+String(rule?.value||""),400)):[];
-     const checkingInstructions=[clean(cfg.systemPersona||taskData.systemPersona,6000),
+     const checkingInstructions=[clean(isOwner?(cfg.systemPersona||taskData.systemPersona):"",6000),
        rules.length?"Legacy checking rules: "+rules.join("; "):"",
        clean(imported.exists?imported.data().checkingInstructions:"",5000)].filter(Boolean).join("\n\n").slice(0,8000);
      return {task:taskInfo,
