@@ -236,7 +236,7 @@ test("bulk GitHub save cannot overwrite an existing original grade draft",async(
  assert.equal(f.map.get("student_grades/"+evidenceId).score,33);
  assert.equal(f.writes.length,0);
 });
-test("zero or unresolved points cannot be published, and stale versions cannot publish",async()=>{
+test("legitimate zero scores can be published; stale grade revisions cannot",async()=>{
  const f=fixture();
  await f.service(f.request("legacy_github_save_draft",{
    ...f.gradeArgs,criteria:[
@@ -246,13 +246,14 @@ test("zero or unresolved points cannot be published, and stale versions cannot p
  }));
  await assert.rejects(f.service(f.request("legacy_github_publish",{
    legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
-   expectedCheckpointSha:checkpoint,expectedGradeRevision:1
- })),error=>error.code==="failed-precondition");
- await assert.rejects(f.service(f.request("legacy_github_publish",{
-   legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
    expectedCheckpointSha:checkpoint,expectedGradeRevision:0
  })),error=>error.code==="failed-precondition");
- assert.equal(f.map.get("student_grades/"+evidenceId).published,false);
+ const result=await f.service(f.request("legacy_github_publish",{
+   legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
+   expectedCheckpointSha:checkpoint,expectedGradeRevision:1
+ }));
+ assert.equal(result.published,true);
+ assert.equal(f.map.get("student_grades/"+evidenceId).score,0);
 });
 
 test("historical GitHub bulk publishing uses the same frozen evidence checks and is idempotent",async()=>{
@@ -268,7 +269,7 @@ test("historical GitHub bulk publishing uses the same frozen evidence checks and
  assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,2,
    "retry cannot duplicate a completed publication or audit event");
 });
-test("historical GitHub bulk publication excludes zero points and teacher-only discoveries",async()=>{
+test("historical GitHub bulk publication includes legitimate zeros but excludes teacher-only discoveries",async()=>{
  const zero=fixture();
  await zero.service(zero.request("legacy_github_save_draft",{
    ...zero.gradeArgs,
@@ -276,9 +277,9 @@ test("historical GitHub bulk publication excludes zero points and teacher-only d
      {awardedPoints:0,pendingPoints:0,comment:"No qualifying behavior"}]
  }));
  const zeroResult=await zero.service(zero.request("legacy_github_bulk_publish"));
- assert.equal(zeroResult.published,0);
- assert.equal(zeroResult.zeroSkipped,1);
- assert.equal(zero.map.get("student_grades/"+evidenceId).published,false);
+ assert.equal(zeroResult.published,1);
+ assert.equal(zeroResult.zeroSkipped,0);
+ assert.equal(zero.map.get("student_grades/"+evidenceId).published,true);
  const discovered=fixture({discovery:true,approval:true,
    grade:{studentId,taskId,score:35,maxScore:40,gradeVersion:1,pending:0}});
  const noReceipt=await discovered.service(discovered.request("legacy_github_bulk_publish"));
@@ -352,4 +353,25 @@ test("historical GitHub draft and publication do not require routine teacher app
  assert.equal(result.published,true);
  assert.equal(f.map.get("student_grades/"+evidenceId).published,true);
  assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,2);
+});
+
+
+test("pending historical scores save as drafts but cannot be published",async()=>{
+ const f=fixture();
+ const criteria=[{awardedPoints:15,pendingPoints:5,comment:"Incomplete"},{awardedPoints:17,pendingPoints:0,comment:"Checked"}];
+ await f.service(f.request("legacy_github_save_draft",{...f.gradeArgs,criteria}));
+ assert.equal(f.map.get("student_grades/"+evidenceId).pending,5);
+ await assert.rejects(f.service(f.request("legacy_github_publish",{legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,expectedCheckpointSha:checkpoint,expectedGradeRevision:1})),error=>error.code==="failed-precondition");
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,false);
+});
+test("explicit published historical correction records before and after and preserves visibility",async()=>{
+ const f=fixture();
+ await f.service(f.request("legacy_github_save_draft",f.gradeArgs));
+ await f.service(f.request("legacy_github_publish",{legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,expectedCheckpointSha:checkpoint,expectedGradeRevision:1}));
+ const corrected=await f.service(f.request("legacy_github_correct_published",{...f.gradeArgs,expectedGradeRevision:1,
+   criteria:[{awardedPoints:19,pendingPoints:0,comment:"Corrected"},{awardedPoints:19,pendingPoints:0,comment:"Checked"}]}));
+ assert.equal(corrected.awarded,38);assert.equal(corrected.revision,2);
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,true);
+ await assert.rejects(f.service(f.request("legacy_github_correct_published",{...f.gradeArgs,expectedGradeRevision:1})),error=>error.code==="failed-precondition");
+ assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,3);
 });
