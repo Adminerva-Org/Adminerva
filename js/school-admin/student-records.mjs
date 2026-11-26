@@ -14,6 +14,7 @@ let picker=null,students=[],current=null,saving=false,searchRun=0,fileRun=0,
   guardianChange=null,guardianLifecycle=null,requestLifecycle=null;
 let directoryCursor=null,directoryQuery="",directoryBusy=false;
 let fileView="registrations",historyBusy=false;
+let profileData=null,profileRun=0,profileDirty=false;
 let recordsMode="students",queueRows=[],queueCursor=null,queueRun=0,queueBusy=false,queueSkipped=0;
 
 function assistMode(){
@@ -233,10 +234,13 @@ get("sr-load-admission-docs").addEventListener("click",()=>void loadAdmissionDoc
 const historyKeys={registrations:"registrationId",guardians:"relationshipId",documentRequests:"requestId",releasedGrades:"offeringId",audit:"auditId"};
 const historyRenderers={registrations:renderRegistrations,guardians:renderGuardians,documentRequests:renderRequests,releasedGrades:renderGrades,audit:renderAudit};
 function showFileView(view){
-  if(!["registrations","releasedGrades","guardians","documents","audit"].includes(view))return;
+  if(!["registrations","profile","releasedGrades","guardians","documents","audit"].includes(view))return;
+  if(fileView==="profile"&&view!=="profile"&&profileDirty&&!confirm("Discard unsaved profile changes?"))return;
+  if(fileView==="profile"&&view!=="profile"&&profileDirty)clearProfile();
   fileView=view;
   for(const panel of document.querySelectorAll("[data-sr-panel]"))panel.hidden=panel.dataset.srPanel!==view;
   for(const control of document.querySelectorAll("[data-sr-view]"))control.setAttribute("aria-pressed",String(control.dataset.srView===view));
+  if(view==="profile"&&current&&!profileData)void loadProfile();
 }
 function renderHistoryControls(){
   for(const section of Object.keys(historyKeys)){
@@ -268,6 +272,32 @@ async function loadHistory(section){
 }
 for(const control of document.querySelectorAll("[data-sr-view]"))control.addEventListener("click",()=>showFileView(control.dataset.srView));
 for(const control of document.querySelectorAll("[data-sr-history]"))control.addEventListener("click",()=>void loadHistory(control.dataset.srHistory));
+const profileFields=["lrn","lrnState","sex","birthPlace","nationality","addressLine","barangay","cityMunicipality","province","postalCode","country","previousSchool"];
+function clearProfile(){++profileRun;profileData=null;profileDirty=false;get("sr-profile-form").reset();get("sr-profile-form").hidden=true;get("sr-profile-status").textContent="";}
+async function loadProfile({force=false}={}){
+  if((saving&&!force)||!current)return;
+  if(profileDirty&&!confirm("Discard unsaved profile changes?"))return;
+  const personId=current.person.personId,run=++profileRun;profileDirty=false;get("sr-profile-form").hidden=true;get("sr-profile-status").textContent="Loading profile…";
+  try{
+    const result=await perform("get_registrar_profile",{personId});
+    if(run!==profileRun||current?.person.personId!==personId)return;
+    profileData=result;const form=get("sr-profile-form");
+    for(const field of profileFields)form.elements[field].value=result.profile[field]||((field==="lrnState")?"unrecorded":"");
+    form.elements.reason.value="";form.hidden=false;get("sr-profile-status").textContent=result.revision?"Profile revision "+result.revision:"No supplementary profile recorded.";
+  }catch(error){if(run===profileRun)get("sr-profile-status").textContent=error?.message||"Profile unavailable.";}
+}
+get("sr-profile-refresh").addEventListener("click",()=>void loadProfile());
+get("sr-profile-form").addEventListener("input",()=>{profileDirty=true;});
+get("sr-profile-form").addEventListener("submit",event=>{
+  event.preventDefault();if(saving||!current||!profileData||profileData.personId!==current.person.personId||!event.currentTarget.reportValidity())return;
+  const personId=current.person.personId,data=new FormData(event.currentTarget),profile=Object.fromEntries(profileFields.map(key=>[key,String(data.get(key)||"").trim()]));
+  const reason=String(data.get("reason")||"").trim(),expectedRevision=profileData.revision;
+  void (async()=>{
+    setSaving(true,"Saving profile…");
+    try{await perform("save_registrar_profile",{personId,profile,reason,expectedRevision});profileDirty=false;await loadProfile({force:true});status.textContent="Student profile saved.";}
+    catch(error){get("sr-profile-status").textContent=error?.message||"Profile save failed.";}finally{setSaving(false);}
+  })();
+});
 function renderFile(data){
   get("sr-admission-docs").replaceChildren();
   current=data;const p=data.person;
@@ -286,6 +316,8 @@ function renderFile(data){
 }
 async function openStudent(personId,{force=false}={}){
   if(saving&&!force)return;
+  if(profileDirty&&!force&&!confirm("Discard unsaved profile changes?"))return;
+  clearProfile();
   if(current?.person.personId!==personId){fileView="registrations";fileHost.hidden=true;}
   historyBusy=false;const run=++fileRun;status.textContent="Loading student record…";
   try{
@@ -487,6 +519,8 @@ async function loadRequestQueue({more=false,force=false}={}){
 }
 function showRecordsMode(mode){
   if(saving||!["students","requests"].includes(mode))return;
+  if(mode!=="students"&&profileDirty&&!confirm("Discard unsaved profile changes?"))return;
+  if(mode!=="students"&&profileDirty)clearProfile();
   recordsMode=mode;workspace.hidden=mode!=="students";get("sr-requests-workspace").hidden=mode!=="requests";
   get("sr-mode-students").setAttribute("aria-pressed",String(mode==="students"));get("sr-mode-requests").setAttribute("aria-pressed",String(mode==="requests"));
   if(mode==="requests")void loadRequestQueue();
@@ -507,6 +541,8 @@ picker=createTenantSchoolPicker({
   host:get("sr-school-picker"),status,
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current Student Records change before switching schools.");
+    if(profileDirty&&!confirm("Discard unsaved profile changes?"))throw new Error("Finish the profile edit before switching schools.");
+    clearProfile();
     ++searchRun;++fileRun;requestedPersonId="";students=[];current=null;historyBusy=false;fileView="registrations";guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
     directoryCursor=null;directoryQuery="";directoryBusy=false;get("sr-more").hidden=true;get("sr-search-progress").textContent="";
     ++queueRun;queueRows=[];queueCursor=null;queueBusy=false;queueSkipped=0;recordsMode="students";get("sr-requests-workspace").hidden=true;get("sr-workspace-nav").hidden=true;get("sr-queue-list").replaceChildren();get("sr-queue-search").value="";get("sr-queue-filter").value="open";get("sr-queue-status").textContent="";
