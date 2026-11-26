@@ -27,11 +27,12 @@ async function bootDesktop(){
   once(name,handler){events.set(name,handler);}
  }
  class FakeWindow{
-  constructor(options){this.options=options;this.webContents=new FakeWebContents();windows.push(this);}
-  on(name,handler){events.set("window:"+name,handler);}
+  constructor(options){this.options=options;this.webContents=new FakeWebContents();this._closed=false;this.handlers=new Map();windows.push(this);}
+  on(name,handler){this.handlers.set(name,handler);events.set("window:"+name,handler);}
   async loadURL(url){this.webContents.url=url;}
   show(){}
-  isDestroyed(){return false;}
+  close(){this._closed=true;this.handlers.get("closed")?.();}
+  isDestroyed(){return this._closed;}
   static getAllWindows(){return windows;}
  }
  const mock={
@@ -56,7 +57,7 @@ async function bootDesktop(){
  const top={sender,senderFrame:sender.mainFrame};
  const frame={sender,senderFrame:{}};
  return {
-  ipc,events,dialogs,browserUrls,win,top,frame,ctx,
+  ipc,events,dialogs,browserUrls,windows,win,top,frame,ctx,
   get menu(){return menu;},
   get openCount(){return openCount;},
   setToken(value){vm.runInContext("pendingToken="+JSON.stringify(value)+";tokenConsumedForBootstrap=false",ctx);},
@@ -124,7 +125,11 @@ test("sign-out revokes private desktop navigation and clears the prior learner's
  vm.runInContext("allowPrivate=true",h.ctx);
  assert.equal(await ended(h.top),true);
  assert.equal(h.read("allowPrivate"),false);
- assert.equal(h.win.webContents.url,"https://adminerva-org.github.io/Adminerva/guest-home.html");
+ const guest=h.windows.at(-1);
+ assert.notEqual(guest,h.win);
+ assert.equal(guest.webContents.url,"https://adminerva-org.github.io/Adminerva/guest-home.html");
+ assert.equal(guest.options.webPreferences.partition,"persist:adminerva-public-preview");
+ assert.equal(h.win.isDestroyed(),true);
  assert.equal(await ended(h.top),false,"replayed sign-out is harmless");
 });
 
@@ -137,7 +142,7 @@ test("native desktop auth stays window-session scoped while browser login remain
  assert.match(firebase,/desktopBridge\.reportSignedOut\(\)/);
  assert.match(preload,/reportSignedOut:\(\)=>ipcRenderer\.invoke\("adminerva:session-ended"\)/);
  assert.match(source,/ipcMain\.handle\("adminerva:session-ended"/);
- assert.match(source,/activeWindow\.loadURL\(START_URL\)/);
+ assert.match(source,/createWindow\(\);/);
 });
 
 test("Studio logout and leave guards refuse to abandon unconfirmed code",()=>{
@@ -161,7 +166,7 @@ test("unsigned packaged application cannot enable the developer credential bridg
  const bundle=JSON.parse(readFileSync(new URL("../apps/desktop/package.json",import.meta.url),"utf8"));
  assert.match(s,/const DEV_SIGNIN=!app\.isPackaged/);
  assert.match(s,/DEV_SIGNIN\?"preload-auth-dev\.cjs":"preload\.cjs"/);
- assert.match(s,/DEV_SIGNIN\?"persist:adminerva-auth-dev":"persist:adminerva-public-preview"/);
+ assert.match(s,/schoolUserPartition\(accountUid\)/);
  assert.equal(bundle.build.files.includes("preload-auth-dev.cjs"),false);
  assert.equal(bundle.build.files.includes("native-handoff-client.cjs"),false);
  assert.equal(bundle.build.files.includes("native-auth-protocol.cjs"),false);

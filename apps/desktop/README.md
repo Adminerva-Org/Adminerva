@@ -59,3 +59,7 @@ The unreleased callable now requires a **minimum 32-byte server-only `ADMINERVA_
 
 In the development preview, Firebase Auth uses **session-only** persistence inside the desktop shell instead of persistent web-account login. This does not delete per-learner local Studio recovery drafts. A verified Firebase sign-out sends a revoke-only main-frame message to Electron, which clears private navigation and replaces the prior student's window with public Adminerva. Normal Studio sign-out and page unload first preserve an editor snapshot and block departure while cloud confirmation, in-flight writes, or unsaved memory-only drafts remain. This is still subject to real Windows/macOS crash, forced-quit and student switching acceptance; do not enable classroom sign-in from source alone.
 
+
+## Per-user local recovery partitions (development only)
+
+After a cryptographically verified pairing, the backend returns the existing Firebase UID to the native process. The development Electron app hashes this UID into a dedicated persistent browser partition before running the Firebase session bootstrap. Returning to the same UID selects the same local recovery namespace; different accounts have different localStorage/IndexedDB namespaces and the public guest window uses a separate partition. Student drafts are not copied, deleted or silently migrated across accounts. This behavior still needs physical-device logout/crash/recovery acceptance; unsigned public installers contain no sign-in capability.
