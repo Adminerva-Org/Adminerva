@@ -16,7 +16,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
-const {custodyRef,validCustody,authorizedTeacherCustody}=require("./school-legacy-custody.js");
+const {custodyRef,validCustody,authorizedTeacherCustody,historicalCustodianRecord,normalized}=require("./school-legacy-custody.js");
 
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
@@ -36,6 +36,59 @@ function matchesAssessmentTitle(query,title){
   const terms=assessmentSearchWords(query),words=assessmentSearchWords(title);
   return terms.length>0&&words.length>0&&
     terms.every(term=>words.some(word=>/^[0-9]+$/.test(term)?word===term:word.startsWith(term)));
+}
+function exactAssessmentSearchId(query){
+  const raw=String(query||"").trim();
+  const explicit=/^id\s*:/i.test(raw);
+  if(!explicit&&!/^[A-Za-z0-9]{20}$/.test(raw))return "";
+  const id=explicit?raw.replace(/^id\s*:\s*/i,""):raw;
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(id)||/^__.*__$/.test(id))
+    deny("invalid-argument","Enter a valid assessment document ID.");
+  return id;
+}
+async function exactCustodyCandidate({db,schoolId,assessmentId,task,identities,rosterSize}){
+  if(!validOrigin(task,schoolId)||!historicalCustodianRecord(task)||!rosterSize||
+     !identities.size||identities.size>350)return null;
+  const sections=historicalSections(task);
+  if(!sections.length)return null;
+  const ids=[...identities.keys()], sectionStudents=new Map();
+  for(let offset=0;offset<ids.length;offset+=100){
+    const chunk=ids.slice(offset,offset+100);
+    const docs=await db.getAll(...chunk.map(id=>db.doc("students/"+id)));
+    docs.forEach((doc,index)=>{
+      if(!doc.exists)return;
+      const data=doc.data(),section=normalized(data?.section||data?.sectionName||data?.classSection);
+      if(!sectionStudents.has(section))sectionStudents.set(section,new Set());
+      sectionStudents.get(section).add(chunk[index]);
+    });
+  }
+  const required=rosterSize===1?1:Math.max(2,Math.ceil(rosterSize/3));
+  const proven=sections.filter(section=>{
+    const ids=sectionStudents.get(normalized(section))||new Set();
+    return new Set([...ids].map(id=>identities.get(id))).size>=required;
+  });
+  if(!proven.length)return null;
+  const [receipts,grades]=await Promise.all([
+    db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
+    db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get()
+  ]);
+  if(receipts.size>=501||grades.size>=501)return null;
+  const proof=new Set();
+  for(const doc of receipts.docs){
+    const row=doc.data();
+    if(row.assessmentId===assessmentId&&row.submittedAt)proof.add(row.studentId);
+  }
+  for(const doc of grades.docs){
+    const row=doc.data();
+    if(row.taskId===assessmentId&&row.score!==undefined&&row.score!==null&&Number.isFinite(Number(row.score)))proof.add(row.studentId);
+  }
+  const verified=proven.filter(section=>[...sectionStudents.get(normalized(section))].some(id=>proof.has(id)));
+  if(!verified.length)return null;
+  return {assessmentId,title:String(task.title||"Historical assessment").slice(0,160),
+    subject:String(task.subject||"").slice(0,120),originalSections:verified.slice(0,12),
+    originalOwnerStatus:task.ownerUid?"different_account":"owner_not_recorded",
+    maximum:Number.isFinite(Number(task.maxScore))&&Number(task.maxScore)>0?Number(task.maxScore):null,
+    status:"ownership_review_required",canLink:false,canGrade:false};
 }
 function canDiscloseAssessmentSource(scope,data,schoolId,uid){
   if(!data||!schoolId||!uid)return false;
@@ -1173,7 +1226,43 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       await verifyOffering();
       if(!teacher&&!ctx.platformOverride)
         deny("permission-denied","Only an assigned teacher can search their assessment sources.");
-      const query=text(input.query,"Assessment search",80).toLocaleLowerCase("en");
+      const rawQuery=text(input.query,"Assessment search",140);
+      const exactId=exactAssessmentSearchId(rawQuery);
+      if(exactId){
+        const scopes=[["school_assessment",prefix+"assessments/"],["imported_blueprint",prefix+"assessment_blueprints/"],
+          ...(ctx.schoolId===LEGACY_BRIDGE_SCHOOL?[["original_assessment","assessments/"]]:[])];
+        const docs=await Promise.all(scopes.map(([,path])=>db.doc(path+exactId).get()));
+        const results=[],legacyRepositoryCandidates=[];
+        for(let index=0;index<docs.length;index++){
+          const doc=docs[index],scope=scopes[index][0];
+          if(!doc.exists)continue;
+          const data=doc.data();
+          let allowed=canDiscloseAssessmentSource(scope,data,ctx.schoolId,ctx.uid),custody=null;
+          if(!allowed&&scope==="original_assessment"&&teacher&&!ctx.platformOverride&&validOrigin(data,ctx.schoolId)){
+            custody=await authorizedTeacherCustody({db,schoolId:ctx.schoolId,teacherUid:ctx.uid,
+              assessmentId:exactId,offeringId,task:data});
+            allowed=!!custody;
+            if(!allowed&&historicalCustodianRecord(data)){
+              const roster=await classRoster();
+              const identities=await resolveHistoricalRoster({db,schoolId:ctx.schoolId,roster,resolveUsers});
+              const candidate=await exactCustodyCandidate({db,schoolId:ctx.schoolId,assessmentId:exactId,
+                task:data,identities,rosterSize:roster.length});
+              if(candidate)legacyRepositoryCandidates.push(candidate);
+            }
+          }
+          if(!allowed)continue;
+          results.push({sourceType:scope,taskId:exactId,title:String(data.title||data.name||"Assessment").slice(0,160),
+            subject:String(data.subject||"").slice(0,120),status:String(data.lifecycle||data.status||"").slice(0,60),
+            originalAssessmentId:scope==="imported_blueprint"?String(data.legacyImport?.assessmentId||"").slice(0,128):"",
+            inSelectedOffering:scope==="school_assessment"&&data.offeringId===offeringId,
+            custodyApproved:!!custody,summary:scope==="original_assessment"?
+              "Exact historical source. Select it in the assessment picker if available.":
+              scope==="imported_blueprint"?"School blueprint; not a graded deployment.":"Exact school assessment."});
+        }
+        return {query:rawQuery,exactId,results,legacyRepositoryCandidates,
+          canRequestCustody:ctx.schoolId===LEGACY_BRIDGE_SCHOOL&&teacher&&!ctx.platformOverride};
+      }
+      const query=rawQuery.toLocaleLowerCase("en");
       if(query.length<2)deny("invalid-argument","Use at least two characters to search.");
       if(!assessmentSearchWords(query).length)
         deny("invalid-argument","Enter a descriptive assessment title.");
@@ -1954,7 +2043,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
 module.exports={
   createSchoolClassRecordService,cleanColumns,cleanSettings,
   schemeMatchesOffering,schemeSpecificity,schemeScopesOverlap,
-  matchesAssessmentTitle,canDiscloseAssessmentSource,
+  matchesAssessmentTitle,canDiscloseAssessmentSource,exactAssessmentSearchId,exactCustodyCandidate,
   legacyRepositoryDeploymentSections,legacyRepositoryMetadataCandidate,
   SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE,HISTORICAL_SOURCE
 };
