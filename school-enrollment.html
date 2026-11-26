@@ -10,8 +10,8 @@
   <link rel="stylesheet" href="css/adminerva-ui.css">
   <script defer src="https://cdn.tailwindcss.com"></script>
   <style>
-    .en-shell{max-width:1180px;margin:auto;padding:1rem}
-    .en-hero{border-radius:1.2rem;padding:1.25rem;background:#0f172a;color:white}
+    .en-shell{max-width:1600px;margin:auto;padding:1rem}.en-grid>*{min-width:0}.en-row>div{min-width:0;overflow-wrap:anywhere}.en-jumps{display:flex;gap:.4rem;overflow-x:auto;padding:.2rem 0}.en-jumps a{flex:none;white-space:nowrap;display:inline-flex;align-items:center;text-decoration:none}.en-card{scroll-margin-top:6rem}
+    .en-hero{padding:.25rem 0;color:#0f172a}
     .en-grid{display:grid;grid-template-columns:minmax(300px,.9fr) minmax(0,1.35fr);gap:1rem}
     .en-card{border:1px solid #dbe3ef;border-radius:1rem;background:white;padding:1rem}
     .en-input{width:100%;min-height:46px;border:1px solid #cbd5e1;border-radius:.75rem;padding:.65rem .75rem;background:white;color:#0f172a}
@@ -40,28 +40,24 @@
   <header class="en-hero">
     <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
       <div>
-        <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">Registrar &amp; SIS · Phase 1</p>
-        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Enrollment &amp; Registration</h1>
-        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Review online applications or register onsite enrollees, confirm the official academic placement, and prepare account activation. School Administrators and verified Registrar staff operate this same canonical SIS workflow; Registrar authority does not grant broader school configuration or staffing access.</p>
+        <h1 class="text-xl sm:text-2xl font-extrabold">Enrollment &amp; Registration</h1>
       </div>
       <div id="en-school-picker" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
     </div>
   </header>
 
-  <section id="en-boundary" class="en-notice">
-    <strong>Canonical Enrollment &amp; Registration.</strong>
-    <span> This workspace is available only for schools using the standard canonical enrollment model. Compatibility schools remain on their reviewed legacy workflow.</span>
-  </section>
-
   <p id="en-status" class="en-muted" role="status" aria-live="polite">Checking school enrollment access…</p>
 
   <section id="en-workspace" hidden class="space-y-4">
+    <nav class="en-jumps" aria-label="Enrollment tasks">
+      <a class="en-btn secondary" href="#en-applications">Applications</a><a class="en-btn secondary" href="#en-register">New enrollment</a><a class="en-btn secondary" href="#en-registrations">Registrations</a><a class="en-btn secondary" href="#en-progression">Progression</a><a class="en-btn secondary" href="#en-activation">Activation</a>
+    </nav>
     <div class="en-grid">
-      <section class="en-card">
+      <section id="en-register" class="en-card">
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h2 id="en-register-title" class="text-lg font-extrabold">Onsite / manual enrollment</h2>
-            <p id="en-register-help" class="en-muted mt-1">Use this for walk-in enrollees. Online applications can be loaded here from the review queue before official placement.</p>
+            <p id="en-register-help" class="en-muted mt-1"></p>
           </div>
           <button id="en-clear-application" class="en-btn secondary" type="button" hidden>Clear loaded student</button>
         </div>
@@ -119,7 +115,7 @@
 
           <div id="en-student-email-panel" class="en-summary" hidden>
             <strong>Student Adminerva sign-in</strong>
-            <p class="en-muted mt-1">Required for Grade 7+ / Junior High and above. Personal email is the default; institutional email is also accepted.</p>
+            <p class="en-muted mt-1">Required for Grade 7+; personal or institutional email.</p>
             <div class="grid sm:grid-cols-2 gap-3 mt-3">
               <label class="text-sm font-bold">Student email
                 <input name="studentEmail" class="en-input mt-1" type="email" maxlength="254" placeholder="student@gmail.com">
@@ -134,7 +130,7 @@
           </div>
           <div id="en-guardian-account-panel" class="en-summary">
             <strong>Guardian-managed learner</strong>
-            <p class="en-muted mt-1">Below Grade 7, no student email is collected. The learner can be officially enrolled without a student login account.</p>
+            <p class="en-muted mt-1">Below Grade 7: student login not required.</p>
           </div>
 
           <div id="en-course-preview" class="en-summary en-muted">Choose the academic placement to see how many active subject offerings will be enrolled.</div>
@@ -143,24 +139,22 @@
       </section>
 
       <div class="space-y-4">
-        <section class="en-card">
+        <section id="en-applications" class="en-card">
           <div class="flex justify-between gap-3 items-start flex-wrap">
             <div>
               <h2 class="text-lg font-extrabold">Online application queue</h2>
-              <p class="en-muted mt-1">Review parent/student submissions before creating official enrollment records. Loading an application does not approve it until the registration form is submitted.</p>
             </div>
             <button id="en-refresh-applications" class="en-btn secondary" type="button">Refresh</button>
           </div>
           <div id="en-application-list" class="en-list" role="list" aria-live="polite"></div>
         </section>
 
-        <section class="en-card">
+        <section id="en-activation" class="en-card">
           <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
             <div>
               <h2 class="text-lg font-extrabold">Student activation</h2>
-              <p class="en-muted mt-1">For Grade 7+ learners, share one school activation link after official enrollment. Younger learners remain guardian-managed and do not need a student login yet.</p>
             </div>
-            <span class="en-badge">No individual invite ID</span>
+            
           </div>
           <label class="text-sm font-bold block mt-3">Reusable school activation link
             <input id="en-activation-link" class="en-input mt-1" type="text" readonly>
@@ -172,11 +166,10 @@
           <p id="en-activation-status" class="en-muted mt-2">A student who is not on this school's active enrollment roster will be rejected even if they have this link.</p>
         </section>
 
-        <section class="en-card">
+        <section id="en-registrations" class="en-card">
           <div class="flex justify-between gap-3 items-start">
             <div>
               <h2 class="text-lg font-extrabold">Current registrations</h2>
-              <p class="en-muted mt-1">School-scoped official placements. Change a student's section here without rewriting prior registration or subject-enrollment history; use End only when the registration itself should stop.</p>
             </div>
             <button id="en-refresh" class="en-btn secondary" type="button">Refresh</button>
           </div>
@@ -195,18 +188,17 @@
           <div class="flex justify-between gap-3 items-start flex-wrap">
             <div>
               <h2 class="text-lg font-extrabold">Pre-canonical enrollment reconciliation</h2>
-              <p class="en-muted mt-1">Older Adminerva section/class assignments can exist without a canonical registration. These records are shown only when a student has active class enrollments but no active official registration. End them here before identity recovery or canonical re-enrollment; history is preserved.</p>
+              <p class="en-muted mt-1">Review older class placements before recovery or re-enrollment.</p>
             </div>
             <span class="en-badge" data-state="ended">Migration safety</span>
           </div>
           <div id="en-legacy-registration-list" class="en-list mt-3" role="list" aria-live="polite"></div>
         </section>
 
-        <section class="en-card">
+        <section id="en-progression" class="en-card">
           <div class="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <h2 class="text-lg font-extrabold">Year-end cohort progression</h2>
-              <p class="en-muted mt-1">Preview a section cohort for Promotion, Retention or Graduation. Every learner is checked independently against released Final Grades, canonical placement, target classes and identity requirements.</p>
             </div>
           </div>
           <form id="en-cohort-form" class="mt-4">
@@ -257,9 +249,9 @@
           <div id="en-cohort-results" class="en-list mt-3" role="list"></div>
         </section>
 
-        <section class="en-card">
-          <h2 class="text-lg font-extrabold">Bulk enrollment</h2>
-          <p class="en-muted mt-1">Use CSV / Google Sheets import to stage school identities in bulk. Official academic placement still happens here so the chosen section, period, guardian details and all active subject enrollments are created together.</p>
+        <section id="en-admin-tools" class="en-card" hidden>
+          <h2 class="text-lg font-extrabold">School Admin tools</h2>
+          <p class="en-muted mt-1">Import identities before official placement.</p>
           <div class="flex gap-2 flex-wrap mt-3">
             <a class="en-btn secondary" style="display:inline-flex;align-items:center;text-decoration:none" href="people-access.html#import">Open roster import</a>
             <a class="en-btn secondary" style="display:inline-flex;align-items:center;text-decoration:none" href="school-academic-configuration.html">Academic configuration</a>
@@ -403,7 +395,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261121-recovery-reconcile2"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar1"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
