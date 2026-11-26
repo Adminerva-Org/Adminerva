@@ -431,8 +431,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        deny("failed-precondition","A published historical grade is protected from ordinary edits.");
      if(input.action==="legacy_github_save_draft"){
        const reviewNote=clean(input.reviewNote,3000);
-       if(reviewNote.length<15)
-         deny("invalid-argument","Explain your verification of the historical repository evidence (15–3000 characters).");
+       // Teacher feedback is distinct from an optional internal note. The
+       // grade action itself records the reviewer and frozen evidence provenance.
        const feedback=clean(input.feedback,5000);
        if(!feedback||String(input.feedback||"").trim().length>5000)
          deny("invalid-argument","Historical GitHub grading requires feedback within 5000 characters.");
@@ -472,9 +472,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
         before.reviewedBy!==ctx.uid||!Array.isArray(before.criteria)||
         before.gradedSha!==latest.checkpointSha||
         Number(before.evidenceRevision||0)!==latest.revision||
-        !before.teacherReviewNote||Number(before.score)<=0||
-        Number(before.pending||0)!==0||before.reviewRequired===true)
-       deny("failed-precondition","Save a fully reviewed, non-zero, current historical GitHub rubric draft before publication.");
+        Number(before.score)<=0||Number(before.pending||0)!==0)
+       deny("failed-precondition","Save a complete, non-zero draft bound to the current submitted evidence before publication.");
      const scores=validateCriteria(before.criteria,rubric);
      if(scores.pending!==0||scores.awarded!==Number(before.score)||scores.total!==Number(before.maxScore))
        deny("failed-precondition","Historical rubric scores no longer reconcile with the grade.");
