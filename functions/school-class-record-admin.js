@@ -6,7 +6,7 @@
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {checkId,rowKey}=require("./school-academics.js");
 const {resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
-const {custodyRef,originalSections,normalized,historicalCustodianRecord,custodySourceDigest,verifiedOriginalMaximum}=require("./school-legacy-custody.js");
+const {custodyRef,originalSections,normalized,historicalCustodianRecord,custodySourceDigest,verifiedOriginalMaximum,validCustody}=require("./school-legacy-custody.js");
 const {FieldValue}=require("firebase-admin/firestore");
 const {schemeMatchesOffering,schemeSpecificity}=require("./school-class-record.js");
 
@@ -100,8 +100,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       if(offerings.length>12)deny("resource-exhausted","More than 12 matching classes. Verify individual classes instead.");
       const sections=originalSections(data);
       const sectionNames=await docsById(db,prefix,"sections",offerings.map(doc=>doc.data().sectionId));
-      const existing=new Map(grants.docs.map(doc=>doc.data()).filter(row=>
-        row.schoolId===ctx.schoolId&&row.status==="active").map(row=>[row.offeringId,row]));
+      const schoolGrants=grants.docs.map(doc=>doc.data()).filter(row=>row.schoolId===ctx.schoolId);
+      const existing=new Map(schoolGrants.filter(row=>row.status==="active").map(row=>[row.offeringId,row]));
       const rows=[];
       // Bounded concurrency and shared immutable source snapshots for preview.
       for(let offset=0;offset<offerings.length;offset+=3){
@@ -116,10 +116,13 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
             const preview=await handle({...request,data:{schoolId:ctx.schoolId,action:"preview_legacy_custody",
               assessmentId,offeringId:doc.id,originalSection}},{assessmentId,original,receiptPage,gradePage});
             const prior=existing.get(doc.id);
-            if(prior)return {...preview,...label,eligible:false,status:"already_approved"};
+            if(prior)return {...preview,...label,eligible:false,status:validCustody(prior,{
+              schoolId:ctx.schoolId,assessmentId,offeringId:doc.id,teacherUid:offering.primaryTeacherUid,task:data
+            })?"already_approved":"existing_custody_review_required"};
             const matched=new Set(preview.matchedPersonIds||[]);
             const legacy=new Set(preview.matchedLegacyIds||[]);
-            const overlaps=[...existing.values()].some(grant=>grant.offeringId!==doc.id&&
+            const overlaps=schoolGrants.some(grant=>grant.offeringId!==doc.id&&
+              (!sections.length||grant.sectionProof==="assessment_student_identity"||grant.status==="active")&&
               ((grant.verifiedPersonIds||[]).some(id=>matched.has(id))||
                (grant.verifiedLegacyStudentIds||[]).some(id=>legacy.has(id))));
             return {...preview,...label,...(overlaps?{eligible:false,status:"overlapping_class_rosters"}:{})};
