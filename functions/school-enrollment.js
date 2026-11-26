@@ -36,7 +36,7 @@ function enrollmentClearanceReady(row,policy){
   const type=ADMISSION_TYPES.includes(row?.applicationType)?row.applicationType:"new";
   if(!policy.requiredTypes.includes(type))return true;
   const clearance=row?.enrollmentClearance;
-  return Boolean(row.status==="accepted"&&clearance?.state==="cleared"&&clearance.policyRevision===policy.revision&&
+  return Boolean(row?.status==="accepted"&&clearance?.state==="cleared"&&clearance.policyRevision===policy.revision&&
     clearance.applicationRevision===(Number(row.revision)||1)&&typeof clearance.reference==="string"&&clearance.reference.trim());
 }
 function summarizeActivePlacements(rows,sections,scope){
