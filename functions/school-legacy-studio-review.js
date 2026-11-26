@@ -276,9 +276,9 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
            String(before.studioVariantId||"")!==String(current.data().variantId||"")||
            Number(before.maxScore)!==rubric.reduce((sum,row)=>sum+Number(row.points),0)||
            Number(before.pending||0)!==0||
-           before.reviewedBy!==ctx.uid||before.reviewRequired===true||
+           before.reviewedBy!==ctx.uid||
            current.data().status!=="reviewed"||
-           !(Number.isFinite(before.score)&&before.score>0&&before.score<=Number(original.maxScore||20)))
+           !(Number.isFinite(before.score)&&before.score>=0&&before.score<=Number(original.maxScore||20)))
           return;
         const frozen=await tx.get(ref.collection("versions").doc(String(current.data().revision)));
         if(!frozen.exists||!validSnapshot(current.data(),frozen.data()))return;
@@ -298,7 +298,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
       for(const row of page.docs.filter(d=>allowedHead(d.data()))){
         const grade=await gradeRef(row.id).get();
         if(!grade.exists||grade.data().published===true)continue;
-        if(Number(grade.data().score)===0){zeroSkipped++;continue;}
+
         try{if(await publishOne(row.id))published++;else failed++;}
         catch{failed++;}
       }
@@ -323,8 +323,11 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
            head.data().revision!==raw.head.revision||
            head.data().snapshotHash!==raw.head.snapshotHash)
           deny("failed-precondition","The learner submitted a newer revision. Reload before grading.");
-        if(input.onlyIfUngraded===true){
-          if(prior.exists)
+        if(input.expectedDraftRevision!==undefined&&(!Number.isInteger(input.expectedDraftRevision)||input.expectedDraftRevision<1||
+           !prior.exists||prior.data().published===true||Number(prior.data().gradeVersion||1)!==input.expectedDraftRevision))
+          deny("failed-precondition","The original draft changed during re-evaluation.");
+        if(input.onlyIfUngraded===true||input.expectedDraftRevision!==undefined){
+          if(input.onlyIfUngraded===true&&prior.exists)
             deny("failed-precondition","An existing grade was saved while bulk evaluation was running. No grade was replaced.");
           if(input.expectedSubmissionVersion!==raw.head.revision||
              input.expectedSnapshotHash!==raw.head.snapshotHash)
@@ -342,7 +345,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
           studioRevision:raw.head.revision,studioSnapshotHash:raw.head.snapshotHash,
           studioVariantId:String(raw.head.variantId||""),
           score:scores.awarded,maxScore:scores.total,pending:scores.pending,
-          criteria:scores.criteria,feedback,reviewRequired:false,published:false,
+          criteria:scores.criteria,feedback,reviewRequired:scores.pending>0,reviewSuggested:scores.awarded===0||scores.pending>0||input.reviewSuggested===true,published:false,
           reviewedBy:ctx.uid,teacherReviewNote:"Reviewed exact frozen Studio evidence in unified V4 gradebook",
           manuallyAdjusted:true,evaluationSource:draftSource,
           gradeVersion:Number(before?.gradeVersion||0)+1,
@@ -366,7 +369,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
     if(!Number.isInteger(expectedGradeRevision)||expectedGradeRevision<1)
       deny("invalid-argument","Reload the current grade draft before publishing.");
     const success=await publishOne(id,expectedGradeRevision);
-    if(!success)deny("failed-precondition","This reviewed non-zero grade is not eligible for publication. Refresh and check its frozen evidence.");
+    if(!success)deny("failed-precondition","This grade is not eligible for publication. Refresh and check its frozen evidence.");
     return {published:true,awarded:raw.head.revision?Number((await gradeRef(id).get()).data().score):0,
       total:Number(original.maxScore||20)};
   }
