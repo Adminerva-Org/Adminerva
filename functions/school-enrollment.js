@@ -150,6 +150,16 @@ function standardSchool(data){
 function publicReference(applicationId){
   return "APP-"+String(applicationId||"").slice(0,10).toUpperCase();
 }
+function admissionApplicationId({schoolId,yearId,displayName,birthDate,guardianEmail}){
+  // Retain the public intake key so an identical walk-in and online submission converge.
+  return createHash("sha256").update([schoolId,yearId,displayName.toLowerCase(),birthDate,guardianEmail].join("\0")).digest("hex").slice(0,48);
+}
+function acceptedIdentityMatches(app,details){
+  return ["displayName","birthDate","guardianName","guardianRelationship","guardianEmail","guardianMobile","studentEmail","studentEmailType"]
+    .every(field=>String(app[field]||"").trim()===String(details[field]||"").trim())&&
+    (!app.studentNumber||app.studentNumber===details.studentNumber)&&
+    (!app.personId||app.personId===details.personId);
+}
 function applicationReference(doc){
   const stored=typeof doc.data().reference==="string"?doc.data().reference.trim():"";
   if(stored)return stored.slice(0,80);
@@ -412,6 +422,88 @@ function createSchoolEnrollmentService({db}){
       };
     }
 
+    if(input.action==="create_onsite_application"){
+      const applicationType=admissionType(input.applicationType),personId=input.personId?checkId(input.personId,"Person ID",128):null,
+        displayName=text(input.displayName,"Student name",140),birthDate=academicDate(input.birthDate,"Birth date"),
+        studentNumber=optionalText(input.studentNumber,80),
+        guardianName=text(input.guardianName,"Parent/guardian name",140),
+        guardianRelationship=text(input.guardianRelationship,"Parent/guardian relationship",60),
+        guardianEmail=normalizedEmail(input.guardianEmail,"Parent/guardian email"),
+        guardianMobile=optionalText(input.guardianMobile,40),
+        yearId=checkId(input.yearId,"School year"),programId=checkId(input.programId,"Program"),
+        termId=checkId(input.termId,"Academic period"),sectionId=checkId(input.sectionId,"Section");
+      if(applicationType==="returning"&&!personId)
+        deny("failed-precondition","Select the existing student from Student Records before starting returning enrollment.");
+      const sectionRef=db.doc(root+"sections/"+sectionId),yearRef=db.doc(root+"academic_years/"+yearId),
+        programRef=db.doc(root+"academic_programs/"+programId),termRef=db.doc(root+"terms/"+termId);
+      const applicationId=admissionApplicationId({schoolId:ctx.schoolId,yearId,displayName,birthDate,guardianEmail}),
+        ref=db.doc(root+"enrollment_applications/"+applicationId),auditRef=db.collection(root+"directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const [current,year,program,term,section,person]=await Promise.all([
+          tx.get(ref),tx.get(yearRef),tx.get(programRef),tx.get(termRef),tx.get(sectionRef),
+          personId?tx.get(db.doc(root+"people/"+personId)):Promise.resolve(null)
+        ]);
+        for(const record of [year,program,term,section])if(!record.exists||record.data().schoolId!==ctx.schoolId||record.data().status!=="active")
+          deny("failed-precondition","Choose active school placement options.");
+        if(section.data().programId!==programId||term.data().programId!==programId||term.data().yearId!==yearId)
+          deny("failed-precondition","The selected placement is inconsistent.");
+        if(personId&&(!person?.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||person.data().status!=="active"||
+          person.data().displayName!==displayName||(person.data().birthDate&&person.data().birthDate!==birthDate)||
+          (person.data().studentNumber&&person.data().studentNumber!==studentNumber)))
+          deny("failed-precondition","The existing student identity changed. Reopen Student Records.");
+        if(personId){
+          const history=await tx.get(db.collection(root+"enrollment_applications").where("personId","==",personId).limit(101));
+          if(history.size===101)deny("resource-exhausted","Review existing applications before creating another.");
+          if(history.docs.some(doc=>doc.id!==applicationId&&doc.data().schoolId===ctx.schoolId&&doc.data().yearId===yearId&&
+            !["rejected","withdrawn","enrolled"].includes(doc.data().status)))
+            deny("already-exists","This student has an open application for this school year. Review the existing application.");
+        }
+        if(current.exists)deny("already-exists","An application already exists for this learner and school year. Open it in Admissions.");
+        const incomingLevel=String(section.data().gradeLevel||"").trim().toLowerCase();
+        if(!incomingLevel)deny("failed-precondition","The selected section has no grade level.");
+        const studentEmailRequired=gradeRequiresStudentEmail(incomingLevel),
+          studentEmail=normalizedEmail(input.studentEmail,"Student email",studentEmailRequired),
+          studentEmailType=studentEmail?String(input.studentEmailType||"").trim():null;
+        if((!studentEmailRequired&&studentEmail)||(studentEmail&&(studentEmail===guardianEmail||!EMAIL_TYPES.has(studentEmailType))))
+          deny("invalid-argument","Review the student sign-in email and account type.");
+        if(person?.exists&&person.data().activationEmailHash&&studentEmail&&person.data().activationEmailHash!==rosterEmailHash(studentEmail))
+          deny("failed-precondition","The student's existing sign-in identity does not match.");
+        const now=FieldValue.serverTimestamp();
+        tx.create(ref,{schoolId:ctx.schoolId,applicationType,personId,displayName,birthDate,studentNumber,
+          guardianName,guardianRelationship,guardianEmail,guardianMobile,studentEmail,studentEmailType,studentEmailRequired,
+          yearId,preferredProgramId:programId,preferredTermId:termId,preferredSectionId:sectionId,incomingLevel,
+          source:"onsite",status:"submitted",reference:publicReference(applicationId),
+          requirementsReviewed:false,revision:1,createdByUid:ctx.uid,createdAt:now,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,personId,action:"onsite_application_created",createdAt:now});
+      });
+      return {applicationId,reference:publicReference(applicationId),status:"submitted"};
+    }
+    if(input.action==="bind_returning_application"){
+      const applicationId=checkId(input.applicationId,"Application ID",128),expectedRevision=input.expectedRevision,
+        studentNumber=text(input.studentNumber,"Student number",80);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)deny("invalid-argument","Refresh the application.");
+      const ref=db.doc(root+"enrollment_applications/"+applicationId),auditRef=db.collection(root+"directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const app=await tx.get(ref);
+        if(!app.exists||app.data().schoolId!==ctx.schoolId||app.data().applicationType!=="returning"||
+          !["submitted","needs_information"].includes(app.data().status)||Number(app.data().revision)!==expectedRevision)
+          deny("failed-precondition","The returning application changed or is not ready for linking.");
+        const matches=await tx.get(db.collection(root+"people").where("studentNumber","==",studentNumber).limit(3));
+        const people=matches.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().kind==="student"&&doc.data().status==="active");
+        if(matches.size>=3||people.length!==1)deny("failed-precondition","Find a unique active student number in Student Records.");
+        const person=people[0],row=person.data(),a=app.data();
+        if(row.displayName!==a.displayName||row.birthDate!==a.birthDate||(a.personId&&a.personId!==person.id)||
+          (row.activationEmailHash&&a.studentEmail&&row.activationEmailHash!==rosterEmailHash(a.studentEmail)))
+          deny("failed-precondition","Applicant name, birth date or sign-in identity does not match the existing student. Resolve it before linking.");
+        const now=FieldValue.serverTimestamp();
+        tx.update(ref,{personId:person.id,studentNumber,requirementsReviewed:false,revision:expectedRevision+1,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,personId:person.id,action:"returning_application_linked",createdAt:now});
+      });
+      return {applicationId,revision:expectedRevision+1};
+    }
+
     if(input.action==="list_applications"){
       const [snap,...templateDocs]=await Promise.all([db.collection(root+"enrollment_applications").limit(201).get(),...ADMISSION_TYPES.map(type=>templateRef(type).get())]);
       const templates=Object.fromEntries(ADMISSION_TYPES.map((type,index)=>[type,readTemplate(templateDocs[index],type)]));
@@ -421,6 +513,7 @@ function createSchoolEnrollmentService({db}){
         return ({
         applicationId:doc.id,reference:applicationReference(doc),
         personId:doc.data().personId||null,
+        studentNumber:row.studentNumber||"",preferredTermId:row.preferredTermId||"",preferredSectionId:row.preferredSectionId||"",
         applicationType:type,
         displayName:doc.data().displayName||"Student",
         birthDate:doc.data().birthDate||"",incomingLevel:doc.data().incomingLevel||"",
@@ -507,6 +600,7 @@ function createSchoolEnrollmentService({db}){
           deny("failed-precondition","This admissions decision is no longer available. Refresh the application.");
         if(status==="accepted"){
           const type=ADMISSION_TYPES.includes(application.data().applicationType)?application.data().applicationType:"new";
+          if(type==="returning"&&!application.data().personId)deny("failed-precondition","Link the existing returning student before acceptance.");
           const template=readTemplate(await tx.get(templateRef(type)),type);
           if(!pendingRequirementsReady(application.data(),template))
             deny("failed-precondition","Verify the current school admission requirements before accepting.");
@@ -1236,7 +1330,7 @@ function createSchoolEnrollmentService({db}){
       const sectionId=checkId(input.sectionId,"Section");
       const applicationId=input.applicationId?checkId(input.applicationId,"Application ID",128):null;
       const applicationRevision=Number(input.applicationRevision);
-      if(applicationId&&(!Number.isSafeInteger(applicationRevision)||applicationRevision<1))
+      if(!applicationId||!Number.isSafeInteger(applicationRevision)||applicationRevision<1)
         deny("failed-precondition","Reopen the accepted application before enrolling.");
       const explicitPersonId=input.personId?checkId(input.personId,"Person ID",128):null;
       const applicationRef=applicationId?db.doc(root+"enrollment_applications/"+applicationId):null;
@@ -1281,7 +1375,10 @@ function createSchoolEnrollmentService({db}){
         if(app.incomingLevel&&String(app.incomingLevel).toLowerCase()!==gradeLevel)
           deny("failed-precondition","The official section must match the accepted incoming grade level.");
         if(app.yearId&&app.yearId!==yearId)
-          deny("failed-precondition","The online application belongs to another school year.");
+          deny("failed-precondition","The application belongs to another school year.");
+        if(app.applicationType==="returning"&&!app.personId)deny("failed-precondition","Link the existing returning student before enrollment.");
+        if(!acceptedIdentityMatches(app,{displayName,birthDate,guardianName,guardianRelationship,guardianEmail,guardianMobile,studentEmail,studentEmailType,studentNumber,personId:explicitPersonId}))
+          deny("failed-precondition","Accepted applicant details changed. Reopen admissions review before enrollment.");
       }
 
       const offerings=offeringSnap.docs.filter(doc=>{
@@ -1352,7 +1449,7 @@ function createSchoolEnrollmentService({db}){
         guardianRelationshipRef=db.doc(root+"guardian_relationships/"+guardianRelationshipKey);
       const auditRef=db.collection(root+"directory_audit").doc(),
         guardianAuditRef=db.collection(root+"student_records_audit").doc();
-      const source=applicationId?"online":"onsite";
+      const source=application.data().source==="onsite"?"onsite":"online";
       const accountResponsibility=studentEmailRequired?"student":"guardian";
 
       let result;
@@ -1386,11 +1483,15 @@ function createSchoolEnrollmentService({db}){
           !isReviewedApplicationRevision(currentApplication.data(),applicationRevision)))
           deny("failed-precondition","The online application changed before enrollment. Refresh and review it again.");
 
+        if((explicitPersonId||currentApplication?.data().personId)&&!person.exists)
+          deny("failed-precondition","The linked student no longer exists. Review Student Records.");
         if(person.exists){
           const row=person.data();
           if(row.schoolId!==ctx.schoolId||row.kind!=="student"||row.status!=="active")
             deny("failed-precondition","The matching person record cannot be used for student enrollment.");
-          if(explicitPersonId&&String(row.displayName||"").trim()!==displayName)
+          if((explicitPersonId||currentApplication?.data().personId)&&((row.birthDate&&row.birthDate!==birthDate)||(row.studentNumber&&studentNumber!==row.studentNumber)))
+            deny("failed-precondition","The linked student birth date or student number changed. Review Student Records.");
+          if(String(row.displayName||"").trim()!==displayName||(row.birthDate&&row.birthDate!==birthDate))
             deny("failed-precondition","The reviewed directory student's name changed or does not match this enrollment form. Correct the identity in People & Access, then reopen Enrollment.");
           if(row.activationEmailHash&&activationEmailHash&&row.activationEmailHash!==activationEmailHash)
             deny("failed-precondition","The matching student record has a different sign-in identity.");
@@ -1560,5 +1661,7 @@ module.exports={
   admissionRequirementsReady,
   normalizeRequirementTemplate,
   templateCovered,
-  pendingRequirementsReady
+  pendingRequirementsReady,
+  admissionApplicationId,
+  acceptedIdentityMatches
 };
