@@ -312,13 +312,68 @@ get("sr-lrn-form").addEventListener("submit",event=>{
     clearLrnLookup();get("sr-lrn-dialog").close();await openStudent(data.personId);
   }catch(error){if(run===lrnRun)get("sr-lrn-status").textContent=error?.message||"LRN lookup unavailable.";}})();
 });
+let externalRows=[],externalCursor=null,externalRun=0,externalBusy=false,externalEdit=null,externalDirty=false;
+function closeExternalEdit(){externalEdit=null;externalDirty=false;const form=get("sr-external-form");form.reset();form.hidden=true;get("sr-external-results").replaceChildren();}
+function clearExternal(){++externalRun;externalRows=[];externalCursor=null;externalBusy=false;closeExternalEdit();get("sr-external-list").replaceChildren();get("sr-external-status").textContent="";get("sr-external-more").hidden=true;}
+function renderExternalResults(){
+  const host=get("sr-external-results");host.replaceChildren();if(!externalEdit)return;
+  for(const [index,result] of externalEdit.results.entries()){
+    const row=document.createElement("div");row.className="grid sm:grid-cols-[1fr_100px_auto] gap-2";
+    const subject=document.createElement("input");subject.className="sr-input";subject.placeholder="Subject";subject.setAttribute("aria-label","Source subject");subject.maxLength=150;subject.required=true;subject.value=result.subject;
+    const grade=document.createElement("input");grade.className="sr-input";grade.placeholder="Result";grade.setAttribute("aria-label","Source result");grade.maxLength=40;grade.required=true;grade.value=result.result;
+    subject.addEventListener("input",()=>{result.subject=subject.value;externalDirty=true;});grade.addEventListener("input",()=>{result.result=grade.value;externalDirty=true;});
+    row.append(subject,grade,button("Remove",{tone:"secondary",onClick:()=>{if(saving)return;externalEdit.results.splice(index,1);externalDirty=true;renderExternalResults();}}));host.append(row);
+  }
+  get("sr-external-result-add").disabled=saving||externalEdit.results.length>=30;
+}
+function editExternal(item=null){
+  if(saving||!current)return;
+  if(externalDirty&&!confirm("Discard unsaved source record changes?"))return;
+  const form=get("sr-external-form");form.reset();form.hidden=false;
+  externalEdit={recordId:item?.recordId||"",revision:item?.revision||0,results:(item?.results||[{subject:"",result:""}]).map(row=>({...row}))};
+  for(const key of ["sourceSchool","schoolYear","gradeLevel","period","sourceReference"]){form.elements[key].value=item?.[key]||"";form.elements[key].readOnly=Boolean(item&&key!=="sourceReference");}
+  get("sr-external-form-title").textContent=item?"Correct source record":"New source record";externalDirty=false;renderExternalResults();
+}
+function renderExternalRows(){
+  const host=get("sr-external-list");host.replaceChildren();if(!externalRows.length)empty(host,externalCursor?"No records in loaded page. Load more.":"No previous-school academic records.");
+  for(const item of externalRows){
+    const card=document.createElement("article");card.className="sr-row";const info=document.createElement("div");info.append(textNode("strong",item.sourceSchool),textNode("p",[item.schoolYear,item.gradeLevel,item.period,item.state].join(" · "),"sr-muted"),textNode("p",item.results.map(row=>row.subject+": "+row.result).join(" · "),"sr-muted"),textNode("p","Source: "+item.sourceReference,"sr-muted"));card.append(info);
+    const controls=actions();if(item.state!=="archived")controls.append(button("Correct",{tone:"secondary",onClick:()=>editExternal(item)}));
+    if(item.state==="recorded")controls.append(button("Verify",{tone:"success",onClick:()=>void reviewExternal(item,"verified")}));
+    if(item.state==="verified")controls.append(button("Return to review",{tone:"secondary",onClick:()=>void reviewExternal(item,"recorded")}));
+    controls.append(button(item.state==="archived"?"Restore":"Archive",{tone:"secondary",onClick:()=>void reviewExternal(item,item.state==="archived"?"recorded":"archived")}));card.append(controls);host.append(card);
+  }
+  get("sr-external-more").hidden=!externalCursor;get("sr-external-more").disabled=externalBusy||saving;
+  get("sr-external-status").textContent=externalRows.length+" source records loaded"+(externalCursor?" · more available":"");
+}
+async function loadExternal({more=false,force=false}={}){
+  if(!current||(saving&&!force)||(more&&(!externalCursor||externalBusy)))return;
+  const run=++externalRun,personId=current.person.personId,cursor=more?externalCursor:null;externalBusy=true;get("sr-external-status").textContent="Loading…";
+  try{const result=await perform("list_external_academic_records",{personId,...(cursor?{cursor}:{})});if(run!==externalRun||current?.person.personId!==personId)return;
+    const rows=new Map((more?externalRows:[]).map(row=>[row.recordId,row]));for(const row of result.items||[])rows.set(row.recordId,row);externalRows=[...rows.values()];externalCursor=result.nextCursor||null;renderExternalRows();
+  }catch(error){if(run===externalRun)get("sr-external-status").textContent=error?.message||"Source records unavailable.";}finally{if(run===externalRun){externalBusy=false;get("sr-external-more").disabled=saving;}}
+}
+async function reviewExternal(item,next){
+  if(saving||!current||externalDirty)return;const reason=prompt(next==="verified"?"Confirm authentic source review and record the reason (at least 8 characters).":"Record the reason (at least 8 characters).");
+  if(!reason||reason.trim().length<8)return;setSaving(true,"Updating external academic record…");
+  try{await perform("review_external_academic_record",{personId:current.person.personId,recordId:item.recordId,expectedRevision:item.revision,state:next,reason:reason.trim(),confirmSourceReviewed:next==="verified"});closeExternalEdit();await loadExternal({force:true});status.textContent="Source evidence updated.";}catch(error){get("sr-external-status").textContent=error?.message||"Source review failed.";}finally{setSaving(false);}
+}
+get("sr-external-open").addEventListener("click",()=>{if(!current||saving)return;clearExternal();get("sr-external-dialog").showModal();void loadExternal();});
+function closeExternal(){if(saving||(externalDirty&&!confirm("Discard unsaved source record changes?")))return;clearExternal();get("sr-external-dialog").close();}
+get("sr-external-close").addEventListener("click",closeExternal);get("sr-external-dialog").addEventListener("cancel",event=>{event.preventDefault();closeExternal();});
+get("sr-external-refresh").addEventListener("click",()=>void loadExternal());get("sr-external-more").addEventListener("click",()=>void loadExternal({more:true}));get("sr-external-add").addEventListener("click",()=>editExternal());get("sr-external-cancel").addEventListener("click",()=>{if(!saving&&(!externalDirty||confirm("Discard changes?")))closeExternalEdit();});
+get("sr-external-form").addEventListener("input",()=>{externalDirty=true;});
+get("sr-external-result-add").addEventListener("click",()=>{if(!saving&&externalEdit&&externalEdit.results.length<30){externalEdit.results.push({subject:"",result:""});externalDirty=true;renderExternalResults();}});
+get("sr-external-form").addEventListener("submit",event=>{
+  event.preventDefault();if(saving||!current||!externalEdit||!event.currentTarget.reportValidity())return;const personId=current.person.personId,edit=externalEdit,data=Object.fromEntries(new FormData(event.currentTarget));
+  const details=Object.fromEntries(["sourceSchool","schoolYear","gradeLevel","period","sourceReference"].map(key=>[key,String(data[key]||"").trim()]));details.results=edit.results.map(row=>({...row}));
+  void (async()=>{setSaving(true,"Saving previous-school evidence…");try{await perform("save_external_academic_record",{personId,recordId:edit.recordId,expectedRevision:edit.revision,details,reason:String(data.reason||"").trim()});closeExternalEdit();await loadExternal({force:true});status.textContent="Source evidence saved. Verify before using it in academic preparation.";}catch(error){get("sr-external-status").textContent=error?.message||"Source record save failed.";}finally{setSaving(false);}})();
+});
 function resetAcademic(){++academicRun;academicData=null;get("sr-academic-results").replaceChildren();get("sr-academic-blockers").replaceChildren();get("sr-academic-export").disabled=true;get("sr-academic-status").textContent="";}
-function academicOptions(){
-  const mode=get("sr-academic-mode").value,select=get("sr-academic-year"),prior=select.value;select.replaceChildren(new Option(mode==="sf9"?"Choose academic year":"All school years",""));
-  const years=new Map((current?.registrations||[]).filter(row=>row.yearId).map(row=>[row.yearId,row.yearName||row.yearId]));
-  for(const [id,label] of years)select.append(new Option(label,id));select.required=mode==="sf9";
-  if(years.has(prior))select.value=prior;else if(mode==="sf9"&&years.size===1)select.value=years.keys().next().value;
-  resetAcademic();
+async function academicOptions(){
+  if(!current)return;const mode=get("sr-academic-mode").value,select=get("sr-academic-year"),prior=select.value,personId=current.person.personId;select.replaceChildren(new Option(mode==="sf9"?"Choose academic year":"All school years",""));select.required=mode==="sf9";resetAcademic();const run=academicRun;
+  get("sr-academic-status").textContent="Loading academic years…";
+  try{const result=await perform("academic_record_years",{personId});if(run!==academicRun||current?.person.personId!==personId)return;const years=new Map((result.items||[]).map(row=>[row.yearId,row.label]));for(const [id,label] of years)select.append(new Option(label,id));if(years.has(prior))select.value=prior;else if(mode==="sf9"&&years.size===1)select.value=years.keys().next().value;get("sr-academic-status").textContent="";}catch(error){if(run===academicRun)get("sr-academic-status").textContent=error?.message||"Academic years unavailable.";}
 }
 get("sr-academic-prepare").addEventListener("click",()=>{if(!current||saving)return;academicOptions();get("sr-academic-dialog").showModal();});
 get("sr-academic-mode").addEventListener("change",academicOptions);get("sr-academic-year").addEventListener("change",resetAcademic);
@@ -338,7 +393,8 @@ get("sr-academic-form").addEventListener("submit",event=>{
         textNode("p",[row.yearName,row.termName,row.sectionName,row.state==="released"?"Grade "+row.finalGrade+" · r"+row.releasedRevision:row.state.replaceAll("_"," ")].filter(Boolean).join(" · "),"sr-muted"));
       get("sr-academic-results").append(line);
     }
-    get("sr-academic-export").disabled=!data.rows.length;
+    if(data.externalRecords?.length){get("sr-academic-results").append(textNode("h3","Verified previous-school records","font-bold"));for(const item of data.externalRecords){const line=document.createElement("div");line.className="sr-row";line.append(textNode("strong",item.sourceSchool),textNode("p",[item.schoolYear,item.gradeLevel,item.period,item.results.map(row=>row.subject+": "+row.result).join(" · ")].join(" · "),"sr-muted"));get("sr-academic-results").append(line);}}
+    get("sr-academic-export").disabled=!data.rows.length&&!data.externalRecords?.length;
   }catch(error){if(run===academicRun)get("sr-academic-status").textContent=error?.message||"Academic data unavailable.";}})();
 });
 function csvCell(value){
@@ -346,7 +402,7 @@ function csvCell(value){
 }
 get("sr-academic-export").addEventListener("click",()=>{
   if(!academicData||saving)return;
-  const data=academicData,rows=[["WORKING DATA ONLY — NOT AN OFFICIAL SCHOOL FORM"],["Record type",data.mode,"Student",data.studentName,"Student number",data.studentNumber],["Year","Period","Subject","Section","Final grade","Released revision","Evidence status","Offering ID","Grade record ID"],...data.rows.map(row=>[row.yearName,row.termName,row.subjectName,row.sectionName,row.finalGrade,row.releasedRevision,row.state,row.offeringId,row.gradeRecordId||""]),...data.blockers.map(issue=>["REVIEW",issue])];
+  const data=academicData,rows=[["WORKING DATA ONLY — NOT AN OFFICIAL SCHOOL FORM"],["Record type",data.mode,"Student",data.studentName,"Student number",data.studentNumber],["Year","Period","Subject","Section","Final grade","Released revision","Evidence status","Offering ID","Grade record ID"],...data.rows.map(row=>[row.yearName,row.termName,row.subjectName,row.sectionName,row.finalGrade,row.releasedRevision,row.state,row.offeringId,row.gradeRecordId||""]),...data.blockers.map(issue=>["REVIEW",issue]),["PREVIOUS-SCHOOL VERIFIED SOURCE EVIDENCE"],["Source school","Source year","Grade level","Source period","Subject","Result as recorded","Source reference","Evidence revision"],...(data.externalRecords||[]).flatMap(item=>item.results.map(row=>[item.sourceSchool,item.schoolYear,item.gradeLevel,item.period,row.subject,row.result,item.sourceReference,item.revision]))];
   const url=URL.createObjectURL(new Blob([rows.map(row=>row.map(csvCell).join(",")).join("\r\n")],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");
   link.href=url;link.download="academic-record-working-data.csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
@@ -687,6 +743,8 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current Student Records change before switching schools.");
     if(profileDirty&&!confirm("Discard unsaved profile changes?"))throw new Error("Finish the profile edit before switching schools.");
+    if(externalDirty&&!confirm("Discard unsaved source record changes?"))throw new Error("Finish the source record edit before switching schools.");
+    clearExternal();
     clearProfile();resetAcademic();closeCertificate();closeCertificateSettings();clearVerify();clearLrnLookup();
     ++searchRun;++fileRun;requestedPersonId="";students=[];current=null;historyBusy=false;fileView="registrations";guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
     directoryCursor=null;directoryQuery="";directoryBusy=false;get("sr-more").hidden=true;get("sr-search-progress").textContent="";
