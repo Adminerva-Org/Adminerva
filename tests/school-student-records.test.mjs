@@ -145,3 +145,19 @@ test("LRN is an existing twelve digit string, never an invented student identifi
   assert.match(service,/This LRN is already associated/);assert.match(service,/requireRegistrarMembership/);
   assert.doesNotMatch(service.slice(service.indexOf('if(input.action==="search_students")'),service.indexOf('if(input.action==="student_file")')),/row\.lrn/);
 });
+
+
+test("academic preparation resolves released evidence and labels the result non-official",()=>{
+  const {releasedGrade,certificateTemplate}=require("../functions/school-record-credentials.js");
+  const grade={schoolId:"school",personId:"student",offeringId:"class",status:"finalized",finalizationRevision:2,finalGrade:91};
+  assert.equal(releasedGrade(grade,"school","student","class",2),true);
+  assert.equal(releasedGrade(grade,"other","student","class",2),false);
+  assert.equal(releasedGrade(grade,"school","student","class",3),false);
+  assert.equal(releasedGrade({...grade,finalGrade:null},"school","student","class",2),false);
+  assert.throws(()=>certificateTemplate({signatoryName:"Registrar"}));
+  const credential=readFileSync(new URL("../functions/school-record-credentials.js",import.meta.url),"utf8");
+  assert.match(credential,/officialForm:false/);assert.match(credential,/certificateDraftDigest/);
+  assert.match(credential,/Source registration, student or template changed/);assert.match(credential,/credentialState:"revoked"/);
+  assert.match(credential,/signatureVerified:false/);assert.match(service,/Use the certificate issuance action/);
+  assert.match(recordsUi,/UNSIGNED COPY/);
+});
