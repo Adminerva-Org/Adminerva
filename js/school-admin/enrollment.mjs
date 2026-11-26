@@ -903,7 +903,7 @@ function clearLoadedApplication({resetIdentity=false}={}){
     }catch{}
   }
   get("en-register-title").textContent="Onsite / manual enrollment";
-  get("en-register-help").textContent="Use this for walk-in enrollees. Online applications and reviewed directory students can be loaded here before official placement.";
+  get("en-register-help").textContent="";
   get("en-clear-application").hidden=true;
   get("en-clear-application").textContent="Clear loaded student";
   if(resetIdentity){
@@ -1152,7 +1152,7 @@ picker=createTenantSchoolPicker({
     form.reset();cohortForm().reset();clearLoadedApplication({resetIdentity:true});
     get("en-application-list").replaceChildren();get("en-registration-list").replaceChildren();
     get("en-cohort-results").replaceChildren();get("en-cohort-status").textContent="Choose a source cohort and decision.";
-    renderActivation("");workspace.hidden=true;
+    renderActivation("");get("en-admin-tools").hidden=true;workspace.hidden=true;
   },
   onReady:scope=>{
     const current=scope.current;
@@ -1161,9 +1161,12 @@ picker=createTenantSchoolPicker({
     }
     if(current.enrollmentMode!=="canonical"){
       workspace.hidden=true;
-      status.textContent="This school is still using its reviewed compatibility enrollment workflow. Use People & Access for legacy class relationships until the school adopts the canonical workflow.";
+      status.textContent=current.roles.includes("school_admin")
+        ?"Compatibility enrollment: use People & Access for existing class relationships."
+        :"Compatibility enrollment: contact your School Administrator for placement.";
       return;
     }
+    get("en-admin-tools").hidden=!current.roles.includes("school_admin");
     renderActivation(current.schoolId);workspace.hidden=false;
     void refreshAll().catch(error=>{status.textContent=error?.message||"Enrollment data could not be loaded.";});
   }
