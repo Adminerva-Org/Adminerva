@@ -121,6 +121,7 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
     const snap=await db.collection(root+"student_document_requests").where("releaseReference","==",reference).limit(2).get();
     if(snap.size!==1||!own(snap.docs[0],ctx.schoolId)||snap.docs[0].data().generationMode!=="institutional")return {state:"not_found"};
     const row=snap.docs[0].data();if(row.status!=="released"||!row.issuedCertificate)return {state:"not_found"};
+    if(row.issuedDigest!==hash(row.issuedCertificate))deny("data-loss","Certificate snapshot integrity check failed.");
     return {state:row.credentialState==="revoked"?"revoked":"recorded",reference,issuedAt:row.issuedAt?.toMillis?.()||null,
       studentName:row.issuedCertificate.studentName,yearName:row.issuedCertificate.yearName,termName:row.issuedCertificate.termName,
       signatureVerified:false};
@@ -150,8 +151,11 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
   }
   if(input.action==="get_enrollment_certificate"){
     const row=checkRequest(await requestRef.get());
-    const a=await student(id(row.personId));
-    if(row.status==="released"&&row.issuedCertificate)return {state:row.credentialState||"issued",reference:row.releaseReference,issuedAt:row.issuedAt?.toMillis?.()||null,certificate:row.issuedCertificate,revision:Number(row.revision)||1};
+    await student(id(row.personId));
+    if(row.status==="released"&&row.issuedCertificate){
+      if(row.issuedDigest!==hash(row.issuedCertificate))deny("data-loss","Certificate snapshot integrity check failed.");
+      return {state:row.credentialState||"issued",reference:row.releaseReference,issuedAt:row.issuedAt?.toMillis?.()||null,certificate:row.issuedCertificate,revision:Number(row.revision)||1};
+    }
     const placements=await bounded(db.collection(root+"student_registrations").where("personId","==",row.personId).where("status","==","active"),50,"Active placements");
     return {state:row.status,revision:Number(row.revision)||1,certificate:row.certificateDraft||null,
       placements:await Promise.all(placements.map(async doc=>({registrationId:doc.id,label:[await label(ref=>ref.get(),"academic_years",doc.data().yearId),await label(ref=>ref.get(),"terms",doc.data().termId),await label(ref=>ref.get(),"sections",doc.data().sectionId)].join(" · ")})))};
@@ -175,7 +179,7 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
   if(input.action==="issue_enrollment_certificate"){
     const reason=str(input.reason,"release confirmation",500);
     if(reason.length<12||input.confirmRelease!==true)deny("invalid-argument","Confirm that the certificate is ready for institutional release.");
-    const reference="COE-"+requestId.toUpperCase();
+    const reference="COE-"+hash(ctx.schoolId,requestId).slice(0,32).toUpperCase();
     let issued;
     await db.runTransaction(async tx=>{
       await requireMembership(ref=>tx.get(ref));
