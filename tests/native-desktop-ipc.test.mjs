@@ -35,14 +35,14 @@ async function bootDesktop(){
   static getAllWindows(){return windows;}
  }
  const mock={
-  app:{enableSandbox(){},whenReady(){return Promise.resolve()},on(){}},
+  app:{isPackaged:false,enableSandbox(){},whenReady(){return Promise.resolve()},on(){}},
   BrowserWindow:FakeWindow,
   shell:{async openExternal(url){browserUrls.push(url);}},
   Menu:{buildFromTemplate:items=>items,setApplicationMenu:items=>{menu=items;}},
   dialog:{async showMessageBox(_window,options){dialogs.push(options);return {response:0};}},
   ipcMain:{handle:(name,callback)=>ipc.set(name,callback)}
  };
- const localRequire=id=>id==="electron"?mock:
+ const localRequire=id=>id==="electron"?mock:id==="./update-check.cjs"?{checkUpdateStatus:async()=>({state:"no-newer-version-listed"}),DOWNLOAD_CENTER_URL:"https://adminerva-org.github.io/Adminerva/downloads.html"}:
   id==="./native-handoff-client.cjs"?{sendHandoff:async()=>{openCount++;throw Error("not enabled");}}:require(id);
  const ctx=vm.createContext({
   require:localRequire,__dirname:fileURLToPath(new URL("../apps/desktop/",import.meta.url)),
@@ -130,7 +130,7 @@ test("sign-out revokes private desktop navigation and clears the prior learner's
 
 test("native desktop auth stays window-session scoped while browser login remains persistent",()=>{
  const firebase=readFileSync(new URL("../js/core/firebase-core.js",import.meta.url),"utf8");
- const preload=readFileSync(new URL("../apps/desktop/preload.cjs",import.meta.url),"utf8");
+ const preload=readFileSync(new URL("../apps/desktop/preload-auth-dev.cjs",import.meta.url),"utf8");
  assert.match(firebase,/desktopSession\?\[browserSessionPersistence\]/);
  assert.match(firebase,/\[indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence\]/);
  assert.match(firebase,/observedUid=null/);
@@ -154,4 +154,15 @@ test("Studio logout and leave guards refuse to abandon unconfirmed code",()=>{
  assert.match(nav,/await signOut\(getAuth\(\)\)/);
  // Do not continue to login via finally after a Firebase sign-out failure.
  assert.doesNotMatch(nav,/finally\s*\{[\s\S]{0,200}window\.location\.href\s*=\s*"login.html"/);
+});
+
+test("unsigned packaged application cannot enable the developer credential bridge",async()=>{
+ const s=readFileSync(new URL("../apps/desktop/main.cjs",import.meta.url),"utf8");
+ const bundle=JSON.parse(readFileSync(new URL("../apps/desktop/package.json",import.meta.url),"utf8"));
+ assert.match(s,/const DEV_SIGNIN=!app\.isPackaged/);
+ assert.match(s,/DEV_SIGNIN\?"preload-auth-dev\.cjs":"preload\.cjs"/);
+ assert.match(s,/DEV_SIGNIN\?"persist:adminerva-auth-dev":"persist:adminerva-public-preview"/);
+ assert.equal(bundle.build.files.includes("preload-auth-dev.cjs"),false);
+ assert.equal(bundle.build.files.includes("native-handoff-client.cjs"),false);
+ assert.equal(bundle.build.files.includes("native-auth-protocol.cjs"),false);
 });

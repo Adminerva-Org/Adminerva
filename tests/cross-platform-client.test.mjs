@@ -32,13 +32,13 @@ test("desktop window is sandboxed, denies native permissions and has no privileg
   /will-attach-webview/,/setWindowOpenHandler/])
   assert.match(source,assertion);
  assert.doesNotMatch(source,/desktopCapturer|globalShortcut|autoUpdater/);
- assert.match(source,/ipcMain\.handle\("adminerva:consume-signin-token"/);
- assert.match(source,/currentBootstrap\(event\.sender\)/);
+ assert.match(source,/const DEV_SIGNIN=!app\.isPackaged/);
+ assert.match(source,/DEV_SIGNIN\?"preload-auth-dev\.cjs":"preload\.cjs"/);
  assert.match(preload,/capabilities:Object\.freeze\(\[\]\)/);
- assert.doesNotMatch(preload,/desktopCapturer|shell\.openExternal|fs\.readFile/);
- assert.match(preload,/ipcRenderer\.invoke\("adminerva:consume-signin-token"\)/);
- assert.match(preload,/ipcRenderer\.invoke\("adminerva:confirm-signin"\)/);
- assert.equal(pkg.version,"0.1.0");
+ assert.doesNotMatch(preload,/ipcRenderer|desktopCapturer|shell\.openExternal/);
+ const developerBridge=readFileSync(new URL("../apps/desktop/preload-auth-dev.cjs",import.meta.url),"utf8");
+ assert.match(developerBridge,/ipcRenderer\.invoke\("adminerva:consume-signin-token"\)/);
+ assert.equal(pkg.version,"0.1.1");
  assert.equal(CLIENT_PROTOCOL,1);
 });
 

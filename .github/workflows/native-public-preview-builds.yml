@@ -1,0 +1,118 @@
+name: Native public-preview installation artifacts
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["apps/desktop/**", "apps/mobile/**", ".github/workflows/native-public-preview-builds.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["apps/desktop/**", "apps/mobile/**", ".github/workflows/native-public-preview-builds.yml"]
+permissions:
+  contents: read
+jobs:
+  windows-preview:
+    name: Windows public-preview installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test tests/cross-platform-client.test.mjs tests/native-preview-installers.test.mjs tests/native-app-updates.test.mjs
+      - name: Install desktop build dependencies
+        working-directory: apps/desktop
+        run: npm install --no-audit --no-fund
+      - name: Package unsigned Windows x64 NSIS installer
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        working-directory: apps/desktop
+        run: npm run dist:win
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem apps/desktop/dist -Filter *.exe
+          $lines = $files | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + $_.Name }
+          $lines | Out-File -Encoding ascii apps/desktop/dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Adminerva-Windows-Public-Preview-UNSIGNED
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+  macos-preview:
+    name: macOS public-preview installers
+    runs-on: macos-latest
+    timeout-minutes: 35
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test tests/cross-platform-client.test.mjs tests/native-preview-installers.test.mjs tests/native-app-updates.test.mjs
+      - run: npm install --prefix apps/desktop --no-audit --no-fund
+      - name: Package unsigned macOS Intel and Apple Silicon DMGs
+        working-directory: apps/desktop
+        run: npm run dist:mac
+      - name: Checksum
+        shell: bash
+        run: |
+          cd apps/desktop/dist
+          shasum -a 256 ./*.dmg > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Adminerva-macOS-Public-Preview-UNSIGNED
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+  android-preview:
+    name: Android public-preview debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      # GitHub's Ubuntu image already carries the Android SDK and cmdline tools.
+      # Avoid legacy 'tools' package resolution in setup-android@v3.
+      - run: node --test tests/cross-platform-client.test.mjs tests/native-preview-installers.test.mjs tests/native-app-updates.test.mjs
+      - name: Install Capacitor build dependencies
+        working-directory: apps/mobile
+        run: npm install --no-audit --no-fund
+      - name: Generate disposable public-only Android project
+        working-directory: apps/mobile
+        run: |
+          npm run add:android
+          npm run sync
+          npm run set:native-version
+      - name: Assemble Android debug APK
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - name: Checksum
+        run: |
+          cd apps/mobile/android/app/build/outputs/apk/debug
+          sha256sum app-debug.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Adminerva-Android-Public-Preview-DEBUG-APK
+          path: |
+            apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/mobile/android/app/build/outputs/apk/debug/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
