@@ -22,3 +22,9 @@ Capacitor is configured with no remote `server.url`: production distribution mus
 - Before release: implement system-browser/native OAuth, verified deep links and school-scoped session continuity, reliable Studio cloud synchronization, mobile keyboard/safe areas, protected storage, native permission gates and 320px acceptance on physical devices.
 - Package ID `io.adminerva.preview` is temporary and must be replaced with the verified publisher's production identifier before creating or signing store builds.
 - Do not publish Apple App Store, Google Play or APK links until authorized builds, store review and tested distribution exist.
+
+## Android debug APK for preview testing
+
+The same GitHub Actions workflow creates an Android debug APK from canonical public-only website assets. Open its successful run, download the Android artifact ZIP and extract app-debug.apk (with its SHA256SUMS.txt). The APK is signed with a disposable development debug key, not the school's production publishing key. This is **not** a Play Store release and must not be used for logged-in student work or practical exams.
+
+An iPhone/iPad installation file is not available: shipping a device-installable iOS app requires approved Apple signing and distribution via an authorized testing channel (e.g. TestFlight). The public web app remains available in Safari.

@@ -8,3 +8,9 @@ firestore-debug*.log
 # Generated Capacitor public-preview web assets (not app-store builds)
 apps/mobile/www/
 apps/mobile/www.build/
+
+# Disposable native preview build outputs and generated Android/iOS projects
+apps/desktop/dist/
+apps/desktop/out/
+apps/mobile/android/
+apps/mobile/ios/
