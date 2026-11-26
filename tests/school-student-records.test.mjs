@@ -171,3 +171,15 @@ test("certificate digest survives Firestore map key ordering and rejects changed
   assert.match(service,/find_student_by_lrn/);assert.match(service,/claim.data\(\).status!=="active"/);
   assert.match(recordsHtml,/id="sr-lrn-dialog"/);
 });
+
+
+test("previous-school academic evidence is school-local, revisioned and separate from Class Record",()=>{
+  const {externalRecordDetails,externalKey}=require("../functions/school-external-academic-records.js");
+  const input={sourceSchool:"Prior school",schoolYear:"2025–2026",gradeLevel:"10",period:"Year",sourceReference:"File 1",results:[{subject:"Mathematics",result:"Passed"}]};
+  assert.equal(externalRecordDetails(input).results[0].result,"Passed");assert.throws(()=>externalRecordDetails({...input,results:[{subject:"Math",result:"90"},{subject:"math",result:"91"}]}));
+  assert.equal(externalKey("student",input),externalKey("student",{...input,sourceSchool:"prior school"}));assert.notEqual(externalKey("student",input),externalKey("other",input));
+  const external=readFileSync(new URL("../functions/school-external-academic-records.js",import.meta.url),"utf8");
+  assert.match(external,/ref.collection\("revisions"\)/);assert.match(external,/confirmSourceReviewed/);assert.doesNotMatch(external,/class_record_period_grades|student_registrations|enrollments\//);
+  const credential=readFileSync(new URL("../functions/school-record-credentials.js",import.meta.url),"utf8");
+  assert.match(credential,/mode==="sf10"&&!yearId/);assert.match(credential,/doc.data\(\).state==="verified"/);
+});
