@@ -336,3 +336,20 @@ test("historical assessment without verified rubric supports manual total-score 
  assert.equal(result.awarded,33);assert.equal(result.total,40);
  assert.equal(f.map.get("student_grades/"+evidenceId).score,33);
 });
+
+
+test("historical GitHub draft and publication do not require routine teacher approval notes or advisory review clearance",async()=>{
+ const f=fixture({approval:false});
+ const input={...f.gradeArgs};delete input.reviewNote;
+ const saved=await f.service(f.request("legacy_github_save_draft",input));
+ assert.equal(saved.awarded,35);
+ const grade=f.map.get("student_grades/"+evidenceId);
+ assert.equal(grade.reviewSuggested,true);
+ grade.reviewRequired=true;
+ const result=await f.service(f.request("legacy_github_publish",{
+   legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,expectedCheckpointSha:checkpoint,expectedGradeRevision:1
+ }));
+ assert.equal(result.published,true);
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,true);
+ assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,2);
+});
