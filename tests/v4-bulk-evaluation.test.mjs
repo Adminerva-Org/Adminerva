@@ -43,15 +43,15 @@ test("bulk response validates exact anonymous batch identity and rubric order",(
  assert.equal(bulkBatchLimit("studio"),20);
  assert.match(BULK_PACKAGE_FORMAT,/bulk-evaluation-package-v2/);
 });
-test("zero scores and unresolved rubric points are not eligible for saving",()=>{
+test("zero scores and unresolved rubric points can be saved as flagged drafts",()=>{
  const zero={...suggestion,criteria:suggestion.criteria.map(x=>({...x,awardedPoints:0}))};
  const score=bulkSuggestionState(parseGeneralExternalEvaluationResponse(JSON.stringify(zero),{task}),task);
- assert.equal(score.saveEligible,false);
+ assert.equal(score.saveEligible,true);assert.equal(score.reviewSuggested,true);
  assert.match(score.reason,/Zero-score/);
  const pending={...suggestion,criteria:[{...suggestion.criteria[0],pendingPoints:2},
   suggestion.criteria[1]]};
  const held=bulkSuggestionState(parseGeneralExternalEvaluationResponse(JSON.stringify(pending),{task}),task);
- assert.equal(held.saveEligible,false);
+ assert.equal(held.saveEligible,true);assert.equal(held.reviewSuggested,true);
  assert.match(held.reason,/Unresolved/);
 });
 test("teacher resolves pending rubric points with a direct final score and can revise it",()=>{
@@ -62,7 +62,7 @@ test("teacher resolves pending rubric points with a direct final score and can r
  const held=bulkSuggestionState(parseGeneralExternalEvaluationResponse(JSON.stringify(pending),{task}),task);
  assert.equal(held.pending,2);
  assert.equal(held.teacherConfirmation,true);
- assert.equal(held.saveEligible,false);
+ assert.equal(held.saveEligible,true);assert.equal(held.reviewSuggested,true);
  const resolved=resolveBulkPendingCriterion(held,task,0,19.5);
  assert.equal(resolved.criteria[0].awardedPoints,19.5);
  assert.equal(resolved.criteria[0].pendingPoints,0);
@@ -99,16 +99,16 @@ test("feedback and score validation fail closed without writing grades",()=>{
  assert.throws(()=>bulkSuggestionState(over,task),/Invalid evaluation score/);
 });
 
-test("teacher-confirmation confidence is not eligible for automatic bulk saving",()=>{
+test("teacher-confirmation confidence is advisory for bulk draft saving",()=>{
  const needsReview={...suggestion,criteria:[
   {...suggestion.criteria[0],confidence:"teacher_confirmation"},
   suggestion.criteria[1]
  ]};
  const parsed=parseGeneralExternalEvaluationResponse(JSON.stringify(needsReview),{task});
  const stage=bulkSuggestionState(parsed,task);
- assert.equal(stage.saveEligible,false);
+ assert.equal(stage.saveEligible,true);assert.equal(stage.reviewSuggested,true);
  assert.equal(stage.teacherConfirmation,true);
- assert.match(stage.reason,/teacher confirmation/i);
+ assert.match(stage.reason,/review suggested/i);
 });
 
 test("external JSON imports remain saveable after the original roster selection is cleared",()=>{
@@ -512,4 +512,16 @@ test("external packer never treats invalid student evidence as a size exclusion"
  assert.throws(()=>fitCompactBulkExternalEvaluationPackage({
    batchId:"invalid-evidence",entries:[invalid],task:assessment
  }),/essay/);
+});
+
+
+test("bulk re-evaluation explicitly selects drafts and rejects changed or published revisions",()=>{
+ const rows=[{submissionId:"draft",version:2,gradeStatus:"draft",gradeRevision:5,status:"submitted"},{submissionId:"published",version:2,gradeStatus:"published",gradeRevision:5,status:"reviewed"},{submissionId:"new",version:2,status:"submitted"}];
+ assert.deepEqual(nextBulkSelection(rows,{reevaluate:true}),["draft"]);
+ assert.deepEqual(nextBulkSelection(rows),["new"]);
+ const staged=new Map([["draft",{key:"draft",version:2,expectedDraftRevision:5,review:{saveEligible:true}}]]);
+ const saveSelection=new Set(["draft"]);
+ assert.equal(bulkSaveableStages({staged,saveSelection,rows}).length,1);
+ assert.equal(bulkSaveableStages({staged,saveSelection,rows:[{...rows[0],gradeRevision:6}]}).length,0);
+ assert.equal(bulkSaveableStages({staged,saveSelection,rows:[{...rows[0],gradeStatus:"published"}]}).length,0);
 });
