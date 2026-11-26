@@ -80,9 +80,11 @@ function validateCriteria(entries,rubric){
  });
  return {criteria,awarded,pending,total:rubric.reduce((sum,r)=>sum+Number(r.points),0)};
 }
-function gradeSummary(grade,rubric){
+function gradeSummary(grade,rubric,verifiedMaximum=null){
  if(!grade)return null;
- const awarded=Number(grade.score),total=Number(grade.maxScore);
+ const awarded=Number(grade.score),total=Number(grade.maxScore??verifiedMaximum);
+ if(grade.score===null||grade.score===undefined||grade.score==="")
+   deny("failed-precondition","Historical grade has no recorded score.");
  if(!Number.isFinite(awarded)||!Number.isFinite(total)||total<=0||awarded<0||awarded>total)
    deny("failed-precondition","Historical grade has invalid score bounds.");
  const prior=Array.isArray(grade.criteria)?grade.criteria:[];
@@ -104,7 +106,7 @@ function gradeSummary(grade,rubric){
    version:Number(grade.evidenceRevision||0),
    publishedAt:grade.publishedAt?.toMillis?.()||null};
 }
-function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
+function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegacyRubric=parseLegacyRubric}){
  return async function review({ctx,input}){
    const id=input.legacyAssessmentId;
    if(!validAssessmentId(id))deny("invalid-argument","Invalid historical assessment identifier.");
@@ -136,7 +138,9 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    const total=custody?custodyMaximum(taskData,custody.grant):Number(taskData.maxScore||20);
    if(!Number.isFinite(total)||total<=0||total>2000)
      deny("failed-precondition","Historical assessment maximum is invalid.");
-   const rubric=parseLegacyRubric(taskData.evalCriteria,total);
+   const verifiedRubric=parseVerifiedLegacyRubric(taskData.evalCriteria,total);
+   const scalarOnly=!verifiedRubric;
+   const rubric=verifiedRubric||[{name:"Original total score",points:total}];
    const taskInfo={
      taskId:legacyOfferingId&&custody?"legacy:"+id+"@"+legacyOfferingId:"legacy:"+id,
      legacyAssessmentId:id,legacyCompatibility:true,
@@ -144,7 +148,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
      submissionSource:"github",title:clean(taskData.title||"Historical GitHub assessment",140),
      description:clean(taskData.description,2000),
      instructions:clean(taskData.taskContext||taskData.description,16000),
-     rubric,rubricText:clean(taskData.evalCriteria,3500),
+     rubric,historicalRubricMode:scalarOnly?"scalar_manual":"verified_rubric",rubricText:clean(taskData.evalCriteria,3500),
      maxScore:total,assessmentType:clean(taskData.type||"Assessment",80),
      subject:clean(taskData.subject||"Computer Programming",120),
      status:"deployed",published:taskData.published===true,
@@ -255,7 +259,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
            checkGrade(grade,row.studentId);
            if(grade&&!inScope(row.studentId,grade.section||row.section))
              deny("failed-precondition","Historical grade is outside this class.");
-           if(grade)gradeSummary(grade,rubric);
+           if(grade)gradeSummary(grade,rubric,custody?total:null);
          }catch(error){
            if(!(error instanceof TenantAccessError))throw error;
            gradeException=true;
@@ -264,7 +268,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
            ...(gradeException?{gradeException:true,hasSubmission:false}:{}),
            gradeStatus:gradeException?null:grade?.published===true?"published":grade?"draft":null,
            awarded:gradeException||!grade?null:Number(grade.score),
-           maxScore:gradeException||!grade?null:Number(grade.maxScore),
+           maxScore:gradeException||!grade?null:Number(grade.maxScore??(custody?total:null)),
            pending:gradeException||!grade?0:Number(grade.pending||0)});
        }
      }
@@ -335,7 +339,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
          approvedCheckpointSha:meta.approved?meta.checkpointSha:null,
          evidenceRevision:meta.revision,
          historical:true},
-       grade:grade.exists?gradeSummary(grade.data(),rubric):null,
+       grade:grade.exists?gradeSummary(grade.data(),rubric,custody?total:null):null,
        checkingInstructions};
    }
    if(!["legacy_github_save_draft","legacy_github_publish"].includes(input.action))
@@ -346,6 +350,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric}){
    const expectedRevision=Number(input.expectedEvidenceRevision);
    const expectedSha=String(input.expectedCheckpointSha||"").toLowerCase();
    const bulkSave=input.action==="legacy_github_save_draft"&&input.onlyIfUngraded===true;
+   if(scalarOnly&&input.action==="legacy_github_save_draft"&&(bulkSave||["internal_ai","external_ai"].includes(input.draftSource)))
+     deny("failed-precondition","Original rubric unavailable. Use manually reviewed numerical grading.");
    const revisionField=record.data.revision;
    const revisionlessRecord=meta.revision===0&&
      (revisionField===undefined||revisionField===null||Number(revisionField)===0);
