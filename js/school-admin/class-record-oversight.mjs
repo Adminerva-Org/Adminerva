@@ -234,6 +234,7 @@ async function load(){
     const result=await scoped("overview");
     if(request!==overviewRequest)return;
     records=result.records||[];
+    showCustodyOfferings();
     renderRecords();
     status.textContent=records.length+" Class Record"+(records.length===1?"":"s")+" loaded. Oversight is read-only.";
     if(!deepLinkHandled&&deepLinkOfferingId){
@@ -252,6 +253,83 @@ async function load(){
   }
 }
 
+const custodyForm=el("cro-legacy-form"),custodyOffering=el("cro-legacy-offering");
+const custodyStatus=el("cro-legacy-result"),custodyApproval=el("cro-legacy-approval");
+let verifiedCustody=null,custodyBusy=false;
+function resetCustody(){
+  verifiedCustody=null;custodyApproval.hidden=true;custodyStatus.textContent="";
+  el("cro-legacy-title").value="";el("cro-legacy-reason").value="";
+}
+function showCustodyOfferings(){
+  const previous=custodyOffering.value;
+  custodyOffering.replaceChildren(new Option("Choose an offering…",""));
+  const shown=new Set();
+  for(const row of records||[]){
+    if(!row.offeringId||shown.has(row.offeringId))continue;
+    shown.add(row.offeringId);
+    custodyOffering.add(new Option([row.subjectName,row.sectionName,row.termName,row.yearName]
+      .filter(Boolean).join(" · "),row.offeringId));
+  }
+  custodyOffering.value=shown.has(previous)?previous:"";
+}
+function custodyFields(){
+  return {assessmentId:el("cro-legacy-id").value.trim(),
+    offeringId:custodyOffering.value,originalSection:el("cro-legacy-section").value.trim()};
+}
+function setCustodyBusy(value){
+  custodyBusy=value;
+  for(const id of ["cro-legacy-preview","cro-legacy-approve","cro-legacy-revoke"])
+    el(id).disabled=value;
+}
+custodyForm.addEventListener("submit",event=>void (async()=>{
+  event.preventDefault();
+  if(custodyBusy)return;
+  resetCustody();setCustodyBusy(true);
+  custodyStatus.textContent="Verifying original assessment, Primary Teacher assignment and preserved student identities…";
+  try{
+    const result=await scoped("preview_legacy_custody",custodyFields());
+    verifiedCustody=result;custodyApproval.hidden=false;
+    custodyStatus.textContent=(result.originalTitle||"Historical assessment")+" · "+
+      result.originalSection+" · "+result.verifiedStudentCount+" / "+result.rosterCount+
+      " student identities verified (minimum "+result.requiredStudentCount+"). "+
+      (result.eligible?"Ready for a different School Administrator to approve custody.":
+        "Not eligible: reconcile the official class roster and original identities first.");
+    el("cro-legacy-approve").disabled=!result.eligible;
+  }catch(error){custodyStatus.textContent=error?.message||"Historical source could not be verified.";}
+  finally{setCustodyBusy(false);if(verifiedCustody&&!verifiedCustody.eligible)
+    el("cro-legacy-approve").disabled=true;}
+})());
+el("cro-legacy-approve").addEventListener("click",()=>void (async()=>{
+  if(custodyBusy||!verifiedCustody?.eligible)return;
+  const reason=el("cro-legacy-reason").value.trim();
+  if(el("cro-legacy-title").value.trim()!==verifiedCustody.originalTitle||
+     reason.length<30){custodyStatus.textContent="Type the exact original title and a detailed school-administrator justification (at least 30 characters).";return;}
+  setCustodyBusy(true);
+  try{
+    await scoped("approve_legacy_custody",{
+      ...custodyFields(),confirmTitle:el("cro-legacy-title").value.trim(),reason
+    });
+    custodyStatus.textContent="Approved for the verified Primary Teacher. Open V4 Review & Grade or Class Record for this offering. Original scores and evidence were not copied.";
+    verifiedCustody=null;custodyApproval.hidden=true;
+  }catch(error){custodyStatus.textContent=error?.message||"Custody approval failed.";}
+  finally{setCustodyBusy(false);}
+})());
+el("cro-legacy-revoke").addEventListener("click",()=>void (async()=>{
+  if(custodyBusy||!verifiedCustody)return;
+  const reason=el("cro-legacy-reason").value.trim();
+  if(reason.length<20){custodyStatus.textContent="Explain why this existing custody link must be revoked (at least 20 characters).";return;}
+  setCustodyBusy(true);
+  try{
+    await scoped("revoke_legacy_custody",{...custodyFields(),reason});
+    custodyStatus.textContent="Legacy custody revoked. The original assessment and student scores remain unchanged.";
+    verifiedCustody=null;custodyApproval.hidden=true;
+  }catch(error){custodyStatus.textContent=error?.message||"Custody revocation failed.";}
+  finally{setCustodyBusy(false);}
+})());
+el("cro-legacy-id").addEventListener("input",resetCustody);
+el("cro-legacy-section").addEventListener("input",resetCustody);
+custodyOffering.addEventListener("change",resetCustody);
+
 search.addEventListener("input",renderRecords);
 filter.addEventListener("change",renderRecords);
 el("cro-refresh").addEventListener("click",()=>void load());
@@ -264,6 +342,7 @@ picker=createTenantSchoolPicker({
     ++overviewRequest;++auditRequest;
     setBusy(true);
     records=null;deepLinkHandled=false;search.value="";filter.value="all";renderRecords();auditList.replaceChildren();
+    resetCustody();custodyOffering.replaceChildren(new Option("Choose an offering…",""));
     el("cro-audit-context").textContent="";el("cro-audit-status").textContent="";
     if(auditDialog.open)auditDialog.close();
   },
