@@ -28,7 +28,7 @@ function install(){
  return module.exports;
 }
 function fixture({published=false,grade=null,approval=true,discovery=false,
-  studentResubmitted=false,zeroCommits=false,revision=7,omitRevision=false}={}){
+  studentResubmitted=false,zeroCommits=false,revision=7,omitRevision=false,scalarOnly=false}={}){
  const map=new Map(),writes=[];
  const put=(path,value)=>map.set(path,value);
  put("assessments/"+taskId,{ownerUid:ctx.uid,title:"Java OOP",
@@ -90,7 +90,8 @@ function fixture({published=false,grade=null,approval=true,discovery=false,
    };return fn(tx);}
  };
  const service=install().createSchoolLegacyGithubReview({db,
-   parseLegacyRubric:()=>[{name:"Code quality",points:20},{name:"Program behavior",points:20}]});
+   parseLegacyRubric:()=>[{name:"Code quality",points:20},{name:"Program behavior",points:20}],
+   ...(scalarOnly?{parseVerifiedLegacyRubric:()=>null}:{})});
  const request=(action,extra={})=>({ctx,input:{action,legacyAssessmentId:taskId,...extra}});
  const gradeArgs={legacyEvidenceId:evidenceId,expectedEvidenceRevision:revision,
    expectedCheckpointSha:checkpoint,expectedGradeRevision:0,
@@ -320,4 +321,18 @@ test("alternate original grade IDs cannot silently produce duplicate grades",asy
  assert.equal(result.evidence[0].hasSubmission,false);
  await assert.rejects(f.service(f.request("legacy_github_save_draft",f.gradeArgs)),error=>error.code==="failed-precondition");
  assert.equal(f.writes.length,0);
+});
+
+
+test("historical assessment without verified rubric supports manual total-score grading only",async()=>{
+ const f=fixture({scalarOnly:true});
+ const inbox=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(inbox.task.historicalRubricMode,"scalar_manual");
+ assert.equal(inbox.task.rubric.length,1);assert.equal(inbox.task.rubric[0].points,40);
+ const input={...f.gradeArgs,criteria:[{awardedPoints:33,pendingPoints:0,comment:"Original total manually reviewed"}]};
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",{...input,draftSource:"external_ai"})),error=>error.code==="failed-precondition");
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",{...input,onlyIfUngraded:true})),error=>error.code==="failed-precondition");
+ const result=await f.service(f.request("legacy_github_save_draft",input));
+ assert.equal(result.awarded,33);assert.equal(result.total,40);
+ assert.equal(f.map.get("student_grades/"+evidenceId).score,33);
 });
