@@ -251,7 +251,7 @@ function renderEvents(){
   const search=$("pl-event-search").value.trim().toLocaleLowerCase();
   const filtered=rows.filter(row=>(state.view==="global"||(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
     (!search||[row.ownerUid,state.selectedUid,row.action,row.errorCode,row.fingerprint,
-      row.traceId,row.service,row.sessionId,row.module].some(value=>String(value||"").toLowerCase().includes(search))));
+      row.traceId,row.service,row.sessionId,row.module,row.route,row.operationId,row.context?.control,row.context?.process,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search))));
   if(state.view==="live"){
     $("pl-audit-wrap").hidden=true;$("pl-impact").hidden=true;
     renderLive();return;
@@ -630,7 +630,7 @@ function liveMatches(row){
   return (!level||severity(row.severity)===level)&&(!module||row.module===module)&&
     (!search||[row.ownerUid,labelFor(row.ownerUid),row.action,row.module,
       row.errorCode,row.service,row.traceId,row.operationId,row.sessionId,
-      row.fingerprint].some(value=>String(value||"").toLowerCase().includes(search)));
+      row.fingerprint,row.route,row.context?.control,row.context?.process,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search)));
 }
 function liveLine(row){
   const line=make("div","pl-live-line");
