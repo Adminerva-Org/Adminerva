@@ -98,3 +98,12 @@ test("official enrollment requires nonempty validated automatic offerings and re
   assert.match(source,/The automatic class roster changed/);
   assert.match(source,/An official registration already exists for this placement/);
 });
+
+
+test("registrar summary counts canonical school-scoped records without exporting student identities",()=>{
+  const source=require("node:fs").readFileSync(new URL("../functions/school-enrollment.js",import.meta.url),"utf8");
+  const block=source.slice(source.indexOf('if(input.action==="registrar_summary")'),source.indexOf('if(input.action==="catalog")'));
+  assert.match(block,/where\("schoolId","==",ctx.schoolId\)\.where\("yearId","==",yearId\)/);
+  assert.match(block,/query.count\(\).get\(\)/);assert.doesNotMatch(block,/studentEmail|guardianEmail|displayName/);
+  assert.match(source,/System Admin preview is read-only/);
+});
