@@ -147,10 +147,10 @@ test("teacher grade and publication use legacy record, not a parallel V4 grade",
  assert.equal(writes.filter(x=>x[1].startsWith("schools/")).length,0);
 });
 test("complete zero-score Studio drafts can be bulk-published",async()=>{
- const grade={studentId,taskId:legacyId,gradeSource:"studio_teacher_review",
-   studioRevision:1,studioSnapshotHash:data().hash,reviewedBy:ctx.uid,
-   score:0,maxScore:40,reviewRequired:false,published:false};
- const {service,map}=dbHarness({grade});
+ const {service,map}=dbHarness();
+ await service({ctx,input:{...input("legacy_review_save_draft").input,legacySubmissionId:submittedId,
+   criteria:[{awardedPoints:0,pendingPoints:0,comment:"No credit"},{awardedPoints:0,pendingPoints:0,comment:"No credit"}],
+   feedback:"Reviewed frozen submission; no rubric points earned."}});
  const result=await service(input("legacy_review_bulk_publish"));
  assert.equal(result.published,1);
  assert.equal(result.zeroSkipped,0);
