@@ -105,7 +105,7 @@ function contextFields(record){
   const c=record.context;if(!c)return [];
   const active=Array.isArray(c.active)?c.active:[];
   return [["Control",c.control],["Tracked process",c.process],["Client time (unverified)",Number.isSafeInteger(c.clientAt)?time(c.clientAt):""],
-    ["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
+    ["Rejection reason",c.reasonCode],["Project category",c.projectCategory],["Recovery",c.recovery],["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
     ["Elapsed (ms)",c.elapsedMs],["Tracked active processes",Array.isArray(c.active)?active.length+(c.overflow||0):null],
     ["Overlap (same tracked operation)",active.some((p,i)=>active.slice(0,i).some(q=>q.name===p.name))?"Observed; not proof of a duplicate write":""],
     ...active.map(p=>["Active "+p.name,p.id+" · "+p.ageMs+" ms"])];
@@ -136,7 +136,7 @@ function requiredReason(){
   if(!state.eligible){$("pl-purpose-status").textContent="Verified Platform Administrator access is required.";return null;}
   const value=$("pl-reason").value.trim();
   if(value.length<12||value.length>300){
-    $("pl-purpose-status").textContent="Enter a support or security reason of 12–300 characters to view logs.";
+    $("pl-access-disclosure").open=true;$("pl-purpose-status").textContent="Enter a support or security reason of 12–300 characters to view logs.";
     $("pl-reason").focus();
     return null;
   }
@@ -227,7 +227,7 @@ function renderAudit(){
 }
 function eventRow(record,ownerUid,overview){
   const tr=make("tr");
-  const when=make("td");when.textContent=time(record.at);
+  const when=make("td");when.textContent=Number.isFinite(record.at)&&record.at>0?liveTime(record.at):"—";when.title=time(record.at);when.append(make("small","pl-event-date",record.at>0?new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",month:"short",day:"numeric"}).format(new Date(record.at)):""));
   const owner=make("td");
   if(overview){
     const button=make("button","pl-inline-button",labelFor(ownerUid));
@@ -248,6 +248,7 @@ function eventRow(record,ownerUid,overview){
     record.route?"Page: "+record.route:"",
     record.context?.control?"Control: "+record.context.control:"",
     record.context?.process?"Process: "+record.context.process:"",
+    record.context?.reasonCode||"",
     record.source?"Source: "+record.source:"",
     record.provenance?"Evidence: "+(record.provenance==="server_confirmed"?"Server-confirmed":"Client-observed"):""
   ].filter(Boolean);
@@ -287,6 +288,11 @@ function eventRow(record,ownerUid,overview){
   return tr;
 }
 
+function markAudited(reason){
+  if($("pl-reason").value.trim()!==reason)return;
+  $("pl-access-summary").textContent="Audited · "+reason;
+  $("pl-access-disclosure").open=false;
+}
 function renderFilterSummary(visibleCount,totalCount){
   const view=state.view;
   const severityFilter=$("pl-level").value,module=$("pl-module").value;
@@ -294,6 +300,7 @@ function renderFilterSummary(visibleCount,totalCount){
   const filters=[severityFilter&&"flag: "+severityFilter,module&&"module: "+module,
     search&&"text: "+search,(view==="global"&&fingerprint)&&"error signature: "+fingerprint].filter(Boolean);
   $("pl-clear-filters").disabled=!filters.length;
+  for(const button of document.querySelectorAll(".pl-quick-filter"))button.setAttribute("aria-pressed",String(button.dataset.filter===severityFilter));
   const scope=view==="global"
     ?"Flag/module/error signature are queried on the server. Text search affects loaded rows only."
     :view==="live"
@@ -322,7 +329,7 @@ function renderEvents(){
   const search=$("pl-event-search").value.trim().toLocaleLowerCase();
   const filtered=rows.filter(row=>(state.view==="global"||(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
     (!search||[row.ownerUid,state.selectedUid,row.action,row.errorCode,row.fingerprint,
-      row.traceId,row.service,row.sessionId,row.module,row.route,row.operationId,row.context?.control,row.context?.process,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search))));
+      row.traceId,row.service,row.sessionId,row.module,row.route,row.operationId,row.context?.control,row.context?.process,row.context?.reasonCode,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search))));
   if(state.view==="live"){
     $("pl-audit-wrap").hidden=true;$("pl-impact").hidden=true;
     renderLive();return;
@@ -370,7 +377,7 @@ async function loadRecent({older=false}={}){
     $("pl-log-status").textContent=state.recent.length
       ?"Showing "+state.recent.length+" recently active accounts, with their last recorded event and flags. This is an account index, not every event; select any account for its complete available timeline."
       :"No accounts have recorded diagnostic events yet. The directory still lists available logins.";
-    $("pl-purpose-status").textContent="Authorized log read completed. This inspection was audited.";
+    $("pl-purpose-status").textContent="Authorized log read completed. This inspection was audited.";markAudited(reason);
   }catch(error){
     if(epoch===state.epoch&&token===state.readEpoch)$("pl-log-status").textContent=permissionError(error);
   }finally{
@@ -403,7 +410,7 @@ async function loadAccount({older=false}={}){
     $("pl-log-status").textContent=state.events.length
       ?"Showing "+state.events.length+" loaded events for "+labelFor(selected)+". Older events are available using pagination where supported. Every read is audited."
       :"No logged events were found for this account. That does not establish that no activity occurred.";
-    $("pl-purpose-status").textContent="Authorized log read completed. This inspection was audited.";
+    $("pl-purpose-status").textContent="Authorized log read completed. This inspection was audited.";markAudited(reason);
   }catch(error){
     if(epoch===state.epoch&&token===state.readEpoch&&state.selectedUid===selected)
       $("pl-log-status").textContent=permissionError(error);
@@ -646,7 +653,7 @@ async function loadGlobal({older=false}={}){
         (state.fingerprint?" matching error signature "+state.fingerprint:"")+
         ". Sorted by server time; filters apply across available indexed events. Expand Developer details or open an account to investigate."
       : "No indexed events match these filters. Earlier events remain available under individual user histories.";
-    $("pl-purpose-status").textContent="Global diagnostic read authorized and audited.";
+    $("pl-purpose-status").textContent="Global diagnostic read authorized and audited.";markAudited(reason);
     if(!older&&!state.impactBusy)void loadImpact(reason,epoch,token);
   }catch(error){
     if(epoch===state.epoch&&token===state.readEpoch)
@@ -692,7 +699,7 @@ function liveStatus(message,{error=false}={}){
 function liveTime(at){
   if(!Number.isFinite(at)||at<=0)return "No timestamp";
   try{return new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",
-    hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date(at));}
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false,...($("pl-milliseconds").checked?{fractionalSecondDigits:3}:{})}).format(new Date(at));}
   catch{return "Unknown time";}
 }
 function liveMatches(row){
@@ -701,7 +708,7 @@ function liveMatches(row){
   return (!level||severity(row.severity)===level)&&(!module||row.module===module)&&
     (!search||[row.ownerUid,labelFor(row.ownerUid),row.action,row.module,
       row.errorCode,row.service,row.traceId,row.operationId,row.sessionId,
-      row.fingerprint,row.route,row.context?.control,row.context?.process,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search)));
+      row.fingerprint,row.route,row.context?.control,row.context?.process,row.context?.reasonCode,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search)));
 }
 function liveLine(row){
   const line=make("div","pl-live-line");
@@ -720,7 +727,7 @@ function liveLine(row){
   const title=make("div","pl-line-title");title.append(make("span","pl-live-action",diagnosticActionLabel(row.action)),inspectButton(row,row.ownerUid));content.append(title);
   const descriptors=[row.module||"other",row.phase||row.state||"observed",
     row.source||"",row.provenance==="server_confirmed"?"server-confirmed":"client-observed",
-    row.route||"",row.context?.control||"",row.context?.process||"",row.service||"",row.errorCode?"error: "+row.errorCode:"",
+    row.route||"",row.context?.control||"",row.context?.process||"",row.context?.reasonCode||"",row.service||"",row.errorCode?"error: "+row.errorCode:"",
     Number.isInteger(row.durationMs)?row.durationMs+"ms":Number.isInteger(row.context?.elapsedMs)?row.context.elapsedMs+"ms":"",
     row.context?.active?.length?"active: "+(row.context.active.length+(row.context.overflow||0)):""].filter(Boolean);
   content.append(make("div","pl-live-meta",descriptors.join(" · ")));
@@ -917,6 +924,24 @@ async function loadDirectory(user,epoch){
 }
 $("pl-clear-filters").addEventListener("click",clearInvestigationFilters);
 $("pl-inspector-close").addEventListener("click",()=>closeInspector({restoreFocus:true}));
+$("pl-reason").addEventListener("input",()=>{$("pl-access-summary").textContent="Reason changed · next read audited";});
+for(const button of document.querySelectorAll(".pl-quick-filter"))button.addEventListener("click",()=>{
+  const select=$("pl-level");select.value=select.value===button.dataset.filter?"":button.dataset.filter;
+  select.dispatchEvent(new Event("change"));
+});
+$("pl-milliseconds").addEventListener("change",()=>{state.inspectorSignature="";state.view==="live"?renderLive():renderEvents();});
+function syncDirectory(){
+  const open=$("pl-directory-disclosure").open;
+  $("pl-toggle-directory").setAttribute("aria-expanded",String(open));
+  $("pl-workspace").classList.toggle("pl-directory-collapsed",!open);
+}
+$("pl-directory-disclosure").addEventListener("toggle",syncDirectory);
+$("pl-toggle-directory").addEventListener("click",()=>{$("pl-directory-disclosure").open=!$("pl-directory-disclosure").open;syncDirectory();});
+$("pl-focus-mode").addEventListener("click",()=>{
+  const focused=$("pl-workspace").classList.toggle("pl-focus-mode");
+  $("pl-focus-mode").setAttribute("aria-pressed",String(focused));
+});
+
 
 // The account list and advanced filters are persistent on desktop, but
 // compact disclosures on narrow screens. Only update on breakpoint changes
@@ -985,7 +1010,7 @@ onAuthStateChanged(auth,user=>{
   state.live.cursor="";state.live.reason="";state.live.baseline=false;
   state.accounts=[];state.byUid.clear();state.directoryReady=false;state.eligible=false;
   $("pl-search").disabled=true;$("pl-show-recent").disabled=true;$("pl-show-global").disabled=true;$("pl-show-live").disabled=true;$("pl-load-recent").disabled=true;
-  $("pl-refresh").disabled=true;$("pl-reason").value="";
+  $("pl-refresh").disabled=true;$("pl-reason").value="";$("pl-access-summary").textContent="Reason required";$("pl-access-disclosure").open=true;
   $("pl-purpose-status").textContent=user?"Checking Platform Administrator access…":"Sign in with an authorized Platform Administrator account.";
   liveStatus(user?"Monitoring stopped while Platform Administrator access is rechecked.":"Signed out. Live monitoring is stopped.");
   renderAccounts();renderEvents();
