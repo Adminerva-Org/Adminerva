@@ -49,6 +49,23 @@ function millis(value){
   const numeric=Number(value);return Number.isFinite(numeric)?numeric:null;
 }
 function key(...parts){return createHash("sha256").update(JSON.stringify(parts)).digest("hex");}
+function normalizeLrn(value){
+  if(value===null||value===undefined||value==="")return null;
+  if(typeof value!=="string"||!/^\d{12}$/.test(value.trim()))deny("invalid-argument","Enter the 12-digit LRN exactly as issued by the education authority.");
+  return value.trim();
+}
+function normalizeRegistrarProfile(input){
+  const lrn=normalizeLrn(input.lrn),lrnState=String(input.lrnState||"unrecorded");
+  if(!["unrecorded","recorded","verified"].includes(lrnState)||Boolean(lrn)!==(lrnState!=="unrecorded"))
+    deny("invalid-argument","Choose a valid LRN verification status.");
+  const sex=String(input.sex||"");
+  if(!["","male","female"].includes(sex))deny("invalid-argument","Choose the sex recorded on the official identity document, or leave blank.");
+  return {lrn,lrnState,sex:sex||null,birthPlace:optional(input.birthPlace,160),
+    nationality:optional(input.nationality,80),addressLine:optional(input.addressLine,200),
+    barangay:optional(input.barangay,100),cityMunicipality:optional(input.cityMunicipality,100),
+    province:optional(input.province,100),postalCode:optional(input.postalCode,20),
+    country:optional(input.country,80),previousSchool:optional(input.previousSchool,180)};
+}
 function requestTypeLabel(type){
   return ({
     certificate_of_enrollment:"Certificate of Enrollment",
@@ -85,6 +102,56 @@ function createSchoolStudentRecordsService({db}){
       return {ref,doc,data:doc.data()};
     }
     if(ADMISSION_DOCUMENT_ACTIONS.has(input.action))return admissionDocumentAction({db,ctx,input,studentView:true});
+    // Registrar-only supplementary profile fields are intentionally not in the general people directory.
+    async function requireRegistrarMembership(read){
+      const [school,member]=await Promise.all([read(schoolRef),read(adminRef)]);
+      if(!school.exists||!["active","pilot","draft"].includes(school.data().state)||!member.exists||
+         member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
+         !Array.isArray(member.data().roles)||!member.data().roles.some(role=>role==="school_admin"||role==="registrar")||
+         (school.data().state==="draft"&&!member.data().roles.includes("school_admin")))
+        deny("permission-denied","An active school Registrar or School Administrator membership is required.");
+    }
+    if(input.action==="get_registrar_profile"||input.action==="save_registrar_profile"){
+      await requireRegistrarMembership(ref=>ref.get());
+      const personId=id(input.personId,"Person ID"),a=await student(personId),profileRef=db.doc(root+"student_registrar_profiles/"+personId);
+      if(input.action==="get_registrar_profile"){
+        const doc=await profileRef.get();
+        if(doc.exists&&(doc.data().schoolId!==ctx.schoolId||doc.data().personId!==personId))deny("data-loss","Student profile ownership mismatch.");
+        const row=doc.exists?doc.data():{};
+        return {personId,revision:Number(row.revision)||0,profile:{lrn:row.lrn||"",lrnState:row.lrnState||"unrecorded",sex:row.sex||"",
+          birthPlace:row.birthPlace||"",nationality:row.nationality||"",addressLine:row.addressLine||"",barangay:row.barangay||"",
+          cityMunicipality:row.cityMunicipality||"",province:row.province||"",postalCode:row.postalCode||"",country:row.country||"",previousSchool:row.previousSchool||""}};
+      }
+      const details=normalizeRegistrarProfile(input.profile||{}),expectedRevision=input.expectedRevision,reason=required(input.reason,"Profile review reason",500);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<0||reason.length<8)deny("invalid-argument","Refresh the profile and record a review reason.");
+      await db.runTransaction(async tx=>{
+        await requireRegistrarMembership(ref=>tx.get(ref));
+        const [person,profile]=await Promise.all([tx.get(a.ref),tx.get(profileRef)]);
+        if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||!["active","archived"].includes(person.data().status))deny("failed-precondition","The student record changed.");
+        const prior=profile.exists?profile.data():{};
+        if(profile.exists&&(prior.schoolId!==ctx.schoolId||prior.personId!==personId))deny("data-loss","Student profile ownership mismatch.");
+        if((Number(prior.revision)||0)!==expectedRevision)deny("failed-precondition","The profile changed. Refresh before saving.");
+        const claimRef=details.lrn?db.doc(root+"student_lrn_claims/"+key("lrn",details.lrn)):null;
+        const claim=claimRef?await tx.get(claimRef):null;
+        const oldRef=prior.lrn&&prior.lrn!==details.lrn?db.doc(root+"student_lrn_claims/"+key("lrn",prior.lrn)):null;
+        const oldClaim=oldRef?await tx.get(oldRef):null;
+        if(claim?.exists&&(claim.data().schoolId!==ctx.schoolId||claim.data().personId!==personId))
+          deny("already-exists","This LRN is already associated with another school student record. Resolve the identity conflict with the Registrar.");
+        if(oldClaim?.exists&&(oldClaim.data().schoolId!==ctx.schoolId||oldClaim.data().personId!==personId))
+          deny("data-loss","The previous LRN claim has inconsistent ownership.");
+        const revision=expectedRevision+1,now=FieldValue.serverTimestamp();
+        if(claimRef){const value={schoolId:ctx.schoolId,personId,status:"active",updatedAt:now,updatedByUid:ctx.uid};
+          if(claim.exists)tx.update(claimRef,value);else tx.create(claimRef,{...value,createdAt:now});}
+        if(oldRef){const value={schoolId:ctx.schoolId,personId,status:"superseded",updatedAt:now,updatedByUid:ctx.uid};
+          if(oldClaim.exists)tx.update(oldRef,value);else tx.create(oldRef,{...value,createdAt:now});}
+        const payload={schoolId:ctx.schoolId,personId,...details,revision,updatedAt:now,updatedByUid:ctx.uid,
+          lrnVerifiedByUid:details.lrnState==="verified"?ctx.uid:null,lrnVerifiedAt:details.lrnState==="verified"?now:null};
+        if(profile.exists)tx.update(profileRef,payload);else tx.create(profileRef,{...payload,createdAt:now,createdByUid:ctx.uid});
+        tx.create(db.collection(root+"student_records_audit").doc(),{schoolId:ctx.schoolId,personId,actorUid:ctx.uid,
+          action:"registrar_profile_reviewed",fields:Object.keys(details).filter(field=>(prior[field]??null)!==details[field]),reason,revision,createdAt:now});
+      });
+      return {personId,revision:expectedRevision+1};
+    }
     if(input.action==="list_document_requests"){
       const filter=String(input.status||"open"),cursor=input.cursor?id(input.cursor,"Document request cursor",330):null,pageSize=40;
       if(!["open","all",...Object.keys(REQUEST_TRANSITIONS)].includes(filter))deny("invalid-argument","Choose a document request status.");
@@ -529,5 +596,5 @@ function createSchoolStudentRecordsService({db}){
   };
 }
 module.exports={
-  createSchoolStudentRecordsService,REQUEST_TYPES,REQUEST_TRANSITIONS,requestTypeLabel
+  createSchoolStudentRecordsService,REQUEST_TYPES,REQUEST_TRANSITIONS,requestTypeLabel,normalizeLrn,normalizeRegistrarProfile
 };
