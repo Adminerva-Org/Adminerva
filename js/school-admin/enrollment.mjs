@@ -59,7 +59,7 @@ function setSaving(value){
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
-  for(const control of document.querySelectorAll("#en-application-list button, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
+  for(const control of document.querySelectorAll("#en-application-list button, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
   if(!value){
@@ -879,7 +879,7 @@ function applicationMeta(item){
   return [item.reference,year,levelLabel(item.incomingLevel),program].filter(Boolean).join(" · ");
 }
 function loadApplicationIntoForm(item){
-  if(saving||item.status!=="accepted"||!discardDraft())return;
+  if(saving||item.status!=="accepted"||!item.requirementsReady||!discardDraft())return;
   if(loadedApplication?.applicationId===item.applicationId&&loadedApplication.revision===item.revision){showEnrollmentView("register");return;}
   loadedPerson=null;form.elements.personId.value="";
   form.elements.displayName.readOnly=false;
@@ -1005,8 +1005,72 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
   }
 }
 
+let requirementsReview=null;
+function renderRequirementRows(){
+  const host=get("en-requirements-list");host.replaceChildren();
+  if(!requirementsReview)return;
+  const rows=requirementsReview.rows;
+  get("en-requirements-add").disabled=rows.length>=24;
+  if(rows.length)get("en-requirements-none").checked=false;
+  get("en-requirements-none").disabled=rows.length>0;
+  rows.forEach((item,index)=>{
+    const row=document.createElement("div");row.className="en-requirement-row";
+    const nameLabel=document.createElement("label");nameLabel.className="text-sm font-bold";nameLabel.textContent="Requirement";
+    const name=document.createElement("input");name.className="en-input";name.type="text";name.maxLength=100;name.required=true;name.value=item.label;
+    name.addEventListener("input",()=>{item.label=name.value;});nameLabel.append(name);
+    const statusLabel=document.createElement("label");statusLabel.className="text-sm font-bold";statusLabel.textContent="Status";
+    const select=document.createElement("select");select.className="en-input";
+    for(const [value,label] of [["missing","Missing"],["received","Received"],["verified","Verified"]]){
+      const option=document.createElement("option");option.value=value;option.textContent=label;select.append(option);
+    }
+    select.value=item.status;select.addEventListener("change",()=>{item.status=select.value;});statusLabel.append(select);
+    const remove=document.createElement("button");remove.type="button";remove.className="en-btn secondary";remove.textContent="Remove";
+    remove.addEventListener("click",()=>{rows.splice(index,1);renderRequirementRows();});
+    row.append(nameLabel,statusLabel,remove);host.append(row);
+  });
+}
+function openRequirements(item){
+  if(saving||!["submitted","needs_information"].includes(item.status))return;
+  requirementsReview={item,rows:(item.requirements||[]).map(row=>({label:row.label,status:row.status}))};
+  get("en-requirements-target").textContent=item.displayName+" · "+item.reference;
+  get("en-requirements-none").checked=item.noRequirements===true;
+  get("en-requirements-reason").value="";
+  get("en-requirements-status").textContent="";
+  renderRequirementRows();get("en-requirements-dialog").showModal();
+}
+function closeRequirements(){
+  requirementsReview=null;get("en-requirements-list").replaceChildren();get("en-requirements-reason").value="";
+  get("en-requirements-none").checked=false;get("en-requirements-dialog").close();
+}
+get("en-requirements-close").addEventListener("click",()=>{if(!saving)closeRequirements();});
+get("en-requirements-dialog").addEventListener("cancel",event=>{
+  event.preventDefault();if(!saving)closeRequirements();
+});
+get("en-requirements-add").addEventListener("click",()=>{
+  if(saving||!requirementsReview||requirementsReview.rows.length>=24)return;
+  requirementsReview.rows.push({label:"",status:"missing"});renderRequirementRows();
+});
+get("en-requirements-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(saving||!requirementsReview)return;
+  const {item,rows}=requirementsReview,
+    reason=get("en-requirements-reason").value.trim(),
+    noRequirements=get("en-requirements-none").checked===true;
+  if(!rows.length&&!noRequirements){get("en-requirements-status").textContent="Add requirements or confirm that none apply.";return;}
+  void (async()=>{
+    setSaving(true);get("en-requirements-status").textContent="Saving…";
+    try{
+      await perform("save_application_requirements",{applicationId:item.applicationId,
+        expectedRevision:Number(item.revision)||1,requirements:rows.map(row=>({label:row.label.trim(),status:row.status})),noRequirements,reason});
+      closeRequirements();status.textContent="Requirements review saved.";
+      try{await loadApplications();}catch{status.textContent="Requirements saved. Refresh applications.";}
+    }catch(error){get("en-requirements-status").textContent=error?.message||"Requirements review failed.";}
+    finally{setSaving(false);if(requirementsReview)renderRequirementRows();}
+  })();
+});
 async function reviewApplication(item,nextStatus){
   if(saving)return;
+  if(nextStatus==="accepted"&&!item.requirementsReady){status.textContent="Verify admission requirements before accepting.";return;}
   const label=({rejected:"rejection",needs_information:"request for more information",accepted:"acceptance after requirements review",submitted:"reopening for review"})[nextStatus];
   if(!label)return;
   const reason=prompt("Reason for "+label+":");
@@ -1045,6 +1109,12 @@ function renderApplications(){
     contacts.textContent=item.guardianName+" · "+item.guardianEmail+
       (item.studentEmail?" · student: "+item.studentEmail:" · guardian-managed learner");
     info.append(name,meta,contacts);
+    if(["submitted","needs_information","accepted"].includes(item.status)){
+      const requirements=document.createElement("p");requirements.className="en-muted";
+      const total=item.requirements?.length||0,verified=(item.requirements||[]).filter(row=>row.status==="verified").length;
+      requirements.textContent=item.requirementsReady?"Requirements verified":item.requirementsReviewed?verified+" / "+total+" verified":"Requirements review pending";
+      info.append(requirements);
+    }
     if(item.reviewReason){
       const note=document.createElement("p");note.className="en-muted";note.textContent="Review note: "+item.reviewReason;info.append(note);
     }
@@ -1055,8 +1125,11 @@ function renderApplications(){
       const control=document.createElement("button");control.type="button";control.className="en-btn"+(primary?"":" secondary");
       control.textContent=label;control.addEventListener("click",callback);actions.append(control);
     };
-    if(item.status==="accepted")addAction("Enroll",()=>loadApplicationIntoForm(item),true);
-    if(["submitted","needs_information"].includes(item.status))addAction("Accept",()=>void reviewApplication(item,"accepted"),true);
+    if(item.status==="accepted"&&item.requirementsReady)addAction("Enroll",()=>loadApplicationIntoForm(item),true);
+    if(["submitted","needs_information"].includes(item.status)){
+      addAction("Requirements",()=>openRequirements(item),!item.requirementsReady);
+      if(item.requirementsReady)addAction("Accept",()=>void reviewApplication(item,"accepted"),true);
+    }
     if(["submitted","accepted"].includes(item.status))addAction("Needs info",()=>void reviewApplication(item,"needs_information"));
     if(item.status==="needs_information")addAction("Reopen review",()=>void reviewApplication(item,"submitted"));
     if(["submitted","needs_information","accepted"].includes(item.status))addAction("Reject",()=>void reviewApplication(item,"rejected"));
@@ -1179,6 +1252,8 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current enrollment before switching schools.");
     if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
+    if(requirementsReview&&!confirm("Discard the open requirements review?"))throw new Error("Finish the requirements review before switching schools.");
+    if(requirementsReview)closeRequirements();
     ++refreshVersion;requestedPersonId="";activeEnrollmentView="registrations";
     for(const source of Object.keys(requestVersions))++requestVersions[source];
     loadedApplication=null;loadedPerson=null;registrationChange=null;progressionChange=null;cohortPreview=null;draftDirty=false;registrations=[];
