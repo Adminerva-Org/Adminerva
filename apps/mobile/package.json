@@ -1,6 +1,6 @@
 {
   "name": "adminerva-mobile-public-preview",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Unreleased, public-only mobile staging for the canonical Adminerva web UI",

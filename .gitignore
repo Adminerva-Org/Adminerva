@@ -14,3 +14,4 @@ apps/desktop/dist/
 apps/desktop/out/
 apps/mobile/android/
 apps/mobile/ios/
+apps/mobile/ios-preview-dist/
