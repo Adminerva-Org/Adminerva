@@ -611,7 +611,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       host.append(make("p","text-sm text-slate-600 mb-2","Original rubric unavailable. Review the submission and enter the total score manually."));
     }else if(currentTask?.legacyCompatibility&&grade?.gradeSchema==="legacy_scalar_v1"){
       host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
-        "Original private historical draft: "+grade.awarded+" / "+grade.total+
+        Original "+(grade.status==="published"?"published grade":"draft")+": "+grade.awarded+" / "+grade.total+
         ". Its rubric breakdown was not recorded. Enter and review a fresh breakdown before saving any replacement draft."));
     }
     (currentTask?.rubric||[]).forEach((criterion,index)=>{
@@ -623,7 +623,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const awardLabel=make("label","text-xs font-bold text-slate-700","Awarded points");
       const awarded=make("input","mt-1 w-full border border-slate-300 rounded-lg p-2");
       awarded.type="number";awarded.min="0";awarded.max=String(criterion.points);awarded.step="0.5";
-      awarded.dataset.awarded="1";awarded.value=String(saved.awardedPoints??0);awardLabel.append(awarded);
+      awarded.dataset.awarded="1";awarded.value=String(saved.awardedPoints??(grade?.gradeSchema==="legacy_scalar_v1"&&currentTask?.legacyCompatibility?"":0));awardLabel.append(awarded);
       const pendingLabel=make("label","text-xs font-bold text-slate-700","Pending points");
       const pending=make("input","mt-1 w-full border border-slate-300 rounded-lg p-2");
       pending.type="number";pending.min="0";pending.max=String(criterion.points);pending.step="0.5";
@@ -684,7 +684,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   }
   function collectCriteria(){
     return [...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")].map((row,index)=>{
-      const awardedPoints=Number(row.querySelector("[data-awarded]").value||0);
+      const rawAward=row.querySelector("[data-awarded]").value;
+      if(rawAward.trim()==="")throw Error("Enter the score for criterion "+(index+1)+".");
+      const awardedPoints=Number(rawAward);
       const pendingPoints=Number(row.querySelector("[data-pending]").value||0);
       const maximum=Number(currentTask.rubric[index].points||0);
       if(!Number.isFinite(awardedPoints)||!Number.isFinite(pendingPoints)||
