@@ -9,6 +9,7 @@
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+const {ACTIONS:ADMISSION_DOCUMENT_ACTIONS,admissionDocumentAction}=require("./school-admission-documents.js");
 const {rosterEmailHash,normalizedRosterEmail}=require("./school-roster-identity.js");
 const {guardianContactIdForEmail,guardianRelationshipId}=require("./school-guardian-identity.js");
 
@@ -63,7 +64,8 @@ function normalizeAdmissionRequirements(value,noRequirements){
   });
 }
 function admissionRequirementsReady(row){
-  if(row?.requirementsReviewed!==true||!Array.isArray(row.requirements))return false;
+  if(row?.requirementsReviewed!==true||!Array.isArray(row.requirements)||
+    (row.admissionDocuments||[]).some(item=>item.state==="pending"))return false;
   if(!row.requirements.length)return row.noRequirements===true;
   return row.noRequirements===false&&row.requirements.length<=24&&
     row.requirements.every(item=>typeof item?.label==="string"&&item.label.trim()&&item.status==="verified");
@@ -187,6 +189,7 @@ function createSchoolEnrollmentService({db}){
         deny("permission-denied","School enrollment authority changed. Refresh before saving.");
     }
 
+    if(ADMISSION_DOCUMENT_ACTIONS.has(input.action))return admissionDocumentAction({db,ctx,input});
     const templateRef=type=>db.doc(root+"configuration/admission_requirements_"+admissionType(type));
     function readTemplate(doc,type){
       if(!doc.exists)return {type,revision:0,labels:[]};
@@ -465,6 +468,8 @@ function createSchoolEnrollmentService({db}){
           deny("failed-precondition","Reopen the application for corrections before editing its requirements.");
         const type=ADMISSION_TYPES.includes(prior.applicationType)?prior.applicationType:"new",template=readTemplate(await tx.get(templateRef(type)),type);
         if(template.revision!==expectedTemplateRevision)deny("failed-precondition","Admission requirements changed. Reopen the checklist.");
+        if((prior.admissionDocuments||[]).some(item=>item.state==="pending"&&!requirements.some(row=>row.label===item.label)))
+          deny("failed-precondition","Resolve pending document uploads before removing their requirements.");
         if(!templateCovered(requirements,template.labels))deny("failed-precondition","Include every required item from the school template.");
         const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         tx.update(ref,{requirements,noRequirements:input.noRequirements,requirementsReviewed:true,requirementsTemplateRevision:template.revision,
