@@ -378,7 +378,7 @@ export function createProjectStudio({
         if(school){
           const base=readMarker(id);
           const result=await syncV4StudioProject(snapshot,snapshot.state,{quiet:true,expectedRevision:base.kind==="school"&&base.schoolId===school.schoolId?base.revision:null,
-            closingSaveSessionEpoch:closingSessionEpoch});
+            closingSaveSessionEpoch:closingSessionEpoch,diagnosticParentOperationId:finishDiagnostic?.correlation?.operationId||""});
           if(!result)throw Error("School cloud storage is unavailable.");
           if(closingSessionEpoch&&result.examFinalized!==true)
             throw Error("The final exam checkpoint was not confirmed by the school server.");
