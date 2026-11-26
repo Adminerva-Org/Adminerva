@@ -346,7 +346,7 @@ export function createV4BulkEvaluationController({
       String(evidenceNotes.get(item.key)||"").trim().length>=15));
   const appendStatus=(message)=>{status.textContent=message;};
   const taskKey=t=>t?(t.legacyCompatibility?"legacy:":"native:")+
-    String(t.legacyAssessmentId||t.taskId):"";
+    String(t.legacyAssessmentId||t.taskId)+":"+String(t.legacyOfferingId||""):"";
   function render(){
     const ready=selectedEligible(),remaining=candidates(),saveReady=saveable();
     root.hidden=!supported(task);
@@ -360,7 +360,7 @@ export function createV4BulkEvaluationController({
       btn(id).disabled=running||isBusy()||remaining.length===0;
     btn("gbV4BulkImport").disabled=running||isBusy()||!batchId;
     btn("gbV4BulkSave").disabled=running||isBusy()||saveReady.length===0;
-    btn("gbV4BulkSave").textContent="Save "+saveReady.length+" eligible private draft"+
+    btn("gbV4BulkSave").textContent="Save "+saveReady.length+" eligible draft"+
       (saveReady.length===1?"":"s");
     btn("gbV4BulkSelect").disabled=running||isBusy();
     btn("gbV4BulkSelect").textContent="Select next "+maximum+" ungraded";
@@ -410,7 +410,7 @@ export function createV4BulkEvaluationController({
       summary.textContent=(student?.studentName||"Learner")+
         " · "+data.source+" · "+data.review.awarded+" pts"+
         (data.review.pending?" · "+data.review.pending+" pending":"")+
-        (data.review.reason?" · "+data.review.reason:" · eligible private draft");
+        (data.review.reason?" · "+data.review.reason:" · eligible draft");
       line.append(summary);
       // External artifacts remain available for actual teacher inspection.
       // Never replace an exact pinned GitHub SHA with a moving branch URL.
@@ -480,7 +480,7 @@ export function createV4BulkEvaluationController({
           evidenceNotes.set(data.key,note.value);
           const ready=saveable();
           btn("gbV4BulkSave").disabled=running||isBusy()||!ready.length;
-          btn("gbV4BulkSave").textContent="Save "+ready.length+" eligible private draft"+
+          btn("gbV4BulkSave").textContent="Save "+ready.length+" eligible draft"+
             (ready.length===1?"":"s");
         });
         noteLabel.append(note);
@@ -498,7 +498,7 @@ export function createV4BulkEvaluationController({
           render();
         });
         include.append(input,document.createTextNode(stillGradeable?
-          "Include this result when saving private drafts":
+          "Include this result when saving drafts":
           "Already graded, reopened, or changed version — cannot save from this batch"));
         line.append(include);
       }
@@ -617,6 +617,7 @@ export function createV4BulkEvaluationController({
       result=await scoped(migrationApi,source==="github"?
         "legacy_github_inspect":"legacy_review_inspect",{
         legacyAssessmentId:task.legacyAssessmentId,
+        ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{}),
         ...(source==="github"?{legacyEvidenceId:id}:{legacySubmissionId:id})
       });
     }else{
@@ -830,7 +831,7 @@ export function createV4BulkEvaluationController({
     const session=scopeGeneration;
     const eligible=saveable();
     if(!eligible.length){appendStatus("No eligible positive, fully resolved evaluations selected.");return;}
-    if(!confirm("Save "+eligible.length+" verified non-zero evaluation(s) as PRIVATE grade drafts? "+
+    if(!confirm("Save "+eligible.length+" verified non-zero evaluation(s) as drafts? "+
       "Published grades and existing drafts are protected; zero/pending grades are excluded. "+
       "You may review results individually before publishing."))return;
     await execute("Bulk save",async()=>{
@@ -851,12 +852,12 @@ export function createV4BulkEvaluationController({
           if(task.legacyCompatibility&&task.submissionSource==="github"){
             await scoped(migrationApi,"legacy_github_save_draft",{
               legacyAssessmentId:task.legacyAssessmentId,
+              ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{}),
               legacyEvidenceId:item.key,
               expectedEvidenceRevision:item.evidenceRevision,
               expectedEvidenceRevisionMode:"canonical",
               expectedCheckpointSha:item.checkpointSha,
               expectedGradeRevision:0,
-              reviewNote:"Teacher bulk-reviewed this student-submitted checkpoint and rubric suggestions; Git commit metadata is not independent authorship proof.",
               ...details
             });
           }else if(task.legacyCompatibility){
@@ -905,7 +906,7 @@ export function createV4BulkEvaluationController({
         selection.clear();autoSelectNext=true;
         await onSaved();
         if(session===scopeGeneration){
-          appendStatus(saved+" private draft(s) saved; "+skipped+
+          appendStatus(saved+" draft(s) saved; "+skipped+
             " failed or changed. Nothing was published. "+
             selection.size+" next ungraded learner(s) selected."+
             (clearedExchange?" The completed JSON exchange was cleared.":
@@ -913,7 +914,7 @@ export function createV4BulkEvaluationController({
           render();
         }
       }else{
-        appendStatus(saved+" private draft(s) saved; "+skipped+
+        appendStatus(saved+" draft(s) saved; "+skipped+
           " failed or changed. Nothing was published.");
       }
     });
