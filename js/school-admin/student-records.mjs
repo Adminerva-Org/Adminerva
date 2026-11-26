@@ -200,7 +200,35 @@ function renderAudit(data){
     row.append(info);host.append(row);
   }
 }
+async function loadAdmissionDocuments(){
+  if(saving||!current)return;
+  const personId=current.person.personId,run=fileRun,host=get("sr-admission-docs");
+  host.textContent="Loading…";
+  try{
+    const result=await perform("list_admission_documents",{personId});
+    if(run!==fileRun||current?.person.personId!==personId)return;
+    host.replaceChildren();
+    if(!result.items?.length){host.textContent="No admission documents stored.";return;}
+    for(const row of result.items){
+      const line=document.createElement("div");line.className="sr-row";
+      line.append(textNode("span",row.label+" · "+Math.ceil(row.size/1024)+" KB"));
+      line.append(button("Download",{tone:"secondary",onClick:()=>void (async()=>{
+        if(saving||current?.person.personId!==personId)return;
+        setSaving(true,"Downloading document…");
+        try{
+          const result=await perform("download_admission_document",{personId,applicationId:row.applicationId,documentId:row.documentId});
+          if(run!==fileRun||current?.person.personId!==personId)return;
+          const ext=({"application/pdf":"pdf","image/jpeg":"jpg","image/png":"png"})[result.contentType];if(!ext)throw new Error("Unsupported document format.");
+          const url=URL.createObjectURL(new Blob([Uint8Array.from(atob(result.base64),c=>c.charCodeAt(0))],{type:result.contentType})),link=document.createElement("a");
+          link.href=url;link.download="admission-document."+ext;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);status.textContent="Document downloaded.";
+        }catch(error){status.textContent=error?.message||"Document download failed.";}finally{setSaving(false);}
+      })()}));host.append(line);
+    }
+  }catch(error){if(run===fileRun)host.textContent=error?.message||"Documents unavailable.";}
+}
+get("sr-load-admission-docs").addEventListener("click",()=>void loadAdmissionDocuments());
 function renderFile(data){
+  get("sr-admission-docs").replaceChildren();
   current=data;const p=data.person;
   fileHost.hidden=false;get("sr-empty-file").hidden=true;get("sr-student-name").textContent=p.displayName;
   get("sr-student-meta").textContent=p.status+" · directory revision "+p.revision;
