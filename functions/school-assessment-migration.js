@@ -11,7 +11,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {createSchoolLegacyStudioReview}=require("./school-legacy-studio-review.js");
 const {createSchoolLegacyGithubReview}=require("./school-legacy-github-review.js");
-const {authorizedTeacherCustody}=require("./school-legacy-custody.js");
+const {authorizedTeacherCustody,custodyMaximum}=require("./school-legacy-custody.js");
 const {previewLegacyEvidenceMigration}=require("./school-legacy-migration-readiness.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -37,7 +37,7 @@ function fallbackRubric(maxScore){
   if(remaining>0)deny("failed-precondition","This legacy score maximum is too large for the general rubric model.");
   return rows;
 }
-function parseLegacyRubric(value,maxScore){
+function parseVerifiedLegacyRubric(value,maxScore){
   const lines=String(value||"").split(/\r?\n/).map(normalizeLine).filter(Boolean);
   const rows=[];
   for(const line of lines){
@@ -48,7 +48,10 @@ function parseLegacyRubric(value,maxScore){
   }
   const maximum=Number(maxScore)||0,sum=rows.reduce((total,row)=>total+row.points,0);
   if(rows.length&&rows.length<=20&&maximum>0&&Math.abs(sum-maximum)<0.001)return rows;
-  return fallbackRubric(maximum||20);
+  return null;
+}
+function parseLegacyRubric(value,maxScore){
+  return parseVerifiedLegacyRubric(value,maxScore)||fallbackRubric(Number(maxScore)||20);
 }
 function legacySubmissionSource(data={}){
   return data.schemaVersion===3||data.submissionSource==="studio"||data.assessmentFormat==="studio_code"
@@ -73,7 +76,7 @@ function legacySummary(doc,imported=false){
 }
 function createSchoolAssessmentMigrationService({db}){
  const legacyStudioReview=createSchoolLegacyStudioReview({db,parseLegacyRubric});
- const legacyGithubReview=createSchoolLegacyGithubReview({db,parseLegacyRubric});
+ const legacyGithubReview=createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegacyRubric});
  return async request=>{
   const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["teacher"]});
   if(/^legacy_review_(?:inbox|inspect|save_draft|publish|bulk_publish)$/.test(String(input.action||"")))
@@ -119,7 +122,7 @@ function createSchoolAssessmentMigrationService({db}){
         assessmentId:grant.assessmentId,offeringId:grant.offeringId,task:source.data()
       });
       if(!authorized||legacySubmissionSource(source.data())!=="github")continue;
-      delegated.push({...legacySummary(source,true),legacyOfferingId:grant.offeringId,
+      delegated.push({...legacySummary(source,true),maxScore:custodyMaximum(source.data(),authorized.grant),legacyOfferingId:grant.offeringId,
         custodyApproved:true,originalSection:grant.originalSection,deploymentCount:1});
     }
     return {items:[...owned,...delegated].sort((a,b)=>a.title.localeCompare(b.title))};

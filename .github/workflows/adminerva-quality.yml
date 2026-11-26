@@ -26,7 +26,7 @@ jobs:
       - name: Validate public editorial publishing content
         run: node --test js/core/public-content.test.mjs tests/editorial-cinematic.test.mjs tests/experience-mode-responsive.test.mjs
       - name: Validate native-client preview security and shared compatibility
-        run: node --test tests/cross-platform-client.test.mjs
+        run: node --test tests/cross-platform-client.test.mjs tests/native-app-updates.test.mjs
 
       - name: Test grading evidence and feedback regressions
         run: |

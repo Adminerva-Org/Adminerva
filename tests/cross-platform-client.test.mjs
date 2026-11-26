@@ -34,7 +34,7 @@ test("desktop window is sandboxed, denies native permissions and has no privileg
  assert.doesNotMatch(source,/ipcMain|desktopCapturer|globalShortcut|autoUpdater/);
  assert.match(preload,/capabilities:Object\.freeze\(\[\]\)/);
  assert.doesNotMatch(preload,/ipcRenderer|desktopCapturer|shell\.openExternal/);
- assert.equal(pkg.version,"0.1.0");
+ assert.equal(pkg.version,"0.1.1");
  assert.equal(CLIENT_PROTOCOL,1);
 });
 

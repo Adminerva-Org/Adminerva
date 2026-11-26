@@ -1,6 +1,6 @@
 {
   "name": "adminerva-desktop-public-preview",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Unreleased Adminerva public-only Electron security foundation",
   "main": "main.cjs",
@@ -29,7 +29,8 @@
       "main.cjs",
       "navigation-policy.cjs",
       "preload.cjs",
-      "package.json"
+      "package.json",
+      "update-check.cjs"
     ],
     "win": {
       "target": "nsis",

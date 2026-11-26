@@ -22,6 +22,12 @@ The dependency is pinned to a current supported Electron release; an immutable l
 - Exposes a harmless read-only preview descriptor, not credentials or a native API bridge. The `app-compatibility.mjs` browser model treats such descriptors as UI hints, never school authorization.
 - Does not monitor devices, run a companion, capture screens, or have a signed installer.
 
+## Native update status — preview only
+
+The application menu now has **Check for updates…**. It reads a small version listing from the canonical Adminerva HTTPS origin, displays the installed version and optionally opens the official downloads page. It **never downloads or installs an unsigned update**, never refreshes a running examination, and never grants privileged native access. The version listing must be updated when a new versioned artifact is actually verified; rebuilding with the same version is not an app update.
+
+For the eventual **official signed desktop application**, implement publisher-verified update metadata and package signatures (Windows NSIS, macOS signed/notarized app plus ZIP update target), secure staged download, and a safe update/restart confirmation after all Studio cloud saves finish and no teacher-controlled examination is active. A signed update must not silently overwrite student work.
+
 ## Native-client release gate
 
 Implement authenticated system-browser OAuth/PKCE handoff and validated return through a short-lived server-verified exchange. Never reuse browser cookies, forward Firebase ID tokens through URL parameters, enable Electron Node integration for remote pages, or automatically allow screen capture. Validate exam epoch, school, saved project, idle/unload and close behavior before admitting authenticated examination work. Then add signed/notarized Windows/macOS packaging, explicit native versioning and safe updates.
