@@ -298,7 +298,7 @@ function setCustodyBusy(value){
   if(!value&&verifiedCustody&&!verifiedCustody.eligible)el("cro-legacy-approve").disabled=true;
 }
 function recoveryStatus(row){
-  return ({already_approved:"Already recovered",overlapping_class_rosters:"Overlapping student identities",
+  return ({already_approved:"Already recovered",existing_custody_review_required:"Existing custody requires review",overlapping_class_rosters:"Overlapping student identities",
     original_section_review_required:"Choose the original section manually",maximum_reconciliation_required:"Score maximum unresolved",
     identity_reconciliation_required:"Insufficient verified identities",original_submission_or_grade_not_found:"No original source records",
     verification_required:row.message||"Verification required",ready_for_school_admin_approval:"Ready to recover",
@@ -326,13 +326,13 @@ function renderRecoveryClasses(result){
     const details=node("div","min-w-0 flex-1");
     details.append(node("p","font-bold",row.sectionName),
       node("p","text-sm text-slate-600",recoveryStatus(row)+
-        (row.rosterCount!=null?" · "+row.verifiedStudentCount+"/"+row.rosterCount+" matched · "+row.originalSourceRecordCount+" source records":"")));
+        (row.rosterCount!=null?" · "+row.verifiedStudentCount+"/"+row.rosterCount+" matched · "+row.originalSourceRecordCount+" source identities":"")));
     item.append(details);
     if(row.status==="active"||row.status==="already_approved"){
       const link=node("a","cro-btn","Class Record");
       link.href="class-record.html?"+new URLSearchParams({offering:row.offeringId}).toString();item.append(link);
       const review=node("a","cro-btn","Review & Grade");
-      review.href="school-gradebook.html?"+new URLSearchParams({view:"review",task:"legacy:"+result.assessmentId+"@"+row.offeringId,offering:row.offeringId}).toString();item.append(review);
+      review.href="school-gradebook.html?"+new URLSearchParams({view:"review",task:"legacy:"+result.assessmentId+"@"+row.offeringId,offeringId:row.offeringId}).toString();item.append(review);
     }else if(row.status==="original_section_review_required"){
       const button=node("button","cro-btn","Verify manually");button.type="button";
       button.addEventListener("click",()=>{
