@@ -54,7 +54,7 @@ function release(value){
 }
 
 const CONTROLS=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
-const PROCESS_NAMES=new Set(["studio_cloud_save"]);
+const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign"]);
 const CONTEXT_ENUMS={visibility:["visible","hidden","other"],network:["online","offline"],focus:["focused","unfocused"],ready:["loading","interactive","complete","other"],dialog:["open","none"],busy:["busy","idle"]};
 function checkedContext(value){
   if(!value||typeof value!=="object"||Array.isArray(value))deny("invalid-argument","Invalid diagnostic context.");
