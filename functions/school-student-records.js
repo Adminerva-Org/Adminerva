@@ -11,6 +11,7 @@ const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {ACTIONS:ADMISSION_DOCUMENT_ACTIONS,admissionDocumentAction}=require("./school-admission-documents.js");
+const {ACTIONS:CREDENTIAL_ACTIONS,registrarCredentialAction}=require("./school-record-credentials.js");
 const {
   normalizeGuardianEmail,guardianContactIdForEmail,guardianRelationshipId
 }=require("./school-guardian-identity.js");
@@ -111,6 +112,7 @@ function createSchoolStudentRecordsService({db}){
          (school.data().state==="draft"&&!member.data().roles.includes("school_admin")))
         deny("permission-denied","An active school Registrar or School Administrator membership is required.");
     }
+    if(CREDENTIAL_ACTIONS.has(input.action))return registrarCredentialAction({db,ctx,input,requireMembership:requireRegistrarMembership,student});
     if(input.action==="get_registrar_profile"||input.action==="save_registrar_profile"){
       await requireRegistrarMembership(ref=>ref.get());
       const personId=id(input.personId,"Person ID"),a=await student(personId),profileRef=db.doc(root+"student_registrar_profiles/"+personId);
@@ -168,6 +170,7 @@ function createSchoolStudentRecordsService({db}){
         const row=doc.data(),person=lookup.get(row.personId);
         return {requestId:doc.id,personId:row.personId,displayName:person.displayName||"Student",studentNumber:person.studentNumber||"",
           type:row.type,label:requestTypeLabel(row.type),status:row.status||"requested",purpose:row.purpose||"",
+          generationMode:row.generationMode||"external",hasCertificateDraft:Boolean(row.certificateDraft),credentialState:row.credentialState||"",
           releaseReference:row.releaseReference||"",revision:Number(row.revision)||1,requestedAt:millis(row.requestedAt),
           updatedAt:millis(row.updatedAt),releasedAt:millis(row.releasedAt)};
       }),nextCursor:snap.size>pageSize?page.at(-1).id:null,skippedCount:scoped.filter(doc=>!lookup.has(doc.data().personId)).length};
@@ -287,6 +290,7 @@ function createSchoolStudentRecordsService({db}){
         .map(doc=>({
           requestId:doc.id,type:doc.data().type,status:doc.data().status||"requested",
           label:requestTypeLabel(doc.data().type),purpose:doc.data().purpose||"",
+          generationMode:doc.data().generationMode||"external",hasCertificateDraft:Boolean(doc.data().certificateDraft),credentialState:doc.data().credentialState||"",
           notes:doc.data().notes||"",releaseReference:doc.data().releaseReference||"",
           revision:Number(doc.data().revision)||1,requestedAt:millis(doc.data().requestedAt),
           updatedAt:millis(doc.data().updatedAt),releasedAt:millis(doc.data().releasedAt)
@@ -543,6 +547,7 @@ function createSchoolStudentRecordsService({db}){
           deny("failed-precondition","The student record changed. Refresh before creating the request.");
         const now=FieldValue.serverTimestamp();
         tx.create(requestRef,{schoolId:ctx.schoolId,personId,type,status:"requested",purpose,notes,
+          generationMode:type==="certificate_of_enrollment"?"institutional":"external",
           requestedByUid:ctx.uid,requestedAt:now,revision:1,updatedAt:now});
         tx.create(db.collection(root+"student_records_audit").doc(),{
           schoolId:ctx.schoolId,personId,actorUid:ctx.uid,requestId,type,
@@ -573,6 +578,11 @@ function createSchoolStudentRecordsService({db}){
           deny("failed-precondition","This document request changed after you opened it. Refresh before saving.");
         if(!REQUEST_TRANSITIONS[priorStatus]?.has(nextStatus))
           deny("failed-precondition","The document request cannot move from "+priorStatus+" to "+nextStatus+".");
+        if(current.data().generationMode==="institutional"){
+          await requireRegistrarMembership(ref=>tx.get(ref));
+          if(nextStatus==="ready"&&!current.data().certificateDraft)deny("failed-precondition","Prepare the institutional certificate before marking it ready.");
+          if(nextStatus==="released")deny("failed-precondition","Use the certificate issuance action for this request.");
+        }
         if(nextStatus==="released"&&!releaseReference)
           deny("invalid-argument","Record the release/reference number before marking this request released.");
         const now=FieldValue.serverTimestamp();revision=expectedRevision+1;
