@@ -163,6 +163,14 @@ export async function retryV4StudioSchool(){
   try{return await schoolRetryPromise;}
   finally{schoolRetryPromise=null;}
 }
+// Only known revision preconditions permit the read-only checksum recovery.
+function isStudioRevisionRecovery(error){
+  if(!String(error?.code||"").endsWith("failed-precondition"))return false;
+  const reason=error?.details?.diagnosticReason;
+  if(reason)return ["STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT"].includes(reason);
+  const message=callableMessage(error,"");
+  return ["This project already exists in school storage. Reload its school revision before saving.","Project changed in school storage. Reload before overwriting it."].includes(message);
+}
 async function scopedCall(api,action,details={}){
   await init();
   if(!picker?.scope.current)return null;
@@ -172,7 +180,7 @@ async function scopedCall(api,action,details={}){
     api===submissionsApi&&action==="submit"?"studio_api_submit":api===variantApi&&action==="assign"?"studio_api_variant_assign":"";
   let finishDiagnostic;
   try{if(processName)finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.(processName);}catch{}
-  const reportDiagnostic=(ok,error)=>{try{finishDiagnostic?.(ok,error?.code||"unavailable");}catch{}};
+  const reportDiagnostic=(ok,error)=>{try{finishDiagnostic?.(ok,error?.code||"unavailable",error?.details?.diagnosticReason);}catch{}};
   try{
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
     picker.scope.assertLease(lease);
@@ -181,7 +189,7 @@ async function scopedCall(api,action,details={}){
   }catch(error){
     reportDiagnostic(false,error);
     document.dispatchEvent(new CustomEvent("adminerva:diagnostic-event",{detail:{
-      action:"api_failed",module:"studio",errorCode:String(error?.code||"unavailable")
+      action:"api_failed",module:"studio",errorCode:String(error?.code||"unavailable"),reasonCode:error?.details?.diagnosticReason
     }}));
     throw error;
   }
@@ -199,8 +207,7 @@ export async function syncV4StudioProject(project,state,{quiet=false,expectedRev
     }catch(error){
       // A fresh browser may not know a project already exists. Adopt its
       // server revision only if the complete checksum matches; never overwrite.
-      if(!String(error?.code||"").includes("failed-precondition")&&
-         !String(error?.message||"").toLowerCase().includes("revision"))throw error;
+      if(closingSaveSessionEpoch||!isStudioRevisionRecovery(error))throw error;
       const existing=await scopedCall(projectsApi,"get",{projectId:payload.projectId});
       if(!existing)throw error;
       const localDigest=await digestPayload(payload);
