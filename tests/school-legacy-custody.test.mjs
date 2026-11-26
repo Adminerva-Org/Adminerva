@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
-const {custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,custodySourceDigest}=
+const {custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,custodySourceDigest,verifiedOriginalMaximum,custodyMaximum}=
   require("../functions/school-legacy-custody.js");
 const {rowKey}=require("../functions/school-academics.js");
 const {historicalMapping,mappingMatches,historicalPublishedGrades}=require("../functions/school-class-record-historical.js");
@@ -160,4 +160,22 @@ test("sectionless original assessment projects only independently approved exact
  const grades=await historicalPublishedGrades({...input,acceptSavedLegacy:true});
  assert.equal(grades.length,1);assert.equal(grades[0].personId,"p1");assert.equal(grades[0].awarded,17);
  assert.equal(grades[0].legacyAccepted,true);
+});
+
+
+test("missing original maximum is recovered only from consistent recorded maxima",()=>{
+ const source={...task};delete source.maxScore;
+ const grades=[{taskId:assessmentId,studentId:"legacy-one",score:12,maxScore:20},{taskId:assessmentId,studentId:"legacy-two",score:17,maxScore:20}];
+ const ids=["legacy-one","legacy-two"];
+ assert.deepEqual(verifiedOriginalMaximum(source,grades,assessmentId,ids),{maximum:20,proof:"consistent_original_grade_maxima"});
+ assert.equal(verifiedOriginalMaximum(source,grades,assessmentId,["legacy-one"]),null);
+ assert.equal(verifiedOriginalMaximum(source,[...grades,{taskId:assessmentId,studentId:"legacy-three",score:15,maxScore:25}],assessmentId,ids),null);
+ assert.equal(verifiedOriginalMaximum(source,grades.map(({maxScore,...grade})=>grade),assessmentId,ids),null);
+ assert.equal(verifiedOriginalMaximum({...source,maxScore:0},grades,assessmentId,ids),null);
+ assert.deepEqual(verifiedOriginalMaximum(task,grades,assessmentId,ids),{maximum:20,proof:"original_assessment"});
+ const recovered={...grant,maximumProof:"consistent_original_grade_maxima",sourceDigest:custodySourceDigest(source)};
+ assert.equal(validCustody(recovered,{schoolId,assessmentId,offeringId,teacherUid,task:source}),true);
+ assert.equal(custodyMaximum(source,recovered),20);
+ assert.equal(custodyMaximum(source,null),null);
+ assert.equal(validCustody({...recovered,maximumProof:undefined},{schoolId,assessmentId,offeringId,teacherUid,task:source}),false);
 });
