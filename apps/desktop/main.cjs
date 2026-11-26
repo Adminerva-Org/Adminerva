@@ -13,6 +13,9 @@ const APP_TITLE="Adminerva — Desktop Public Preview";
 const DEV_SIGNIN=!app.isPackaged&&process.env.ADMINERVA_ENABLE_DESKTOP_SIGNIN_UI==="true";
 const generatePairing=DEV_SIGNIN?require("./native-auth-protocol.cjs").generatePairing:null;
 const sendHandoff=DEV_SIGNIN?require("./native-handoff-client.cjs").sendHandoff:null;
+const {PUBLIC_PARTITION,schoolUserPartition}=DEV_SIGNIN?
+ require("./session-partition.cjs"):
+ {PUBLIC_PARTITION:"persist:adminerva-public-preview",schoolUserPartition:null};
 const LOGIN_BOOTSTRAP=APP_ORIGIN+APP_PREFIX+"desktop-session.html";
 app.enableSandbox();
 const {checkUpdateStatus,DOWNLOAD_CENTER_URL}=require("./update-check.cjs");
@@ -105,9 +108,11 @@ ipcMain.handle("adminerva:session-ended",event=>{
  pendingPairing=null;
  if(pairing)void sendHandoff("cancel",pairing).catch(()=>{});
  if(hadSession&&activeWindow&&!activeWindow.isDestroyed()){
-  // Clear the previous student's sensitive workspace after Firebase signs out.
-  // The associated cloud-save sign-out guard runs before signOut(auth).
-  void activeWindow.loadURL(START_URL).catch(()=>{});
+  // Public home opens in an entirely different partition. Keep UID-keyed
+  // recovery drafts in the student's own partition for their next sign-in.
+  const oldWindow=activeWindow;
+  createWindow();
+  oldWindow.close(); // honors the renderer's existing beforeunload protection
  }
  return hadSession;
 });
@@ -164,7 +169,11 @@ async function startDesktopSignIn(){
     if(sequence!==pairingSequence)return;
     pendingToken=response.customToken;
     pendingPairing=null;
-    await activeWindow.loadURL(LOGIN_BOOTSTRAP);
+    // The authenticated account receives its own persistent draft namespace.
+    // No other student can inherit that namespace through the guest preview.
+    const previousWindow=activeWindow;
+    createWindow({accountUid:response.uid,initialUrl:LOGIN_BOOTSTRAP});
+    if(previousWindow&&!previousWindow.isDestroyed())previousWindow.close();
     return;
    }
    if(response.state==="expired"||response.state==="unavailable")break;
@@ -197,12 +206,14 @@ function setupMenu(){
   {label:"View",submenu:[{role:"reload"},{role:"toggleDevTools"}]}
  ]));
 }
-function createWindow(){
+function createWindow({accountUid=null,initialUrl=START_URL}={}){
+ const partition=DEV_SIGNIN&&accountUid?
+  schoolUserPartition(accountUid):PUBLIC_PARTITION;
  const win=new BrowserWindow({
   title:APP_TITLE,width:1160,height:790,minWidth:320,minHeight:480,
   show:false,webPreferences:{
    preload:path.join(__dirname,DEV_SIGNIN?"preload-auth-dev.cjs":"preload.cjs"),
-   partition:DEV_SIGNIN?"persist:adminerva-auth-dev":"persist:adminerva-public-preview",
+   partition,
    sandbox:true,contextIsolation:true,nodeIntegration:false,
    webSecurity:true,allowRunningInsecureContent:false,webviewTag:false
   }
@@ -241,7 +252,7 @@ function createWindow(){
  win.on("page-title-updated",event=>event.preventDefault());
  contents.once("did-finish-load",()=>{if(!win.isDestroyed())win.show();});
  win.on("closed",()=>{if(activeWindow===win){++pairingSequence;pendingPairing=null;pendingToken=null;tokenConsumedForBootstrap=false;allowPrivate=false;activeWindow=null;}});
- void win.loadURL(START_URL).catch(()=>{if(!win.isDestroyed())win.show();});
+ void win.loadURL(initialUrl).catch(()=>{if(!win.isDestroyed())win.show();});
  return win;
 }
 app.on("web-contents-created",(_event,contents)=>{
