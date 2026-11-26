@@ -407,14 +407,17 @@ get("sr-academic-export").addEventListener("click",()=>{
   link.href=url;link.download="academic-record-working-data.csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 function closeCertificateSettings(){++settingsRun;certificateSettings=null;get("sr-certificate-settings-form").reset();get("sr-certificate-settings-save").disabled=true;get("sr-certificate-settings-dialog").close();}
-get("sr-certificate-settings").addEventListener("click",()=>void (async()=>{
+async function loadCertificateSettings(){
   if(saving)return;
-  const run=++settingsRun;certificateSettings=null;get("sr-certificate-settings-save").disabled=true;get("sr-certificate-settings-form").reset();get("sr-certificate-settings-status").textContent="Loading…";get("sr-certificate-settings-dialog").showModal();
-  try{const data=await perform("get_certificate_template");if(run!==settingsRun)return;certificateSettings=data;
+  const run=++settingsRun,type=get("sr-certificate-type").value;certificateSettings=null;get("sr-certificate-settings-save").disabled=true;get("sr-certificate-settings-status").textContent="Loading…";
+  for(const key of ["signatoryName","signatoryTitle","schoolAddress","schoolIdentifier","reason"])get("sr-certificate-settings-form").elements[key].value="";
+  try{const data=await perform("get_certificate_template",{type});if(run!==settingsRun)return;certificateSettings=data;
     for(const key of ["signatoryName","signatoryTitle","schoolAddress","schoolIdentifier"])get("sr-certificate-settings-form").elements[key].value=data[key]||"";
     get("sr-certificate-settings-status").textContent=data.revision?"Template revision "+data.revision:"Not configured.";get("sr-certificate-settings-save").disabled=false;
   }catch(error){if(run===settingsRun)get("sr-certificate-settings-status").textContent=error?.message||"Settings unavailable.";}
-})());
+}
+get("sr-certificate-settings").addEventListener("click",()=>{if(!saving){get("sr-certificate-settings-form").reset();get("sr-certificate-settings-dialog").showModal();void loadCertificateSettings();}});
+get("sr-certificate-type").addEventListener("change",()=>void loadCertificateSettings());
 get("sr-certificate-settings-close").addEventListener("click",()=>{if(!saving)closeCertificateSettings();});
 get("sr-certificate-settings-dialog").addEventListener("cancel",event=>{event.preventDefault();if(!saving)closeCertificateSettings();});
 get("sr-certificate-settings-form").addEventListener("submit",event=>{
@@ -427,12 +430,15 @@ get("sr-certificate-settings-form").addEventListener("submit",event=>{
 function certificatePreview(data){
   const host=get("sr-certificate-preview");host.replaceChildren();const c=data?.certificate;
   if(!c)return;
-  for(const [tag,value] of [["strong",c.schoolName],["span",c.schoolAddress],["strong","Certificate of Enrollment"],["p",c.studentName+" · "+(c.studentNumber||"")],["p",[c.yearName,c.termName,c.programName,c.sectionName].join(" · ")],["p","Purpose: "+c.purpose],["p",c.signatoryName+" · "+c.signatoryTitle],["p",data.reference||"DRAFT — not issued"],["p","Requires authorized signature. Digital signature not provided."]])if(value)host.append(textNode(tag,value,tag==="p"?"sr-muted":""));
+  for(const [tag,value] of [["strong",c.schoolName],["span",c.schoolAddress],["strong",c.title||"Certificate of Enrollment"],["p",c.studentName+" · "+(c.studentNumber||"")],["p",[c.yearName,c.termName,c.programName,c.sectionName].join(" · ")],["p","Purpose: "+c.purpose],["p",c.signatoryName+" · "+c.signatoryTitle],["p",data.reference||"DRAFT — not issued"],["p","Requires authorized signature. Digital signature not provided."]])if(value)host.append(textNode(tag,value,tag==="p"?"sr-muted":""));
 }
 function renderCertificate(){
   const data=certificateData?.data;certificatePreview(data);
   const state=data?.state||"",editable=["in_review","ready"].includes(state);
   get("sr-certificate-prepare-form").hidden=!editable;
+  const type=data?.type||certificateData?.type;get("sr-good-moral-approval").hidden=type!=="good_moral_certificate"||!editable;
+  get("sr-good-moral-state").textContent=data?.attestation?.status==="approved"?"Office approval recorded · "+data.attestation.office+" · "+data.attestation.reference:"Documented office approval required.";
+  get("sr-good-moral-attest").hidden=get("sr-certificate-settings").hidden;
   get("sr-certificate-print").hidden=!data?.certificate||state==="revoked";
   get("sr-certificate-issue").hidden=state!=="ready"||!data?.certificate;
   get("sr-certificate-revoke").hidden=state!=="issued";
@@ -444,7 +450,8 @@ function renderCertificate(){
 function closeCertificate(){++certificateRun;certificateData=null;get("sr-certificate-preview").replaceChildren();get("sr-certificate-registration").replaceChildren();get("sr-certificate-dialog").close();}
 async function openCertificate(row,fromQueue=false){
   if(saving)return;const run=++certificateRun;
-  certificateData={requestId:row.requestId,personId:fromQueue?row.personId:current?.person.personId,fromQueue,data:null};
+  certificateData={requestId:row.requestId,personId:fromQueue?row.personId:current?.person.personId,fromQueue,type:row.type,data:null};
+  get("sr-certificate-title").textContent=row.label||"Institutional certificate";
   get("sr-certificate-preview").replaceChildren();get("sr-certificate-status").textContent="Loading…";
   for(const id of ["sr-certificate-prepare-form","sr-certificate-print","sr-certificate-issue","sr-certificate-revoke"])get(id).hidden=true;
   get("sr-certificate-dialog").showModal();
@@ -463,10 +470,15 @@ async function mutateCertificate(action,details){
   setSaving(true,"Updating certificate…");
   try{
     await perform(action,{requestId,expectedRevision,...details});closeCertificate();
-    await refreshCredentialOwner(owner);status.textContent=action==="prepare_enrollment_certificate"?"Draft prepared. Review and mark ready.":action==="issue_enrollment_certificate"?"Institutional certificate issued. Print unsigned copy for authorized signature.":"Certificate revoked.";
+    await refreshCredentialOwner(owner);status.textContent=action==="record_good_moral_attestation"?"Office approval recorded. Prepare the certificate draft.":action==="prepare_enrollment_certificate"?"Draft prepared. Review and mark ready.":action==="issue_enrollment_certificate"?"Institutional certificate issued. Print unsigned copy for authorized signature.":"Certificate revoked.";
   }catch(error){get("sr-certificate-status").textContent=error?.message||"Certificate update failed.";}finally{setSaving(false);}
 }
 get("sr-certificate-prepare-form").addEventListener("submit",event=>{event.preventDefault();if(event.currentTarget.reportValidity())void mutateCertificate("prepare_enrollment_certificate",{registrationId:get("sr-certificate-registration").value});});
+get("sr-good-moral-attest").addEventListener("click",()=>{
+  if(saving||!certificateData?.data)return;const registrationId=get("sr-certificate-registration").value;if(!registrationId){get("sr-certificate-status").textContent="Select an eligible registration first.";return;}
+  const office=prompt("Authorized approving office:");if(!office?.trim())return;const reference=prompt("Documented approval reference:");if(!reference?.trim())return;
+  const reason=prompt("Confirm review of the authorized office approval (at least 12 characters):");if(reason?.trim().length>=12)void mutateCertificate("record_good_moral_attestation",{registrationId,office:office.trim(),reference:reference.trim(),reason:reason.trim(),confirmSourceReviewed:true});
+});
 get("sr-certificate-issue").addEventListener("click",()=>{
   if(saving||!certificateData?.data)return;const reason=prompt("Confirm institutional release and record the reason (at least 12 characters).");
   if(reason?.trim().length>=12)void mutateCertificate("issue_enrollment_certificate",{reason:reason.trim(),confirmRelease:true});
@@ -478,12 +490,14 @@ get("sr-certificate-revoke").addEventListener("click",()=>{
 get("sr-certificate-print").addEventListener("click",()=>{
   const data=certificateData?.data,c=data?.certificate;if(!c||saving||data.state==="revoked")return;
   const popup=window.open("","_blank");if(!popup){get("sr-certificate-status").textContent="Allow pop-ups to print the certificate.";return;}
-  popup.opener=null;const doc=popup.document;doc.title="Enrollment certificate";
+  popup.opener=null;const doc=popup.document;doc.title=c.title||"Certificate of Enrollment";
   const style=doc.createElement("style");style.textContent="body{font:15pt Georgia,serif;margin:18mm;color:#111}header{text-align:center;margin-bottom:38px}h1{font-size:22pt}h2{font-size:18pt}p{line-height:1.6}footer{margin-top:60px}small{font:10pt Arial,sans-serif}";doc.head.append(style);
   const add=(host,tag,value)=>{const node=doc.createElement(tag);node.textContent=value;host.append(node);return node;};
   const header=doc.createElement("header");doc.body.append(header);add(header,"h2",c.schoolName);if(c.schoolAddress)add(header,"small",c.schoolAddress);if(c.schoolIdentifier)add(header,"p",c.schoolIdentifier);
-  add(header,"h1","Certificate of Enrollment");add(header,"small",data.state==="issued"?"UNSIGNED COPY — AUTHORIZED SIGNATURE REQUIRED":"DRAFT — NOT ISSUED");
-  add(doc.body,"p","This certifies that "+c.studentName+(c.studentNumber?" (Student no. "+c.studentNumber+")":"")+" is recorded as officially enrolled in "+c.programName+", "+c.sectionName+", for "+c.termName+" of "+c.yearName+".");
+  add(header,"h1",c.title||"Certificate of Enrollment");add(header,"small",data.state==="issued"?"UNSIGNED COPY — AUTHORIZED SIGNATURE REQUIRED":"DRAFT — NOT ISSUED");
+  const who=c.studentName+(c.studentNumber?" (Student no. "+c.studentNumber+")":""),scope=c.programName+", "+c.sectionName+", for "+c.termName+" of "+c.yearName;
+  const statement=c.type==="graduation_certificate"?"This certifies that "+who+" has a recorded graduation decision in "+scope+".":c.type==="transfer_certificate"?"This certifies that "+who+" has a recorded transfer-out from "+scope+".":c.type==="good_moral_certificate"?"Based on documented approval of "+c.attestationOffice+", this certifies the good moral character of "+who+" for the recorded school placement in "+scope+".":"This certifies that "+who+" is recorded as officially enrolled in "+scope+".";
+  add(doc.body,"p",statement);
   add(doc.body,"p","Purpose: "+c.purpose);if(data.reference)add(doc.body,"p","Institutional reference: "+data.reference);
   if(data.issuedAt)add(doc.body,"p","Issued: "+fmt(data.issuedAt));
   const footer=doc.createElement("footer");doc.body.append(footer);add(footer,"p","________________________________");add(footer,"strong",c.signatoryName);add(footer,"p",c.signatoryTitle);
