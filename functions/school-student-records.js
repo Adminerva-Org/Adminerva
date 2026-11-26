@@ -11,7 +11,7 @@ const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {ACTIONS:ADMISSION_DOCUMENT_ACTIONS,admissionDocumentAction}=require("./school-admission-documents.js");
-const {ACTIONS:CREDENTIAL_ACTIONS,registrarCredentialAction}=require("./school-record-credentials.js");
+const {ACTIONS:CREDENTIAL_ACTIONS,registrarCredentialAction,CREDENTIAL_TYPES}=require("./school-record-credentials.js");
 const {ACTIONS:EXTERNAL_ACADEMIC_ACTIONS,externalAcademicAction}=require("./school-external-academic-records.js");
 const {
   normalizeGuardianEmail,guardianContactIdForEmail,guardianRelationshipId
@@ -19,7 +19,7 @@ const {
 
 const REQUEST_TYPES=new Set([
   "certificate_of_enrollment","report_card","transcript_of_records",
-  "student_record_copy","graduation_certificate","other"
+  "student_record_copy","graduation_certificate","transfer_certificate","good_moral_certificate","other"
 ]);
 const REQUEST_TRANSITIONS={
   requested:new Set(["in_review","cancelled"]),
@@ -74,7 +74,8 @@ function requestTypeLabel(type){
     report_card:"Report Card",
     transcript_of_records:"Transcript of Records",
     student_record_copy:"Student Record Copy",
-    graduation_certificate:"Graduation Certificate",
+    graduation_certificate:"Certificate of Graduation",
+    transfer_certificate:"Certificate of Transfer-out",good_moral_certificate:"Certificate of Good Moral Character",
     other:"Other school record"
   })[type]||"School record";
 }
@@ -559,7 +560,7 @@ function createSchoolStudentRecordsService({db}){
           deny("failed-precondition","The student record changed. Refresh before creating the request.");
         const now=FieldValue.serverTimestamp();
         tx.create(requestRef,{schoolId:ctx.schoolId,personId,type,status:"requested",purpose,notes,
-          generationMode:type==="certificate_of_enrollment"?"institutional":"external",
+          generationMode:Object.hasOwn(CREDENTIAL_TYPES,type)?"institutional":"external",
           requestedByUid:ctx.uid,requestedAt:now,revision:1,updatedAt:now});
         tx.create(db.collection(root+"student_records_audit").doc(),{
           schoolId:ctx.schoolId,personId,actorUid:ctx.uid,requestId,type,
