@@ -11,7 +11,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {createSchoolLegacyStudioReview}=require("./school-legacy-studio-review.js");
 const {createSchoolLegacyGithubReview}=require("./school-legacy-github-review.js");
-const {authorizedTeacherCustody}=require("./school-legacy-custody.js");
+const {authorizedTeacherCustody,custodyMaximum}=require("./school-legacy-custody.js");
 const {previewLegacyEvidenceMigration}=require("./school-legacy-migration-readiness.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -119,7 +119,7 @@ function createSchoolAssessmentMigrationService({db}){
         assessmentId:grant.assessmentId,offeringId:grant.offeringId,task:source.data()
       });
       if(!authorized||legacySubmissionSource(source.data())!=="github")continue;
-      delegated.push({...legacySummary(source,true),legacyOfferingId:grant.offeringId,
+      delegated.push({...legacySummary(source,true),maxScore:custodyMaximum(source.data(),authorized.grant),legacyOfferingId:grant.offeringId,
         custodyApproved:true,originalSection:grant.originalSection,deploymentCount:1});
     }
     return {items:[...owned,...delegated].sort((a,b)=>a.title.localeCompare(b.title))};
