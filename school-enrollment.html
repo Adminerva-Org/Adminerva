@@ -57,7 +57,7 @@
       <section id="en-register" class="en-card" hidden>
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h2 id="en-register-title" class="text-lg font-extrabold">Onsite / manual enrollment</h2>
+            <h2 id="en-register-title" class="text-lg font-extrabold">Onsite application</h2>
             <p id="en-register-help" class="en-muted mt-1"></p>
           </div>
           <button id="en-clear-application" class="en-btn secondary" type="button" hidden>Clear loaded student</button>
@@ -65,6 +65,8 @@
         <form id="en-register-form" class="grid gap-3 mt-4">
           <input name="applicationId" type="hidden">
           <input name="personId" type="hidden">
+          <label id="en-applicant-type-row" class="text-sm font-bold">Applicant type<select id="en-applicant-type" class="en-input mt-1"><option value="new">New student</option><option value="transferee">Transferee</option><option value="returning">Returning student</option></select></label>
+          <a id="en-find-existing" class="text-sm font-bold text-blue-700" href="school-student-records.html">Find an existing student</a>
           <label class="text-sm font-bold">Student name
             <input name="displayName" class="en-input mt-1" maxlength="140" autocomplete="off" required>
           </label>
@@ -135,7 +137,7 @@
           </div>
 
           <div id="en-course-preview" class="en-summary en-muted">Choose the academic placement to see how many active subject offerings will be enrolled.</div>
-          <button id="en-register-button" class="en-btn" type="submit">Register &amp; enroll student</button>
+          <button id="en-register-button" class="en-btn" type="submit">Save application</button>
         </form>
       </section>
 
@@ -441,7 +443,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar6"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar7"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
