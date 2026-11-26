@@ -111,7 +111,7 @@ test("desktop sign-in is one-shot and cannot switch accounts during unfinished S
  assert.match(source,/Finish saving your Studio work/);
  assert.match(source,/did-start-navigation/);
  const bootstrap=readFileSync(new URL("../js/core/desktop-session.mjs",import.meta.url),"utf8");
- assert.match(bootstrap,/const schoolAccess=Boolean/);
+ assert.match(bootstrap,/eligibleNativeWorkspace\(credential\.user,access\)/);
  assert.match(bootstrap,/if\(!schoolAccess/);
  assert.match(bootstrap,/resolveAccountAccess\(credential\.user\)/);
 });
