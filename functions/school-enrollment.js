@@ -6,7 +6,7 @@
  * intentionally registrar-ready. Online applicants and onsite/manual entries
  * converge here before official student/person/class records are created.
  */
-const {FieldValue}=require("firebase-admin/firestore");
+const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {ACTIONS:ADMISSION_DOCUMENT_ACTIONS,admissionDocumentAction}=require("./school-admission-documents.js");
@@ -508,11 +508,42 @@ function createSchoolEnrollmentService({db}){
       return {applicationId,revision:expectedRevision+1};
     }
 
+    if(input.action==="correct_application"){
+      const applicationId=checkId(input.applicationId,"Application ID",128),expectedRevision=input.expectedRevision,
+        guardianName=text(input.guardianName,"Guardian name",140),guardianRelationship=text(input.guardianRelationship,"Relationship",60),
+        guardianMobile=optionalText(input.guardianMobile,40),reason=text(input.reason,"Correction reason",500),
+        preferredProgramId=input.preferredProgramId?checkId(input.preferredProgramId,"Program"):null;
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1||reason.length<8)deny("invalid-argument","Refresh the application and enter a correction reason.");
+      const ref=db.doc(root+"enrollment_applications/"+applicationId),auditRef=db.collection(root+"directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);const doc=await tx.get(ref);
+        if(!doc.exists||doc.data().schoolId!==ctx.schoolId)deny("not-found","Application not found.");
+        const row=doc.data();
+        if(Number(row.revision)!==expectedRevision||!["submitted","needs_information"].includes(row.status))deny("failed-precondition","Reopen the application for corrections and refresh.");
+        if((row.admissionDocuments||[]).some(item=>item.state==="pending"))deny("failed-precondition","Resolve pending document uploads before correcting the application.");
+        const studentEmail=normalizedEmail(input.studentEmail,"Student email",gradeRequiresStudentEmail(row.incomingLevel)),
+          studentEmailType=studentEmail?String(input.studentEmailType||"").trim():null;
+        if((!gradeRequiresStudentEmail(row.incomingLevel)&&studentEmail)||(studentEmail&&(studentEmail===row.guardianEmail||!EMAIL_TYPES.has(studentEmailType))))deny("invalid-argument","Review the student email.");
+        if(row.personId){const person=await tx.get(db.doc(root+"people/"+checkId(row.personId,"Person ID",128)));
+          if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||person.data().status!=="active"||
+             (person.data().activationEmailHash&&studentEmail&&person.data().activationEmailHash!==rosterEmailHash(studentEmail)))deny("failed-precondition","The linked student or sign-in identity must be reviewed first.");}
+        if(preferredProgramId){const program=await tx.get(db.doc(root+"academic_programs/"+preferredProgramId));if(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active")deny("failed-precondition","Choose an active program.");}
+        const now=FieldValue.serverTimestamp(),changes={guardianName,guardianRelationship,guardianMobile,studentEmail,studentEmailType,preferredProgramId};
+        if(preferredProgramId!==row.preferredProgramId)Object.assign(changes,{preferredTermId:null,preferredSectionId:null});
+        tx.update(ref,{...changes,staffCorrected:true,status:"submitted",requirementsReviewed:false,requirements:(row.requirements||[]).map(item=>({...item,status:item.status==="verified"?"received":item.status})),revision:expectedRevision+1,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,action:"admission_application_corrected",fields:Object.keys(changes),reason,revision:expectedRevision+1,createdAt:now});
+      });
+      return {applicationId,revision:expectedRevision+1};
+    }
+
     if(input.action==="list_applications"){
-      const [snap,...templateDocs]=await Promise.all([db.collection(root+"enrollment_applications").limit(201).get(),...ADMISSION_TYPES.map(type=>templateRef(type).get())]);
+      const cursor=input.cursor?checkId(input.cursor,"Application cursor",128):null,pageSize=80;
+      let scan=db.collection(root+"enrollment_applications").orderBy(FieldPath.documentId()).limit(pageSize+1);
+      if(cursor)scan=scan.startAfter(cursor);
+      const [snap,...templateDocs]=await Promise.all([scan.get(),...ADMISSION_TYPES.map(type=>templateRef(type).get())]);
       const templates=Object.fromEntries(ADMISSION_TYPES.map((type,index)=>[type,readTemplate(templateDocs[index],type)]));
-      if(snap.size===201)deny("resource-exhausted","Enrollment application queue requires pagination.");
-      const items=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>{
+      const page=snap.docs.slice(0,pageSize),nextCursor=snap.size>pageSize?page.at(-1).id:null;
+      const items=page.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>{
         const row=doc.data(),type=ADMISSION_TYPES.includes(row.applicationType)?row.applicationType:"new",template=templates[type];
         return ({
         applicationId:doc.id,reference:applicationReference(doc),
@@ -538,7 +569,7 @@ function createSchoolEnrollmentService({db}){
         updatedAt:doc.data().updatedAt?.toMillis?.()||doc.data().createdAt?.toMillis?.()||0
       });});
       items.sort((a,b)=>b.updatedAt-a.updatedAt||a.displayName.localeCompare(b.displayName));
-      return {items};
+      return {items,nextCursor};
     }
 
     if(input.action==="save_application_requirements"){
