@@ -130,7 +130,7 @@
       </section>
 
       <section class="sr-card" data-sr-panel="releasedGrades" hidden>
-        <div class="flex gap-2 justify-between items-start flex-wrap"><h2 class="text-lg font-extrabold">Released Final Grades</h2><button id="sr-academic-prepare" type="button" class="sr-btn secondary">Prepare academic record</button></div>
+        <div class="flex gap-2 justify-between items-start flex-wrap"><h2 class="text-lg font-extrabold">Released Final Grades</h2><div class="flex gap-2 flex-wrap"><button id="sr-external-open" type="button" class="sr-btn secondary">Previous-school records</button><button id="sr-academic-prepare" type="button" class="sr-btn secondary">Prepare academic record</button></div></div>
         <div class="overflow-x-auto mt-3"><table class="sr-table"><thead><tr><th>Period</th><th>Subject</th><th>Section</th><th>Final Grade</th><th>Revision</th></tr></thead><tbody id="sr-grade-list"></tbody></table></div>
         <div class="sr-history-controls"><button id="sr-history-more-releasedGrades" class="sr-btn secondary" type="button" data-sr-history="releasedGrades" hidden>Load more</button><span id="sr-history-count-releasedGrades" class="sr-muted" aria-live="polite"></span></div>
       </section>
@@ -178,6 +178,30 @@
     </form>
   </dialog>
 
+  <dialog id="sr-external-dialog" class="sr-dialog" aria-labelledby="sr-external-title">
+    <div class="sr-card">
+      <div class="flex flex-wrap gap-2 justify-between items-start"><h2 id="sr-external-title" class="text-lg font-extrabold">Previous-school academic records</h2><button id="sr-external-close" class="sr-btn secondary" type="button">Close</button></div>
+      <p class="sr-muted mt-2">Transcribe verified source records separately from local grades.</p>
+      <div class="flex gap-2 mt-3"><button id="sr-external-add" class="sr-btn" type="button">Add source record</button><button id="sr-external-refresh" class="sr-btn secondary" type="button">Refresh</button></div>
+      <div id="sr-external-list" class="sr-list mt-3"></div>
+      <p id="sr-external-status" class="sr-muted mt-2" role="status"></p>
+      <button id="sr-external-more" class="sr-btn secondary mt-2" type="button" hidden>Load more</button>
+      <form id="sr-external-form" class="grid gap-2 mt-3" hidden>
+        <h3 id="sr-external-form-title" class="font-bold">Source record</h3>
+        <label class="text-sm font-bold">Previous school<input name="sourceSchool" class="sr-input mt-1" maxlength="180" required></label>
+        <div class="grid sm:grid-cols-2 gap-2">
+          <label class="text-sm font-bold">Academic year<input name="schoolYear" class="sr-input mt-1" maxlength="80" required></label>
+          <label class="text-sm font-bold">Grade level<input name="gradeLevel" class="sr-input mt-1" maxlength="60" required></label>
+        </div>
+        <label class="text-sm font-bold">Academic period<input name="period" class="sr-input mt-1" maxlength="80" required></label>
+        <label class="text-sm font-bold">Source record reference<input name="sourceReference" class="sr-input mt-1" maxlength="150" required placeholder="Institutional custody reference"></label>
+        <div id="sr-external-results" class="sr-list"></div>
+        <button id="sr-external-result-add" class="sr-btn secondary" type="button">Add subject</button>
+        <label class="text-sm font-bold">Review reason<input name="reason" class="sr-input mt-1" minlength="8" maxlength="500" required></label>
+        <div class="flex gap-2"><button type="submit" class="sr-btn">Save source record</button><button id="sr-external-cancel" class="sr-btn secondary" type="button">Cancel edit</button></div>
+      </form>
+    </div>
+  </dialog>
   <dialog id="sr-lrn-dialog" class="sr-dialog" aria-labelledby="sr-lrn-title"><form id="sr-lrn-form" class="sr-card grid gap-3"><div class="flex justify-between gap-2"><h2 id="sr-lrn-title" class="text-lg font-extrabold">Find by LRN</h2><button id="sr-lrn-close" class="sr-btn secondary" type="button">Close</button></div><label class="text-sm font-bold">Learner Reference Number<input id="sr-lrn-value" class="sr-input mt-1" inputmode="numeric" pattern="[0-9]{12}" maxlength="12" autocomplete="off" required></label><button type="submit" class="sr-btn">Find student</button><p id="sr-lrn-status" role="status" class="sr-muted"></p></form></dialog>
   <dialog id="sr-academic-dialog" class="sr-dialog" aria-labelledby="sr-academic-title">
     <div class="sr-card">
@@ -253,7 +277,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar8"></script>
+<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar9"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-student-records1"></script>
 </body>
 </html>
