@@ -25,6 +25,29 @@ function canReviewApplication(from,to){
   return Object.hasOwn(APPLICATION_REVIEW_TRANSITIONS,from)&&APPLICATION_REVIEW_TRANSITIONS[from].has(to);
 }
 const REQUIREMENT_STATES=new Set(["missing","received","verified"]);
+const ADMISSION_TYPES=["new","returning","transferee"];
+function admissionType(value){
+  if(!ADMISSION_TYPES.includes(value))deny("invalid-argument","Choose a valid applicant type.");
+  return value;
+}
+function normalizeRequirementTemplate(value){
+  if(!Array.isArray(value)||value.length>24)deny("invalid-argument","Enter up to 24 required document names.");
+  const seen=new Set();
+  return value.map(raw=>{
+    const label=text(raw,"Requirement name",100),key=label.toLocaleLowerCase("en");
+    if(seen.has(key))deny("invalid-argument","Requirement names must be unique.");
+    seen.add(key);return label;
+  });
+}
+function templateCovered(rows,labels){
+  if(!Array.isArray(rows)||!Array.isArray(labels))return false;
+  const names=new Set(rows.map(row=>String(row?.label||"").trim().toLocaleLowerCase("en")));
+  return labels.every(label=>names.has(label.toLocaleLowerCase("en")));
+}
+function pendingRequirementsReady(row,template){
+  return admissionRequirementsReady(row)&&Number(row.requirementsTemplateRevision||0)===template.revision&&
+    templateCovered(row.requirements,template.labels);
+}
 function normalizeAdmissionRequirements(value,noRequirements){
   if(!Array.isArray(value)||value.length>24)
     deny("invalid-argument","Enter up to 24 admission requirements.");
@@ -162,6 +185,48 @@ function createSchoolEnrollmentService({db}){
          !Array.isArray(member.data().roles)||
          !member.data().roles.some(role=>["school_admin","registrar"].includes(role)))
         deny("permission-denied","School enrollment authority changed. Refresh before saving.");
+    }
+
+    const templateRef=type=>db.doc(root+"configuration/admission_requirements_"+admissionType(type));
+    function readTemplate(doc,type){
+      if(!doc.exists)return {type,revision:0,labels:[]};
+      const row=doc.data();
+      if(row.schoolId!==ctx.schoolId||row.type!==type||!Number.isSafeInteger(row.revision)||row.revision<1)
+        deny("failed-precondition","Admission requirements configuration needs administrator review.");
+      return {type,revision:row.revision,labels:normalizeRequirementTemplate(row.labels)};
+    }
+    async function requireTemplateAdmin(tx){
+      // A platform-wide grant is not a school membership for institutional policy changes.
+      const [currentSchool,member]=await Promise.all([tx.get(schoolRef),tx.get(adminRef)]);
+      if(!currentSchool.exists||!["draft","pilot","active"].includes(currentSchool.data().state)||
+         !standardSchool(currentSchool.data())||!member.exists||member.data().schoolId!==ctx.schoolId||
+         member.data().status!=="active"||!Array.isArray(member.data().roles)||
+         !member.data().roles.includes("school_admin"))
+        deny("permission-denied","A verified School Administrator membership is required to change admission templates.");
+    }
+
+    if(input.action==="get_admission_templates"){
+      const docs=await Promise.all(ADMISSION_TYPES.map(type=>templateRef(type).get()));
+      return {templates:ADMISSION_TYPES.map((type,index)=>readTemplate(docs[index],type))};
+    }
+    if(input.action==="save_admission_template"){
+      const type=admissionType(input.type),labels=normalizeRequirementTemplate(input.labels),
+        expectedRevision=input.expectedRevision,reason=text(input.reason,"Change reason",500);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision<0||reason.length<8)
+        deny("invalid-argument","Review the template revision and record a change reason.");
+      const ref=templateRef(type),auditRef=db.collection(root+"directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        await requireTemplateAdmin(tx);
+        const current=await tx.get(ref),previous=readTemplate(current,type);
+        if(previous.revision!==expectedRevision)
+          deny("failed-precondition","The admission template changed. Refresh before saving.");
+        const revision=previous.revision+1,now=FieldValue.serverTimestamp();
+        const payload={schoolId:ctx.schoolId,type,labels,revision,updatedByUid:ctx.uid,updatedAt:now};
+        if(current.exists)tx.update(ref,payload);else tx.create(ref,{...payload,createdAt:now,createdByUid:ctx.uid});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,action:"admission_template_saved",
+          applicationType:type,previousLabels:previous.labels,labels,reason,revision,createdAt:now});
+      });
+      return {type,labels,revision:expectedRevision+1};
     }
 
     async function reviewProgression(raw,tx=null){
@@ -345,12 +410,15 @@ function createSchoolEnrollmentService({db}){
     }
 
     if(input.action==="list_applications"){
-      const snap=await db.collection(root+"enrollment_applications").limit(201).get();
+      const [snap,...templateDocs]=await Promise.all([db.collection(root+"enrollment_applications").limit(201).get(),...ADMISSION_TYPES.map(type=>templateRef(type).get())]);
+      const templates=Object.fromEntries(ADMISSION_TYPES.map((type,index)=>[type,readTemplate(templateDocs[index],type)]));
       if(snap.size===201)deny("resource-exhausted","Enrollment application queue requires pagination.");
-      const items=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>({
+      const items=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>{
+        const row=doc.data(),type=ADMISSION_TYPES.includes(row.applicationType)?row.applicationType:"new",template=templates[type];
+        return ({
         applicationId:doc.id,reference:applicationReference(doc),
         personId:doc.data().personId||null,
-        applicationType:doc.data().applicationType||"new",
+        applicationType:type,
         displayName:doc.data().displayName||"Student",
         birthDate:doc.data().birthDate||"",incomingLevel:doc.data().incomingLevel||"",
         yearId:doc.data().yearId||"",preferredProgramId:doc.data().preferredProgramId||"",
@@ -363,10 +431,12 @@ function createSchoolEnrollmentService({db}){
         requirements:Array.isArray(doc.data().requirements)?doc.data().requirements:[],
         requirementsReviewed:doc.data().requirementsReviewed===true,
         noRequirements:doc.data().noRequirements===true,
-        requirementsReady:admissionRequirementsReady(doc.data()),
+        requirementsReady:row.status==="accepted"?admissionRequirementsReady(row):pendingRequirementsReady(row,template),
+        templateLabels:template.labels,templateRevision:template.revision,
+        reviewedTemplateRevision:Number(row.requirementsTemplateRevision)||0,
         revision:Number(doc.data().revision)||1,
         updatedAt:doc.data().updatedAt?.toMillis?.()||doc.data().createdAt?.toMillis?.()||0
-      }));
+      });});
       items.sort((a,b)=>b.updatedAt-a.updatedAt||a.displayName.localeCompare(b.displayName));
       return {items};
     }
@@ -376,7 +446,9 @@ function createSchoolEnrollmentService({db}){
         expectedRevision=Number(input.expectedRevision);
       if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
         deny("invalid-argument","Refresh this application before saving requirements.");
-      const requirements=normalizeAdmissionRequirements(input.requirements,input.noRequirements);
+      const requirements=normalizeAdmissionRequirements(input.requirements,input.noRequirements),expectedTemplateRevision=input.expectedTemplateRevision;
+      if(!Number.isSafeInteger(expectedTemplateRevision)||expectedTemplateRevision<0)
+        deny("invalid-argument","Refresh the applicable admissions template.");
       const reason=text(input.reason,"Review reason",500);
       if(reason.length<8)deny("invalid-argument","Record the basis for the requirements review.");
       const ref=db.doc(root+"enrollment_applications/"+applicationId),
@@ -391,13 +463,16 @@ function createSchoolEnrollmentService({db}){
           deny("failed-precondition","The application changed. Refresh before saving requirements.");
         if(!["submitted","needs_information"].includes(prior.status||"submitted"))
           deny("failed-precondition","Reopen the application for corrections before editing its requirements.");
+        const type=ADMISSION_TYPES.includes(prior.applicationType)?prior.applicationType:"new",template=readTemplate(await tx.get(templateRef(type)),type);
+        if(template.revision!==expectedTemplateRevision)deny("failed-precondition","Admission requirements changed. Reopen the checklist.");
+        if(!templateCovered(requirements,template.labels))deny("failed-precondition","Include every required item from the school template.");
         const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
-        tx.update(ref,{requirements,noRequirements:input.noRequirements,requirementsReviewed:true,
+        tx.update(ref,{requirements,noRequirements:input.noRequirements,requirementsReviewed:true,requirementsTemplateRevision:template.revision,
           requirementsReviewedByUid:ctx.uid,requirementsReviewedAt:now,revision,updatedAt:now});
         tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,applicationId,
           action:"admissions_requirements_review",previousRequirements:prior.requirements||[],
           previousNoRequirements:prior.noRequirements===true,requirements,noRequirements:input.noRequirements,
-          reason,revision,createdAt:now});
+          templateRevision:template.revision,templateLabels:template.labels,reason,revision,createdAt:now});
       });
       return {applicationId,revision:expectedRevision+1,
         requirementsReady:admissionRequirementsReady({requirements,noRequirements:input.noRequirements,requirementsReviewed:true})};
@@ -425,8 +500,12 @@ function createSchoolEnrollmentService({db}){
         const previousStatus=application.data().status||"submitted";
         if(!canReviewApplication(previousStatus,status))
           deny("failed-precondition","This admissions decision is no longer available. Refresh the application.");
-        if(status==="accepted"&&!admissionRequirementsReady(application.data()))
-          deny("failed-precondition","Review and verify all applicable admission requirements before accepting.");
+        if(status==="accepted"){
+          const type=ADMISSION_TYPES.includes(application.data().applicationType)?application.data().applicationType:"new";
+          const template=readTemplate(await tx.get(templateRef(type)),type);
+          if(!pendingRequirementsReady(application.data(),template))
+            deny("failed-precondition","Verify the current school admission requirements before accepting.");
+        }
         const now=FieldValue.serverTimestamp();
         tx.update(ref,{status,reviewReason:reason,reviewedByUid:ctx.uid,
           ...(status==="needs_information"?{requirementsReviewed:false}:{}),
@@ -1473,5 +1552,8 @@ module.exports={
   canReviewApplication,
   isReviewedApplicationRevision,
   normalizeAdmissionRequirements,
-  admissionRequirementsReady
+  admissionRequirementsReady,
+  normalizeRequirementTemplate,
+  templateCovered,
+  pendingRequirementsReady
 };
