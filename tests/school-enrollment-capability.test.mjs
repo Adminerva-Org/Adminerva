@@ -90,3 +90,11 @@ test("admissions search uses bounded school-local cursor pages and corrections p
   assert.match(correction,/staffCorrected:true/);assert.match(correction,/requirementsReviewed:false/);
   assert.doesNotMatch(correction,/changes=\{[^}]*birthDate/);
 });
+
+
+test("official enrollment requires nonempty validated automatic offerings and rejects roster drift",()=>{
+  const source=require("node:fs").readFileSync(new URL("../functions/school-enrollment.js",import.meta.url),"utf8");
+  assert.match(source,/if\(!offerings.length\|\|offerings.length>60\)/);
+  assert.match(source,/The automatic class roster changed/);
+  assert.match(source,/An official registration already exists for this placement/);
+});
