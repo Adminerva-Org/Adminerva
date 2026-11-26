@@ -84,7 +84,33 @@
         </div>
       </section>
 
-      <nav class="sr-file-tabs" aria-label="Student file sections"><button class="sr-btn secondary" type="button" data-sr-view="registrations" aria-pressed="true">Registration</button><button class="sr-btn secondary" type="button" data-sr-view="releasedGrades" aria-pressed="false">Academics</button><button class="sr-btn secondary" type="button" data-sr-view="guardians" aria-pressed="false">Family</button><button class="sr-btn secondary" type="button" data-sr-view="documents" aria-pressed="false">Documents</button><button class="sr-btn secondary" type="button" data-sr-view="audit" aria-pressed="false">History</button></nav>
+      <nav class="sr-file-tabs" aria-label="Student file sections"><button class="sr-btn secondary" type="button" data-sr-view="registrations" aria-pressed="true">Registration</button><button class="sr-btn secondary" type="button" data-sr-view="profile" aria-pressed="false">Profile</button><button class="sr-btn secondary" type="button" data-sr-view="releasedGrades" aria-pressed="false">Academics</button><button class="sr-btn secondary" type="button" data-sr-view="guardians" aria-pressed="false">Family</button><button class="sr-btn secondary" type="button" data-sr-view="documents" aria-pressed="false">Documents</button><button class="sr-btn secondary" type="button" data-sr-view="audit" aria-pressed="false">History</button></nav>
+      <section class="sr-card" data-sr-panel="profile" hidden>
+        <div class="flex justify-between gap-2 items-start flex-wrap"><h2 class="text-lg font-extrabold">Student profile</h2><button id="sr-profile-refresh" class="sr-btn secondary" type="button">Refresh</button></div>
+        <p id="sr-profile-status" class="sr-muted mt-2" role="status" aria-live="polite"></p>
+        <form id="sr-profile-form" class="mt-3 grid gap-3" hidden>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="text-sm font-bold">Learner Reference Number (LRN)<input name="lrn" class="sr-input mt-1" inputmode="numeric" autocomplete="off" maxlength="12" pattern="[0-9]{12}"></label>
+            <label class="text-sm font-bold">LRN status<select name="lrnState" class="sr-input mt-1"><option value="unrecorded">Not recorded</option><option value="recorded">Recorded, not verified</option><option value="verified">Verified against official record</option></select></label>
+            <label class="text-sm font-bold">Sex on official record<select name="sex" class="sr-input mt-1"><option value="">Not recorded</option><option value="male">Male</option><option value="female">Female</option></select></label>
+            <label class="text-sm font-bold">Place of birth<input name="birthPlace" class="sr-input mt-1" maxlength="160"></label>
+            <label class="text-sm font-bold">Nationality<input name="nationality" class="sr-input mt-1" maxlength="80"></label>
+            <label class="text-sm font-bold">Previous school<input name="previousSchool" class="sr-input mt-1" maxlength="180"></label>
+          </div>
+          <h3 class="font-bold">Address</h3>
+          <label class="text-sm font-bold">Street / house / building<input name="addressLine" class="sr-input mt-1" maxlength="200"></label>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="text-sm font-bold">Barangay / district<input name="barangay" class="sr-input mt-1" maxlength="100"></label>
+            <label class="text-sm font-bold">City / municipality<input name="cityMunicipality" class="sr-input mt-1" maxlength="100"></label>
+            <label class="text-sm font-bold">Province / region<input name="province" class="sr-input mt-1" maxlength="100"></label>
+            <label class="text-sm font-bold">Postal code<input name="postalCode" class="sr-input mt-1" maxlength="20"></label>
+            <label class="text-sm font-bold">Country<input name="country" class="sr-input mt-1" maxlength="80"></label>
+          </div>
+          <label class="text-sm font-bold">Review reason<input name="reason" class="sr-input mt-1" minlength="8" maxlength="500" required></label>
+          <p class="sr-muted">Record only existing LRNs issued by the education authority. Verification is a Registrar review, not an LIS lookup.</p>
+          <div><button id="sr-profile-save" class="sr-btn" type="submit">Save profile</button></div>
+        </form>
+      </section>
       <section class="sr-card" data-sr-panel="guardians" hidden>
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div><h2 class="text-lg font-extrabold">Guardian relationships</h2></div>
@@ -178,7 +204,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar5"></script>
+<script type="module" src="js/school-admin/student-records.mjs?v=20261126-registrar6"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-student-records1"></script>
 </body>
 </html>
