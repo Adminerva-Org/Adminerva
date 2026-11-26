@@ -114,3 +114,14 @@ test("Student directory uses bounded school-local cursor pages without a whole-s
   assert.match(recordsUi,/Search more records/);
   assert.match(recordsHtml,/id="sr-more"/);
 });
+
+
+test("student-file history is independently paged and retains exact released grade resolution",()=>{
+  const block=service.slice(service.indexOf('if(input.action==="student_file")'),service.indexOf('if(input.action==="adopt_primary_guardian")'));
+  assert.match(block,/async function historyPage/);assert.match(block,/where\(field,"==",personId\)\.orderBy\(FieldPath\.documentId\(\)\)/);
+  assert.match(block,/nextCursors\[name\]/);assert.match(block,/nextCursors,historySection:section/);
+  assert.doesNotMatch(block,/Student 201-file history requires pagination/);
+  assert.match(recordsUi,/run!==fileRun\|\|current\?\.person.personId!==personId/);
+  assert.match(recordsUi,/current\[section\]=sortHistory/);
+  assert.match(recordsHtml,/data-sr-view="releasedGrades"/);
+});
