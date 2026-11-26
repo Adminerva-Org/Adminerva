@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
+import {createRequire} from "node:module";
+const require=createRequire(import.meta.url);
 const source=readFileSync(new URL("../functions/school-legacy-github-review.js",import.meta.url),"utf8");
 const digest=(...items)=>createHash("sha256").update(JSON.stringify(items)).digest("hex");
 const ctx={schoolId:"school-one",uid:"teacher-one",roles:["teacher"],platformOverride:false};
@@ -19,6 +21,7 @@ function install(){
      FieldPath:{documentId:()=>"__name__"}
    };
    if(name==="./tenant-access.js")return {TenantAccessError};
+   if(name==="./school-legacy-recovery-sources.js")return require("../functions/school-legacy-recovery-sources.js");
    if(name==="./school-legacy-custody.js")return {
      authorizedTeacherCustody:async()=>null,validCustody:()=>false,
      normalized:value=>String(value||"").trim().toLowerCase()
@@ -374,4 +377,31 @@ test("explicit published historical correction records before and after and pres
  assert.equal(f.map.get("student_grades/"+evidenceId).published,true);
  await assert.rejects(f.service(f.request("legacy_github_correct_published",{...f.gradeArgs,expectedGradeRevision:1})),error=>error.code==="failed-precondition");
  assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,3);
+});
+
+
+test("earlier checkpoint receipts and exact activity grades are visible without fabricating selected commits",async()=>{
+ const f=fixture(),earlier="earlier-student",sha="b".repeat(40);
+ const receipt={studentId:earlier,assessmentId:taskId,submittedByUid:"original-uid",repoUrl:"https://github.com/learner/project",revisionSha:sha,section:"Grade 12 ICT",sourcePath:"app/Main.java",submittedAt:{toMillis:()=>1000}};
+ f.map.set("student_submissions/"+earlier+"_"+taskId+"_"+sha,receipt);
+ f.map.set("student_submissions/invalid-key",{...receipt,studentId:"wrong"});
+ f.map.set("activity_grades/old-activity",{taskId,studentId:earlier,section:"Grade 12 ICT",score:0,maxScore:40,published:false});
+ f.map.set("activity_grades/title-only",{activity:"Java OOP",studentId:"title-only",section:"Grade 12 ICT",score:20,maxScore:40});
+ const result=await f.service(f.request("legacy_github_inbox"));
+ const row=result.evidence.find(row=>row.studentId===earlier);
+ assert.equal(row.receiptOnly,true);assert.equal(row.activityOnly,true);
+ assert.equal(row.hasSubmission,false);assert.equal(row.awarded,0);
+ assert.equal(row.originalReceipts[0].checkpointSha,sha);
+ assert.equal(row.originalReceipts[0].sourcePath,"app/Main.java");
+ assert.equal(result.coverage.originalReceiptCount,1);assert.equal(result.coverage.activityGradeCount,1);
+ assert.equal(result.evidence.some(row=>row.studentId==="title-only"||row.studentId==="wrong"),false);
+ assert.equal(f.writes.length,0);
+});
+test("activity ledger protects against duplicate grade writes",async()=>{
+ const f=fixture();
+ f.map.set("activity_grades/older-score",{taskId,studentId,section:"Grade 12 ICT",score:0,maxScore:40});
+ const list=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(list.evidence[0].activityOnly,true);assert.equal(list.evidence[0].awarded,0);
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",f.gradeArgs)),error=>error.code==="failed-precondition"&&/activity grade/i.test(error.message));
+ assert.equal(f.writes.length,0);
 });
