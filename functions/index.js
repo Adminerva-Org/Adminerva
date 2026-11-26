@@ -16,7 +16,7 @@ const {createMonitoringService}=require("./monitoring-service.js");
 const {legacyStudentRecordsForAccount}=require("./legacy-student-identity.js");
 initializeApp();
 const db=getFirestore();
-const {createPlatformAccountDiagnostics}=require("./platform-account-diagnostics.js");
+const {createPlatformAccountDiagnostics,studioDiagnosticReason,clientCorrelation}=require("./platform-account-diagnostics.js");
 const platformAccountDiagnostics=createPlatformAccountDiagnostics({db,FieldValue,Timestamp});
 const messaging=getMessaging();
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
@@ -45,19 +45,32 @@ async function rejectPlatformPreviewMutation(request,{allowPlatformSchoolWrites=
     "System Admin role preview is temporary. This school change was not saved. Choose Assist school for real, audited administrative changes.");
 }
 const DIAGNOSTIC_WRITE_ACTION=/^(?:save|sync|submit|finalize|create|update|upsert|deploy|grant|retire|suspend|restore|withdraw|close|open|mark|assign|publish|enable|disable|accept|approve|reconcile|enroll|grade|record|complete|finish|remove|archive|activate|register|revoke|reset)(?:$|[_A-Z-])/i;
+const ADDITIONAL_DIAGNOSTIC_WRITES={
+  schoolClassRecord:new Set(["release_final_grade"]),
+  schoolAcademics:new Set(["set_primary_teacher","set_section_adviser","end_section_adviser","set_offering_roster_mode","review_student_section_placement","end_student_section_placement","bulk_enroll_students","bulk_assign_teachers","handover_offering","end_teacher_assignment","end_enrollment"]),
+  schoolClassroomStream:new Set(["mute_student","unmute_student"]),
+  schoolGithubEvidence:new Set(["request_revision"])
+};
 function safeCallable(handler,options={}){return async request=>{
   const startedAt=Date.now();
+  let transactionObservation;
   try{
   const platformContext=await rejectPlatformPreviewMutation(request,options);
-  const result=await handler(request);
-  if(options.diagnosticsService&&DIAGNOSTIC_WRITE_ACTION.test(String(request?.data?.action||""))){
+  // Strip observability-only metadata before the domain handler sees the request.
+  let domainRequest=request;
+  if(["schoolStudioProjects","schoolStudioSubmissions","schoolStudioAssessmentVariant"].includes(options.diagnosticsService)&&request?.data&&Object.hasOwn(request.data,"_diagnostic")){
+    const {_diagnostic,...data}=request.data;domainRequest={...request,data};
+  }
+  if(options.diagnosticsService==="schoolStudioProjects")domainRequest={...domainRequest,observeStudioTransaction:value=>{transactionObservation=value;}};
+  const result=await handler(domainRequest);
+  if(options.diagnosticsService&&(DIAGNOSTIC_WRITE_ACTION.test(String(request?.data?.action||""))||ADDITIONAL_DIAGNOSTIC_WRITES[options.diagnosticsService]?.has(request?.data?.action)||(options.diagnosticsService==="schoolStudioProjects"&&request?.data?.action==="get"&&clientCorrelation(request,options.diagnosticsService).operationId))){
     // Diagnostics are best-effort and never block an academic save, assessment,
     // identity change or financial transaction.
     // This write is an operational side effect AFTER the canonical mutation.
     // The diagnostic service contains its own errors so an unavailable log
     // sink cannot turn an already-successful student save into a failed call.
     await platformAccountDiagnostics.recordServerProcess(request,{
-      service:options.diagnosticsService,startedAt,status:"ok"
+      service:options.diagnosticsService,startedAt,status:"ok",transactionObservation
     });
   }
   if(platformContext?.assist){
@@ -67,8 +80,8 @@ function safeCallable(handler,options={}){return async request=>{
     }).catch(error=>console.warn("System Admin assist audit write failed",{code:error.code||"unknown"}));
   }
   return result;
-}catch(error){await platformAccountDiagnostics.writeServerFailure(request,error,startedAt);
-  const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+}catch(error){await platformAccountDiagnostics.writeServerFailure(request,error,startedAt,options.diagnosticsService,transactionObservation);
+  const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists","data-loss"];if(allowed.includes(error.code)){const reason=studioDiagnosticReason(error);throw new HttpsError(error.code,error.message,reason?{diagnosticReason:reason}:undefined);}console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
 async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
   return !school.exists||school.data().compatibilityMode!=="v4_only";
@@ -132,9 +145,9 @@ exports.schoolLegacyDirectoryAdoption=onCall(callOptions,safeCallable(
 const {createSchoolRosterSourceService}=require("./school-roster-source.js");
 exports.schoolRosterSource=onCall(callOptions,safeCallable(createSchoolRosterSourceService({db})));
 const {createSchoolAcademicsService}=require("./school-academics.js");
-exports.schoolAcademics=onCall(callOptions,safeCallable(createSchoolAcademicsService({db})));
+exports.schoolAcademics=onCall(callOptions,safeCallable(createSchoolAcademicsService({db}),{diagnosticsService:"schoolAcademics"}));
 const {createSchoolAttendanceService}=require("./school-attendance.js");
-exports.schoolAttendance=onCall(callOptions,safeCallable(createSchoolAttendanceService({db})));
+exports.schoolAttendance=onCall(callOptions,safeCallable(createSchoolAttendanceService({db}),{diagnosticsService:"schoolAttendance"}));
 
 const {createSchoolAssessmentService}=require("./school-assessments.js");
 exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db}),{diagnosticsService:"schoolAssessments"}));
@@ -166,7 +179,7 @@ exports.schoolStudentProfile=onCall(callOptions,safeCallable(createSchoolStudent
 const {createSchoolStudentRecordsService}=require("./school-student-records.js");
 exports.schoolStudentRecords=onCall(callOptions,safeCallable(createSchoolStudentRecordsService({db})));
 const {createSchoolClassroomStreamService}=require("./school-classroom-stream.js");
-exports.schoolClassroomStream=onCall(callOptions,safeCallable(createSchoolClassroomStreamService({db})));
+exports.schoolClassroomStream=onCall(callOptions,safeCallable(createSchoolClassroomStreamService({db}),{diagnosticsService:"schoolClassroomStream"}));
 const {createSchoolStudioProjectService}=require("./school-studio-projects.js");
 const {createSchoolStudioSubmissionService}=require("./school-studio-submissions.js");
 const {createStudioAssessmentVariantService}=require("./studio-assessment-variants.js");
@@ -174,7 +187,7 @@ const {createSchoolStudioAssessmentVariantService}=require("./school-studio-asse
 exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioProjectService({db}),{diagnosticsService:"schoolStudioProjects"}));
 exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db}),{diagnosticsService:"schoolStudioSubmissions"}));
 exports.studioAssessmentVariant=onCall(callOptions,safeCallable(createStudioAssessmentVariantService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)})));
-exports.schoolStudioAssessmentVariant=onCall(callOptions,safeCallable(createSchoolStudioAssessmentVariantService({db})));
+exports.schoolStudioAssessmentVariant=onCall(callOptions,safeCallable(createSchoolStudioAssessmentVariantService({db}),{diagnosticsService:"schoolStudioAssessmentVariant"}));
 const {createStudioAutoVerification}=require("./studio-auto-verification.js");
 const studioAutoVerification=createStudioAutoVerification({db});
 const verificationTriggerOptions={
@@ -207,7 +220,7 @@ const {createSchoolClassRecordService}=require("./school-class-record.js");
 exports.schoolClassRecord=onCall(callOptions,safeCallable(createSchoolClassRecordService({
   db,
   resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
-})));
+}),{diagnosticsService:"schoolClassRecord"}));
 const {createSchoolStudentClassRecordService}=require("./school-student-class-record.js");
 exports.schoolStudentClassRecord=onCall(callOptions,safeCallable(createSchoolStudentClassRecordService({
   db,
@@ -216,7 +229,7 @@ exports.schoolStudentClassRecord=onCall(callOptions,safeCallable(createSchoolStu
 const {createSchoolClassRecordAdminService}=require("./school-class-record-admin.js");
 exports.schoolClassRecordAdmin=onCall(callOptions,safeCallable(createSchoolClassRecordAdminService({
   db,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
-})));
+}),{diagnosticsService:"schoolClassRecordAdmin"}));
 const {createSchoolGradebookService}=require("./school-gradebook.js");
 exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db}),{diagnosticsService:"schoolGradebook"}));
 const {createSchoolAssessmentConversationService}=require("./school-assessment-conversation.js");
@@ -225,7 +238,7 @@ exports.schoolAssessmentConversation=onCall(callOptions,safeCallable(createSchoo
 const {createSchoolAssessmentSubmissionService}=require("./school-assessment-submissions.js");
 exports.schoolAssessmentSubmissions=onCall(callOptions,safeCallable(createSchoolAssessmentSubmissionService({db}),{diagnosticsService:"schoolAssessmentSubmissions"}));
 const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");
-exports.schoolGithubEvidence=onCall(callOptions,safeCallable(createSchoolGithubEvidenceService({db})));
+exports.schoolGithubEvidence=onCall(callOptions,safeCallable(createSchoolGithubEvidenceService({db}),{diagnosticsService:"schoolGithubEvidence"}));
 const {createSchoolReclaimService}=require("./school-reclaims.js");
 exports.schoolReclaims=onCall(callOptions,safeCallable(createSchoolReclaimService({db})));
 exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationAcceptanceService({db})));
