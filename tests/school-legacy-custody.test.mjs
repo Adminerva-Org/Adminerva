@@ -5,7 +5,7 @@ const require=createRequire(import.meta.url);
 const {custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,custodySourceDigest}=
   require("../functions/school-legacy-custody.js");
 const {rowKey}=require("../functions/school-academics.js");
-const {historicalMapping,mappingMatches}=require("../functions/school-class-record-historical.js");
+const {historicalMapping,mappingMatches,historicalPublishedGrades}=require("../functions/school-class-record-historical.js");
 const schoolId="mcs-manila",assessmentId="legacy-ui-xml",offeringId="grade11-programming",
   teacherUid="original-teacher",adminUid="school-admin",oldOwner="historical-custodian";
 const task={title:"Mini PETA 1 — UI/XML",ownerUid:oldOwner,maxScore:20,subject:"Computer Programming",
@@ -76,4 +76,44 @@ test("Class Record historical linkage cannot be forged from another original own
   assert.equal(mappingMatches(mapping,schoolId,offeringId,offering),true);
   assert.equal(historicalMapping({...args,custodyGrant:{...grant,status:"revoked"}}),null);
   assert.equal(historicalMapping({...args,custodyGrant:{...grant,originalSection:"Another section"}}),null);
+});
+
+test("original historical grades project only from an active custody grant and verified student identity",async()=>{
+ const offering={yearId:"year",termId:"q3",sectionId:"section",subjectId:"course"};
+ const labels={yearName:"AY 2026",termName:"Q3",sectionName:"St. Carlo Acutis",
+   subjectName:"Computer Programming 1"};
+ const mapping=historicalMapping({task,taskId:assessmentId,schoolId,ownerUid:teacherUid,
+   offering,offeringId,labels,sourceSectionName:"St. Carlo Acutis",
+   verifiedSection:true,custodyGrant:grant});
+ const columns=[{kind:"assessment",assessmentSource:"legacy_historical",columnId:"mp1",
+   taskId:assessmentId,historicalMapping:mapping,maxPoints:20}];
+ const roster=[{personId:"person-one",authUid:"auth-one",legacyStudentIds:["legacy-one"]}];
+ const saved=new Map([
+   ["assessments/"+assessmentId,task],
+   [prefix+"legacy_assessment_custody/"+custodyId(assessmentId,offeringId),grant],
+   ["student_grades/legacy-one_"+assessmentId,{taskId:assessmentId,studentId:"legacy-one",
+     section:"St. Carlo Acutis",score:17,maxScore:20,published:true}]
+ ]);
+ const dataSource={
+   doc:path=>({path,get:async()=>({exists:saved.has(path),data:()=>saved.get(path)})}),
+   getAll:async(...refs)=>refs.map(ref=>({
+     exists:saved.has(ref.path),data:()=>saved.get(ref.path)
+   }))
+ };
+ const args={db:dataSource,schoolId,offeringId,offering,columns,roster};
+ const published=await historicalPublishedGrades(args);
+ assert.equal(published.length,1);
+ assert.equal(published[0].awarded,17);
+ assert.equal(published[0].personId,"person-one");
+ saved.set(prefix+"legacy_assessment_custody/"+custodyId(assessmentId,offeringId),
+   {...grant,status:"revoked"});
+ assert.deepEqual(await historicalPublishedGrades(args),[],
+   "a revoked grant can never continue projecting original grades");
+ saved.set(prefix+"legacy_assessment_custody/"+custodyId(assessmentId,offeringId),grant);
+ saved.set("student_grades/legacy-one_"+assessmentId,{
+   taskId:assessmentId,studentId:"legacy-one",section:"Another section",
+   score:17,maxScore:20,published:true
+ });
+ assert.deepEqual(await historicalPublishedGrades(args),[],
+   "a different original student section cannot be used to populate this class");
 });
