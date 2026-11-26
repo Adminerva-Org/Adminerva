@@ -21,7 +21,7 @@ const ACTIONS=["session_started","auth_session_observed","session_ended","page_o
   "cloud_save_confirmed","notification_delivered","notification_opened","network_offline","network_online",
   "javascript_error","promise_error","resource_error","api_failed","api_succeeded","support_report_submitted",
   "studio_run_requested","studio_run_completed","studio_run_failed","cloud_save_failed",
-  "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished","process_failed","process_progress","process_prolonged"];
+  "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished","process_failed","process_progress","process_prolonged","studio_peer_marker_changed"];
 const STATES=["info","ok","error","unavailable"];
 const PHASES=["observed","started","completed","failed","interrupted"];
 const DEVICE_CLASSES=["desktop","tablet","phone","unknown"];
@@ -58,9 +58,11 @@ const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_g
 const CONTEXT_ENUMS={visibility:["visible","hidden","other"],network:["online","offline"],focus:["focused","unfocused"],ready:["loading","interactive","complete","other"],dialog:["open","none"],busy:["busy","idle"]};
 function checkedContext(value){
   if(!value||typeof value!=="object"||Array.isArray(value))deny("invalid-argument","Invalid diagnostic context.");
-  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery","deviceBackup","retryState","parentOperationId","saveStage","retryAttempt","waitingRequests"];
+  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery","deviceBackup","retryState","parentOperationId","saveStage","retryAttempt","waitingRequests","pageInstanceId","peerMarker","localSaveState","transactionAttempts","transactionMs","transactionOutcome"];
   if(Object.keys(value).some(k=>!allowed.includes(k)))deny("invalid-argument","Diagnostic context accepts only approved metadata.");
   const out={};
+  if(value.pageInstanceId!==undefined){if(typeof value.pageInstanceId!=="string"||!UUID.test(value.pageInstanceId))deny("invalid-argument","Invalid diagnostic page instance.");out.pageInstanceId=value.pageInstanceId.toLowerCase();}
+  for(const [key,allowed] of [["peerMarker",["pending","confirmed","removed","changed"]],["localSaveState",["writing","pending","idle"]],["transactionOutcome",["returned","rejected"]]]){if(value[key]!==undefined){if(!allowed.includes(value[key]))deny("invalid-argument","Invalid diagnostic state.");out[key]=value[key];}}
   if(value.saveStage!==undefined){if(!["scope_verification","school_sync","legacy_transaction","cloud_confirmed","newer_snapshot_pending","save_failed"].includes(value.saveStage))deny("invalid-argument","Invalid diagnostic save stage.");out.saveStage=value.saveStage;}
   if(value.parentOperationId!==undefined){if(typeof value.parentOperationId!=="string"||!UUID.test(value.parentOperationId))deny("invalid-argument","Invalid diagnostic parent operation.");out.parentOperationId=value.parentOperationId.toLowerCase();}
   for(const [key,options] of [["reasonCode",STUDIO_REASONS],["projectCategory",new Set(["personal","assessment","unknown"])],["recovery",new Set(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"])],["deviceBackup",new Set(["available","unavailable","unknown"])],["retryState",new Set(["scheduled","not_scheduled"])]] ){
@@ -82,7 +84,7 @@ function checkedContext(value){
       seen.add(p.id.toLowerCase());return {name:p.name,id:p.id.toLowerCase(),ageMs:p.ageMs};
     });
   }
-  for(const [key,max] of [["overflow",100],["retryAttempt",4],["waitingRequests",100],["clientAt",8640000000000000],["elapsedMs",3600000]]){
+  for(const [key,max] of [["overflow",100],["transactionAttempts",100],["transactionMs",120000],["retryAttempt",4],["waitingRequests",100],["clientAt",8640000000000000],["elapsedMs",3600000]]){
     if(value[key]!==undefined){if(!Number.isSafeInteger(value[key])||value[key]<0||value[key]>max)deny("invalid-argument","Invalid diagnostic timing or count.");out[key]=value[key];}
   }
   return out;
@@ -103,7 +105,7 @@ function checkedEvent(input){
   const kindActions={
     session:["session_started","auth_session_observed","session_ended","signed_in","signed_out"],
     navigation:["page_open"],notification:["notification_delivered","notification_opened"],
-    system:["network_offline","network_online","process_prolonged"],
+    system:["network_offline","network_online","process_prolonged","studio_peer_marker_changed"],
     error:["javascript_error","promise_error","resource_error","api_failed","studio_run_failed","cloud_save_failed","process_failed"],
     action:["school_switched","cloud_save_confirmed","api_succeeded","support_report_submitted",
       "studio_run_requested","studio_run_completed","assessment_submit_requested","assessment_submitted",
@@ -111,6 +113,8 @@ function checkedEvent(input){
   };
   if(!kindActions[input.kind].includes(input.action))
     deny("invalid-argument","Diagnostic category and action must agree.");
+  if(["transactionAttempts","transactionMs","transactionOutcome"].some(key=>input.context?.[key]!==undefined))deny("invalid-argument","Backend transaction observations cannot be submitted by the browser.");
+  if(input.action==="studio_peer_marker_changed"&&(input.state!=="unavailable"||input.module!=="studio"||!input.context?.peerMarker||!input.context?.localSaveState))deny("invalid-argument","Invalid peer marker observation.");
   if(input.action==="process_prolonged"&&(input.state!=="unavailable"||input.phase!=="observed"||!input.operationId||!input.context?.process||!Number.isInteger(input.context.elapsedMs)||input.context.elapsedMs<60000))deny("invalid-argument","Invalid prolonged process observation.");
   if(input.action==="process_progress"&&(input.state!=="info"||input.phase!=="observed"||!input.operationId||input.context?.process!=="studio_cloud_save"||!input.context.saveStage))deny("invalid-argument","Invalid save progress observation.");
   if(input.kind==="error"&&input.state!=="error"&&input.state!=="unavailable")
@@ -155,6 +159,12 @@ function clientCorrelation(request,service){
 function correlationFields(request,service){
   const {parentOperationId,...ids}=clientCorrelation(request,service);
   return {ids,context:parentOperationId?{parentOperationId}:{}};
+}
+function serverTransactionContext(value){
+  if(!value||!Number.isInteger(value.transactionAttempts)||value.transactionAttempts<0||value.transactionAttempts>100||
+    !Number.isInteger(value.transactionMs)||value.transactionMs<0||value.transactionMs>120000||
+    !["returned","rejected"].includes(value.transactionOutcome))return {};
+  return {transactionAttempts:value.transactionAttempts,transactionMs:value.transactionMs,transactionOutcome:value.transactionOutcome};
 }
 function serverErrorCode(error){
   const value=String(error?.code||"internal").replace(/^functions\//,"");
@@ -252,7 +262,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       return {recorded:true,duplicate:false};
     });
   }
-  async function writeServerFailure(request,error,startedAt=now(),serviceName=""){
+  async function writeServerFailure(request,error,startedAt=now(),serviceName="",transactionObservation){
     if(request?.auth?.token?.email_verified!==true||!request?.auth?.uid)return;
     const ownerUid=String(request.auth.uid);
     if(!UID.test(ownerUid))return;
@@ -260,13 +270,14 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     const service=safeService(serviceName||rawPath);
     const type=serverErrorCode(error),reasonCode=studioDiagnosticReason(error);
     const correlation=correlationFields(request,service);
+    const transaction=serverTransactionContext(transactionObservation);
     const action=String(request?.data?.action||"");
     // Never include user data, arbitrary action arguments or error messages.
     const safeAction=/^[a-z][a-z0-9_-]{0,45}$/.test(action)?action:"call";
     const synthetic={
       eventId:randomUUID(),sessionId:randomUUID(),...correlation.ids,kind:"error",module:"api",
       action:"api_failed",state:"error",errorCode:type,route:"",release:"",
-      phase:"failed",traceId:traceFromRequest(request),...((reasonCode||Object.keys(correlation.context).length)?{context:{...correlation.context,...(reasonCode?{reasonCode}:{})}}:{}),
+      phase:"failed",traceId:traceFromRequest(request),...((reasonCode||Object.keys(correlation.context).length||Object.keys(transaction).length)?{context:{...correlation.context,...transaction,...(reasonCode?{reasonCode}:{})}}:{}),
       durationMs:Math.max(0,Math.min(120000,now()-(Number(startedAt)||now())))
     };
     try{return await insert(ownerUid,synthetic,{source:"backend",service:service+"."+safeAction});}
@@ -357,7 +368,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       note:"Recently observed account activity only; accounts without recorded events are available in Platform Users and the account directory."};
   }
 
-  async function recordServerProcess(request,{service,startedAt,status="ok"}={}){
+  async function recordServerProcess(request,{service,startedAt,status="ok",transactionObservation}={}){
     // Server-owned process outcome. Never trust arbitrary request field values as
     // event text. Only a small set of write actions is instrumented in index.js.
     if(request?.auth?.token?.email_verified!==true||!UID.test(String(request?.auth?.uid||"")))return;
@@ -366,9 +377,10 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     const safeAction=safeProcess(rawAction,48);
     const safeServiceName=safeProcess(service,64);
     const correlation=correlationFields(request,safeServiceName);
+    const context={...correlation.context,...serverTransactionContext(transactionObservation)};
     const ms=Math.max(0,Math.min(120000,now()-(Number(startedAt)||now())));
     const event={
-      eventId:randomUUID(),sessionId:randomUUID(),...correlation.ids,...(Object.keys(correlation.context).length?{context:correlation.context}:{}),kind:"action",module:"api",
+      eventId:randomUUID(),sessionId:randomUUID(),...correlation.ids,...(Object.keys(context).length?{context}:{}),kind:"action",module:"api",
       action:"api_succeeded",state:"ok",errorCode:"",route:"",
       release:"",phase:"completed",durationMs:ms,traceId:traceFromRequest(request)
     };
