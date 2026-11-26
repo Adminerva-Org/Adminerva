@@ -41,6 +41,12 @@ function historicalCustodianRecord(task){
   return !!task&&(task.ownerUid===undefined||task.ownerUid===null||task.ownerUid===""||
     String(task.ownershipBasis||"").startsWith("legacy-administrator-custody"));
 }
+function identityOnlyCustody(grant){
+ return grant?.sectionProof==="assessment_student_identity";
+}
+function custodySectionMatches(grant,section){
+ return identityOnlyCustody(grant)||normalized(section)===normalized(grant?.originalSection);
+}
 function validCustody(grant,{schoolId,assessmentId,offeringId,teacherUid,task,section=""}){
  if(!grant||grant.status!=="active"||grant.schoolId!==schoolId||schoolId!==SCHOOL_ID||
     grant.assessmentId!==assessmentId||grant.offeringId!==offeringId||
@@ -52,8 +58,11 @@ function validCustody(grant,{schoolId,assessmentId,offeringId,teacherUid,task,se
     Number(grant.originalMaxScore)!==Number(task.maxScore)||
     grant.originalSubject!==String(task.subject||"")||
     grant.sourceDigest!==custodySourceDigest(task)||
-    !originalSections(task).some(s=>normalized(s)===normalized(grant.originalSection))||
-    (section&&normalized(section)!==normalized(grant.originalSection))||
+    (identityOnlyCustody(grant)?
+      (originalSections(task).length!==0||grant.originalSection!==""||
+       !Number.isInteger(grant.verifiedPersonCount)||grant.verifiedPersonCount<1):
+      !originalSections(task).some(s=>normalized(s)===normalized(grant.originalSection)))||
+    (section&&!custodySectionMatches(grant,section))||
     !Array.isArray(grant.verifiedLegacyStudentIds)||grant.verifiedLegacyStudentIds.length===0||
     grant.verifiedLegacyStudentIds.length>350||new Set(grant.verifiedLegacyStudentIds).size!==grant.verifiedLegacyStudentIds.length||
     grant.verifiedLegacyStudentIds.some(id=>!validId(id)))return false;
@@ -78,4 +87,4 @@ async function authorizedTeacherCustody({db,schoolId,teacherUid,assessmentId,off
    return null;
  return {ref:doc.ref,grant};
 }
-module.exports={custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,normalized,historicalCustodianRecord,custodySourceDigest};
+module.exports={custodyId,custodyRef,validCustody,authorizedTeacherCustody,originalSections,normalized,historicalCustodianRecord,custodySourceDigest,identityOnlyCustody,custodySectionMatches};
