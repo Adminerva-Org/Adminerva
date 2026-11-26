@@ -188,13 +188,16 @@ function renderAudit(data){
 }
 function renderFile(data){
   current=data;const p=data.person;
-  fileHost.hidden=false;get("sr-student-name").textContent=p.displayName;
+  fileHost.hidden=false;get("sr-empty-file").hidden=true;get("sr-student-name").textContent=p.displayName;
   get("sr-student-meta").textContent=p.status+" · directory revision "+p.revision;
   get("sr-student-number").textContent=p.studentNumber||"—";get("sr-birth-date").textContent=p.birthDate||"—";
   get("sr-account-state").textContent=p.accountLinked?"Verified student account linked":
     p.accountResponsibility==="guardian"?"Guardian-managed learner":"Student activation pending";
-  get("sr-open-people").href="people-access.html?personId="+encodeURIComponent(p.personId)+"#people";
-  get("sr-open-enrollment").href="school-enrollment.html?personId="+encodeURIComponent(p.personId);
+  const schoolQuery="&schoolId="+encodeURIComponent(picker.scope.current.schoolId);
+  get("sr-open-people").hidden=!picker.scope.current.roles.includes("school_admin");
+  get("sr-open-people").href="people-access.html?personId="+encodeURIComponent(p.personId)+schoolQuery+"#people";
+  get("sr-open-enrollment").hidden=picker.scope.current.enrollmentMode!=="canonical";
+  get("sr-open-enrollment").href="school-enrollment.html?personId="+encodeURIComponent(p.personId)+schoolQuery;
   renderGuardians(data);renderRegistrations(data);renderGrades(data);renderRequests(data);renderAudit(data);
   renderStudents();
 }
@@ -205,9 +208,9 @@ async function openStudent(personId,{force=false}={}){
     const data=await perform("student_file",{personId});
     if(run!==fileRun)return;
     renderFile(data);setUrlPerson(personId);
-    status.textContent=data.person.displayName+" · 201-file aggregation loaded from canonical school records.";
+    status.textContent=data.person.displayName+" · Record loaded.";
   }catch(error){
-    if(run===fileRun){fileHost.hidden=true;current=null;status.textContent=error?.message||"Student record could not be loaded.";}
+    if(run===fileRun){fileHost.hidden=true;get("sr-empty-file").hidden=false;current=null;status.textContent=error?.message||"Student record could not be loaded.";}
   }
 }
 
@@ -367,7 +370,7 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current Student Records change before switching schools.");
     ++searchRun;++fileRun;students=[];current=null;guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
-    setUrlPerson("");get("sr-search").value="";get("sr-student-list").replaceChildren();fileHost.hidden=true;workspace.hidden=true;
+    setUrlPerson("");get("sr-search").value="";get("sr-student-list").replaceChildren();fileHost.hidden=true;get("sr-empty-file").hidden=false;get("sr-open-people").hidden=true;workspace.hidden=true;
     for(const dialog of document.querySelectorAll("dialog"))if(dialog.open)dialog.close();
   },
   onReady:scope=>{
@@ -375,7 +378,7 @@ picker=createTenantSchoolPicker({
     if(!currentScope?.roles.some(role=>["school_admin","registrar"].includes(role))){
       workspace.hidden=true;status.textContent="School Administrator or Registrar access is required for Student Records.";return;
     }
-    workspace.hidden=false;status.textContent="Student Records ready. Search for a learner or open a deep link from People & Access.";
+    workspace.hidden=false;status.textContent="Select a student.";
     void searchStudents().then(()=>{
       if(requestedPersonId&&!current)void openStudent(requestedPersonId);
     });
