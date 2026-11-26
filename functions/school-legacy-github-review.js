@@ -448,7 +448,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
          gradeVersion:revision,gradeSource:draftSource==="teacher"?"teacher_manual":"teacher_ai_reviewed",
          evaluationSource:draftSource,
          reviewedBy:ctx.uid,reviewedAt:now,gradedAt:now,
-         teacherReviewNote:reviewNote,gradedSha:latest.checkpointSha,
+         teacherReviewNote:reviewNote||before?.teacherReviewNote||"",gradedSha:latest.checkpointSha,
          evidenceRevision:latest.revision,
          verifiedContributionCommits:latest.verified,contributionScope:latest.contributionScope,
          contributionEvidence:{...(before?.contributionEvidence||{}),
