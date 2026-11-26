@@ -299,7 +299,19 @@ get("sr-profile-form").addEventListener("submit",event=>{
     catch(error){get("sr-profile-status").textContent=error?.message||"Profile save failed.";}finally{setSaving(false);}
   })();
 });
-let academicData=null,academicRun=0,certificateData=null,certificateRun=0,certificateSettings=null,settingsRun=0,verifyRun=0;
+let academicData=null,academicRun=0,certificateData=null,certificateRun=0,certificateSettings=null,settingsRun=0,verifyRun=0,lrnRun=0;
+function clearLrnLookup(){++lrnRun;get("sr-lrn-value").value="";get("sr-lrn-status").textContent="";}
+get("sr-lrn-find").addEventListener("click",()=>{if(!saving){clearLrnLookup();get("sr-lrn-dialog").showModal();}});
+get("sr-lrn-close").addEventListener("click",()=>{clearLrnLookup();get("sr-lrn-dialog").close();});
+get("sr-lrn-dialog").addEventListener("cancel",clearLrnLookup);
+get("sr-lrn-form").addEventListener("submit",event=>{
+  event.preventDefault();if(saving||!event.currentTarget.reportValidity())return;
+  const run=++lrnRun,lrn=get("sr-lrn-value").value;get("sr-lrn-status").textContent="Searching school records…";
+  void (async()=>{try{const data=await perform("find_student_by_lrn",{lrn});if(run!==lrnRun)return;
+    if(data.state!=="found"){get("sr-lrn-status").textContent="No active LRN claim in this school.";return;}
+    clearLrnLookup();get("sr-lrn-dialog").close();await openStudent(data.personId);
+  }catch(error){if(run===lrnRun)get("sr-lrn-status").textContent=error?.message||"LRN lookup unavailable.";}})();
+});
 function resetAcademic(){++academicRun;academicData=null;get("sr-academic-results").replaceChildren();get("sr-academic-blockers").replaceChildren();get("sr-academic-export").disabled=true;get("sr-academic-status").textContent="";}
 function academicOptions(){
   const mode=get("sr-academic-mode").value,select=get("sr-academic-year"),prior=select.value;select.replaceChildren(new Option(mode==="sf9"?"Choose academic year":"All school years",""));
@@ -417,6 +429,7 @@ get("sr-certificate-print").addEventListener("click",()=>{
   add(header,"h1","Certificate of Enrollment");add(header,"small",data.state==="issued"?"UNSIGNED COPY — AUTHORIZED SIGNATURE REQUIRED":"DRAFT — NOT ISSUED");
   add(doc.body,"p","This certifies that "+c.studentName+(c.studentNumber?" (Student no. "+c.studentNumber+")":"")+" is recorded as officially enrolled in "+c.programName+", "+c.sectionName+", for "+c.termName+" of "+c.yearName+".");
   add(doc.body,"p","Purpose: "+c.purpose);if(data.reference)add(doc.body,"p","Institutional reference: "+data.reference);
+  if(data.issuedAt)add(doc.body,"p","Issued: "+fmt(data.issuedAt));
   const footer=doc.createElement("footer");doc.body.append(footer);add(footer,"p","________________________________");add(footer,"strong",c.signatoryName);add(footer,"p",c.signatoryTitle);
   add(doc.body,"small","No digital signature is attached. Confirm the authorized signature and institutional reference with the issuing school.");
   popup.focus();popup.print();
@@ -674,7 +687,7 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current Student Records change before switching schools.");
     if(profileDirty&&!confirm("Discard unsaved profile changes?"))throw new Error("Finish the profile edit before switching schools.");
-    clearProfile();resetAcademic();closeCertificate();closeCertificateSettings();clearVerify();
+    clearProfile();resetAcademic();closeCertificate();closeCertificateSettings();clearVerify();clearLrnLookup();
     ++searchRun;++fileRun;requestedPersonId="";students=[];current=null;historyBusy=false;fileView="registrations";guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
     directoryCursor=null;directoryQuery="";directoryBusy=false;get("sr-more").hidden=true;get("sr-search-progress").textContent="";
     ++queueRun;queueRows=[];queueCursor=null;queueBusy=false;queueSkipped=0;recordsMode="students";get("sr-requests-workspace").hidden=true;get("sr-workspace-nav").hidden=true;get("sr-queue-list").replaceChildren();get("sr-queue-search").value="";get("sr-queue-filter").value="open";get("sr-queue-status").textContent="";
