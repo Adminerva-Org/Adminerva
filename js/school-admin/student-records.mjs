@@ -439,6 +439,7 @@ function renderCertificate(){
   const type=data?.type||certificateData?.type;get("sr-good-moral-approval").hidden=type!=="good_moral_certificate"||!editable;
   get("sr-good-moral-state").textContent=data?.attestation?.status==="approved"?"Office approval recorded · "+data.attestation.office+" · "+data.attestation.reference:"Documented office approval required.";
   get("sr-good-moral-attest").hidden=get("sr-certificate-settings").hidden;
+  get("sr-good-moral-withdraw").hidden=get("sr-certificate-settings").hidden||data?.attestation?.status!=="approved";
   get("sr-certificate-print").hidden=!data?.certificate||state==="revoked";
   get("sr-certificate-issue").hidden=state!=="ready"||!data?.certificate;
   get("sr-certificate-revoke").hidden=state!=="issued";
@@ -470,7 +471,7 @@ async function mutateCertificate(action,details){
   setSaving(true,"Updating certificate…");
   try{
     await perform(action,{requestId,expectedRevision,...details});closeCertificate();
-    await refreshCredentialOwner(owner);status.textContent=action==="record_good_moral_attestation"?"Office approval recorded. Prepare the certificate draft.":action==="prepare_enrollment_certificate"?"Draft prepared. Review and mark ready.":action==="issue_enrollment_certificate"?"Institutional certificate issued. Print unsigned copy for authorized signature.":"Certificate revoked.";
+    await refreshCredentialOwner(owner);status.textContent=action==="withdraw_good_moral_attestation"?"Office approval withdrawn. A new approval is required.":action==="record_good_moral_attestation"?"Office approval recorded. Prepare the certificate draft.":action==="prepare_enrollment_certificate"?"Draft prepared. Review and mark ready.":action==="issue_enrollment_certificate"?"Institutional certificate issued. Print unsigned copy for authorized signature.":"Certificate revoked.";
   }catch(error){get("sr-certificate-status").textContent=error?.message||"Certificate update failed.";}finally{setSaving(false);}
 }
 get("sr-certificate-prepare-form").addEventListener("submit",event=>{event.preventDefault();if(event.currentTarget.reportValidity())void mutateCertificate("prepare_enrollment_certificate",{registrationId:get("sr-certificate-registration").value});});
@@ -478,6 +479,10 @@ get("sr-good-moral-attest").addEventListener("click",()=>{
   if(saving||!certificateData?.data)return;const registrationId=get("sr-certificate-registration").value;if(!registrationId){get("sr-certificate-status").textContent="Select an eligible registration first.";return;}
   const office=prompt("Authorized approving office:");if(!office?.trim())return;const reference=prompt("Documented approval reference:");if(!reference?.trim())return;
   const reason=prompt("Confirm review of the authorized office approval (at least 12 characters):");if(reason?.trim().length>=12)void mutateCertificate("record_good_moral_attestation",{registrationId,office:office.trim(),reference:reference.trim(),reason:reason.trim(),confirmSourceReviewed:true});
+});
+get("sr-good-moral-withdraw").addEventListener("click",()=>{
+  if(saving||!certificateData?.data)return;const reason=prompt("Document why the authorized office approval is withdrawn (at least 12 characters).");
+  if(reason?.trim().length>=12&&confirm("Withdraw approval and invalidate the current draft?"))void mutateCertificate("withdraw_good_moral_attestation",{reason:reason.trim()});
 });
 get("sr-certificate-issue").addEventListener("click",()=>{
   if(saving||!certificateData?.data)return;const reason=prompt("Confirm institutional release and record the reason (at least 12 characters).");
