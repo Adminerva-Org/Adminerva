@@ -8,7 +8,7 @@ import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResp
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
-import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261126-streamlined-grade";
+import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261126-draft-reevaluation";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -326,7 +326,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const gradeMap=new Map(historical?
         rows.filter(item=>item.gradeStatus).map(item=>[item.studentUid,{
           studentUid:item.studentUid,status:item.gradeStatus,awarded:item.awarded,
-          total:item.maxScore??currentTask.rubric.reduce((sum,part)=>sum+Number(part.points),0),pending:Number(item.pending||0),reviewSuggested:item.reviewSuggested===true
+          total:item.maxScore??currentTask.rubric.reduce((sum,part)=>sum+Number(part.points),0),pending:Number(item.pending||0),revision:item.gradeRevision||0,reviewSuggested:item.reviewSuggested===true
         }]):
         (resultData.results||[]).map(item=>[item.studentUid,item]));
       if(view==="results")rows=[...rows].sort((a,b)=>{
