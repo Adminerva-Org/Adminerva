@@ -21,7 +21,7 @@ const ACTIONS=["session_started","auth_session_observed","session_ended","page_o
   "cloud_save_confirmed","notification_delivered","notification_opened","network_offline","network_online",
   "javascript_error","promise_error","resource_error","api_failed","api_succeeded","support_report_submitted",
   "studio_run_requested","studio_run_completed","studio_run_failed","cloud_save_failed",
-  "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested"];
+  "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished","process_failed"];
 const STATES=["info","ok","error","unavailable"];
 const PHASES=["observed","started","completed","failed","interrupted"];
 const DEVICE_CLASSES=["desktop","tablet","phone","unknown"];
@@ -52,11 +52,42 @@ function release(value){
     deny("invalid-argument","Release markers must be version identifiers.");
   return value;
 }
+
+const CONTROLS=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
+const PROCESS_NAMES=new Set(["studio_cloud_save"]);
+const CONTEXT_ENUMS={visibility:["visible","hidden","other"],network:["online","offline"],focus:["focused","unfocused"],ready:["loading","interactive","complete","other"],dialog:["open","none"],busy:["busy","idle"]};
+function checkedContext(value){
+  if(!value||typeof value!=="object"||Array.isArray(value))deny("invalid-argument","Invalid diagnostic context.");
+  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs"];
+  if(Object.keys(value).some(k=>!allowed.includes(k)))deny("invalid-argument","Diagnostic context accepts only approved metadata.");
+  const out={};
+  for(const [key,options] of Object.entries(CONTEXT_ENUMS)){
+    if(value[key]!==undefined){if(!options.includes(value[key]))deny("invalid-argument","Invalid diagnostic state.");out[key]=value[key];}
+  }
+  for(const [key,options] of [["control",CONTROLS],["process",PROCESS_NAMES]]){
+    if(value[key]!==undefined){if(!options.has(value[key]))deny("invalid-argument","Unknown diagnostic control or process.");out[key]=value[key];}
+  }
+  if(value.active!==undefined){
+    if(!Array.isArray(value.active)||value.active.length>6)deny("invalid-argument","Invalid active process snapshot.");
+    const seen=new Set();
+    out.active=value.active.map(p=>{
+      if(!p||typeof p!=="object"||Array.isArray(p)||Object.keys(p).some(k=>!["name","id","ageMs"].includes(k))||
+        !PROCESS_NAMES.has(p.name)||typeof p.id!=="string"||!UUID.test(p.id)||seen.has(p.id.toLowerCase())||
+        !Number.isInteger(p.ageMs)||p.ageMs<0||p.ageMs>3600000)deny("invalid-argument","Invalid active process.");
+      seen.add(p.id.toLowerCase());return {name:p.name,id:p.id.toLowerCase(),ageMs:p.ageMs};
+    });
+  }
+  for(const [key,max] of [["overflow",100],["clientAt",8640000000000000],["elapsedMs",3600000]]){
+    if(value[key]!==undefined){if(!Number.isSafeInteger(value[key])||value[key]<0||value[key]>max)deny("invalid-argument","Invalid diagnostic timing or count.");out[key]=value[key];}
+  }
+  return out;
+}
+
 function checkedEvent(input){
   if(!input||typeof input!=="object"||Array.isArray(input))
     deny("invalid-argument","A diagnostic event is required.");
   const keys=Object.keys(input);
-  if(keys.some(key=>!["eventId","sessionId","kind","module","action","state","errorCode","route","release","operationId","phase","deviceClass","browserFamily","osFamily","viewport"].includes(key)))
+  if(keys.some(key=>!["eventId","sessionId","kind","module","action","state","errorCode","route","release","operationId","phase","deviceClass","browserFamily","osFamily","viewport","context"].includes(key)))
     deny("invalid-argument","Diagnostic events accept only approved metadata.");
   if(typeof input.eventId!=="string"||!UUID.test(input.eventId)||
      typeof input.sessionId!=="string"||!UUID.test(input.sessionId))
@@ -68,10 +99,10 @@ function checkedEvent(input){
     session:["session_started","auth_session_observed","session_ended","signed_in","signed_out"],
     navigation:["page_open"],notification:["notification_delivered","notification_opened"],
     system:["network_offline","network_online"],
-    error:["javascript_error","promise_error","resource_error","api_failed","studio_run_failed","cloud_save_failed"],
+    error:["javascript_error","promise_error","resource_error","api_failed","studio_run_failed","cloud_save_failed","process_failed"],
     action:["school_switched","cloud_save_confirmed","api_succeeded","support_report_submitted",
       "studio_run_requested","studio_run_completed","assessment_submit_requested","assessment_submitted",
-      "assessment_withdraw_requested","assessment_evaluate_requested"]
+      "assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished"]
   };
   if(!kindActions[input.kind].includes(input.action))
     deny("invalid-argument","Diagnostic category and action must agree.");
@@ -92,6 +123,7 @@ function checkedEvent(input){
     eventId:input.eventId.toLowerCase(),sessionId:input.sessionId.toLowerCase(),
     kind:input.kind,module:input.module,action:input.action,state:input.state,
     errorCode:code(input.errorCode),route:route(input.route),release:release(input.release),
+    ...(input.context!==undefined?{context:checkedContext(input.context)}:{}),
     ...(input.operationId?{operationId:input.operationId.toLowerCase()}:{}),
     ...(input.phase?{phase:input.phase}:{}),
     ...Object.fromEntries(["deviceClass","browserFamily","osFamily","viewport"]
@@ -138,7 +170,9 @@ function diagnosticSeverity(row){
 }
 function serialize(doc,source="client"){
   const row=doc.data()||{};
+  let context;try{if(row.context!==undefined)context=checkedContext(row.context);}catch{}
   return {
+    ...(context?{context}:{}),
     id:doc.id,at:createdAtNumber(row.createdAt),severity:diagnosticSeverity(row),
     provenance:row.source==="backend"?"server_confirmed":"client_observed",
     phase:String(row.phase||(row.state==="error"?"failed":row.state==="unavailable"?"interrupted":"observed")).slice(0,16),sessionId:String(row.sessionId||"").slice(0,40),
