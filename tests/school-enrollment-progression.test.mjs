@@ -107,3 +107,14 @@ test("advance returning admission is consumed by grade-gated progression instead
   assert.match(source,/applicationId:review.admissionApplication\?\.applicationId\|\|null/);
   assert.match(source,/A prior academic year still has an active registration/);
 });
+
+
+test("registration browsing is paginated while progression reads the complete selected cohort",()=>{
+  assert.match(source,/if\(input.action==="list_progression_cohort"\)/);
+  assert.match(source,/where\("status","==","active"\)\.limit\(61\)/);
+  assert.match(source,/if\(input.action==="list_legacy_candidates"\)/);
+  assert.match(source,/liveEnrollments\.size===101/);
+  assert.match(source,/Active legacy enrollments changed after preview/);
+  const frontend=readFileSync(new URL("../js/school-admin/enrollment.mjs",import.meta.url),"utf8");
+  assert.match(frontend,/perform\("list_progression_cohort"/);
+});
