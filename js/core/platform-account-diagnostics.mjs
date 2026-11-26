@@ -49,7 +49,7 @@ function beginProcess(name){
   if(!enabled||name!=="studio_cloud_save"||processes.size>=MAX_TRACKED)return ()=>{};
   const id=ID(),start=performance.now(),turn=epoch;
   processes.set(id,{name,start});
-  emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name}});
+  try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:{process:name}});}catch{}
   let finished=false;
   return (success)=>{
     if(finished)return;finished=true;
@@ -66,18 +66,18 @@ function queueDelayed(event){
 }
 async function flushPending(){
   if(flushing||!enabled||navigator.onLine===false||!pending.length)return;
-  flushing=true;
+  flushing=true;const flushEpoch=epoch;
   try{
     const batch=pending.splice(0,MAX_DELAYED_EVENTS);
     for(let i=0;i<batch.length;i++){
-      if(!enabled)return;
+      if(!enabled||epoch!==flushEpoch)return;
       if(navigator.onLine===false){
         pending=batch.slice(i).concat(pending).slice(0,MAX_DELAYED_EVENTS);
         break;
       }
       await send(batch[i],true);
     }
-  }finally{flushing=false;}
+  }finally{if(epoch===flushEpoch)flushing=false;}
 }
 function route(){
   const candidate=location.pathname||"/";
@@ -112,9 +112,10 @@ async function send(event,replay=false){
     if(auth.currentUser?.uid!==uid||turn!==epoch)return;
     try{
       await record({action:"record",event});
-      if(!flushing&&pending.length)void flushPending();
+      if(turn===epoch&&!flushing&&pending.length)void flushPending();
       return;
     }catch(error){
+      if(turn!==epoch||auth.currentUser?.uid!==uid)return;
       const raw=String(error?.code||"");
       if(/permission-denied|unauthenticated|resource-exhausted|invalid-argument/.test(raw))return;
       if(attempt===0)await new Promise(resolve=>setTimeout(resolve,600));
@@ -181,7 +182,9 @@ document.addEventListener("adminerva:notification-opened",()=>emit("notification
 document.addEventListener("adminerva:studio-submitted",()=>emit("assessment_submitted",{module:"assessments",state:"ok"}));
 window.addEventListener("adminerva:studio-run-recorded",event=>{
   const run=event.detail||{};
-  const operationId=pendingRunOperationId;pendingRunOperationId="";
+  // Completion evidence is asynchronous and does not carry the original run ID.
+  // Do not infer a match to the latest click when executions can overlap.
+  const operationId="";pendingRunOperationId="";
   if(run.compileSucceeded===false)diagnosticError("studio_run_failed","compile_error","studio",operationId);
   else if(run.runSucceeded===false)diagnosticError("studio_run_failed","runtime_error","studio",operationId);
   else if(run.runSucceeded===true)emit("studio_run_completed",{module:"studio",state:"ok",operationId,phase:"completed"});
