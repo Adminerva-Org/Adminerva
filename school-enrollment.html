@@ -28,6 +28,7 @@
     .en-summary{border:1px solid #cbd5e1;background:#f8fafc;border-radius:.8rem;padding:.75rem}
     .en-dialog{border:0;border-radius:1rem;padding:0;width:min(92vw,560px);box-shadow:0 24px 70px #0f172a55}
     .en-dialog::backdrop{background:#020617aa}
+    .en-requirement-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(100px,.55fr) auto;gap:.5rem;align-items:end}.en-requirement-row label{min-width:0}@media(max-width:460px){.en-requirement-row{grid-template-columns:minmax(0,1fr) auto}.en-requirement-row label:first-child{grid-column:1/-1}}
     [hidden]{display:none!important}
     @media(max-width:820px){.en-grid{grid-template-columns:1fr}.en-shell{padding:.7rem}.en-row{flex-direction:column}}
   </style>
@@ -265,6 +266,22 @@
     </div>
   </section>
 
+  <dialog id="en-requirements-dialog" class="en-dialog" aria-labelledby="en-requirements-title">
+    <form id="en-requirements-form" class="en-card">
+      <div class="flex items-start justify-between gap-3">
+        <div><h2 id="en-requirements-title" class="text-lg font-extrabold">Admission requirements</h2><p id="en-requirements-target" class="en-muted"></p></div>
+        <button id="en-requirements-close" type="button" class="en-btn secondary">Close</button>
+      </div>
+      <div id="en-requirements-list" class="en-list"></div>
+      <button id="en-requirements-add" type="button" class="en-btn secondary mt-3">Add requirement</button>
+      <label class="flex gap-2 items-center text-sm font-bold mt-3"><input id="en-requirements-none" type="checkbox"> No requirements apply</label>
+      <p class="en-muted mt-2">Record verification of documents received outside Adminerva. Do not enter document numbers or sensitive contents.</p>
+      <label class="block text-sm font-bold mt-3">Review reason<textarea id="en-requirements-reason" class="en-input mt-1" rows="2" minlength="8" maxlength="500" required></textarea></label>
+      <p id="en-requirements-status" class="en-muted mt-2" role="status" aria-live="polite"></p>
+      <button type="submit" class="en-btn mt-3">Save review</button>
+    </form>
+  </dialog>
+
   <dialog id="en-registration-change-dialog" class="en-dialog" aria-labelledby="en-registration-change-title">
     <form id="en-registration-change-form" class="en-card" method="dialog">
       <div class="flex items-start justify-between gap-3">
@@ -399,7 +416,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar3"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar4"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
