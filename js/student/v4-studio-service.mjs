@@ -167,11 +167,19 @@ async function scopedCall(api,action,details={}){
   await init();
   if(!picker?.scope.current)return null;
   const lease=picker.scope.lease();
+  // Only fixed, known write callables; no request fields or project data enter diagnostics.
+  const processName=api===projectsApi&&["sync","archive","restore"].includes(action)?"studio_api_"+action:
+    api===submissionsApi&&action==="submit"?"studio_api_submit":api===variantApi&&action==="assign"?"studio_api_variant_assign":"";
+  let finishDiagnostic;
+  try{if(processName)finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.(processName);}catch{}
+  const reportDiagnostic=(ok,error)=>{try{finishDiagnostic?.(ok,error?.code||"unavailable");}catch{}};
   try{
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
     picker.scope.assertLease(lease);
+    reportDiagnostic(true);
     return result;
   }catch(error){
+    reportDiagnostic(false,error);
     document.dispatchEvent(new CustomEvent("adminerva:diagnostic-event",{detail:{
       action:"api_failed",module:"studio",errorCode:String(error?.code||"unavailable")
     }}));
