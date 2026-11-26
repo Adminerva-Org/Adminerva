@@ -1364,6 +1364,7 @@ function updateBulkControls(){
 }
 function selectBulkApplication(item,checked){
   if(saving)return;
+  if(checked&&(item.status!=="accepted"||!item.requirementsReady||item.clearanceReady===false)){status.textContent="Only accepted applicants with complete requirements and clearance can be enrolled.";renderApplications();return;}
   if(!checked)selectedApplications.delete(item.applicationId);
   else{
     const first=selectedApplications.values().next().value;
