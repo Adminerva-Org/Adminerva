@@ -11,7 +11,7 @@
 const {createHash}=require("node:crypto");
 const {FieldValue,FieldPath}=require("firebase-admin/firestore");
 const {TenantAccessError}=require("./tenant-access.js");
-const {authorizedTeacherCustody,validCustody,normalized,custodySectionMatches}=require("./school-legacy-custody.js");
+const {authorizedTeacherCustody,validCustody,custodySectionMatches}=require("./school-legacy-custody.js");
 const deny=(code,message)=>{throw new TenantAccessError(code,message)};
 const hash=(...items)=>createHash("sha256").update(JSON.stringify(items)).digest("hex");
 const validSha=value=>typeof value==="string"&&/^[a-f0-9]{40}$/i.test(value);
