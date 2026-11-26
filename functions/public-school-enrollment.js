@@ -150,10 +150,16 @@ function createPublicSchoolEnrollmentService({db}){
             deny("failed-precondition","This application is locked for school review. Contact the Registrar if corrections are needed.");
           revision=(Number(prior.revision)||1)+1;
           status=prior.status==="needs_information"?"submitted":(prior.status||"submitted");
+          // A changed applicant revision must be reviewed again; retain the list,
+          // but do not carry verified decisions to an unreviewed resubmission.
+          const requirements=Array.isArray(prior.requirements)?prior.requirements.map(item=>({
+            label:item.label,status:item.status==="verified"?"received":item.status
+          })):[];
           tx.set(ref,{
             schoolId:PUBLIC_PILOT_SCHOOL_ID,applicationType,displayName,birthDate,incomingLevel,
             yearId,preferredProgramId,guardianName,guardianRelationship,guardianEmail,guardianMobile,
             studentEmail,studentEmailType,studentEmailRequired,source:"online",status,
+            requirements,requirementsReviewed:false,noRequirements:false,
             reference:publicReference(applicationId),consentAcknowledged:true,revision,updatedAt:now,lastSubmittedAt:now
           },{merge:true});
         }else{
