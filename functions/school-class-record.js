@@ -53,7 +53,7 @@ async function exactCustodyCandidate({db,schoolId,assessmentId,task,identities,r
   const identityOnly=sections.length===0;
   if(identityOnly&&(task.schemaVersion===3||task.submissionSource==="studio"||task.assessmentFormat==="studio_code"))return null;
   const ids=[...identities.keys()], sectionStudents=new Map();
-  for(let offset=0;offset<ids.length;offset+=100){
+  if(!identityOnly)for(let offset=0;offset<ids.length;offset+=100){
     const chunk=ids.slice(offset,offset+100);
     const docs=await db.getAll(...chunk.map(id=>db.doc("students/"+id)));
     docs.forEach((doc,index)=>{
