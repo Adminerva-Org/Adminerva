@@ -47,7 +47,7 @@ function missingOriginalMaximum(task){
 }
 function validMaximum(value){
  const n=Number(value);
- return Number.isFinite(n)&&n>0&&n<=2000?n:null;
+ return Number.isFinite(n)&&n>0&&n<=10000?n:null;
 }
 function verifiedOriginalMaximum(task,gradeRows,assessmentId,eligibleIds){
  if(!missingOriginalMaximum(task)){
