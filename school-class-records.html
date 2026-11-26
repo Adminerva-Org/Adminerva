@@ -76,16 +76,16 @@
   </section>
   <section class="cro-panel" aria-labelledby="cro-legacy-heading">
     <h2 id="cro-legacy-heading" class="text-lg font-extrabold">Historical assessment custody</h2>
-    <p class="text-sm text-slate-600 mt-1 max-w-3xl">Recover Repository Management assessments held by a legacy administrator. This approves an assigned Primary Teacher's class-scoped access; it never changes the original owner, submissions, scores, or audits.</p>
+    <p class="text-sm text-slate-600 mt-1 max-w-3xl">Recover original Repository Management grades for a current class.</p>
     <form id="cro-legacy-form" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-4">
       <label class="block text-sm font-bold">Original assessment ID
         <input id="cro-legacy-id" class="cro-input mt-1" required maxlength="128" autocomplete="off" placeholder="Firestore assessment document ID">
       </label>
-      <label class="block text-sm font-bold">Official course offering
+      <label class="block text-sm font-bold">Destination class (V4)
         <select id="cro-legacy-offering" class="cro-input mt-1" required><option value="">Choose an offering…</option></select>
       </label>
-      <label class="block text-sm font-bold">Original deployed section
-        <input id="cro-legacy-section" class="cro-input mt-1" required maxlength="160" placeholder="e.g. St. Carlo Acutis">
+      <label class="block text-sm font-bold">Original deployed section (if recorded)
+        <input id="cro-legacy-section" class="cro-input mt-1" maxlength="160" placeholder="Leave blank for sectionless assessments">
       </label>
       <div class="sm:col-span-2 xl:col-span-3 flex flex-wrap gap-2">
         <button id="cro-legacy-preview" type="submit" class="cro-btn">Verify historical identities</button>
@@ -127,7 +127,7 @@
 <script src="js/core/adminerva-loader.js?v=7fe6ab08fd82"></script>
 <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
-<script type="module" src="js/school-admin/class-record-oversight.mjs?v=20261126-legacy-custody1"></script>
+<script type="module" src="js/school-admin/class-record-oversight.mjs?v=20261126-sectionless-custody"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
