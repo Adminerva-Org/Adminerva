@@ -69,7 +69,7 @@ async function externalAcademicAction({db,ctx,input,requireMembership,student}){
     }else if(input.action==="review_external_academic_record"){
       if(!prior)deny("not-found","External academic record not found.");
       const next=String(input.state||""),transitions={recorded:["verified","archived"],verified:["recorded","archived"],archived:["recorded"]};
-      if(!transitions[prior.state]?.includes(next))deny("failed-precondition","The external record cannot move to that state.");
+      if(!Object.hasOwn(transitions,prior.state)||!transitions[prior.state].includes(next))deny("failed-precondition","The external record cannot move to that state.");
       if(next==="verified"&&input.confirmSourceReviewed!==true)deny("invalid-argument","Confirm that an authentic previous-school source was reviewed.");
       update={state:next,reviewReason:reason,verifiedAt:next==="verified"?now:null,verifiedByUid:next==="verified"?ctx.uid:null};
       action="external_academic_record_"+next;
