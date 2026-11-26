@@ -65,7 +65,13 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
         if(reason.length<20||reason.length>500)
           deny("invalid-argument","Explain the historical custody revocation (20–500 characters).");
         await db.runTransaction(async tx=>{
-          const [grant,original]=await Promise.all([tx.get(grantRef),tx.get(originalRef)]);
+          const [grant,original,approver]=await Promise.all([
+            tx.get(grantRef),tx.get(originalRef),tx.get(db.doc(prefix+"memberships/"+ctx.uid))
+          ]);
+          if(!approver.exists||approver.data().schoolId!==ctx.schoolId||
+             approver.data().status!=="active"||
+             !approver.data().roles?.includes("school_admin"))
+            deny("permission-denied","A current active School Administrator must authorize custody changes.");
           if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
             grant.data().assessmentId!==assessmentId||grant.data().offeringId!==offeringId||
             grant.data().status!=="active")
@@ -148,11 +154,16 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       if(input.confirmTitle!==preview.originalTitle)
         deny("failed-precondition","Confirm the exact original assessment title before delegating custody.");
       await db.runTransaction(async tx=>{
-        const [current,task,classRecord,appointment,member]=await Promise.all([
+        const [current,task,classRecord,appointment,member,approver]=await Promise.all([
           tx.get(grantRef),tx.get(originalRef),tx.get(offeringRef),
           tx.get(db.doc(prefix+"staff_assignments/"+rowKey(teacherUid,offeringId))),
-          tx.get(db.doc(prefix+"memberships/"+teacherUid))
+          tx.get(db.doc(prefix+"memberships/"+teacherUid)),
+          tx.get(db.doc(prefix+"memberships/"+ctx.uid))
         ]);
+        if(!approver.exists||approver.data().schoolId!==ctx.schoolId||
+           approver.data().status!=="active"||
+           !approver.data().roles?.includes("school_admin"))
+          deny("permission-denied","A current active School Administrator must authorize custody changes.");
         if(current.exists&&current.data().status==="active")
           deny("already-exists","This legacy source is already verified for this offering.");
         if(!task.exists||!historicalCustodianRecord(task.data())||
