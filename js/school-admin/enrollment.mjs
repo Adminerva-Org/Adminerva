@@ -12,7 +12,7 @@ const progressionTypeLabel=value=>({
 })[value]||"Progression";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
-const requestedPersonId=(()=>{try{
+let requestedPersonId=(()=>{try{
   const value=new URL(location.href).searchParams.get("personId")||"";
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)?value:"";
 }catch{return "";}})();
@@ -21,6 +21,17 @@ let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],o
   registrationChange=null,legacyCleanup=null,progressionChange=null,cohortPreview=null;
 const requestVersions={catalog:0,applications:0,registrations:0};
 let refreshVersion=0,progressionPreviewRun=0,historyRun=0,cohortRun=0;
+let activeEnrollmentView="registrations";
+const enrollmentViews={registrations:["en-registrations","en-legacy-reconciliation-card","en-admin-tools"],applications:["en-applications"],register:["en-register"],progression:["en-progression"],activation:["en-activation"]};
+function showEnrollmentView(view){
+  if(!Object.hasOwn(enrollmentViews,view))return;
+  activeEnrollmentView=view;
+  for(const [key,ids] of Object.entries(enrollmentViews))for(const id of ids){
+    get(id).hidden=key!==view||(id==="en-admin-tools"&&!picker?.scope.current?.roles.includes("school_admin"));
+  }
+  for(const control of document.querySelectorAll("[data-en-view]"))control.setAttribute("aria-pressed",String(control.dataset.enView===view));
+}
+for(const control of document.querySelectorAll("[data-en-view]"))control.addEventListener("click",()=>showEnrollmentView(control.dataset.enView));
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -221,9 +232,11 @@ function renderRegistrations(){
         ?"ended · "+endTypeLabel(item.endReasonType).toLowerCase()
         :(item.status||"active");actions.append(badge);
     const identityLink=document.createElement("a");identityLink.className="en-btn secondary";identityLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
-    identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+"#people";actions.append(identityLink);
+    const schoolQuery="&schoolId="+encodeURIComponent(picker.scope.current.schoolId);
+    identityLink.textContent="Identity & access";identityLink.href="people-access.html?personId="+encodeURIComponent(item.personId)+schoolQuery+"#people";
+    if(picker.scope.current.roles.includes("school_admin"))actions.append(identityLink);
     const recordsLink=document.createElement("a");recordsLink.className="en-btn secondary";recordsLink.style.cssText="display:inline-flex;align-items:center;text-decoration:none";
-    recordsLink.textContent="201 file";recordsLink.href="school-student-records.html?personId="+encodeURIComponent(item.personId);actions.append(recordsLink);
+    recordsLink.textContent="201 file";recordsLink.href="school-student-records.html?personId="+encodeURIComponent(item.personId)+schoolQuery;actions.append(recordsLink);
     const historyButton=document.createElement("button");historyButton.type="button";historyButton.className="en-btn secondary";historyButton.textContent="History";
     historyButton.addEventListener("click",()=>void openStudentHistory(item));actions.append(historyButton);
     if(item.status==="active"){
@@ -888,6 +901,7 @@ function loadApplicationIntoForm(item){
   get("en-clear-application").hidden=false;
   refreshPlacement();
   draftDirty=false;
+  showEnrollmentView("register");
   form.scrollIntoView({behavior:"smooth",block:"start"});
   form.elements.displayName.focus();
 }
@@ -925,6 +939,7 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
       renderRegistrations();
       status.textContent=person.displayName+" already has an active official registration"+(section?" · "+section:"")+
         ". Use the Current registrations controls to correct or end that placement.";
+      showEnrollmentView("registrations");
       if(scroll)get("en-registration-list").scrollIntoView({behavior:"smooth",block:"start"});
       return false;
     }
@@ -948,6 +963,7 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
         ?person.displayName+" has active older class enrollments tied to registration history. Review is required before account recovery."
         :person.displayName+" has "+legacyItem.courseCount+" active pre-canonical class enrollment"+
           (legacyItem.courseCount===1?"":"s")+". Reconcile them below before account recovery.";
+      showEnrollmentView("registrations");
       if(scroll)get("en-legacy-reconciliation-card").scrollIntoView({behavior:"smooth",block:"start"});
       return false;
     }
@@ -975,6 +991,7 @@ async function loadStudentCandidate(personId,{scroll=true}={}){
     status.textContent=person.activationReady
       ?person.displayName+" loaded from the school directory. Their sign-in identity is already protected; confirm the student email only if the selected grade requires it."
       :person.displayName+" loaded from the school directory. Complete the required contact and placement fields.";
+    showEnrollmentView("register");
     if(scroll){
       form.scrollIntoView({behavior:"smooth",block:"start"});
       (form.elements.birthDate.value?form.elements.yearId:form.elements.birthDate).focus();
@@ -1047,8 +1064,10 @@ async function refreshAll(){
   if(version!==refreshVersion)return;
   const unavailable=["Online applications","Current registrations"].filter((_,index)=>outcomes[index].status==="rejected");
   status.textContent=unavailable.length?unavailable.join(" and ")+" could not refresh. Available results remain usable; use Refresh to retry.":"";
-  if(requestedPersonId&&!loadedApplication&&!loadedPerson&&version===refreshVersion)
-    await loadStudentCandidate(requestedPersonId);
+  if(requestedPersonId&&!loadedApplication&&!loadedPerson&&version===refreshVersion){
+    const personId=requestedPersonId;requestedPersonId="";
+    await loadStudentCandidate(personId);
+  }
 }
 let activation="";
 function renderActivation(schoolId){
@@ -1124,6 +1143,7 @@ form.addEventListener("submit",event=>{
           :(result.accountLinked?"student account already linked.":"student account ready for email activation."));
       clearLoadedApplication({resetIdentity:true});
       form.elements.studentNumber.value="";
+      showEnrollmentView("registrations");
       const message=status.textContent;
       const refreshes=await Promise.allSettled([loadApplications(),loadRegistrations()]);
       if(refreshes.some(item=>item.status==="rejected"))status.textContent=message+" Some lists could not refresh; use Refresh.";
@@ -1140,7 +1160,7 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(saving)throw new Error("Finish the current enrollment before switching schools.");
     if(!discardDraft())throw new Error("Keep the current school open to finish the unsaved enrollment.");
-    ++refreshVersion;
+    ++refreshVersion;requestedPersonId="";activeEnrollmentView="registrations";
     for(const source of Object.keys(requestVersions))++requestVersions[source];
     loadedApplication=null;loadedPerson=null;registrationChange=null;progressionChange=null;cohortPreview=null;draftDirty=false;registrations=[];
     ++progressionPreviewRun;++historyRun;++cohortRun;
@@ -1166,7 +1186,7 @@ picker=createTenantSchoolPicker({
         :"Compatibility enrollment: contact your School Administrator for placement.";
       return;
     }
-    get("en-admin-tools").hidden=!current.roles.includes("school_admin");
+    showEnrollmentView(activeEnrollmentView);
     renderActivation(current.schoolId);workspace.hidden=false;
     void refreshAll().catch(error=>{status.textContent=error?.message||"Enrollment data could not be loaded.";});
   }
