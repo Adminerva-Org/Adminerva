@@ -297,3 +297,27 @@ test("historical GitHub bulk publication cannot publish a stale checkpoint or al
  assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,1,
    "only the original private draft may be audited, never a stale publication");
 });
+
+
+test("incompatible historical evidence does not interrupt another learner's grading",async()=>{
+ const f=fixture();
+ const old="older-student",oldId=old+"_"+taskId;
+ f.map.set("assessment_evidence/"+oldId,{studentId:old,assessmentId:taskId,section:"Grade 12 ICT",repository:"https://github.com/learner/older"});
+ f.map.set("student_grades/"+oldId,{studentId:old,taskId,section:"Grade 12 ICT",score:31,maxScore:40,published:true});
+ const result=await f.service(f.request("legacy_github_inbox"));
+ const row=result.evidence.find(row=>row.studentId===old);
+ assert.equal(row.evidenceException,true);assert.equal(row.hasSubmission,false);
+ assert.equal(row.gradeStatus,"published");assert.equal(row.awarded,31);
+ assert.equal(result.coverage.evidenceExceptions,1);
+ assert.equal((await f.service(f.request("legacy_github_save_draft",f.gradeArgs))).awarded,35);
+ assert.equal(f.map.get("student_grades/"+oldId).score,31);
+});
+test("alternate original grade IDs cannot silently produce duplicate grades",async()=>{
+ const f=fixture();
+ f.map.set("student_grades/old-grade-key",{studentId,taskId,section:"Grade 12 ICT",score:32,maxScore:40,published:false});
+ const result=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(result.evidence[0].gradeException,true);
+ assert.equal(result.evidence[0].hasSubmission,false);
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",f.gradeArgs)),error=>error.code==="failed-precondition");
+ assert.equal(f.writes.length,0);
+});
