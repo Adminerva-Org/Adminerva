@@ -146,7 +146,7 @@ test("sectionless original assessment projects only independently approved exact
  assert.equal(mapping.sectionProof,"assessment_student_identity");
  const columns=[{kind:"assessment",assessmentSource:"legacy_historical",columnId:"mp1",
    taskId:assessmentId,historicalMapping:mapping,maxPoints:20}];
- const roster=[{personId:"p1",legacyStudentIds:["legacy-one"]},{personId:"p3",legacyStudentIds:["legacy-three"]}];
+ const roster=[{personId:"p1",authUid:"auth1",legacyStudentIds:["legacy-one"]},{personId:"p3",authUid:"auth3",legacyStudentIds:["legacy-three"]}];
  const saved=new Map([
    ["assessments/"+assessmentId,source],
    [prefix+"legacy_assessment_custody/"+custodyId(assessmentId,offeringId),scoped],
