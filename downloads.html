@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="assets/adminerva-touch-icon-180.png" sizes="180x180">
 <link rel="stylesheet" href="css/adminerva-ui.css?v=7fe6ab08fd82">
 <link rel="stylesheet" href="css/public-shell.css?v=7fe6ab08fd82">
-<link rel="stylesheet" href="css/downloads.css?v=20261123-1">
+<link rel="stylesheet" href="css/downloads.css?v=20261126-native-preview-1">
 </head>
 <body class="av-downloads-body">
 <div id="adminerva-public-nav" data-page="downloads"></div>
@@ -27,7 +27,7 @@
       <a href="index.html" class="downloads-button downloads-button-primary">Open Adminerva on the web <span aria-hidden="true">↗</span></a>
       <a href="#platforms" class="downloads-button downloads-button-ghost">Choose your device</a>
     </div>
-    <p class="downloads-hero-note"><span class="downloads-status-dot" aria-hidden="true"></span> Web access available now. Native installers have not been released.</p>
+    <p class="downloads-hero-note"><span class="downloads-status-dot" aria-hidden="true"></span> Web access is live. Developer preview installers are available for Windows, macOS and Android; official apps are not released.</p>
   </div>
   <div class="downloads-hero-art" aria-hidden="true">
     <div class="downloads-art-orbit"></div>
@@ -39,35 +39,36 @@
 
 <section class="downloads-section" id="platforms" aria-labelledby="platforms-title">
   <div class="downloads-section-heading">
-    <div><p class="downloads-section-kicker">CHOOSE YOUR PLATFORM</p><h2 id="platforms-title">Find your way into Adminerva.</h2></div>
-    <p>Every option leads to the same Adminerva account and school workspace, subject to your verified school access.</p>
+    <div><p class="downloads-section-kicker">CHOOSE YOUR PLATFORM</p><h2 id="platforms-title">Choose your device.</h2></div>
+    <p>Test builds are public-only and unsigned. School accounts, Studio exams and Companion are not enabled.</p>
   </div>
   <div class="downloads-platform-grid">
     <article class="downloads-platform" id="windows" data-platform="windows" aria-labelledby="windows-title">
       <div class="downloads-platform-top"><span class="downloads-platform-icon" aria-hidden="true">W</span><span class="downloads-availability">Desktop app in development</span></div>
       <h3 id="windows-title">Windows</h3>
-      <p>A dedicated desktop workspace for school operations, Studio and future native examination features.</p>
-      <div class="downloads-platform-bottom"><p>Official Windows installer: <strong>Not available yet</strong></p><a href="#web-install">Use the web version instead <span aria-hidden="true">↗</span></a></div>
+      <p>Try the desktop window and public guest tools. School sign-in and Studio exams are not enabled.</p>
+      <div class="downloads-platform-bottom"><a class="downloads-preview-link" href="https://github.com/Adminerva-Org/Adminerva/actions/workflows/native-public-preview-builds.yml" target="_blank" rel="noopener noreferrer" aria-label="View Windows development preview installer artifacts on GitHub Actions">Get Windows test build <span aria-hidden="true">↗</span></a><p class="downloads-preview-note">Unsigned · public-only · for testers</p><p>Official Windows installer: <strong>Not available yet</strong></p></div>
     </article>
     <article class="downloads-platform" id="macos" data-platform="macos" aria-labelledby="macos-title">
       <div class="downloads-platform-top"><span class="downloads-platform-icon" aria-hidden="true">Mac</span><span class="downloads-availability">Desktop app in development</span></div>
       <h3 id="macos-title">macOS</h3>
-      <p>Planned native desktop experience for Mac, including school workflows and authorized device integrations.</p>
-      <div class="downloads-platform-bottom"><p>Official macOS installer: <strong>Not available yet</strong></p><a href="#web-install">Use the web version instead <span aria-hidden="true">↗</span></a></div>
+      <p>Try the public Mac window and navigation. School sign-in and native device access are not enabled.</p>
+      <div class="downloads-platform-bottom"><a class="downloads-preview-link" href="https://github.com/Adminerva-Org/Adminerva/actions/workflows/native-public-preview-builds.yml" target="_blank" rel="noopener noreferrer" aria-label="View macOS development preview installer artifacts on GitHub Actions">Get macOS test build <span aria-hidden="true">↗</span></a><p class="downloads-preview-note">Unsigned · public-only · for testers</p><p>Official macOS installer: <strong>Not available yet</strong></p></div>
     </article>
     <article class="downloads-platform" id="android" data-platform="android" aria-labelledby="android-title">
       <div class="downloads-platform-top"><span class="downloads-platform-icon" aria-hidden="true">A</span><span class="downloads-availability">Mobile app in development</span></div>
       <h3 id="android-title">Android</h3>
-      <p>Student and staff tools, notifications and school services tailored for mobile devices.</p>
-      <div class="downloads-platform-bottom"><p>Google Play / APK release: <strong>Not available yet</strong></p><a href="#web-install">Use the web version instead <span aria-hidden="true">↗</span></a></div>
+      <p>Try a public-only Android preview on your own test device. School sign-in and assessments are not enabled.</p>
+      <div class="downloads-platform-bottom"><a class="downloads-preview-link" href="https://github.com/Adminerva-Org/Adminerva/actions/workflows/native-public-preview-builds.yml" target="_blank" rel="noopener noreferrer" aria-label="View Android development preview installer artifacts on GitHub Actions">Get Android test build <span aria-hidden="true">↗</span></a><p class="downloads-preview-note">Unsigned · public-only · for testers</p><p>Google Play / APK release: <strong>Not available yet</strong></p></div>
     </article>
     <article class="downloads-platform" id="ios" data-platform="ios" aria-labelledby="ios-title">
       <div class="downloads-platform-top"><span class="downloads-platform-icon" aria-hidden="true">iOS</span><span class="downloads-availability">Mobile app in development</span></div>
       <h3 id="ios-title">iPhone &amp; iPad</h3>
       <p>A mobile Adminerva experience designed for iOS and iPadOS classroom and school services.</p>
-      <div class="downloads-platform-bottom"><p>App Store release: <strong>Not available yet</strong></p><a href="#web-install">Use the web version instead <span aria-hidden="true">↗</span></a></div>
+      <div class="downloads-platform-bottom"><p>iOS test installation requires Apple signing / TestFlight.</p><p>App Store release: <strong>Not available yet</strong></p><a href="#web-install">Use the web version <span aria-hidden="true">↗</span></a></div>
     </article>
   </div>
+  <div class="downloads-preview-guide" role="note"><strong>Installing a test build?</strong> Open the GitHub Actions build, select a successful run, then download the Windows, macOS or Android ZIP under <strong>Artifacts</strong>. Extract the installer. GitHub sign-in may be required. These builds expire after seven days and are not approved for real student work.</div>
 </section>
 
 <section class="downloads-live" id="web-install" aria-labelledby="web-install-title">
@@ -107,6 +108,7 @@
   <details><summary>Do I need an account to visit this page?</summary><p>No. This page is public. School records, assessments and staff tools still require the appropriate verified Adminerva account.</p></details>
   <details><summary>Can I download a Windows, Mac, Android or iOS app today?</summary><p>Not yet. Official native builds and store listings will be linked here only after they are published and verified. The web version remains available now.</p></details>
   <details><summary>Will installing the website enable examination monitoring?</summary><p>No. Web installation alone does not provide desktop application inspection. Any future exam-monitoring feature requires a separately enabled school policy, the relevant permissions and a visible notice.</p></details>
+  <details><summary>Will the native app update itself?</summary><p>Not yet. The unsigned developer previews can check the official version listing but cannot install updates automatically. Windows and macOS production apps will use verified, signed in-app updates; Android and iPhone/iPad releases will update through their approved stores. No update may interrupt an active examination or unconfirmed Studio cloud save. Do not uninstall Android previews simply to switch builds, because signing keys can differ and local data could be lost.</p></details>
   <details><summary>Will my saved work move between devices?</summary><p>Use your verified school account and Adminerva's supported cloud-save workflows. Device-only drafts or unsynchronized work do not automatically appear on other devices.</p></details>
 </section>
 </main>

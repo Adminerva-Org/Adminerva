@@ -263,9 +263,14 @@ async function load(){
 
 const custodyForm=el("cro-legacy-form"),custodyOffering=el("cro-legacy-offering");
 const custodyStatus=el("cro-legacy-result"),custodyApproval=el("cro-legacy-approval");
-let verifiedCustody=null,custodyBusy=false;
+let verifiedCustody=null,custodyBusy=false,multiRecovery=null;
+const custodyMatches=el("cro-legacy-matches");
+let custodyGeneration=0;
 function resetCustody(){
-  verifiedCustody=null;custodyApproval.hidden=true;custodyStatus.textContent="";
+  ++custodyGeneration;verifiedCustody=null;multiRecovery=null;custodyApproval.hidden=true;custodyStatus.textContent="";
+  custodyMatches.replaceChildren();custodyMatches.hidden=true;
+  el("cro-legacy-approve").hidden=false;el("cro-legacy-revoke").hidden=false;
+  el("cro-legacy-approve-many").hidden=true;
   el("cro-legacy-title").value="";el("cro-legacy-reason").value="";
 }
 function showCustodyOfferings(){
@@ -286,9 +291,107 @@ function custodyFields(){
 }
 function setCustodyBusy(value){
   custodyBusy=value;
-  for(const id of ["cro-legacy-preview","cro-legacy-approve","cro-legacy-revoke"])
+  for(const id of ["cro-legacy-id","cro-legacy-offering","cro-legacy-section","cro-legacy-title","cro-legacy-reason","cro-legacy-find-classes","cro-legacy-preview","cro-legacy-approve","cro-legacy-revoke","cro-legacy-approve-many"])
     el(id).disabled=value;
+  for(const input of custodyMatches.querySelectorAll("input[type=checkbox]"))input.disabled=value;
+  if(!value&&multiRecovery)syncMultiApproval();
+  if(!value&&verifiedCustody&&!verifiedCustody.eligible)el("cro-legacy-approve").disabled=true;
 }
+function recoveryStatus(row){
+  return ({already_approved:"Already recovered",existing_custody_review_required:"Existing custody requires review",overlapping_class_rosters:"Overlapping student identities",
+    original_section_review_required:"Choose the original section manually",maximum_reconciliation_required:"Score maximum unresolved",
+    identity_reconciliation_required:"Insufficient verified identities",original_submission_or_grade_not_found:"No original source records",
+    verification_required:row.message||"Verification required",ready_for_school_admin_approval:"Ready to recover",
+    active:"Recovered",failed:row.message||"Approval failed"})[row.status]||row.status||"Review required";
+}
+function selectedRecoveryClasses(){
+  const selected=new Set([...custodyMatches.querySelectorAll("input:checked")].map(input=>input.value));
+  return (multiRecovery?.candidates||[]).filter(row=>row.eligible&&selected.has(row.offeringId));
+}
+function syncMultiApproval(){
+  const count=selectedRecoveryClasses().length,button=el("cro-legacy-approve-many");
+  button.textContent="Approve selected classes ("+count+")";
+  button.disabled=custodyBusy||count===0;
+}
+function renderRecoveryClasses(result){
+  custodyMatches.replaceChildren();custodyMatches.hidden=false;
+  for(const row of result.candidates){
+    const item=node("div","rounded-lg border border-slate-200 p-3 flex flex-wrap items-center gap-3");
+    if(row.eligible){
+      const checkbox=node("input","w-5 h-5 shrink-0");
+      checkbox.type="checkbox";checkbox.value=row.offeringId;
+      checkbox.setAttribute("aria-label","Recover "+row.sectionName);
+      checkbox.addEventListener("change",syncMultiApproval);item.append(checkbox);
+    }
+    const details=node("div","min-w-0 flex-1");
+    details.append(node("p","font-bold",row.sectionName),
+      node("p","text-sm text-slate-600",recoveryStatus(row)+
+        (row.rosterCount!=null?" · "+row.verifiedStudentCount+"/"+row.rosterCount+" matched · "+row.originalSourceRecordCount+" source identities":"")));
+    item.append(details);
+    if(row.status==="active"||row.status==="already_approved"){
+      const link=node("a","cro-btn","Class Record");
+      link.href="class-record.html?"+new URLSearchParams({offering:row.offeringId}).toString();item.append(link);
+      const review=node("a","cro-btn","Review & Grade");
+      review.href="school-gradebook.html?"+new URLSearchParams({view:"review",task:"legacy:"+result.assessmentId+"@"+row.offeringId,offeringId:row.offeringId}).toString();item.append(review);
+    }else if(row.status==="original_section_review_required"){
+      const button=node("button","cro-btn","Verify manually");button.type="button";
+      button.addEventListener("click",()=>{
+        if(![...custodyOffering.options].some(option=>option.value===row.offeringId))
+          custodyOffering.add(new Option(row.sectionName,row.offeringId));
+        custodyOffering.value=row.offeringId;resetCustody();el("cro-legacy-section").focus();
+      });item.append(button);
+    }
+    custodyMatches.append(item);
+  }
+  syncMultiApproval();
+}
+el("cro-legacy-find-classes").addEventListener("click",()=>void(async()=>{
+  if(custodyBusy)return;
+  if(!custodyForm.reportValidity())return;
+  resetCustody();const generation=custodyGeneration;setCustodyBusy(true);
+  custodyStatus.textContent="Matching original records to classes…";
+  try{
+    const result=await scoped("discover_legacy_custody_classes",custodyFields());
+    if(generation!==custodyGeneration)return;
+    multiRecovery=result;
+    custodyStatus.textContent=(result.originalTitle||"Historical assessment")+" · "+result.candidates.filter(row=>row.eligible).length+" of "+result.candidates.length+" classes ready. Select classes to recover.";
+    renderRecoveryClasses(result);
+    custodyApproval.hidden=!result.candidates.some(row=>row.eligible);
+    el("cro-legacy-approve").hidden=true;el("cro-legacy-revoke").hidden=true;el("cro-legacy-approve-many").hidden=false;
+  }catch(error){if(generation===custodyGeneration)custodyStatus.textContent=error?.message||"Matching classes could not be loaded.";}
+  finally{setCustodyBusy(false);}
+})());
+el("cro-legacy-approve-many").addEventListener("click",()=>void(async()=>{
+  if(custodyBusy||!multiRecovery)return;
+  const selected=selectedRecoveryClasses(),source=multiRecovery,reason=el("cro-legacy-reason").value.trim(),
+    confirmTitle=el("cro-legacy-title").value.trim();
+  if(!selected.length)return;
+  if(confirmTitle!==source.originalTitle||reason.length<30){
+    custodyStatus.textContent="Confirm the original title and enter the administrator reason (at least 30 characters).";return;
+  }
+  const generation=custodyGeneration,lease=picker.scope.lease();
+  setCustodyBusy(true);let approved=0,failed=0;
+  try{
+    for(const row of selected){
+      if(generation!==custodyGeneration)return;
+      picker.scope.assertLease(lease);
+      custodyStatus.textContent="Recovering "+row.sectionName+" ("+(approved+failed+1)+"/"+selected.length+")…";
+      try{
+        await scoped("approve_legacy_custody",{assessmentId:source.assessmentId,offeringId:row.offeringId,
+          originalSection:row.originalSection,confirmTitle,reason});
+        if(generation!==custodyGeneration)return;
+        row.status="active";row.eligible=false;approved++;
+      }catch(error){
+        if(generation!==custodyGeneration)return;
+        picker.scope.assertLease(lease);
+        row.status="failed";row.message=error?.message||"Approval failed";row.eligible=false;failed++;
+      }
+    }
+    custodyStatus.textContent=approved+" class(es) recovered · "+failed+" failed. Run matching again to retry or reconcile.";
+    renderRecoveryClasses(source);custodyApproval.hidden=!source.candidates.some(row=>row.eligible);
+  }catch(error){if(generation===custodyGeneration)custodyStatus.textContent=error?.message||"Recovery stopped; check existing approvals.";}
+  finally{setCustodyBusy(false);}
+})());
 custodyForm.addEventListener("submit",event=>void (async()=>{
   event.preventDefault();
   if(custodyBusy)return;
@@ -298,11 +401,12 @@ custodyForm.addEventListener("submit",event=>void (async()=>{
     const result=await scoped("preview_legacy_custody",custodyFields());
     verifiedCustody=result;custodyApproval.hidden=false;
     custodyStatus.textContent=(result.originalTitle||"Historical assessment")+" · "+
-      result.originalSection+" · "+result.verifiedStudentCount+" / "+result.rosterCount+
+      (result.originalSection||"No original section — matched by assessment student IDs")+" · "+result.verifiedStudentCount+" / "+result.rosterCount+
       " student identities verified (minimum "+result.requiredStudentCount+"). "+
       result.originalSourceRecordCount+" original submitted-evidence or grade record(s) matched. "+
+      (result.originalMaxScore!=null?"Maximum "+result.originalMaxScore+(result.maximumProof==="consistent_original_grade_maxima"?" (verified from saved grades). ":" (original assessment). "):"Maximum score unresolved. ")+
       (result.eligible?"Ready for School Administrator approval.":
-        "Not eligible: reconcile the class identities and confirm the original assessment has real submissions or grades.");
+        result.status==="maximum_reconciliation_required"?"Not eligible: reconcile original maximum scores.":"Not eligible: reconcile the class identities and confirm the original assessment has real submissions or grades.");
     el("cro-legacy-approve").disabled=!result.eligible;
   }catch(error){custodyStatus.textContent=error?.message||"Historical source could not be verified.";}
   finally{setCustodyBusy(false);if(verifiedCustody&&!verifiedCustody.eligible)
