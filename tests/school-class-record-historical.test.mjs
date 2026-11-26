@@ -4,7 +4,7 @@ import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {HISTORICAL_SOURCE,historicalSubjectMatches,historicalSections,historicalMapping,verifiedHistoricalSectionMapping,mappingMatches,projectedGrade,
   resolveHistoricalRoster,historicalPublishedGrades}=require("../functions/school-class-record-historical.js");
-const {cleanColumns,matchesAssessmentTitle,canDiscloseAssessmentSource,legacyRepositoryDeploymentSections,legacyRepositoryMetadataCandidate}=require("../functions/school-class-record.js");
+const {cleanColumns,matchesAssessmentTitle,canDiscloseAssessmentSource,legacyRepositoryDeploymentSections,legacyRepositoryMetadataCandidate,exactAssessmentSearchId,exactCustodyCandidate}=require("../functions/school-class-record.js");
 const schoolId="mcs-manila",offeringId="offering-q3",ownerUid="teacher1";
 const offering={schoolId,yearId:"year",termId:"q3",sectionId:"section",subjectId:"subject"};
 const labels={yearName:"2026-2027",termName:"Quarter 3",sectionName:"Section A",subjectName:"Computer Programming"};
@@ -355,4 +355,30 @@ test("legacy migration accepts saved historical numeric grades without changing 
   records.set("student_grades/old_student_legacy-task",{...privateRow,published:true});
   const published=await historicalPublishedGrades({...input,acceptSavedLegacy:true});
   assert.equal(published[0].legacyAccepted,undefined);
+});
+
+
+test("exact assessment ID lookup preserves Firestore case and rejects path injection",()=>{
+  assert.equal(exactAssessmentSearchId("AbCdEfGhIjKlMnOpQrSt"),"AbCdEfGhIjKlMnOpQrSt");
+  assert.equal(exactAssessmentSearchId("id: Legacy-MP1"),"Legacy-MP1");
+  assert.equal(exactAssessmentSearchId("Q3 Mini PETA 1"),"");
+  assert.throws(()=>exactAssessmentSearchId("id: ../assessments"));
+  assert.throws(()=>exactAssessmentSearchId("id: __private__"));
+});
+test("exact custody discovery requires verified class cohort and original grade evidence",async()=>{
+  const assessmentId="AbCdEfGhIjKlMnOpQrSt",schoolId="mcs-manila";
+  const task={ownerUid:"legacy-admin",ownershipBasis:"legacy-administrator-custody-not-original-author",
+    title:"Original UI/XML",schemaVersion:2,maxScore:20,deployments:[{section:"St. Philip"}]};
+  const identities=new Map([["s1","p1"],["s2","p2"]]);
+  const records=[{taskId:assessmentId,studentId:"s1",score:0}];
+  const db={doc:path=>path,getAll:async(...paths)=>paths.map(()=>({exists:true,data:()=>({section:"St. Philip"})})),
+    collection:name=>({where:()=>({limit:()=>({get:async()=>({size:name==="student_grades"?records.length:0,
+      docs:name==="student_grades"?records.map(row=>({data:()=>row})):[]})})})})};
+  const opts={db,schoolId,assessmentId,task,identities,rosterSize:6};
+  assert.equal((await exactCustodyCandidate(opts)).assessmentId,assessmentId);
+  assert.equal(await exactCustodyCandidate({...opts,rosterSize:9}),null);
+  assert.equal(await exactCustodyCandidate({...opts,schoolId:"other-school"}),null);
+  assert.equal(await exactCustodyCandidate({...opts,task:{...task,ownershipBasis:""}}),null);
+  records.length=0;
+  assert.equal(await exactCustodyCandidate(opts),null);
 });
