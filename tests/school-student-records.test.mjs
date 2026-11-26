@@ -99,3 +99,17 @@ test("primary guardian selection is resolved inside the same transaction",()=>{
   assert.match(service,/tx\.get\(db\.collection\(root\+"guardian_relationships"\)\.where\("studentPersonId","==",personId\)\.limit\(51\)\)/);
   assert.match(enrollment,/const guardianRelationships=await tx\.get\(db\.collection\(root\+"guardian_relationships"\)/);
 });
+
+
+test("Student directory uses bounded school-local cursor pages without a whole-school ceiling",()=>{
+  const block=service.slice(service.indexOf('if(input.action==="search_students")'),service.indexOf('if(input.action==="student_file")'));
+  assert.match(block,/db\.collection\(root\+"people"\)/);
+  assert.match(block,/orderBy\(FieldPath\.documentId\(\)\)/);
+  assert.match(block,/startAfter\(cursor\)/);
+  assert.match(block,/row\.schoolId!==ctx\.schoolId/);
+  assert.match(block,/nextCursor,truncated:Boolean\(nextCursor\)/);
+  assert.doesNotMatch(block,/limit\(251\)/);
+  assert.match(recordsUi,/directoryCursor=result\.nextCursor\|\|null/);
+  assert.match(recordsUi,/Search more records/);
+  assert.match(recordsHtml,/id="sr-more"/);
+});
