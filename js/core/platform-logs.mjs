@@ -107,6 +107,11 @@ function renderInspector(){
   const top=make("div","pl-inspector-event");
   top.append(flag(row.severity),make("strong","",diagnosticActionLabel(row.action)),make("span","",labelFor(ownerUid)+" · "+time(row.at)));
   host.append(top);
+  const shortcuts=make("div","pl-inspector-shortcuts");
+  for(const [label,query] of [["Find operation",row.operationId],["Find session",row.sessionId],["Find page instance",row.context?.pageInstanceId]])if(query){
+    const button=make("button","pl-inspect-button",label);button.type="button";button.title="Search loaded records only";button.addEventListener("click",()=>{$("pl-event-search").value=query;$("pl-event-search").dispatchEvent(new Event("input"));});shortcuts.append(button);
+  }
+  if(shortcuts.childElementCount)host.append(shortcuts);
   const data=make("dl","pl-inspector-fields");
   for(const [key,value] of [
     ["Page",row.route],["Module",row.module],["Phase",row.phase],["State",row.state],
@@ -140,13 +145,14 @@ function renderInspector(){
 function contextFields(record){
   const c=record.context;if(!c)return [];
   const active=Array.isArray(c.active)?c.active:[];
-  return [["Control",c.control],["Tracked process",c.process],["Parent operation (client)",c.parentOperationId],["Client time (unverified)",Number.isSafeInteger(c.clientAt)?time(c.clientAt):""],
-    ["Rejection reason",c.reasonCode],["Project category",c.projectCategory],["Recovery",c.recovery],["Device backup (client)",c.deviceBackup],["Retry",c.retryState],["Save stage",c.saveStage?humanize(c.saveStage):""],["Scheduled retry count at start",c.retryAttempt],["Save-lock wait observations",c.waitingRequests],["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
+  return [["Control",c.control],["Tracked process",c.process],["Parent operation (client)",c.parentOperationId],["Page instance (client)",c.pageInstanceId],["Client time (unverified)",Number.isSafeInteger(c.clientAt)?time(c.clientAt):""],
+    ["Rejection reason",c.reasonCode],["Project category",c.projectCategory],["Recovery",c.recovery],["Device backup (client)",c.deviceBackup],["Retry",c.retryState],["Save stage",c.saveStage?humanize(c.saveStage):""],["Scheduled retry count at start",c.retryAttempt],["Save-lock wait observations",c.waitingRequests],["Peer save marker (client)",c.peerMarker==="confirmed"?"Pending cleared (not proof of cloud confirmation)":c.peerMarker],["Local save at peer change",c.localSaveState],["Transaction callback attempts",record.provenance==="server_confirmed"?c.transactionAttempts:null],["Transaction duration (ms)",record.provenance==="server_confirmed"?c.transactionMs:null],["Transaction outcome",record.provenance==="server_confirmed"?c.transactionOutcome:null],["Page state",[c.visibility,c.network,c.focus,c.ready,c.dialog==="open"?"dialog open":"",c.busy].filter(Boolean).join(" · ")],
     ["Elapsed (ms)",c.elapsedMs],["Tracked active processes",Array.isArray(c.active)?active.length+(c.overflow||0):null],
     ["Overlap (same tracked operation)",active.some((p,i)=>active.slice(0,i).some(q=>q.name===p.name))?"Observed; not proof of a duplicate write":""],
     ...active.map(p=>["Active "+p.name,p.id+" · "+p.ageMs+" ms"])];
 }
 function diagnosticActionLabel(action){
+  if(action==="studio_peer_marker_changed")return "Peer save-marker change observed";
   if(action==="process_progress")return "Save state changed";
   if(action==="process_prolonged")return "Prolonged process observed";
   if(action==="api_succeeded")return "Backend callable returned";
@@ -286,7 +292,7 @@ function eventRow(record,ownerUid,overview){
     record.route?"Page: "+record.route:"",
     record.context?.control?"Control: "+record.context.control:"",
     record.context?.process?"Process: "+record.context.process:"",
-    record.context?.reasonCode||"",record.context?.saveStage?humanize(record.context.saveStage):"",
+    record.context?.reasonCode||"",record.context?.saveStage?humanize(record.context.saveStage):"",record.context?.peerMarker?"Peer marker changed":"",record.context?.transactionAttempts>1?"Transaction callback ×"+record.context.transactionAttempts:"",
     record.source?"Source: "+record.source:"",
     record.provenance?"Evidence: "+(record.provenance==="server_confirmed"?"Server-confirmed":"Client-observed"):""
   ].filter(Boolean);
@@ -367,7 +373,7 @@ function renderEvents(){
   const search=$("pl-event-search").value.trim().toLocaleLowerCase();
   const filtered=rows.filter(row=>(state.view==="global"?(level!=="unknown"||severity(row.severity)==="unknown"):(!level||severity(row.severity)===level)&&(!module||row.module===module))&&
     (!search||[row.ownerUid,state.selectedUid,row.action,row.errorCode,row.fingerprint,
-      row.traceId,row.service,row.sessionId,row.module,row.route,row.operationId,row.context?.control,row.context?.process,row.context?.reasonCode,row.context?.saveStage,row.context?.parentOperationId,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search))));
+      row.traceId,row.service,row.sessionId,row.module,row.route,row.operationId,row.context?.control,row.context?.process,row.context?.reasonCode,row.context?.saveStage,row.context?.peerMarker,row.context?.localSaveState,row.context?.pageInstanceId,row.context?.transactionOutcome,row.context?.parentOperationId,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search))));
   if(state.view==="live"){
     $("pl-audit-wrap").hidden=true;$("pl-impact").hidden=true;
     renderLive();return;
@@ -746,7 +752,7 @@ function liveMatches(row){
   return (!level||severity(row.severity)===level)&&(!module||row.module===module)&&
     (!search||[row.ownerUid,labelFor(row.ownerUid),row.action,row.module,
       row.errorCode,row.service,row.traceId,row.operationId,row.sessionId,
-      row.fingerprint,row.route,row.context?.control,row.context?.process,row.context?.reasonCode,row.context?.saveStage,row.context?.parentOperationId,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search)));
+      row.fingerprint,row.route,row.context?.control,row.context?.process,row.context?.reasonCode,row.context?.saveStage,row.context?.peerMarker,row.context?.localSaveState,row.context?.pageInstanceId,row.context?.transactionOutcome,row.context?.parentOperationId,...(row.context?.active||[]).flatMap(p=>[p.id,p.name])].some(value=>String(value||"").toLowerCase().includes(search)));
 }
 function liveLine(row){
   const line=make("div","pl-live-line");
@@ -765,7 +771,7 @@ function liveLine(row){
   const title=make("div","pl-line-title");title.append(make("span","pl-live-action",diagnosticActionLabel(row.action)),inspectButton(row,row.ownerUid));content.append(title);
   const descriptors=[row.module||"other",row.phase||row.state||"observed",
     row.source||"",row.provenance==="server_confirmed"?"server-confirmed":"client-observed",
-    row.route||"",row.context?.control||"",row.context?.process||"",row.context?.reasonCode||"",row.context?.saveStage?humanize(row.context.saveStage):"",row.service||"",row.errorCode?"error: "+row.errorCode:"",
+    row.route||"",row.context?.control||"",row.context?.process||"",row.context?.reasonCode||"",row.context?.saveStage?humanize(row.context.saveStage):"",row.context?.peerMarker?"Peer marker changed":"",row.context?.transactionAttempts>1?"Transaction callback ×"+row.context.transactionAttempts:"",row.service||"",row.errorCode?"error: "+row.errorCode:"",
     Number.isInteger(row.durationMs)?row.durationMs+"ms":Number.isInteger(row.context?.elapsedMs)?row.context.elapsedMs+"ms":"",
     row.context?.active?.length?"active: "+(row.context.active.length+(row.context.overflow||0)):""].filter(Boolean);
   content.append(make("div","pl-live-meta",descriptors.join(" · ")));
@@ -963,6 +969,12 @@ async function loadDirectory(user,epoch){
 }
 $("pl-clear-filters").addEventListener("click",clearInvestigationFilters);
 $("pl-inspector-close").addEventListener("click",()=>closeInspector({restoreFocus:true}));
+for(const [id,property] of [["pl-directory-width","--pl-directory-width"],["pl-inspector-width","--pl-inspector-width"]]){
+  const input=$(id);input.addEventListener("input",()=>{
+    const value=Math.max(Number(input.min),Math.min(Number(input.max),Number(input.value)));
+    if(Number.isFinite(value))$("pl-workspace").style.setProperty(property,value+"px");
+  });
+}
 $("pl-reason").addEventListener("input",()=>{
   $("pl-access-summary").textContent="Reason changed · next read audited";
   if(state.live.running&&!state.live.paused)toggleLive();
