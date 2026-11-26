@@ -582,7 +582,7 @@ export function createV4BulkEvaluationController({
       const github=next?.submissionSource==="github";
       const gradeable=github?["submitted","approved","reviewed"].includes(row.status):
         ["submitted","reviewed"].includes(row.status);
-      return {...row,gradeStatus,bulkReady:gradeable&&
+      return {...row,gradeStatus,bulkReady:next?.historicalRubricMode!=="scalar_manual"&&gradeable&&
         (!github||((row.selectedCount||0)>0&&
           (!next?.legacyCompatibility||row.hasSubmission===true)))};
     });
