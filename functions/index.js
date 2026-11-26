@@ -44,7 +44,13 @@ async function rejectPlatformPreviewMutation(request,{allowPlatformSchoolWrites=
   throw new HttpsError("failed-precondition",
     "System Admin role preview is temporary. This school change was not saved. Choose Assist school for real, audited administrative changes.");
 }
-const DIAGNOSTIC_WRITE_ACTION=/^(?:save|sync|submit|finalize|create|update|upsert|deploy|grant|retire|suspend|restore|withdraw|close|open|mark|assign|publish|enable|disable|accept|approve|reconcile|enroll|grade|record|complete|finish|remove|archive|activate|register|revoke|reset|release|set|bulk|handover|end|mute|unmute|request)(?:$|[_A-Z-])/i;
+const DIAGNOSTIC_WRITE_ACTION=/^(?:save|sync|submit|finalize|create|update|upsert|deploy|grant|retire|suspend|restore|withdraw|close|open|mark|assign|publish|enable|disable|accept|approve|reconcile|enroll|grade|record|complete|finish|remove|archive|activate|register|revoke|reset)(?:$|[_A-Z-])/i;
+const ADDITIONAL_DIAGNOSTIC_WRITES={
+  schoolClassRecord:new Set(["release_final_grade"]),
+  schoolAcademics:new Set(["set_primary_teacher","set_section_adviser","end_section_adviser","set_offering_roster_mode","review_student_section_placement","end_student_section_placement","bulk_enroll_students","bulk_assign_teachers","handover_offering","end_teacher_assignment","end_enrollment"]),
+  schoolClassroomStream:new Set(["mute_student","unmute_student"]),
+  schoolGithubEvidence:new Set(["request_revision"])
+};
 function safeCallable(handler,options={}){return async request=>{
   const startedAt=Date.now();
   let transactionObservation;
@@ -57,7 +63,7 @@ function safeCallable(handler,options={}){return async request=>{
   }
   if(options.diagnosticsService==="schoolStudioProjects")domainRequest={...domainRequest,observeStudioTransaction:value=>{transactionObservation=value;}};
   const result=await handler(domainRequest);
-  if(options.diagnosticsService&&(DIAGNOSTIC_WRITE_ACTION.test(String(request?.data?.action||""))||(options.diagnosticsService==="schoolStudioProjects"&&request?.data?.action==="get"&&clientCorrelation(request,options.diagnosticsService).operationId))){
+  if(options.diagnosticsService&&(DIAGNOSTIC_WRITE_ACTION.test(String(request?.data?.action||""))||ADDITIONAL_DIAGNOSTIC_WRITES[options.diagnosticsService]?.has(request?.data?.action)||(options.diagnosticsService==="schoolStudioProjects"&&request?.data?.action==="get"&&clientCorrelation(request,options.diagnosticsService).operationId))){
     // Diagnostics are best-effort and never block an academic save, assessment,
     // identity change or financial transaction.
     // This write is an operational side effect AFTER the canonical mutation.
