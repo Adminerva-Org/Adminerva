@@ -8,6 +8,7 @@ const descriptor=Object.freeze({
  shellVersion:"0.1.0",
  capabilities:Object.freeze([]),
  consumeSignInToken:()=>ipcRenderer.invoke("adminerva:consume-signin-token"),
- confirmSignIn:()=>ipcRenderer.invoke("adminerva:confirm-signin")
+ confirmSignIn:()=>ipcRenderer.invoke("adminerva:confirm-signin"),
+ reportSignedOut:()=>ipcRenderer.invoke("adminerva:session-ended")
 });
 contextBridge.exposeInMainWorld("adminervaClient",descriptor);

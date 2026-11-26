@@ -35,6 +35,12 @@ The native process refuses a second pairing while a private school workspace is 
 
 Use native Android and iOS shells with reviewed bundled web assets and one authorized school backend. Do not ship Capacitor production apps pointing `server.url` at an arbitrary remote website. Native access must be capability-scoped, consented, and subject to OS authorization; do not promise unrestricted iOS app or browser inspection. Native sign-in uses approved system-browser or native provider flows and verified redirect/deep-link bindings. Protect device-only drafts, ownership and source evidence across app updates, OS eviction and account switches.
 
+## Shared-computer session and save boundary
+
+The Electron development branch detects native window context before Firebase Auth initialization and selects session-only Firebase credential persistence. Its existing persistent Chromium partition may still retain **per-user device recovery drafts**, but a signed-in Firebase session is not intended to outlive the desktop window. Explicit sign-out is a revoke-only, official-origin/main-frame IPC action: it clears desktop private-navigation state and navigates to the public homepage, removing the previous learner's rendered account data. This does not authorize access to any school record.
+
+The canonical Studio project controller captures the exact in-memory editor snapshot before leaving. It intercepts normal sign-out and browser/window unload while cloud pending writes, in-flight writes or in-memory-only drafts remain. Cloud save must confirm before signing out; no native menu can bypass the teacher-controlled exam close or declare a pending save complete. This guard requires browser/real-device testing for crash recovery and for all other sign-out paths; it is not an unconditional guarantee against operating-system termination.
+
 ## Exam, offline and release invariants
 
 - Studio exams continue to use canonical class offering, enrollment, teacher-controlled epoch, cloud autosave, final-save grace, immutable close receipt, teacher review and frozen grade evidence. No native shell may bypass them.

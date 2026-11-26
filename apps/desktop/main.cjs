@@ -23,6 +23,14 @@ let tokenConsumedForBootstrap=false;
 function currentWindow(sender){
  return activeWindow&&!activeWindow.isDestroyed()&&sender===activeWindow.webContents;
 }
+function officialRenderer(event){
+ if(!DEV_SIGNIN||!currentWindow(event.sender)||
+    event.senderFrame!==event.sender.mainFrame)return false;
+ try{
+  const address=new URL(event.sender.getURL());
+  return address.origin===APP_ORIGIN&&address.pathname.startsWith(APP_PREFIX);
+ }catch{return false;}
+}
 function currentBootstrap(sender){
  return currentWindow(sender)&&activeWindow.webContents.getURL()===LOGIN_BOOTSTRAP;
 }
@@ -40,6 +48,25 @@ ipcMain.handle("adminerva:confirm-signin",event=>{
  tokenConsumedForBootstrap=false;
  allowPrivate=true;
  return true;
+});
+ipcMain.handle("adminerva:session-ended",event=>{
+ // This is a revoke-only message. The renderer cannot request native login,
+ // credentials, role elevation, capture, or access to another school.
+ if(!officialRenderer(event))return false;
+ const hadSession=allowPrivate;
+ allowPrivate=false;
+ tokenConsumedForBootstrap=false;
+ pendingToken=null;
+ ++pairingSequence;
+ const pairing=pendingPairing;
+ pendingPairing=null;
+ if(pairing)void sendHandoff("cancel",pairing).catch(()=>{});
+ if(hadSession&&activeWindow&&!activeWindow.isDestroyed()){
+  // Clear the previous student's sensitive workspace after Firebase signs out.
+  // The associated cloud-save sign-out guard runs before signOut(auth).
+  void activeWindow.loadURL(START_URL).catch(()=>{});
+ }
+ return hadSession;
 });
 function launchExternalIfAllowed(target){
  const decision=classifyNavigation(target,{allowPrivate});

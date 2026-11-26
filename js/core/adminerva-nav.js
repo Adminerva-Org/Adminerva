@@ -432,18 +432,30 @@ document.addEventListener("DOMContentLoaded", () => {
     if (event.defaultPrevented) return;
     const button = event.target.closest("#signOutBtn");
     if (!button) return;
-    event.preventDefault(); button.textContent = "Signing out…"; button.disabled = true;
+    event.preventDefault();
+    // Avoid a second signOut() from the document-level legacy auth guard.
+    event.stopPropagation();
+    // Studio can synchronously cancel sign-out until its exact project
+    // snapshot has a confirmed cloud revision; retry after cloud confirmation.
+    if(!window.dispatchEvent(new CustomEvent("adminerva:before-signout",{cancelable:true}))){
+      button.textContent="Cloud save pending · retry sign out";
+      button.title="Keep this workspace open until Studio confirms the cloud save.";
+      button.disabled=false;
+      return;
+    }
+    button.textContent = "Signing out…"; button.disabled = true;
     try {
-      const [{ getAuth, signOut }] = await Promise.all([
-        import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
-        import("./connection-cache.mjs?v=1.3.0").then(module => module.clearConnectionPreferences())
-      ]);
+      const { getAuth, signOut }=await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js");
       try{const push=await import("./push-notifications.mjs?v=1.4.1");await push.departPushAccount();}catch{}
       await signOut(getAuth());
-    } catch (error) { console.warn("Sign out background process skipped or failed.", error); }
-    finally {
-      try { for (const key of ["Adminerva_Role", "Adminerva_Mock_Role", "Adminerva_Impersonate"]) localStorage.removeItem(key); } catch { /* Continue to login if storage is disabled. */ }
+      try{const cache=await import("./connection-cache.mjs?v=1.3.0");cache.clearConnectionPreferences();}catch{}
+      try { for (const key of ["Adminerva_Role", "Adminerva_Mock_Role", "Adminerva_Impersonate"]) localStorage.removeItem(key); } catch { /* Account is already signed out. */ }
       window.location.href = "login.html";
+    } catch (error) {
+      console.warn("Sign out failed; preserving the current school session.", error);
+      button.textContent="Retry sign out";
+      button.title="Sign-out did not complete. Retry before leaving this computer.";
+      button.disabled=false;
     }
   });
 });

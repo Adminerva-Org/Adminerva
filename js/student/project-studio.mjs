@@ -207,7 +207,8 @@ export function createProjectStudio({
     saveState,
     captureClosingState,
     flushCloudSaves,
-    hasPendingCloudSaves:()=>cloudEnabled&&cloudPending.size>0,
+    hasPendingCloudSaves:()=>cloudEnabled&&
+      (cloudPending.size>0||cloudWrites.size>0||unbackedProjectIds.size>0),
     recordRun,
     updateConfig,
     refreshEvidence:()=>renderEvidence(),
@@ -696,6 +697,31 @@ export function createProjectStudio({
       void flushCloudSaves();
     });
     document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"){if(activeProject)try{flushDesignDraft();saveState(captureState());}catch{}void flushCloudSaves();}});
+    // Capture the current editor snapshot before logout or navigation. An
+    // unconfirmed school-cloud write is never equivalent to "Saved to cloud".
+    const preserveBeforeLeave=()=>{
+      if(!activeProject)return;
+      try{flushDesignDraft();saveState(captureState());}
+      catch(error){
+        unbackedProjectIds.add(activeProject.id);
+        console.warn("Studio snapshot not backed up before leaving.",error);
+      }
+    };
+    const unconfirmed=()=>cloudEnabled&&
+      (cloudPending.size>0||cloudWrites.size>0||unbackedProjectIds.size>0);
+    window.addEventListener("adminerva:before-signout",event=>{
+      preserveBeforeLeave();
+      if(!unconfirmed())return;
+      event.preventDefault();
+      setCloudStatus("Cloud save pending · wait for confirmation before signing out","error",activeProject?.id);
+      void flushCloudSaves();
+    });
+    window.addEventListener("beforeunload",event=>{
+      preserveBeforeLeave();
+      if(!unconfirmed())return;
+      event.preventDefault();
+      event.returnValue="";
+    });
     document.addEventListener("keydown",event=>{
       if(event.key!=="Escape")return;
       if(!el("projectSettingsModal")?.classList.contains("hidden"))el("projectSettingsModal")?.classList.add("hidden");
