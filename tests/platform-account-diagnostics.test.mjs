@@ -193,3 +193,9 @@ test("bounded context accepts known controls and process snapshots only",async()
   assert.deepEqual(response.events[0].context,ctx);
   await assert.rejects(api(request(USER,{action:"list",targetUid:USER,reason:"Investigating overlapping save operations"})),/Platform Administrator/);
 });
+
+test("fixed Studio callable lifecycle names are accepted; unknown processes are rejected",()=>{
+ const e=event({kind:"action",action:"process_started",state:"info",operationId:SESSION,phase:"started",context:{process:"studio_api_submit",active:[{name:"studio_api_submit",id:SESSION,ageMs:0}]}});
+ assert.equal(checkedEvent(e).context.process,"studio_api_submit");
+ assert.throws(()=>checkedEvent({...e,context:{process:"arbitrary"}}),/Unknown diagnostic/);
+});
