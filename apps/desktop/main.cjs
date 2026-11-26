@@ -113,7 +113,8 @@ ipcMain.handle("adminerva:session-ended",event=>{
   // recovery drafts in the student's own partition for their next sign-in.
   const oldWindow=activeWindow;
   createWindow();
-  oldWindow.close(); // honors the renderer's existing beforeunload protection
+  oldWindow.hide(); // immediately conceal the prior learner's private UI
+  oldWindow.close(); // preserve beforeunload protection for pending drafts
  }
  return hadSession;
 });
@@ -174,7 +175,10 @@ async function startDesktopSignIn(){
     // No other student can inherit that namespace through the guest preview.
     const previousWindow=activeWindow;
     createWindow({accountUid:response.uid,initialUrl:LOGIN_BOOTSTRAP});
-    if(previousWindow&&!previousWindow.isDestroyed())previousWindow.close();
+    if(previousWindow&&!previousWindow.isDestroyed()){
+     previousWindow.hide();
+     previousWindow.close();
+    }
     return;
    }
    if(response.state==="expired"||response.state==="unavailable")break;

@@ -27,10 +27,11 @@ async function bootDesktop(){
   once(name,handler){events.set(name,handler);}
  }
  class FakeWindow{
-  constructor(options){this.options=options;this.webContents=new FakeWebContents();this._closed=false;this.handlers=new Map();windows.push(this);}
+  constructor(options){this.options=options;this.webContents=new FakeWebContents();this._closed=false;this._hidden=false;this.handlers=new Map();windows.push(this);}
   on(name,handler){this.handlers.set(name,handler);events.set("window:"+name,handler);}
   async loadURL(url){this.webContents.url=url;}
-  show(){}
+  show(){this._hidden=false;}
+  hide(){this._hidden=true;}
   close(){this._closed=true;this.handlers.get("closed")?.();}
   isDestroyed(){return this._closed;}
   static getAllWindows(){return windows;}
@@ -130,6 +131,7 @@ test("sign-out revokes private desktop navigation and clears the prior learner's
  assert.equal(guest.webContents.url,"https://adminerva-org.github.io/Adminerva/guest-home.html");
  assert.equal(guest.options.webPreferences.partition,"persist:adminerva-public-preview");
  assert.equal(h.win.isDestroyed(),true);
+ assert.equal(h.win._hidden,true);
  assert.equal(await ended(h.top),false,"replayed sign-out is harmless");
 });
 
