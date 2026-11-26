@@ -6,7 +6,7 @@
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {checkId,rowKey}=require("./school-academics.js");
 const {resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
-const {custodyRef,originalSections,normalized,historicalCustodianRecord}=require("./school-legacy-custody.js");
+const {custodyRef,originalSections,normalized,historicalCustodianRecord,custodySourceDigest}=require("./school-legacy-custody.js");
 const {FieldValue}=require("firebase-admin/firestore");
 const {schemeMatchesOffering,schemeSpecificity}=require("./school-class-record.js");
 
@@ -160,6 +160,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
            String(task.data().title||"")!==preview.originalTitle||
            String(task.data().ownerUid||"")!==preview.originalOwnerUid||
            String(task.data().subject||"")!==preview.originalSubject||
+           custodySourceDigest(task.data())!==custodySourceDigest(data)||
            Number(task.data().maxScore)!==maximum||
            !originalSections(task.data()).some(x=>normalized(x)===normalized(section))||
            !classRecord.exists||classRecord.data().schoolId!==ctx.schoolId||
@@ -172,7 +173,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
         tx.set(grantRef,{schoolId:ctx.schoolId,assessmentId,offeringId,teacherUid,
           originalOwnerUid:preview.originalOwnerUid,originalTitle:preview.originalTitle,
           originalSubject:preview.originalSubject,originalSection:section,
-          originalMaxScore:maximum,verifiedLegacyStudentIds:[...new Set(validStudentIds)].sort(),
+          originalMaxScore:maximum,sourceDigest:custodySourceDigest(data),
+          verifiedLegacyStudentIds:[...new Set(validStudentIds)].sort(),
           verifiedPersonCount:verifiedPeople.size,rosterCount:roster.length,
           status:"active",reviewReason:reason,reviewedBySchoolAdminUid:ctx.uid,
           reviewedAt:FieldValue.serverTimestamp(),revision:Number(current.data()?.revision||0)+1});
