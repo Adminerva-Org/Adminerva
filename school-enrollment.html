@@ -262,7 +262,7 @@
         <section id="en-reports" class="en-card" hidden>
           <div class="flex flex-wrap gap-2 justify-between items-start"><h2 class="text-lg font-extrabold">Registrar summary</h2><div class="flex gap-2"><button id="en-report-load" type="button" class="en-btn">Generate</button><button id="en-report-export" type="button" class="en-btn secondary" disabled>Export CSV</button></div></div>
           <div class="grid sm:grid-cols-2 gap-2 mt-3"><label class="text-sm font-bold">Academic year<select id="en-report-year" class="en-input mt-1"></select></label><label class="text-sm font-bold">Registration period<select id="en-report-term" class="en-input mt-1"></select></label></div>
-          <p id="en-report-status" class="en-muted mt-3" aria-live="polite"></p><div id="en-report-results" class="grid md:grid-cols-3 gap-3 mt-3"></div>
+          <p id="en-report-status" class="en-muted mt-3" aria-live="polite"></p><div id="en-report-results" class="grid md:grid-cols-3 gap-3 mt-3"></div><div id="en-report-headcount" class="mt-3 space-y-2" hidden></div>
         </section>
 
         <section id="en-admin-tools" class="en-card" hidden>
@@ -504,7 +504,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar13"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar14"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
