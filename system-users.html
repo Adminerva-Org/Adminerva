@@ -62,7 +62,7 @@
     </div>
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
       <p id="pu-status" class="text-sm text-slate-600" role="status" aria-live="polite">Checking System Administrator access…</p>
-      <button id="pu-refresh" class="pu-btn" type="button" disabled>Reload all accounts</button>
+      <div class="flex flex-wrap gap-2"><button id="pu-consent-open" class="pu-btn" type="button" disabled>Initialize prior consent</button><button id="pu-refresh" class="pu-btn" type="button" disabled>Reload all accounts</button></div>
     </div>
   </section>
 
@@ -78,6 +78,18 @@
     <div id="pu-list" class="divide-y divide-slate-100" aria-live="polite"></div>
   </section>
 </main>
+
+<dialog id="pu-consent-dialog" class="pu-dialog" aria-labelledby="pu-consent-title">
+  <div class="p-4 sm:p-5 bg-white max-h-[90dvh] overflow-auto space-y-3">
+    <div class="flex items-start justify-between gap-2"><h2 id="pu-consent-title" class="text-lg font-bold">Initialize existing student activity sharing</h2><button id="pu-consent-close" class="pu-btn" type="button">Close</button></div>
+    <p class="text-sm text-slate-600">Only previously obtained consent for the listed accounts. Existing choices, school access and research eligibility are unchanged.</p>
+    <label class="block text-sm font-semibold">Consented account emails or IDs<textarea id="pu-consent-accounts" class="pu-input mt-1" rows="5" placeholder="Paste the consented cohort, one per line" spellcheck="false"></textarea></label>
+    <button id="pu-consent-preview" class="pu-btn" type="button">Preview</button>
+    <div id="pu-consent-result" role="status" aria-live="polite"></div>
+    <label class="flex items-start gap-2 text-sm"><input id="pu-consent-confirm" type="checkbox" class="mt-1">I confirm consent was previously obtained for every eligible account in this preview.</label>
+    <button id="pu-consent-apply" class="pu-btn primary" type="button" disabled>Initialize eligible accounts</button>
+  </div>
+</dialog>
 
 <dialog id="pu-detail" class="pu-dialog" aria-labelledby="pu-detail-title">
   <div class="p-4 sm:p-5 bg-white max-h-[92dvh] overflow-auto">
@@ -197,6 +209,6 @@
 <script src="js/core/adminerva-loader.js?v=e13378684a40"></script>
 <script defer src="js/core/adminerva-nav.js?v=e13378684a40"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=e13378684a40"></script>
-<script type="module" src="js/core/platform-users.mjs?v=20261124-dedicated-logs-1"></script>
+<script type="module" src="js/core/platform-users.mjs?v=20261128-consent-import"></script>
 <script type="module" src="js/core/platform-admin-workflow.mjs?v=20261124-platform-logs-1"></script></body>
 </html>
