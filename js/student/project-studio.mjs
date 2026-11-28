@@ -459,9 +459,9 @@ export function createProjectStudio({
         const same=cloudPending.get(id)===snapshot;
         if(same){cloudPending.delete(id);unbackedProjectIds.delete(id);}
         if(same){clearTimeout(cloudRetryTimers.get(id));cloudRetryTimers.delete(id);cloudRetryAttempts.delete(id);}
-        // A close signal may arrive while an ordinary write is in flight.
-        // Only a confirmed final checkpoint clears its ordinary-save block.
-        const assessmentSaveBlock=closingSessionEpoch?null:readMarker(id).assessmentSaveBlock;
+        // A close signal may arrive while a write is in flight. A final
+        // receipt confirms this snapshot, not permission to resume editing.
+        const assessmentSaveBlock=closingSessionEpoch?"STUDIO_EXAM_CLOSED":readMarker(id).assessmentSaveBlock;
         writeMarker(id,{...marker,pending:!same,...(assessmentSaveBlock?{assessmentSaveBlock}:{})});
         progress(same?"cloud_confirmed":"newer_snapshot_pending");
         if(same){
