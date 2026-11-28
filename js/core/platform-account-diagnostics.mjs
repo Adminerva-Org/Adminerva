@@ -138,7 +138,7 @@ async function send(event,replay=false){
   if(!replay){if(event.kind==="error")failureEventsSent++;else eventsSent++;}
   if(navigator.onLine===false){queueDelayed(event);return;}
   for(let attempt=0;attempt<2;attempt++){
-    if(auth.currentUser?.uid!==uid||turn!==epoch)return;
+    if(!enabled||auth.currentUser?.uid!==uid||turn!==epoch)return;
     try{
       await record({action:"record",event});
       if(turn===epoch&&!flushing&&pending.length)void flushPending();
