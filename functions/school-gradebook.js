@@ -318,6 +318,9 @@ function createSchoolGradebookService({db}){
     const grade=await tx.get(gradeRef);
     if(grade.exists&&grade.data().gradeSchema==="legacy_scalar_v1")
      deny("failed-precondition","This imported historical grade has no saved rubric breakdown. Reconstruct the breakdown without changing its historical score before editing the draft.");
+    if(input.expectedGradeRevision!==undefined&&(!Number.isInteger(input.expectedGradeRevision)||input.expectedGradeRevision<0||
+       (grade.exists?Number(grade.data().revision||1):0)!==input.expectedGradeRevision))
+     deny("failed-precondition","Grade changed since review. Reload before saving.");
     if(input.expectedDraftRevision!==undefined&&(!Number.isInteger(input.expectedDraftRevision)||input.expectedDraftRevision<1||
        !grade.exists||grade.data().status!=="draft"||grade.data().revision!==input.expectedDraftRevision))
      deny("failed-precondition","The draft changed during re-evaluation. Reload before replacing it.");
@@ -480,6 +483,8 @@ function createSchoolGradebookService({db}){
     if(!grade.exists||grade.data().status!=="draft")
      deny("failed-precondition","Save and review an unpublished grade draft before publication.");
     const data=grade.data();
+    if(input.expectedGradeRevision!==undefined&&(!Number.isInteger(input.expectedGradeRevision)||data.revision!==input.expectedGradeRevision))
+     deny("failed-precondition","Grade changed since review. Reload before publishing.");
     if(!gradeable(submission))
      deny("failed-precondition","Student evidence is no longer in an approved grading state; refresh before publishing.");
     if(data.evidenceType!==source||data.submissionVersion!==submission.currentVersion||
@@ -507,7 +512,7 @@ function createSchoolGradebookService({db}){
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,studentUid,actorUid:ctx.uid,
       action:"grade_published",revision,createdAt:now});
-    result={taskId,studentUid,status:"published",awarded:data.awarded,total:data.total};
+    result={taskId,studentUid,status:"published",awarded:data.awarded,total:data.total,revision};
    });
    await writeSchoolNotification({
      db,schoolId:ctx.schoolId,uid:notificationUid,
