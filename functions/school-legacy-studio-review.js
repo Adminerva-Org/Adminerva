@@ -386,6 +386,10 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
            head.data().revision!==raw.head.revision||
            head.data().snapshotHash!==raw.head.snapshotHash)
           deny("failed-precondition","The learner submitted a newer revision. Reload before grading.");
+        if(input.expectedGradeRevision!==undefined&&(!Number.isInteger(input.expectedGradeRevision)||input.expectedGradeRevision<0||
+           (prior.exists?Number(prior.data().gradeVersion||1):0)!==input.expectedGradeRevision||
+           input.expectedSubmissionVersion!==raw.head.revision||input.expectedSnapshotHash!==raw.head.snapshotHash))
+          deny("failed-precondition","Grade or submitted evidence changed since review. Reload before saving.");
         if(input.expectedDraftRevision!==undefined&&(!Number.isInteger(input.expectedDraftRevision)||input.expectedDraftRevision<1||
            !prior.exists||prior.data().published===true||Number(prior.data().gradeVersion||1)!==input.expectedDraftRevision))
           deny("failed-precondition","The original draft changed during re-evaluation.");
