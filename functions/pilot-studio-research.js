@@ -50,12 +50,30 @@ function checkedEvent(value){
 
 function createPilotStudioResearchService({db,FieldValue,Timestamp,now=Date.now}){
   if(!db||!FieldValue||!Timestamp)throw Error("Pilot research requires Firestore dependencies.");
+  const designated=data=>data?.kind==="student"&&data?.status==="active";
+  async function ownPrivacy(request,input,action){
+    const owner=request?.auth?.uid;
+    if(request?.auth?.token?.email_verified!==true||typeof owner!=="string"||!owner||owner.includes("/"))deny("unauthenticated","Sign in with a verified account.");
+    if(Object.keys(input).some(key=>!(action==="privacy_status"?["action"]:["action","enabled"]).includes(key)))deny("invalid-argument","Choose your own research preference.");
+    const ref=db.doc("platform_test_accounts/"+owner);
+    if(action==="privacy_status"){
+      const data=(await ref.get()).data();return {designated:designated(data),enabled:designated(data)&&data.researchOptOut!==true};
+    }
+    if(typeof input.enabled!=="boolean")deny("invalid-argument","Choose a research preference.");
+    return db.runTransaction(async tx=>{
+      const current=(await tx.get(ref)).data();
+      if(!designated(current))deny("permission-denied","Only active designated test accounts can change this preference.");
+      // The preference does not grant, retire or change the test designation.
+      tx.set(ref,{...current,researchOptOut:!input.enabled,researchPreferenceUpdatedAt:FieldValue.serverTimestamp()});
+      return {designated:true,enabled:input.enabled};
+    });
+  }
   async function eligible(request,schoolId){
     const context=await getSchoolContext({db,request,schoolId,roles:["student"]});
     if(context.platformOverride||!context.roles.includes("student"))return {context,enabled:false};
     const designation=await db.doc("platform_test_accounts/"+context.uid).get();
     const data=designation.exists?designation.data():null;
-    return {context,enabled:data?.kind==="student"&&data?.status==="active"};
+    return {context,enabled:designated(data)&&data.researchOptOut!==true};
   }
   async function record(request){
     const input=request.data||{};
@@ -66,6 +84,8 @@ function createPilotStudioResearchService({db,FieldValue,Timestamp,now=Date.now}
       eventRef=db.doc(prefix+"pilot_research_events/"+context.uid+"_"+event.eventId),
       quotaRef=db.doc(prefix+"pilot_research_quotas/"+context.uid+"_"+day);
     return db.runTransaction(async tx=>{
+      const designation=(await tx.get(db.doc("platform_test_accounts/"+context.uid))).data();
+      if(!designated(designation)||designation.researchOptOut===true)deny("permission-denied","Pilot research is restricted to designated test accounts with collection enabled.");
       const existing=await tx.get(eventRef);
       if(existing.exists)return {recorded:true,duplicate:true};
       const quota=await tx.get(quotaRef),count=Number(quota.data()?.count)||0;
@@ -83,6 +103,7 @@ function createPilotStudioResearchService({db,FieldValue,Timestamp,now=Date.now}
   }
   return async request=>{
     const input=request.data||{},action=String(input.action||"status");
+    if(action==="privacy_status"||action==="set_research_collection")return ownPrivacy(request,input,action);
     if(action==="status"){
       const {enabled}=await eligible(request,input.schoolId);
       return {enabled,pilotOnly:true,consentPromptRequired:false};
