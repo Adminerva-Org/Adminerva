@@ -1144,7 +1144,7 @@ function createPeopleDirectoryService({db}) {
             throw new TenantAccessError("failed-precondition","Name or birth-date corrections without a stable activation identity require manual identity reconciliation. The guardian-derived admission key must not be changed implicitly.");
           if(identityChanges.studentNumber){
             const matches=await tx.get(base.where("studentNumber","==",identityChanges.studentNumber).limit(3));
-            if(matches.size===3||matches.docs.some(doc=>doc.id!==personId))throw new TenantAccessError("already-exists","This student number belongs to another directory record. Review the duplicate; do not reuse it.");
+            if(matches.size===3||matches.docs.some(doc=>doc.id!==personId&&!(doc.data().schoolId===ctx.schoolId&&doc.data().kind==="student"&&doc.data().status==="archived"&&!doc.data().authUid&&doc.data().mergedIntoPersonId===personId)))throw new TenantAccessError("already-exists","This student number belongs to another directory record. Review the duplicate; do not reuse it.");
           }
           const applications=await tx.get(db.collection("schools/"+ctx.schoolId+"/enrollment_applications").where("personId","==",personId).limit(101));
           if(applications.size===101||applications.docs.some(doc=>doc.data().schoolId!==ctx.schoolId||["submitted","needs_information","accepted"].includes(doc.data().status)))
