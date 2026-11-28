@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {buildV4RepositoryEvaluationSnapshot,buildHistoricalCheckpointEvaluationSnapshot} from "../js/repo-review/services/v4-repository-evidence.mjs";
+import {buildV4RepositoryEvaluationSnapshot,buildHistoricalCheckpointEvaluationSnapshot,classifyCommitAttribution} from "../js/repo-review/services/v4-repository-evidence.mjs";
 import {createGithubEvidenceClient} from "../js/repo-review/services/github-evidence-client.mjs";
 import {buildGeneralExternalEvaluationData,buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../js/assessment/general-external-evaluation.mjs";
 
@@ -139,4 +139,16 @@ test("pinned tree transport validates the exact commit and tree identity",async(
  const result=await client.listPinnedTree("student/example",checkpoint);
  assert.equal(result.complete,false);
  assert.deepEqual(requests,["/repos/student/example/git/commits/"+checkpoint,"/repos/student/example/git/trees/"+tree]);
+});
+
+test("GitHub attribution uses verified numeric provider identity only and is advisory",async()=>{
+ assert.equal(classifyCommitAttribution("123",{id:123}),"linked_account_match");
+ assert.equal(classifyCommitAttribution("123",{id:456}),"linked_account_differs");
+ assert.equal(classifyCommitAttribution("123",{login:"same-name"}),"unknown");
+ assert.equal(classifyCommitAttribution(null,{id:123}),"unknown");
+ const client=mockClient(),load=client.loadCommit;client.loadCommit=async(...args)=>({...await load(...args),author:{id:456}});
+ const evidence=await buildV4RepositoryEvaluationSnapshot({snapshot:{...frozen(),linkedGithubId:"123"},client});
+ assert.equal(evidence.commits[0].attribution,"linked_account_differs");
+ assert.match(evidence.limitations.join(" "),/Review suggested/);
+ assert.equal(evidence.analysis.complete,true);
 });

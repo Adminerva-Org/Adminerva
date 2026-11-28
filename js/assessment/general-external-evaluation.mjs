@@ -159,6 +159,7 @@ function compactEvidence(source,snapshot={}){
     selectedCommitShas:Array.isArray(snapshot.selectedCommitShas)?snapshot.selectedCommitShas.slice(0,100).map(value=>text(value,40)):[],
     commits:Array.isArray(snapshot.commits)?snapshot.commits.slice(0,40).map(commit=>({
       sha:text(commit?.sha,40),
+      attribution:["linked_account_match","linked_account_differs","unknown"].includes(commit?.attribution)?commit.attribution:"unknown",
       files:Array.isArray(commit?.files)?commit.files.slice(0,120).map(file=>({
         path:text(file?.path,500),
         status:text(file?.status,40),
@@ -234,8 +235,7 @@ export function buildGeneralExternalEvaluationData({task={},snapshot={},checking
         "Do not claim facts about linked external content unless the evaluator actually accessed it. The frozen URL/note alone may be insufficient for some criteria.":
         "Evaluate only the frozen content supplied in this package.",
       repositoryBoundary:assessment.submissionSource==="github"?
-        (evidence.checkpointOnly?"Evaluate only the submitted checkpoint source in its recorded scope. No selected contribution commits exist. Do not infer individual authorship or contribution from source quality. Treat contribution-specific criteria without supporting evidence as unresolved; static source does not prove execution or timing. Cite exact file paths and disclose omitted files.":
-        "Use selected SHA/path diffs for change-specific claims and the pinned checkpoint source for exact present code context. Neither Git authors nor a teacher-approved commit set independently prove individual authorship. Merge-only, missing-diff, omitted, or oversized evidence is not proof of an individual contribution. Static source does not prove compilation, execution or timing; disclose partial coverage. Identify supporting SHA/path references in rationales."):
+        "For selected-commit evidence, use selected SHA/path diffs for change-specific claims and pinned source for code context. For github_historical_checkpoint_source, inspect only the submitted source scope; there are no selected contribution commits. Do not infer individual authorship or contribution from source quality. Neither Git authors nor a teacher-approved commit set independently prove individual authorship. Treat unsupported contribution criteria as unresolved. Static source does not prove execution or timing; cite exact SHA/path evidence and disclose incomplete coverage.":
         "Not applicable."
     }
   };

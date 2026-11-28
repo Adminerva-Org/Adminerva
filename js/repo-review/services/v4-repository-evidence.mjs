@@ -14,6 +14,11 @@ const SOURCE_EXTENSIONS=new Set([
   "c","h","cpp","hpp","cs","go","rs","php","swift","sql","json","yaml","yml"
 ]);
 const SHA=/^[a-f0-9]{40}$/i;
+export function classifyCommitAttribution(linkedId,author){
+ const linked=String(linkedId||""),actual=String(author?.id||"");
+ if(!/^[1-9][0-9]{0,19}$/.test(linked)||!/^[1-9][0-9]{0,19}$/.test(actual))return "unknown";
+ return linked===actual?"linked_account_match":"linked_account_differs";
+}
 const MAX_COMMITS=20,MAX_CHANGED_FILES=100,MAX_SOURCE_PATHS=18;
 const fileExtension=path=>String(path||"").split("/").pop().split(".").pop().toLowerCase();
 const eligibleSourcePath=path=>SOURCE_EXTENSIONS.has(fileExtension(path))&&
@@ -123,7 +128,7 @@ export async function buildV4RepositoryEvaluationSnapshot({snapshot,client}={}){
         mergeContext,substance:classification.kind,substantive
       };
     });
-    commits.push({sha,files});
+    commits.push({sha,files,attribution:classifyCommitAttribution(snapshot.linkedGithubId,detail.author)});
   }
 
   const paths=[...candidatePaths].sort();
@@ -136,6 +141,9 @@ export async function buildV4RepositoryEvaluationSnapshot({snapshot,client}={}){
     limitations.push("Pinned source unavailable: "+omitted.path+" ("+omitted.reason+").");
   if(!paths.length)
     limitations.push("No supported changed source files were detected; manually inspect the repository before scoring.");
+  const differing=commits.filter(commit=>commit.attribution==="linked_account_differs").length;
+  const unknown=commits.filter(commit=>commit.attribution==="unknown").length;
+  if(differing||unknown)limitations.push(differing+" commit(s) use a different linked account; "+unknown+" have unknown attribution. Review suggested; neither status blocks grading.");
   limitations.push("Student-selected commit SHAs and GitHub authorship metadata do not independently prove individual authorship or push time.");
   limitations.push("Pinned files represent the inspected changed paths, not a complete independent test of repository behavior.");
 

@@ -196,7 +196,9 @@ function createSchoolGithubEvidenceService({db}){
     }
     const versionRef=evidenceRef.collection("versions").doc(String(version));
     const when=FieldValue.serverTimestamp();
-    const immutable={schoolId:ctx.schoolId,taskId,offeringId,studentUid:ctx.uid,personId,
+    const linkedIds=request.auth?.token?.firebase?.identities?.["github.com"];
+    const linkedGithubId=Array.isArray(linkedIds)&&linkedIds.length===1&&/^[1-9][0-9]{0,19}$/.test(String(linkedIds[0]))?String(linkedIds[0]):null;
+    const immutable={schoolId:ctx.schoolId,taskId,offeringId,studentUid:ctx.uid,personId,linkedGithubId,
       repository:repo,selectedCommitShas:selected,checkpointSha:checkpoint,
       evidenceDigest:digest,version,submittedAt:when};
     tx.create(versionRef,immutable);
@@ -285,7 +287,7 @@ function createSchoolGithubEvidenceService({db}){
    return {evidenceId:targetId,studentUid:data.studentUid,personId:data.personId,
     status:data.status,version:data.currentVersion,repository:data.repository,
     selectedCommitShas:data.selectedCommitShas,checkpointSha:data.checkpointSha,
-    evidenceDigest:data.evidenceDigest,verification:data.verification||null,
+    evidenceDigest:data.evidenceDigest,linkedGithubId:version.data().linkedGithubId||null,verification:data.verification||null,
     reopenReason:data.reopenReason||"",revisionDueAt:data.revisionDueAt?.toMillis?.()||null};
   }
 

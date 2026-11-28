@@ -35,3 +35,11 @@ test("the canonical review markup has unique persistent controls and separate di
  assert.doesNotMatch(html,/id="gbV4PageDescription"/);
  assert.match(html,/@media\(max-width:480px\)/);
 });
+
+test("all-assessment queue uses bounded school-scoped reads and direct learner handoffs",()=>{
+ const js=readFileSync("js/repo-review/v4-gradebook.mjs","utf8");
+ assert.match(js,/allTasks\.slice\(allOffset,allOffset\+4\)/);
+ assert.match(js,/token!==generation\|\|taskSelect\.value!==ALL_TASKS/);
+ assert.match(js,/pendingStudentDeepLink=row\.studentUid/);
+ assert.match(js,/bulkEvaluator\?\.hasUnsaved\(\)/);
+});
