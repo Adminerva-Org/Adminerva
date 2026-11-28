@@ -110,6 +110,7 @@
           <span id="gbV4ReviewPosition" class="text-xs text-slate-300"></span>
           <button id="gbV4Previous" type="button" class="rounded-lg border border-slate-600 px-2 py-2 text-sm" aria-label="Previous learner">Prev</button>
           <button id="gbV4Next" type="button" class="rounded-lg border border-slate-600 px-2 py-2 text-sm" aria-label="Next learner">Next</button>
+          <button id="gbV4ReloadReview" type="button" class="rounded-lg border border-slate-600 px-2 py-2 text-sm">Reload</button>
           <button id="gbV4Close" type="button" class="rounded-lg border border-slate-600 px-2 py-2 text-sm">Close</button>
         </div>
       </header>
@@ -239,7 +240,8 @@
         </div>
       </div>
       <footer class="shrink-0 border-t border-slate-200 bg-white p-2 sm:px-4 flex flex-wrap items-center justify-between gap-2">
-        <p id="gbV4ReviewStatus" class="text-xs sm:text-sm text-slate-600 flex-1 min-w-[100px] break-words" role="status" aria-live="polite"></p>
+        <div class="flex-1 min-w-[100px]"><span id="gbV4DirtyIndicator" class="text-xs font-bold text-amber-800" role="status" hidden>Unsaved changes</span>
+        <p id="gbV4ReviewStatus" class="text-xs sm:text-sm text-slate-600 flex-1 min-w-[100px] break-words" role="status" aria-live="polite"></p></div>
         <div class="flex flex-wrap gap-2"><button id="gbV4SaveDraft" type="button" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Save draft</button>
             <button id="gbV4Publish" type="button" class="rounded-lg border border-emerald-400 text-emerald-800 font-bold px-4 py-2.5">Publish grade</button><button id="gbV4NextUngraded" type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold">Next ungraded</button></div>
       </footer>
@@ -250,5 +252,5 @@
 <script src="js/core/adminerva-loader.js?v=e13378684a40"></script>
 <script defer src="js/core/adminerva-nav.js?v=e13378684a40"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=e13378684a40"></script>
-<script type="module" src="js/repo-review/v4-gradebook.mjs?v=20261128-review-queue"></script>
+<script type="module" src="js/repo-review/v4-gradebook.mjs?v=20261128-review-queue-safe"></script>
 </body></html>
