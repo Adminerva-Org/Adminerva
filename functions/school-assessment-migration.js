@@ -83,7 +83,7 @@ function createSchoolAssessmentMigrationService({db}){
     if(["list_legacy","list_legacy_deployments"].includes(input.action))return {items:[]};
     deny("failed-precondition","Historical assessment recovery is not available in V4-only schools.");
   }
-  if(/^legacy_review_(?:inbox|inspect|history|save_draft|publish|bulk_publish)$/.test(String(input.action||"")))
+  if(/^legacy_review_(?:inbox|inspect|history|save_draft|publish|bulk_publish|correct_published)$/.test(String(input.action||"")))
    return legacyStudioReview({ctx,input});
   if(/^legacy_github_(?:inbox|inspect|history|save_draft|publish|bulk_publish|correct_published)$/.test(String(input.action||"")))
    return legacyGithubReview({ctx,input});
