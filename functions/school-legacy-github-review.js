@@ -416,6 +416,17 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
    const checkpointOnly=recordId.startsWith("receipt:");
    const record=checkpointOnly?await verifiedCheckpoint(recordId):await verifiedRecord(recordId);
    const meta=record.meta,canonicalId=checkpointOnly?record.canonicalId:recordId;
+   if(input.action==="legacy_github_history"){
+     const grade=await gradeRef(canonicalId).get();
+     if(grade.exists){
+       checkGrade(grade.data(),meta.studentId);
+       if(!inScope(meta.studentId,grade.data().section||record.data.section))
+         deny("permission-denied","Grade history is outside the verified class.");
+     }
+     return require("./school-grade-revision-history.js").readLegacyGradeHistory({
+       db,schoolId:ctx.schoolId,taskId:id,studentId:meta.studentId,gradeId:canonicalId
+     });
+   }
    if(input.action==="legacy_github_inspect"){
      const [grade,privateTask]=await Promise.all([
        gradeRef(canonicalId).get(),db.doc("assessment_private/"+id).get()
