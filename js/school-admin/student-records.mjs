@@ -15,6 +15,7 @@ let picker=null,students=[],current=null,saving=false,searchRun=0,fileRun=0,
 let directoryCursor=null,directoryQuery="",directoryBusy=false;
 let fileView="registrations",historyBusy=false;
 let profileData=null,profileRun=0,profileDirty=false;
+let requestedQueueStatus=(()=>{try{const url=new URL(location.href),value=url.searchParams.get("status");return url.searchParams.get("view")==="requests"&&["requested","in_review","ready","released","cancelled","open","all"].includes(value)?value:"";}catch{return "";}})();
 let recordsMode="students",queueRows=[],queueCursor=null,queueRun=0,queueBusy=false,queueSkipped=0;
 
 function assistMode(){
@@ -144,11 +145,15 @@ function renderRegistrations(data){
     const row=document.createElement("article");row.className="sr-row";
     const info=document.createElement("div"),title=document.createElement("div");
     title.style.cssText="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap";
-    const state=record.progressionType?record.progressionType:record.status;
+    const state=record.status==="ended"?(record.endReasonType==="progression"?record.progressionType||"progression":record.endReasonType||"ended"):record.status;
     title.append(textNode("strong",recordLabel(record)),badge(state,record.status));
     const meta=[record.gradeLevel?(/^\d+$/.test(String(record.gradeLevel))?"Grade "+record.gradeLevel:record.gradeLevel):"",
       record.createdAt?"created "+fmt(record.createdAt):"",record.endedAt?"ended "+fmt(record.endedAt):""].filter(Boolean).join(" · ");
-    info.append(title,textNode("p",meta,"sr-muted"));row.append(info);host.append(row);
+    info.append(title,textNode("p",meta,"sr-muted"));row.append(info);
+    if(record.status==="active"&&picker.scope.current.enrollmentMode==="canonical"){
+      const link=document.createElement("a");link.className="sr-btn secondary";link.textContent="Transfer out";link.href="school-enrollment.html?schoolId="+encodeURIComponent(picker.scope.current.schoolId)+"&personId="+encodeURIComponent(data.person.personId)+"&registrationId="+encodeURIComponent(record.registrationId)+"&intent=transfer_out";row.append(link);
+    }
+    host.append(row);
   }
 }
 function renderGrades(data){
@@ -765,7 +770,7 @@ picker=createTenantSchoolPicker({
     if(externalDirty&&!confirm("Discard unsaved source record changes?"))throw new Error("Finish the source record edit before switching schools.");
     clearExternal();
     clearProfile();resetAcademic();closeCertificate();closeCertificateSettings();clearVerify();clearLrnLookup();
-    ++searchRun;++fileRun;requestedPersonId="";students=[];current=null;historyBusy=false;fileView="registrations";guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
+    ++searchRun;++fileRun;requestedPersonId="";requestedQueueStatus="";students=[];current=null;historyBusy=false;fileView="registrations";guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
     directoryCursor=null;directoryQuery="";directoryBusy=false;get("sr-more").hidden=true;get("sr-search-progress").textContent="";
     ++queueRun;queueRows=[];queueCursor=null;queueBusy=false;queueSkipped=0;recordsMode="students";get("sr-requests-workspace").hidden=true;get("sr-workspace-nav").hidden=true;get("sr-queue-list").replaceChildren();get("sr-queue-search").value="";get("sr-queue-filter").value="open";get("sr-queue-status").textContent="";
     setUrlPerson("");get("sr-search").value="";get("sr-student-list").replaceChildren();fileHost.hidden=true;get("sr-empty-file").hidden=false;get("sr-open-people").hidden=true;workspace.hidden=true;
@@ -777,8 +782,8 @@ picker=createTenantSchoolPicker({
       workspace.hidden=true;get("sr-workspace-nav").hidden=true;get("sr-requests-workspace").hidden=true;status.textContent="School Administrator or Registrar access is required for Student Records.";return;
     }
     get("sr-workspace-nav").hidden=false;get("sr-certificate-settings").hidden=!currentScope.roles.includes("school_admin")||currentScope.platformOverride===true;showRecordsMode("students");status.textContent="Select a student.";
-    const personId=requestedPersonId;requestedPersonId="";
-    void searchStudents();
+    const personId=requestedPersonId,queue=requestedQueueStatus;requestedPersonId="";requestedQueueStatus="";
+    if(queue&&(!requestedSchoolId||requestedSchoolId===currentScope.schoolId)){get("sr-queue-filter").value=queue;showRecordsMode("requests");}else void searchStudents();
     if(personId&&requestedSchoolId&&requestedSchoolId!==currentScope.schoolId){
       setUrlPerson("");status.textContent="The linked student belongs to a different school. Select the intended school.";
     }else if(personId&&!current)void openStudent(personId);
