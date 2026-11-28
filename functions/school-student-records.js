@@ -137,11 +137,12 @@ function createSchoolStudentRecordsService({db}){
     if(input.action==="student_record_readiness"){
       await requireRegistrarMembership(ref=>ref.get());
       const personId=id(input.personId,"Person ID"),a=await student(personId),person=a.data;
-      const [profileDoc,regSnap,guardianSnap,numberSnap]=await Promise.all([
+      const [profileDoc,regSnap,guardianSnap,numberSnap,emailSnap]=await Promise.all([
         db.doc(root+"student_registrar_profiles/"+personId).get(),
         db.collection(root+"student_registrations").where("personId","==",personId).limit(101).get(),
         db.collection(root+"guardian_relationships").where("studentPersonId","==",personId).limit(51).get(),
-        person.studentNumber?db.collection(root+"people").where("studentNumber","==",person.studentNumber).limit(3).get():Promise.resolve({docs:[]})
+        person.studentNumber?db.collection(root+"people").where("studentNumber","==",person.studentNumber).limit(3).get():Promise.resolve({docs:[]}),
+        person.activationEmailHash?db.collection(root+"people").where("activationEmailHash","==",person.activationEmailHash).limit(3).get():Promise.resolve({docs:[]})
       ]);
       if(profileDoc.exists&&(profileDoc.data().schoolId!==ctx.schoolId||profileDoc.data().personId!==personId))deny("data-loss","Student profile ownership mismatch.");
       const profile=profileDoc.exists?profileDoc.data():null,claimDoc=profile?.lrn&&/^\d{12}$/.test(profile.lrn)?await db.doc(root+"student_lrn_claims/"+key("lrn",profile.lrn)).get():null;
@@ -149,9 +150,15 @@ function createSchoolStudentRecordsService({db}){
         guardians=guardianSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().studentPersonId===personId).map(doc=>doc.data()),
         numberMatches=numberSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().kind==="student").length;
       const issues=studentReadinessIssues({person,profile,claim:claimDoc?.exists?claimDoc.data():null,numberMatches,registrations,guardians,schoolId:ctx.schoolId,personId});
-      const partial=regSnap.size===101||guardianSnap.size===51||numberSnap.docs.length===3;
+      const candidates=new Map();
+      for(const [snapshot,match] of [[numberSnap,"Student number"],[emailSnap,"Activation identity"]])for(const doc of snapshot.docs){
+        const row=doc.data();if(doc.id===personId||row.schoolId!==ctx.schoolId||row.kind!=="student")continue;
+        const entry=candidates.get(doc.id)||{personId:doc.id,displayName:row.displayName||"Student",studentNumber:row.studentNumber||"",status:row.status||"unknown",matches:[]};entry.matches.push(match);candidates.set(doc.id,entry);
+      }
+      if([...candidates.values()].some(row=>row.matches.includes("Activation identity")))issues.push({code:"duplicate_activation_identity",level:"conflict",view:"identity",label:"The student activation identity is shared by multiple school records."});
+      const partial=regSnap.size===101||guardianSnap.size===51||numberSnap.docs.length===3||emailSnap.docs.length===3;
       if(partial)issues.push({code:"bounded_history",level:"review",view:"registrations",label:"Some history exceeds readiness scan limits. Review the paginated records."});
-      return {personId,asOf:Date.now(),partial,issues,registrationCount:registrations.length,guardianCount:guardians.length,
+      return {personId,asOf:Date.now(),partial,issues,identityCandidates:[...candidates.values()],registrationCount:registrations.length,guardianCount:guardians.length,
         academicEvidenceChecked:false};
     }
     if(input.action==="find_student_by_lrn"){
