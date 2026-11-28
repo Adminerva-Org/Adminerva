@@ -3,7 +3,7 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=20261126-trace-6";
+import {createProjectStudio} from "./project-studio.mjs?v=20261129-studio-p0-1";
 import {formatJavaSource} from "./studio-formatter.mjs?v=1.0.0";
 import {currentV4StudioSchool,listV4StudioAssignments,getV4StudioExamSession} from "./v4-studio-service.mjs?v=20261126-rejection-1";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
@@ -16,6 +16,7 @@ import {
   collection,
   addDoc,
   getDoc,
+  getDocFromServer,
   doc,
   query,
   where,
@@ -287,7 +288,8 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
     actions=overlay.querySelector("#studioExamClosingActions"),
     retry=overlay.querySelector("#studioExamRetryFinalSave"),
     returnLink=overlay.querySelector('a[href="student-assessments.html"]');
-  let captured=persistWorkspace(),deviceCopySaved=captured;
+  projectStudio?.suspendOrdinaryAssessmentSave?.();
+  let captured=persistWorkspace(),deviceCopySaved=captured&&!projectStudio?.hasUnbackedActiveProject?.();
   if(!captured){
     try{
       const fallback=projectStudio?.captureClosingState?.(currentState());
@@ -369,7 +371,8 @@ async function checkStudioExamSession(taskId=watchedExamId){
       document.getElementById("studioExamConnectionOverlay")?.remove();
       editorInstance?.updateOptions({readOnly:true});
       document.getElementById("studioShell")?.setAttribute("inert","");
-      const captured=persistWorkspace(),overlay=examCloseOverlay();
+      projectStudio?.suspendOrdinaryAssessmentSave?.();
+      const captured=persistWorkspace()&&!projectStudio?.hasUnbackedActiveProject?.(),overlay=examCloseOverlay();
       overlay.querySelector("#studioExamClosingMessage").textContent=
         "This editor belongs to an earlier class session. The teacher has already opened a newer session.";
       overlay.querySelector("#studioExamClosingNotice").textContent=captured?
@@ -581,12 +584,11 @@ function inferAssessmentProjectSetup(task={}){
 async function resolveAssessmentProjectContext(assessmentId,studioSchool){
   if(!assessmentId)return null;
   if(studioSchool){
-    let matchedCanonicalTask=false;
     try{
       const tasks=await listV4StudioAssignments();
-      const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===assessmentId):null;
+      if(!Array.isArray(tasks))throw Error("Verified school assignments are unavailable. Reconnect before opening an assessment.");
+      const task=tasks.find(item=>item.taskId===assessmentId);
       if(task){
-        matchedCanonicalTask=true;
         if(task.submissionSource!=="studio")throw Error("This assessment is not configured for Adminerva Studio.");
         if(task.manualOpenRequired===true&&task.manualAccessState!=="open")
           throw Error(["closed","closing","held"].includes(task.manualAccessState)
@@ -595,10 +597,13 @@ async function resolveAssessmentProjectContext(assessmentId,studioSchool){
         return {...task,assessmentId:task.taskId,taskId:task.taskId,schoolId:studioSchool.schoolId,canonicalV4:true};
       }
     }catch(error){
-      if(matchedCanonicalTask||document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true")throw error;
+      // A failed canonical lookup is not evidence that the task is legacy.
+      throw error;
     }
   }
-  const snapshot=await getDoc(doc(db,"assessments",assessmentId));
+  if(studioSchool?.compatibilityMode==="v4_only"||document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true")
+    throw Error("This assessment is not assigned in your verified school.");
+  const snapshot=await getDocFromServer(doc(db,"assessments",assessmentId));
   if(!snapshot.exists())throw Error("This Studio assessment is no longer available.");
   const task={id:snapshot.id,...snapshot.data()};
   if(task.published===false)throw Error("This Studio assessment is not published.");
@@ -622,7 +627,8 @@ async function provisionAssessmentProject(assessmentId,studioSchool){
   const result=await projectStudio.ensureAssessmentProject({
     assessmentId:context.assessmentId,taskId:context.taskId,title:context.title,
     projectTitle:context.title,description:context.description,instructions:context.instructions,
-    assessmentType:context.assessmentType,subject:context.subject,offeringId:context.offeringId||"",
+    assessmentType:context.assessmentType,subject:context.subject,offeringId:context.canonicalV4?context.offeringId||"":"",
+    assessmentOrigin:context.canonicalV4?"school":"legacy",
     manualSessionEpoch:Number(context.manualSessionEpoch||0),
     personalized:context.personalizedTask?.enabled===true||context.assessmentMode==="personalized",
     studioProjectProfile:context.studioProjectProfile||"auto",
@@ -819,7 +825,8 @@ async function initializePlayground() {
         importLegacyDraft:importLegacyDraftAsProject,
         cloudEnabled:!guestMode,
         guest:guestMode,
-        projectScope:studioSchool?.compatibilityMode==="v4_only"?"school_"+studioSchool.schoolId:""
+        projectScope:studioSchool?.compatibilityMode==="v4_only"?"school_"+studioSchool.schoolId:"",
+        verifiedSchoolId:studioSchool?.schoolId||""
       });
       const requestedProject=urlParams.get("codeProject");
       const requestedAssessment=urlParams.get("assessment");
@@ -854,6 +861,7 @@ window.addEventListener("adminerva:studio-variant-ready",event=>{
     assessmentType:active.assessment.assessmentType||"Assessment",
     subject:active.assessment.subject||"Computer Programming",
     offeringId:active.assessment.offeringId||"",personalized:true,
+    assessmentOrigin:active.assessment.assessmentOrigin|| (active.assessment.offeringId?"school":""),
     manualSessionEpoch:Number(active.assessment.sessionEpoch||0),
     studioProjectProfile:active.assessment.studioProjectProfile||"auto",
     variantId:event.detail.variantId||"",attempt:event.detail.attempt,
@@ -1523,7 +1531,7 @@ window.adminervaFlushStudioSubmission=async expectedProjectId=>{
     throw Error("The active project changed before submission. Reopen the assigned project.");
   if(!persistWorkspace())
     throw Error("The current code could not be saved on this device. Export a ZIP before leaving.");
-  const confirmed=await projectStudio.flushCloudSaves();
+  const confirmed=await projectStudio.flushCloudSaves({projectId:expectedProjectId});
   if(!confirmed)
     throw Error("Your latest project was not confirmed in school cloud storage. Submission was stopped to protect your code. Reconnect and try Save before submitting.");
   return {project:projectStudio.getActiveProject(),state:currentState()};
@@ -3064,7 +3072,7 @@ function bindUIEvents() {
       const button=document.getElementById("saveProjectBtn");
       if(button)button.disabled=true;
       try{
-        const saved=await projectStudio.flushCloudSaves();
+        const saved=await projectStudio.flushCloudSaves({projectId:projectStudio.getActiveProject().id});
         if(!saved) return; // The project controller keeps the actual cloud failure detail.
       }finally{if(button)button.disabled=false;}
     }

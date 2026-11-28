@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {describeStudioCloudSaveError,studioCloudRetryDelay} from "../js/student/studio-cloud-save-recovery.mjs";
+import {describeStudioCloudSaveError,studioCloudRetryDelay,studioAssessmentSaveBlock,studioAssessmentBlockLabel,studioLegacyBackupAllowed} from "../js/student/studio-cloud-save-recovery.mjs";
 
 test("temporary Studio cloud failures retry with bounded backoff",()=>{
   assert.equal(describeStudioCloudSaveError({code:"functions/unavailable"}).retryable,true);
@@ -70,4 +70,312 @@ test("cross-document marker observer does not change storage or emit identifying
  assert.match(handler,/event.key!==key/);
  assert.match(handler,/context:\{peerMarker,localSaveState\}/);
  assert.doesNotMatch(handler,/writeMarker\(|markerCache\.set\(|cloudPending\.delete\(|flushOne\(/);
+});
+
+
+test("mutable Studio artifacts persist against the last accepted snapshot, not the live object",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const extract=(start,end)=>{
+    const a=source.indexOf(start),b=source.indexOf(end,a);
+    assert.ok(a>=0&&b>a);
+    return source.slice(a,b);
+  };
+  const run=new Function(`
+    let activeProject=null,activeContentBaseline=null,device=null;
+    let saves=0,queued=0,failDevice=false;
+    const cloudEnabled=true,projectStorage={},uid="student";
+    const unbackedProjectIds=new Set();
+    const validateProject=p=>{if(p.invalid)throw Error("invalid");};
+    const findCodeProject=()=>device;
+    const saveCodeProject=(_storage,_uid,p)=>{
+      if(failDevice)throw Error("quota");
+      saves++;device=structuredClone(p);return structuredClone(p);
+    };
+    const normalizeProject=p=>structuredClone(p);
+    const readMarker=()=>({kind:"school",pending:queued>0&&failDevice});
+    const scheduleCloudSave=()=>{queued++;};
+    const updateProjectHeading=()=>{},updateQuotaUI=()=>{},setCloudStatus=()=>{};
+    const window={dispatchEvent(){}};
+    const CustomEvent=class {};
+    const console={warn(){}};
+    ${extract("  function stable(","  function setCloudStatus(")}
+    ${extract("  function store(","  function saveState(")}
+    const initial={id:"p",title:"Project",state:{files:{"Main.java":"old"}},
+      design:{},database:{tables:{}},evidence:{runs:[]}};
+    activeProject=structuredClone(initial);device=structuredClone(initial);
+    activeContentBaseline={id:initial.id,key:contentKey(initial)};
+    return {
+      mutate:fn=>fn(activeProject),
+      save:()=>store(activeProject,true),
+      counts:()=>[saves,queued],
+      device:()=>device,
+      memory:()=>activeProject,
+      fail:()=>{failDevice=true;},
+      restore:()=>{failDevice=false;},
+      unbacked:()=>unbackedProjectIds.has("p")
+    };
+  `)();
+  run.save();assert.deepEqual(run.counts(),[0,0]);
+  const changes=[
+    p=>{p.design.useCase="flowchart TD";},
+    p=>{p.database.tables.people={rows:[{id:1}]};},
+    p=>{p.evidence.runs.push({status:"finished"});},
+    p=>{p.state.files["Main.java"]="reset";},
+    p=>{p.title="Imported bundle";}
+  ];
+  for(const [index,change] of changes.entries()){
+    run.mutate(change);run.save();
+    assert.deepEqual(run.counts(),[index+1,index+1]);
+    assert.deepEqual(run.device(),run.memory());
+    run.save();assert.deepEqual(run.counts(),[index+1,index+1]);
+  }
+  run.mutate(p=>{p.invalid=true;});
+  assert.throws(()=>run.save(),/invalid/);
+  assert.deepEqual(run.counts(),[5,5]);
+  run.mutate(p=>{delete p.invalid;p.design.useCase="memory-only";});
+  run.fail();run.save();
+  assert.equal(run.unbacked(),true);
+  assert.equal(run.memory().design.useCase,"memory-only");
+  assert.notEqual(run.device().design.useCase,"memory-only");
+  assert.deepEqual(run.counts(),[5,6]);
+  run.restore();run.save();
+  assert.equal(run.unbacked(),false);
+  assert.equal(run.device().design.useCase,"memory-only");
+  assert.deepEqual(run.counts(),[6,7]);
+});
+
+
+test("server-confirmed assessment rejections suspend ordinary writes even while offline",()=>{
+  for(const reason of ["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_CLOSED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_STATE_CHANGED","STUDIO_FINAL_CHECKPOINT_EXPIRED"]){
+    const error={code:"functions/failed-precondition",details:{diagnosticReason:reason}};
+    assert.equal(studioAssessmentSaveBlock(error),reason);
+    assert.equal(describeStudioCloudSaveError(error,{online:false}).retryable,false);
+  }
+  assert.equal(studioAssessmentSaveBlock({code:"functions/unavailable",details:{diagnosticReason:"STUDIO_EXAM_CLOSED"}}),"");
+  assert.equal(studioAssessmentSaveBlock({code:"functions/failed-precondition",details:{diagnosticReason:"STUDIO_REVISION_CONFLICT"}}),"");
+});
+
+test("blocked assessment drafts remain queued without ordinary timers or retries",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  function blockOrdinarySave("),end=source.indexOf("  async function flushOne(",start);
+  assert.ok(start>=0&&end>start);
+  const make=new Function("studioAssessmentBlockLabel","describeStudioCloudSaveError",`
+    const cloudEnabled=true,deletedProjects=new Set(),cloudPending=new Map(),unbackedProjectIds=new Set();
+    const cloudTimers=new Map(),cloudRetryTimers=new Map(),cloudRetryAttempts=new Map(),markers=new Map();
+    const readMarker=id=>markers.get(id)||{},writeMarker=(id,value)=>markers.set(id,value);
+    const clone=p=>JSON.parse(JSON.stringify(p));
+    const navigator={onLine:true};let timerCount=0,status="";
+    const setCloudStatus=message=>{status=message;};
+    const setTimeout=()=>++timerCount,clearTimeout=()=>{};
+    ${source.slice(start,end)}
+    return {blockOrdinarySave,clearOrdinarySaveBlock,scheduleCloudSave,scheduleCloudRetry,
+      marker:readMarker,pending:id=>cloudPending.get(id),timers:()=>cloudTimers.size,
+      status:()=>status,offline:()=>navigator.onLine=false,online:()=>navigator.onLine=true};
+  `);
+  const run=make(studioAssessmentBlockLabel,describeStudioCloudSaveError);
+  run.scheduleCloudSave({id:"exam",state:{files:{main:"old"}}});
+  assert.equal(run.timers(),1);
+  run.blockOrdinarySave("exam","STUDIO_EXAM_CLOSED");
+  run.scheduleCloudSave({id:"exam",state:{files:{main:"new"}}});
+  assert.equal(run.timers(),0);
+  assert.equal(run.pending("exam").state.files.main,"new");
+  assert.equal(run.marker("exam").pending,true);
+  assert.match(run.status(),/Device draft retained/);
+  assert.equal(run.scheduleCloudRetry("exam",{code:"functions/unavailable"},0),false);
+  run.scheduleCloudSave({id:"personal",state:{files:{main:"other"}}});
+  assert.equal(run.timers(),1);
+  run.clearOrdinarySaveBlock("exam");
+  run.scheduleCloudSave(run.pending("exam"));
+  assert.equal(run.timers(),2);
+  assert.match(source,/if\(snapshot&&!closingSessionEpoch&&showBlockedSave\(id\)\)return false/);
+  assert.match(source,/if\(closingSessionEpoch&&result\.examFinalized!==true\)/);
+  assert.match(source,/await verifyAssessmentProjectOpen\(next,\{resumeBlocked:true\}\)/);
+  assert.match(source,/closingSessionEpoch\?"STUDIO_EXAM_CLOSED":readMarker\(id\)\.assessmentSaveBlock/);
+});
+
+
+test("resource limits are distinct from an offline or transient connection failure",()=>{
+  const error={code:"functions/resource-exhausted",message:"Resource exhausted"};
+  for(const online of [true,false]){
+    const result=describeStudioCloudSaveError(error,{online});
+    assert.equal(result.category,"resource-limit");
+    assert.equal(result.retryable,false);
+  }
+});
+
+test("a recovery copy must be durable before the original draft can be replaced",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  function recoverCopy("),end=source.indexOf("  async function resolveCloudProject(",start);
+  assert.ok(start>=0&&end>start);
+  const run=new Function(`
+    const uid="student",projectStorage={};
+    const initial={id:"original",title:"Project",assessment:{taskId:"task"},state:{files:{main:"unsynced code"}},database:{rows:[1]},design:{diagram:"draft"}};
+    let rows=[initial],failure=false,silentFailure=false;
+    const createCodeProject=(storage,uid,opts)=>{
+      if(storage===projectStorage)throw Error("must not write a starter");
+      return {id:"copy",title:opts.title,createdAt:"now",updatedAt:"now",lastOpenedAt:"now"};
+    };
+    const normalizeProject=p=>JSON.parse(JSON.stringify(p));
+    const validateProject=p=>{if(!p?.state?.files)throw Error("invalid");};
+    const readCodeProjects=()=>rows;
+    const writeCodeProjects=(storage,uid,next)=>{
+      if(failure)throw Error("quota");
+      if(!silentFailure)rows=next;
+    };
+    const findCodeProject=(storage,uid,id)=>rows.find(p=>p.id===id);
+    const contentKey=p=>JSON.stringify(p);
+    ${source.slice(start,end)}
+    return {backup:()=>recoverCopy(initial),rows:()=>rows,fail:()=>failure=true,
+      silent:()=>{failure=false;silentFailure=true;},allow:()=>{failure=false;silentFailure=false;}};
+  `)();
+  run.fail();assert.throws(()=>run.backup(),/quota/);
+  assert.equal(run.rows().length,1);
+  run.silent();assert.throws(()=>run.backup(),/could not be verified/);
+  assert.equal(run.rows()[0].state.files.main,"unsynced code");
+  run.allow();assert.equal(run.backup(),"copy");
+  assert.equal(run.rows()[0].state.files.main,"unsynced code");
+  assert.equal(run.rows()[0].database.rows[0],1);
+  assert.equal(run.rows()[0].design.diagram,"draft");
+  assert.equal(run.rows()[0].assessment,null);
+  assert.equal(run.rows()[1].assessment.taskId,"task");
+});
+
+test("concurrent ordinary save waiters share failure but final checkpoint remains eligible",async()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  async function flushOne("),end=source.indexOf("  async function flushOneAfterWrite(",start);
+  assert.ok(start>=0&&end>start);
+  const run=new Function(`
+    const cloudTimers=new Map(),deletedProjects=new Set(),cloudPending=new Map(),cloudWrites=new Map();
+    const cloudEnabled=true;let waiting=0,attempts=[];
+    const clearTimeout=()=>{},noteCloudWait=()=>waiting++;
+    const flushOneAfterWrite=(id,epoch=0)=>{attempts.push([id,epoch]);return true;};
+    ${source.slice(start,end)}
+    return {flushOne,attempts:()=>attempts,waiting:()=>waiting,begin:(promise)=>{
+      cloudPending.set("p",{});cloudWrites.set("p",promise);
+    }};
+  `)();
+  let finish;run.begin(new Promise(resolve=>finish=resolve));
+  const waiters=[run.flushOne("p"),run.flushOne("p"),run.flushOne("p",3)];
+  finish(false);
+  assert.deepEqual(await Promise.all(waiters),[false,false,true]);
+  assert.deepEqual(run.attempts(),[["p",3]]);
+  assert.equal(run.waiting(),3);
+});
+
+
+test("legacy working backup never accepts school projects, v4-only schools or exam epochs",()=>{
+  const legacy={assessment:{provisionedBy:"assessment-launch",assessmentOrigin:"legacy",offeringId:"",sessionEpoch:0}};
+  const school={schoolId:"school-one",compatibilityMode:"legacy_allowed"};
+  assert.equal(studioLegacyBackupAllowed(legacy,school),true);
+  assert.equal(studioLegacyBackupAllowed(legacy,{...school,compatibilityMode:"v4_only"}),false);
+  assert.equal(studioLegacyBackupAllowed(legacy,null),false);
+  assert.equal(studioLegacyBackupAllowed(legacy,school,{kind:"school",schoolId:"school-one"}),false);
+  assert.equal(studioLegacyBackupAllowed(legacy,school,{},"school_scope"),false);
+  for(const patch of [{offeringId:"offering"},{sessionEpoch:1},{assessmentOrigin:"school"},{assessmentOrigin:""}]){
+    assert.equal(studioLegacyBackupAllowed({assessment:{...legacy.assessment,...patch}},school),false);
+  }
+});
+
+test("canonical assignment lookup failures never fall through to historical task reads",async()=>{
+  const source=readFileSync("js/student/playground.js","utf8");
+  const start=source.indexOf("async function resolveAssessmentProjectContext("),end=source.indexOf("async function provisionAssessmentProject(",start);
+  assert.ok(start>=0&&end>start);
+  const make=new Function("listV4StudioAssignments","getDocFromServer",`
+    const document={getElementById:()=>null},db={},doc=()=>({});
+    ${source.slice(start,end)}
+    return resolveAssessmentProjectContext;
+  `);
+  let rootReads=0;
+  const read=async()=>{rootReads++;return {exists:()=>true,id:"task",data:()=>({published:true,submissionSource:"studio"})};};
+  const school={schoolId:"s",compatibilityMode:"legacy_allowed"};
+  await assert.rejects(make(async()=>{throw Error("offline");},read)("task",school),/offline/);
+  await assert.rejects(make(async()=>null,read)("task",school),/unavailable/);
+  await assert.rejects(make(async()=>[],read)("task",{...school,compatibilityMode:"v4_only"}),/not assigned/);
+  assert.equal(rootReads,0);
+  const result=await make(async()=>[],read)("task",school);
+  assert.equal(result.canonicalV4,false);assert.equal(rootReads,1);
+  const native=await make(async()=>[{taskId:"task",submissionSource:"studio",offeringId:"o"}],read)("task",school);
+  assert.equal(native.canonicalV4,true);assert.equal(rootReads,1);
+  await assert.rejects(make(async()=>[{taskId:"task",submissionSource:"studio",manualOpenRequired:true,manualAccessState:"closed"}],read)("task",school),/closed/);
+  assert.equal(rootReads,1);
+});
+
+test("offline snapshots are retained without initiating a cloud timer",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  function blockOrdinarySave("),end=source.indexOf("  async function flushOne(",start);
+  const make=new Function("studioAssessmentBlockLabel","describeStudioCloudSaveError",`
+    const cloudEnabled=true,deletedProjects=new Set(),cloudPending=new Map(),unbackedProjectIds=new Set();
+    const cloudTimers=new Map(),cloudRetryTimers=new Map(),cloudRetryAttempts=new Map(),markers=new Map();
+    const readMarker=id=>markers.get(id)||{},writeMarker=(id,value)=>markers.set(id,value);
+    const clone=p=>JSON.parse(JSON.stringify(p));
+    const navigator={onLine:false};let count=0,status="";
+    const setCloudStatus=m=>status=m,setTimeout=()=>++count,clearTimeout=()=>{};
+    ${source.slice(start,end)}
+    return {save:scheduleCloudSave,pending:id=>cloudPending.get(id),timers:()=>cloudTimers.size,
+      status:()=>status,online:()=>navigator.onLine=true};
+  `);
+  const run=make(studioAssessmentBlockLabel,describeStudioCloudSaveError);
+  run.save({id:"p",state:{files:{main:"offline work"}}});
+  assert.equal(run.pending("p").state.files.main,"offline work");
+  assert.equal(run.timers(),0);assert.match(run.status(),/Offline/);
+  run.online();run.save(run.pending("p"));assert.equal(run.timers(),1);
+});
+
+test("stale-device revision marker survives a lock update and clears only after verified backup",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  function readMarker("),end=source.indexOf("  function stable(",start);
+  const run=new Function(`
+    const markerCache=new Map(),saved=new Map(),markerKey=id=>id;
+    const projectStorage={setItem:(id,value)=>saved.set(id,value),getItem:id=>saved.get(id)};
+    ${source.slice(start,end)}
+    return {readMarker,writeMarker,stored:id=>JSON.parse(saved.get(id)),reload:()=>markerCache.clear()};
+  `)();
+  run.writeMarker("p",{kind:"school",revision:8},{requiresCloudReload:true});
+  run.writeMarker("p",{...run.readMarker("p"),assessmentSaveBlock:"STUDIO_EXAM_CLOSED"});
+  run.reload();
+  assert.equal(run.readMarker("p").requiresCloudReload,true);
+  assert.equal(run.readMarker("p").revision,8);
+  run.writeMarker("p",{...run.readMarker("p"),pending:false},{requiresCloudReload:false});
+  assert.equal(run.stored("p").requiresCloudReload,undefined);
+  assert.match(source,/if\(readMarker\(project.id\).requiresCloudReload\)\{incomplete=true;continue;\}/);
+  assert.match(source,/prior.pending&&sameBase&&\(!prior.requiresCloudReload\|\|cloudPending.has\(id\)\)/);
+});
+
+
+test("school assessment writes require exact enrollment and preserve final checkpoint authorization",async()=>{
+  const source=readFileSync("functions/school-studio-projects.js","utf8");
+  const start=source.indexOf("  async function authorizeAssessmentProject("),end=source.indexOf("  async function authorizeTransaction(",start);
+  assert.ok(start>=0&&end>start);
+  const create=new Function("task","enrollment","person",`
+    const ctx={schoolId:"s",uid:"student"},prefix="schools/s/";
+    const membershipRef="membership";
+    const db={doc:path=>path},checkId=id=>id,rowKey=(a,b)=>a+"_"+b;
+    const deny=(code,message,diagnosticReason)=>{throw Object.assign(Error(message),{code,diagnosticReason});};
+    const tx={get:async path=>{
+      const data=path==="membership"?{personId:"p"}:path.endsWith("/assessments/t")?task:
+        path.endsWith("/people/p")?person:path.endsWith("/enrollments/p_o")?enrollment:null;
+      return {exists:Boolean(data),data:()=>data};
+    }};
+    ${source.slice(start,end)}
+    return (binding,closingEpoch=0)=>authorizeAssessmentProject(tx,{assessment:binding},{closingEpoch});
+  `);
+  const task={schoolId:"s",offeringId:"o",submissionSource:"studio",published:true,lifecycle:"active",
+    manualOpenRequired:true,manualAccessState:"open",manualSessionEpoch:2};
+  const enrollment={schoolId:"s",personId:"p",offeringId:"o",status:"active"};
+  const person={schoolId:"s",authUid:"student",kind:"student",status:"active"};
+  const binding={provisionedBy:"assessment-launch",taskId:"t",offeringId:"o",sessionEpoch:2};
+  const make=(patch={},enroll=enrollment)=>create({...task,...patch},enroll,person);
+  assert.equal((await make()(binding)).finalSave,false);
+  await assert.rejects(make()({...binding,offeringId:"other"}),/different course offering/);
+  await assert.rejects(make({manualOpenRequired:false},null)(binding),/enrollment/);
+  await assert.rejects(make({published:false})(binding),/not published/);
+  await assert.rejects(make({lifecycle:"closed"})(binding),/not published/);
+  await assert.rejects(make()({...binding,sessionEpoch:1}),/earlier exam session/);
+  await assert.rejects(make({manualAccessState:"closed"})(binding),/closed to edits/);
+  const final=await make({manualAccessState:"closed",published:false,manualCloseGraceUntil:{toMillis:()=>Date.now()+60000}})(binding,2);
+  assert.equal(final.finalSave,true);assert.equal(final.receiptLookupOnly,false);
+  const expired=await make({manualAccessState:"closed",manualCloseGraceUntil:{toMillis:()=>0}})(binding,2);
+  assert.equal(expired.receiptLookupOnly,true);
+  await assert.rejects(make({manualOpenRequired:false})(binding,2),/no teacher-controlled/);
+  assert.equal((await make({manualOpenRequired:false})(binding)).finalSave,false);
 });
