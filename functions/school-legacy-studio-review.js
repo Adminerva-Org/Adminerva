@@ -99,7 +99,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
   async function run({ctx,input}){
     const legacyAssessmentId=safeId(input.legacyAssessmentId,"Legacy assessment",128);
     const taskRef=db.doc("assessments/"+legacyAssessmentId),task=await taskRef.get();
-    if(!task.exists||task.data().ownerUid!==ctx.uid)
+    if(!task.exists||task.data().ownerUid!==ctx.uid||(task.data().schoolId&&task.data().schoolId!==ctx.schoolId))
       deny("permission-denied","Only the original assessment owner can review these historical submissions.");
     const original=task.data();
     if(!(original.schemaVersion===3||original.submissionSource==="studio"||
@@ -264,7 +264,7 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
       });
     }
     // All mutations stay in the original legacy grade and submission records.
-    if(!["legacy_review_save_draft","legacy_review_publish","legacy_review_bulk_publish"].includes(input.action))
+    if(!["legacy_review_save_draft","legacy_review_publish","legacy_review_bulk_publish","legacy_review_correct_published"].includes(input.action))
       deny("invalid-argument","Unknown historical Studio review operation.");
     async function publishOne(submissionId,expectedGradeRevision=null){
       const id=legacyDocumentId(submissionId,"Studio submission",300),ref=db.doc("studio_submissions/"+id),
@@ -315,6 +315,60 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
         hasMore:Boolean(page.nextCursor)};
     }
     const raw=await inspectRaw(input.legacySubmissionId),id=raw.id;
+    if(input.action==="legacy_review_correct_published"){
+      const expectedRevision=input.expectedGradeRevision,expectedVersion=input.expectedSubmissionVersion;
+      if(!Number.isInteger(expectedRevision)||expectedRevision<1||expectedVersion!==raw.head.revision||
+         input.expectedSnapshotHash!==raw.head.snapshotHash)
+        deny("failed-precondition","Reload the exact historical grade and frozen submission before correcting.");
+      const feedback=String(input.feedback||"").trim();
+      if(feedback.length>5000)deny("invalid-argument","Feedback is too long.");
+      const scores=validateCriteria(input.criteria,rubric);
+      if(scores.pending!==0)deny("failed-precondition","Complete all numerical scores before correcting a published grade.");
+      const grade=gradeRef(id),audit=db.collection("grade_revisions").doc(),
+        headRef=db.doc("studio_submissions/"+id);
+      let result;
+      await db.runTransaction(async tx=>{
+        const [freshTask,freshCopy,head,prior,version]=await Promise.all([
+          tx.get(taskRef),tx.get(db.doc("schools/"+ctx.schoolId+"/assessment_blueprints/"+importedId)),
+          tx.get(headRef),tx.get(grade),tx.get(db.doc("studio_submissions/"+id+"/versions/"+expectedVersion))
+        ]);
+        if(!freshTask.exists||freshTask.data().ownerUid!==ctx.uid||
+           freshTask.data().evalCriteria!==original.evalCriteria||freshTask.data().maxScore!==original.maxScore||
+           (freshTask.data().schoolId&&freshTask.data().schoolId!==ctx.schoolId)||
+           !freshCopy.exists||freshCopy.data().schoolId!==ctx.schoolId||freshCopy.data().ownerUid!==ctx.uid||
+           freshCopy.data().legacyImport?.assessmentId!==legacyAssessmentId)
+          deny("permission-denied","Historical assessment ownership or original scoring context changed.");
+        if(!head.exists||!version.exists)deny("failed-precondition","Original frozen evidence is unavailable.");
+        const current=head.data();
+        validateHead(current,id);
+        if(current.status!=="reviewed"||current.revision!==expectedVersion||
+           current.snapshotHash!==input.expectedSnapshotHash||current.studentId!==raw.head.studentId||
+           current.ownerUid!==raw.head.ownerUid||current.section!==raw.head.section)
+          deny("failed-precondition","Original reviewed submission changed.");
+        validSnapshot(current,version.data());
+        const before=prior.exists?prior.data():null;
+        if(!before||before.published!==true||before.studentId!==current.studentId||
+           before.taskId!==legacyAssessmentId||Number(before.gradeVersion||1)!==expectedRevision||
+           before.studioRevision!==current.revision||before.studioSnapshotHash!==current.snapshotHash||
+           String(before.studioVariantId||"")!==String(current.variantId||"")||
+           typeof before.score!=="number"||!Number.isFinite(before.score)||before.score<0||
+           before.score>scores.total||Number(before.maxScore)!==scores.total)
+          deny("failed-precondition","Published grade identity, revision, score maximum or evidence changed.");
+        const now=FieldValue.serverTimestamp(),revision=expectedRevision+1;
+        const corrected={score:scores.awarded,maxScore:scores.total,pending:0,criteria:scores.criteria,
+          feedback,published:true,reviewRequired:false,reviewSuggested:false,gradeVersion:revision,
+          reviewedBy:ctx.uid,lastCorrectedByUid:ctx.uid,lastCorrectedAt:now,manuallyAdjusted:true};
+        tx.update(grade,corrected);
+        tx.create(audit,{gradeId:id,studentId:current.studentId,taskId:legacyAssessmentId,schoolId:ctx.schoolId,
+          editorUid:ctx.uid,reason:"Historical Studio published grade corrected",
+          before:{score:before.score,maxScore:before.maxScore,published:true,gradeVersion:expectedRevision,
+            feedback:before.feedback||"",criteria:before.criteria||[],pending:before.pending||0},
+          after:{score:scores.awarded,maxScore:scores.total,published:true,gradeVersion:revision,feedback,criteria:scores.criteria,pending:0},
+          evidenceRevision:current.revision,studioSnapshotHash:current.snapshotHash,createdAt:now});
+        result={status:"published",published:true,corrected:true,revision,awarded:scores.awarded,total:scores.total};
+      });
+      return result;
+    }
     if(input.action==="legacy_review_save_draft"){
       const feedback=String(input.feedback||"").trim();
       if(feedback.length<20||feedback.length>5000)
