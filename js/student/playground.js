@@ -825,7 +825,8 @@ async function initializePlayground() {
         importLegacyDraft:importLegacyDraftAsProject,
         cloudEnabled:!guestMode,
         guest:guestMode,
-        projectScope:studioSchool?.compatibilityMode==="v4_only"?"school_"+studioSchool.schoolId:""
+        projectScope:studioSchool?.compatibilityMode==="v4_only"?"school_"+studioSchool.schoolId:"",
+        verifiedSchoolId:studioSchool?.schoolId||""
       });
       const requestedProject=urlParams.get("codeProject");
       const requestedAssessment=urlParams.get("assessment");
