@@ -151,7 +151,8 @@ function compactEvidence(source,snapshot={}){
     personalizedTask:compactAssignedTask(snapshot)
   };
   if(source==="github")return {
-    type:"github_frozen_commit_evidence",
+    type:snapshot.checkpointOnly===true?"github_historical_checkpoint_source":"github_frozen_commit_evidence",
+    ...(snapshot.checkpointOnly===true?{sourcePath:text(snapshot.sourcePath,240),checkpointOnly:true}:{}),
     version:Number(snapshot.version||0),
     personalizedTask:compactAssignedTask(snapshot),
     checkpointSha:text(snapshot.checkpointSha,40),
@@ -232,7 +233,8 @@ export function buildGeneralExternalEvaluationData({task={},snapshot={},checking
         "Do not claim facts about linked external content unless the evaluator actually accessed it. The frozen URL/note alone may be insufficient for some criteria.":
         "Evaluate only the frozen content supplied in this package.",
       repositoryBoundary:assessment.submissionSource==="github"?
-        "Use selected SHA/path diffs for change-specific claims and the pinned checkpoint source for exact present code context. Neither Git authors nor a teacher-approved commit set independently prove individual authorship. Merge-only, missing-diff, omitted, or oversized evidence is not proof of an individual contribution. Static source does not prove compilation, execution or timing; disclose partial coverage. Identify supporting SHA/path references in rationales.":
+        (evidence.checkpointOnly?"Evaluate only the submitted checkpoint source in its recorded scope. No selected contribution commits exist. Do not infer individual authorship or contribution from source quality. Treat contribution-specific criteria without supporting evidence as unresolved; static source does not prove execution or timing. Cite exact file paths and disclose omitted files.":
+        "Use selected SHA/path diffs for change-specific claims and the pinned checkpoint source for exact present code context. Neither Git authors nor a teacher-approved commit set independently prove individual authorship. Merge-only, missing-diff, omitted, or oversized evidence is not proof of an individual contribution. Static source does not prove compilation, execution or timing; disclose partial coverage. Identify supporting SHA/path references in rationales."):
         "Not applicable."
     }
   };
