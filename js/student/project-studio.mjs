@@ -250,11 +250,13 @@ export function createProjectStudio({
     try{globalThis.AdminervaDiagnostic?.emit?.("studio_peer_marker_changed",{kind:"system",module:"studio",state:"unavailable",phase:"observed",context:{peerMarker,localSaveState}});}catch{}
   }
   function readMarker(id){if(!markerCache.has(id)){try{markerCache.set(id,JSON.parse(projectStorage.getItem(markerKey(id))||"null")||{});}catch{markerCache.set(id,{});}}return markerCache.get(id);}
-  function writeMarker(id,value,{requiresCloudReload=false}={}){
-    markerCache.set(id,value);
-    // A cloud revision can be newer than the only durable browser copy. Keep
-    // the usable revision in memory, but mark the persisted cache as stale.
-    try{projectStorage.setItem(markerKey(id),JSON.stringify(requiresCloudReload?{...value,requiresCloudReload:true}:value));}
+  function writeMarker(id,value,{requiresCloudReload=Boolean(readMarker(id).requiresCloudReload)}={}){
+    // Keep the stale-cache guard through unrelated marker updates. Clear it
+    // only when the caller has verified the current device snapshot.
+    const {requiresCloudReload:ignored,...marker}=value;
+    const next=requiresCloudReload?{...marker,requiresCloudReload:true}:marker;
+    markerCache.set(id,next);
+    try{projectStorage.setItem(markerKey(id),JSON.stringify(next));}
     catch(error){console.warn("Studio sync recovery marker unavailable",error);}
   }
   function stable(value){
@@ -603,7 +605,7 @@ export function createProjectStudio({
     // Prefer the retained in-memory snapshot to a stale device cache.
     local=cloudPending.get(id)||local;
     if(!remote){
-      if(priorMarker.requiresCloudReload)throw Error("The cached project is older than its last cloud revision. Reconnect before opening it.");
+      if(priorMarker.requiresCloudReload&&!cloudPending.has(id))throw Error("The cached project is older than its last cloud revision. Reconnect before opening it.");
       return local;
     }
     validateProject(remote);
