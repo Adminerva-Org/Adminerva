@@ -73,11 +73,12 @@ function createPilotStudioResearchService({db,FieldValue,Timestamp,now=Date.now}
     if(context.platformOverride||!context.roles.includes("student"))return {context,enabled:false};
     const designation=await db.doc("platform_test_accounts/"+context.uid).get();
     const data=designation.exists?designation.data():null;
-    return {context,enabled:designated(data)&&data.researchOptOut!==true};
+    return {context,enabled:designated(data)&&data.researchOptOut!==true,optedOut:designated(data)&&data.researchOptOut===true};
   }
   async function record(request){
     const input=request.data||{};
-    const {context,enabled}=await eligible(request,input.schoolId);
+    const {context,enabled,optedOut}=await eligible(request,input.schoolId);
+    if(optedOut)return {recorded:false,disabled:true};
     if(!enabled)deny("permission-denied","Pilot research is restricted to designated test accounts.");
     const event=checkedEvent(input.event),day=new Date(now()).toISOString().slice(0,10),
       prefix="schools/"+context.schoolId+"/",
@@ -85,7 +86,8 @@ function createPilotStudioResearchService({db,FieldValue,Timestamp,now=Date.now}
       quotaRef=db.doc(prefix+"pilot_research_quotas/"+context.uid+"_"+day);
     return db.runTransaction(async tx=>{
       const designation=(await tx.get(db.doc("platform_test_accounts/"+context.uid))).data();
-      if(!designated(designation)||designation.researchOptOut===true)deny("permission-denied","Pilot research is restricted to designated test accounts with collection enabled.");
+      if(!designated(designation))deny("permission-denied","Pilot research is restricted to designated test accounts.");
+      if(designation.researchOptOut===true)return {recorded:false,disabled:true};
       const existing=await tx.get(eventRef);
       if(existing.exists)return {recorded:true,duplicate:true};
       const quota=await tx.get(quotaRef),count=Number(quota.data()?.count)||0;
