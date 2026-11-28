@@ -27,6 +27,8 @@ export function describeStudioCloudSaveError(error,{online=true}={}){
   if(/(?:^|\/)(invalid-argument|out-of-range)$/.test(code)||
       /exceeds? (?:the |a )?\d|project (?:source|database|design).*limit|invalid file/i.test(message))
     return {category:"validation",label:"project needs review",retryable:false,detail};
+  if(/(?:^|\/)resource-exhausted$/.test(code))
+    return {category:"resource-limit",label:"Cloud resource limit reached",retryable:false,detail};
   if(!online||/(?:^|\/)(unavailable|deadline-exceeded|internal|unknown)$/.test(code)||
       /network error|failed to fetch|connection (?:lost|interrupted|failed)|offline|timed out|timeout|temporarily unavailable/i.test(message))
     return {category:"temporary",label:"connection interrupted",retryable:true,detail};
