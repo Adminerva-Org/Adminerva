@@ -1171,7 +1171,7 @@ function createPeopleDirectoryService({db}) {
           tx.update(memberRef,{displayName,updatedAt:now});
         tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
           action:"person_profile_updated",revision,createdAt:now,...(identityFields.length?{reason:identityReason,identityFields}: {})});
-        if(identityFields.length)tx.create(db.collection("schools/"+ctx.schoolId+"/student_records_audit").doc(),{schoolId:ctx.schoolId,personId,actorUid:ctx.uid,action:"student_identity_corrected",fields:identityFields,reason:identityReason,revision,createdAt:now});
+        if(identityFields.length)tx.create(db.collection("schools/"+ctx.schoolId+"/student_records_audit").doc(),{schoolId:ctx.schoolId,personId,actorUid:ctx.uid,action:"student_identity_corrected",fields:identityFields,before:Object.fromEntries(identityFields.map(field=>[field,current[field]??null])),after:identityChanges,reason:identityReason,revision,createdAt:now});
       });
       return {personId,displayName};
     }
