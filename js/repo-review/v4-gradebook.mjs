@@ -1039,7 +1039,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         generationConfig:{responseMimeType:"application/json",temperature:0.2,maxOutputTokens:8192}
       },{purpose:"evaluation",signal:AbortSignal.timeout(100000)});
       const parsed=await evaluationJSON({ok:true,json:async()=>result});
-      const suggestion=parseGeneralExternalEvaluationResponse(JSON.stringify(parsed),{task:currentTask});
+      const suggestion=parseGeneralExternalEvaluationResponse(JSON.stringify(parsed),{task:currentTask,expectedCheckpointRef:currentSnapshot.checkpointOnly?currentSnapshot.receiptDigest:""});
       showEvaluationReview("gbV4SystemReview","Internal AI",suggestion);
       output.textContent="Internal AI review is ready below. It has not changed the teacher draft.";
     }catch(error){
@@ -1070,7 +1070,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(busy||!currentTask||!currentSnapshot)return;
     try{
       const suggestion=parseGeneralExternalEvaluationResponse(
-        document.getElementById("gbV4ExternalResponse").value,{task:currentTask}
+        document.getElementById("gbV4ExternalResponse").value,{task:currentTask,expectedCheckpointRef:currentSnapshot.checkpointOnly?currentSnapshot.receiptDigest:""}
       );
       showEvaluationReview("gbV4ExternalReview","External AI",suggestion);
       output.textContent="External AI review imported below. It has not changed the teacher draft.";
