@@ -63,7 +63,9 @@ function mount(){
       title.textContent="Continue: "+name;
       detail.textContent="Pick up where you left off in this browser tab.";detail.className="text-sm";text.append(title,detail);
       link.href=destination;link.className="av-primary-button";link.textContent="Resume →";resume.append(text,link);
-      if(controls&&!controls.classList.contains("avx-world-search"))controls.before(resume);else hero?.after(resume);
+      const resumeSlot=main.querySelector('[data-student-home-slot="resume"]');
+      if(resumeSlot)resumeSlot.append(resume);
+      else if(controls&&!controls.classList.contains("avx-world-search"))controls.before(resume);else hero?.after(resume);
     }
   }
 }
