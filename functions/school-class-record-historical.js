@@ -309,7 +309,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
         }else{
           const candidates=new Map();
           for(const doc of activities.docs){
-            const raw=doc.data(),personId=raw&&eligible.get(raw.studentId);
+            const raw=doc.data(),personId=raw?.taskId===column.taskId&&eligible.get(raw.studentId);
             if(!personId)continue;
             const list=candidates.get(personId)||[];
             list.push(doc);candidates.set(personId,list);
