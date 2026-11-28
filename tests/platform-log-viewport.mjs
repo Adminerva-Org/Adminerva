@@ -89,6 +89,25 @@ try{
     }));
     assert.ok(live.docWidth<=width+3,"Live view overflows at "+width+"px");
     assert.ok(live.line.right<=width+3,"Live row exceeds viewport at "+width+"px");
+    await page.evaluate(()=>{
+      document.getElementById("pl-investigation-grid").classList.add("pl-inspecting");
+      document.getElementById("pl-inspector").hidden=false;
+      document.getElementById("pl-inspector-body").innerHTML='<dl class="pl-inspector-fields"><div><dt>Operation ID</dt><dd>aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa</dd></div><div><dt>Page state</dt><dd>visible · focused · online · complete</dd></div></dl><ol class="pl-operation-timeline"><li><time>20:27:15</time><button class="pl-operation-event">Studio API submit</button><small>Observed while operation was active</small></li></ol>';
+    });
+    const inspector=await page.evaluate(()=>({
+      docWidth:document.documentElement.scrollWidth,
+      rect:document.getElementById("pl-inspector").getBoundingClientRect().toJSON(),
+      feed:document.querySelector(".pl-event-feed").getBoundingClientRect().toJSON()
+    }));
+    assert.ok(inspector.docWidth<=width+3,"Inspector document overflow at "+width);
+    assert.ok(inspector.rect.right<=width+3,"Inspector overflow at "+width);
+    if(width>=1280){
+      assert.ok(inspector.feed.right<=inspector.rect.left,"Inspector should sit beside the feed");
+      await page.evaluate(()=>{const workspace=document.getElementById("pl-workspace");workspace.style.setProperty("--pl-directory-width","320px");workspace.style.setProperty("--pl-inspector-width","440px");});
+      const wide=await page.evaluate(()=>({docWidth:document.documentElement.scrollWidth,inspector:document.getElementById("pl-inspector").getBoundingClientRect().toJSON(),feed:document.querySelector(".pl-event-feed").getBoundingClientRect().toJSON()}));
+      assert.ok(wide.docWidth<=width+3&&wide.inspector.right<=width+3&&wide.feed.right<=wide.inspector.left,"Expanded panels overflow at "+width);
+    }
+    else assert.ok(inspector.rect.bottom<=inspector.feed.top+1,"Inspector should stack above the feed");
     if(width===320||width===1920)
       await page.screenshot({path:"/tmp/adminerva-platform-log-"+width+".png",fullPage:true});
     console.log(JSON.stringify({viewport:width+"x"+height,shell:Math.round(metrics.shellWidth),

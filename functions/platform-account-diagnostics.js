@@ -21,7 +21,7 @@ const ACTIONS=["session_started","auth_session_observed","session_ended","page_o
   "cloud_save_confirmed","notification_delivered","notification_opened","network_offline","network_online",
   "javascript_error","promise_error","resource_error","api_failed","api_succeeded","support_report_submitted",
   "studio_run_requested","studio_run_completed","studio_run_failed","cloud_save_failed",
-  "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested"];
+  "assessment_submit_requested","assessment_submitted","assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished","process_failed","process_progress","process_prolonged","studio_peer_marker_changed"];
 const STATES=["info","ok","error","unavailable"];
 const PHASES=["observed","started","completed","failed","interrupted"];
 const DEVICE_CLASSES=["desktop","tablet","phone","unknown"];
@@ -52,11 +52,49 @@ function release(value){
     deny("invalid-argument","Release markers must be version identifiers.");
   return value;
 }
+
+const CONTROLS=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
+const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_get","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery"]);
+const CONTEXT_ENUMS={visibility:["visible","hidden","other"],network:["online","offline"],focus:["focused","unfocused"],ready:["loading","interactive","complete","other"],dialog:["open","none"],busy:["busy","idle"]};
+function checkedContext(value){
+  if(!value||typeof value!=="object"||Array.isArray(value))deny("invalid-argument","Invalid diagnostic context.");
+  const allowed=[...Object.keys(CONTEXT_ENUMS),"control","process","active","overflow","clientAt","elapsedMs","reasonCode","projectCategory","recovery","deviceBackup","retryState","parentOperationId","saveStage","retryAttempt","waitingRequests","pageInstanceId","peerMarker","localSaveState","transactionAttempts","transactionMs","transactionOutcome"];
+  if(Object.keys(value).some(k=>!allowed.includes(k)))deny("invalid-argument","Diagnostic context accepts only approved metadata.");
+  const out={};
+  if(value.pageInstanceId!==undefined){if(typeof value.pageInstanceId!=="string"||!UUID.test(value.pageInstanceId))deny("invalid-argument","Invalid diagnostic page instance.");out.pageInstanceId=value.pageInstanceId.toLowerCase();}
+  for(const [key,allowed] of [["peerMarker",["pending","confirmed","removed","changed"]],["localSaveState",["writing","pending","idle"]],["transactionOutcome",["returned","rejected"]]]){if(value[key]!==undefined){if(!allowed.includes(value[key]))deny("invalid-argument","Invalid diagnostic state.");out[key]=value[key];}}
+  if(value.saveStage!==undefined){if(!["scope_verification","school_sync","legacy_transaction","cloud_confirmed","newer_snapshot_pending","save_failed"].includes(value.saveStage))deny("invalid-argument","Invalid diagnostic save stage.");out.saveStage=value.saveStage;}
+  if(value.parentOperationId!==undefined){if(typeof value.parentOperationId!=="string"||!UUID.test(value.parentOperationId))deny("invalid-argument","Invalid diagnostic parent operation.");out.parentOperationId=value.parentOperationId.toLowerCase();}
+  for(const [key,options] of [["reasonCode",STUDIO_REASONS],["projectCategory",new Set(["personal","assessment","unknown"])],["recovery",new Set(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"])],["deviceBackup",new Set(["available","unavailable","unknown"])],["retryState",new Set(["scheduled","not_scheduled"])]] ){
+    if(value[key]!==undefined){if(!options.has(value[key]))deny("invalid-argument","Invalid diagnostic context category.");out[key]=value[key];}
+  }
+  for(const [key,options] of Object.entries(CONTEXT_ENUMS)){
+    if(value[key]!==undefined){if(!options.includes(value[key]))deny("invalid-argument","Invalid diagnostic state.");out[key]=value[key];}
+  }
+  for(const [key,options] of [["control",CONTROLS],["process",PROCESS_NAMES]]){
+    if(value[key]!==undefined){if(!options.has(value[key]))deny("invalid-argument","Unknown diagnostic control or process.");out[key]=value[key];}
+  }
+  if(value.active!==undefined){
+    if(!Array.isArray(value.active)||value.active.length>6)deny("invalid-argument","Invalid active process snapshot.");
+    const seen=new Set();
+    out.active=value.active.map(p=>{
+      if(!p||typeof p!=="object"||Array.isArray(p)||Object.keys(p).some(k=>!["name","id","ageMs"].includes(k))||
+        !PROCESS_NAMES.has(p.name)||typeof p.id!=="string"||!UUID.test(p.id)||seen.has(p.id.toLowerCase())||
+        !Number.isInteger(p.ageMs)||p.ageMs<0||p.ageMs>3600000)deny("invalid-argument","Invalid active process.");
+      seen.add(p.id.toLowerCase());return {name:p.name,id:p.id.toLowerCase(),ageMs:p.ageMs};
+    });
+  }
+  for(const [key,max] of [["overflow",100],["transactionAttempts",100],["transactionMs",120000],["retryAttempt",4],["waitingRequests",100],["clientAt",8640000000000000],["elapsedMs",3600000]]){
+    if(value[key]!==undefined){if(!Number.isSafeInteger(value[key])||value[key]<0||value[key]>max)deny("invalid-argument","Invalid diagnostic timing or count.");out[key]=value[key];}
+  }
+  return out;
+}
+
 function checkedEvent(input){
   if(!input||typeof input!=="object"||Array.isArray(input))
     deny("invalid-argument","A diagnostic event is required.");
   const keys=Object.keys(input);
-  if(keys.some(key=>!["eventId","sessionId","kind","module","action","state","errorCode","route","release","operationId","phase","deviceClass","browserFamily","osFamily","viewport"].includes(key)))
+  if(keys.some(key=>!["eventId","sessionId","kind","module","action","state","errorCode","route","release","operationId","phase","deviceClass","browserFamily","osFamily","viewport","context"].includes(key)))
     deny("invalid-argument","Diagnostic events accept only approved metadata.");
   if(typeof input.eventId!=="string"||!UUID.test(input.eventId)||
      typeof input.sessionId!=="string"||!UUID.test(input.sessionId))
@@ -67,14 +105,18 @@ function checkedEvent(input){
   const kindActions={
     session:["session_started","auth_session_observed","session_ended","signed_in","signed_out"],
     navigation:["page_open"],notification:["notification_delivered","notification_opened"],
-    system:["network_offline","network_online"],
-    error:["javascript_error","promise_error","resource_error","api_failed","studio_run_failed","cloud_save_failed"],
+    system:["network_offline","network_online","process_prolonged","studio_peer_marker_changed"],
+    error:["javascript_error","promise_error","resource_error","api_failed","studio_run_failed","cloud_save_failed","process_failed"],
     action:["school_switched","cloud_save_confirmed","api_succeeded","support_report_submitted",
       "studio_run_requested","studio_run_completed","assessment_submit_requested","assessment_submitted",
-      "assessment_withdraw_requested","assessment_evaluate_requested"]
+      "assessment_withdraw_requested","assessment_evaluate_requested","control_clicked","process_started","process_finished","process_progress"]
   };
   if(!kindActions[input.kind].includes(input.action))
     deny("invalid-argument","Diagnostic category and action must agree.");
+  if(["transactionAttempts","transactionMs","transactionOutcome"].some(key=>input.context?.[key]!==undefined))deny("invalid-argument","Backend transaction observations cannot be submitted by the browser.");
+  if(input.action==="studio_peer_marker_changed"&&(input.state!=="unavailable"||input.module!=="studio"||!input.context?.peerMarker||!input.context?.localSaveState))deny("invalid-argument","Invalid peer marker observation.");
+  if(input.action==="process_prolonged"&&(input.state!=="unavailable"||input.phase!=="observed"||!input.operationId||!input.context?.process||!Number.isInteger(input.context.elapsedMs)||input.context.elapsedMs<60000))deny("invalid-argument","Invalid prolonged process observation.");
+  if(input.action==="process_progress"&&(input.state!=="info"||input.phase!=="observed"||!input.operationId||input.context?.process!=="studio_cloud_save"||!input.context.saveStage))deny("invalid-argument","Invalid save progress observation.");
   if(input.kind==="error"&&input.state!=="error"&&input.state!=="unavailable")
     deny("invalid-argument","Error events must declare an error or unavailable state.");
   if(input.kind!=="error"&&input.errorCode)
@@ -92,6 +134,7 @@ function checkedEvent(input){
     eventId:input.eventId.toLowerCase(),sessionId:input.sessionId.toLowerCase(),
     kind:input.kind,module:input.module,action:input.action,state:input.state,
     errorCode:code(input.errorCode),route:route(input.route),release:release(input.release),
+    ...(input.context!==undefined?{context:checkedContext(input.context)}:{}),
     ...(input.operationId?{operationId:input.operationId.toLowerCase()}:{}),
     ...(input.phase?{phase:input.phase}:{}),
     ...Object.fromEntries(["deviceClass","browserFamily","osFamily","viewport"]
@@ -100,6 +143,28 @@ function checkedEvent(input){
 }
 function safeService(value){
   return typeof value==="string"&&/^[a-zA-Z0-9_-]{1,64}$/.test(value)?value:"school_api";
+}
+const STUDIO_REASONS=new Set(["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_STATE_CHANGED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_CLOSED","STUDIO_FINAL_CHECKPOINT_REQUIRED","STUDIO_FINAL_CHECKPOINT_CONFLICT","STUDIO_FINAL_CHECKPOINT_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EMPTY_SNAPSHOT_REJECTED","STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_NOT_ARCHIVED"]);
+function studioDiagnosticReason(error){return STUDIO_REASONS.has(error?.diagnosticReason)?error.diagnosticReason:"";}
+// These identifiers are client-declared correlation hints, never identity or authority.
+const CORRELATED_CALLS={schoolStudioProjects:new Set(["sync","get","archive","restore"]),schoolStudioSubmissions:new Set(["submit"]),schoolStudioAssessmentVariant:new Set(["assign"])};
+function clientCorrelation(request,service){
+  if(!Object.hasOwn(CORRELATED_CALLS,service)||!CORRELATED_CALLS[service].has(request?.data?.action))return {};
+  const value=request?.data?._diagnostic;
+  if(!value||typeof value!=="object"||Array.isArray(value)||Object.keys(value).some(k=>!["sessionId","operationId","parentOperationId"].includes(k)))return {};
+  if(typeof value.sessionId!=="string"||!UUID.test(value.sessionId)||typeof value.operationId!=="string"||!UUID.test(value.operationId))return {};
+  if(value.parentOperationId!==undefined&&(typeof value.parentOperationId!=="string"||!UUID.test(value.parentOperationId)||value.parentOperationId.toLowerCase()===value.operationId.toLowerCase()))return {};
+  return {sessionId:value.sessionId.toLowerCase(),operationId:value.operationId.toLowerCase(),...(value.parentOperationId?{parentOperationId:value.parentOperationId.toLowerCase()}:{})};
+}
+function correlationFields(request,service){
+  const {parentOperationId,...ids}=clientCorrelation(request,service);
+  return {ids,context:parentOperationId?{parentOperationId}:{}};
+}
+function serverTransactionContext(value){
+  if(!value||!Number.isInteger(value.transactionAttempts)||value.transactionAttempts<0||value.transactionAttempts>100||
+    !Number.isInteger(value.transactionMs)||value.transactionMs<0||value.transactionMs>120000||
+    !["returned","rejected"].includes(value.transactionOutcome))return {};
+  return {transactionAttempts:value.transactionAttempts,transactionMs:value.transactionMs,transactionOutcome:value.transactionOutcome};
 }
 function serverErrorCode(error){
   const value=String(error?.code||"internal").replace(/^functions\//,"");
@@ -124,9 +189,12 @@ function traceFromRequest(request){
 function fingerprint(row){
   if(!["failure","warning"].includes(diagnosticSeverity(row)))return "";
   const values=[row.module||"other",row.service||"",row.action||"",row.errorCode||"unknown"];
+  if(row.context?.reasonCode)values.push(row.context.reasonCode);
   return createHash("sha256").update(values.join("|")).digest("hex").slice(0,20);
 }
 function diagnosticSeverity(row){
+  // Explicit server-owned policy rejections are warnings, not infrastructure failures.
+  if(row?.source==="backend"&&["STUDIO_EXAM_CLOSED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_EXAM_STATE_CHANGED"].includes(row.context?.reasonCode))return "warning";
   // Only server-interpreted outcomes are flagged; an observed button click
   // is a normal event, not evidence that its requested operation succeeded.
   if(row?.kind==="error"||row?.state==="error"||
@@ -138,7 +206,9 @@ function diagnosticSeverity(row){
 }
 function serialize(doc,source="client"){
   const row=doc.data()||{};
+  let context;try{if(row.context!==undefined)context=checkedContext(row.context);}catch{}
   return {
+    ...(context?{context}:{}),
     id:doc.id,at:createdAtNumber(row.createdAt),severity:diagnosticSeverity(row),
     provenance:row.source==="backend"?"server_confirmed":"client_observed",
     phase:String(row.phase||(row.state==="error"?"failed":row.state==="unavailable"?"interrupted":"observed")).slice(0,16),sessionId:String(row.sessionId||"").slice(0,40),
@@ -169,14 +239,14 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       const counter=await tx.get(quota),count=Number(counter.data()?.count)||0;
       if(count>=PER_ACCOUNT_DAILY_LIMIT)
         deny("resource-exhausted","Account diagnostic collection reached its daily safety limit.");
-      const isNormal=diagnosticSeverity(event)==="normal";
+      const isNormal=diagnosticSeverity({...event,source})==="normal";
       const normalCount=Number(counter.data()?.normalCount)||0;
       if(isNormal&&normalCount>=NORMAL_DAILY_LIMIT)
         deny("resource-exhausted","Normal event budget is full; diagnostic slots are reserved for warnings and errors.");
       const expiry=Timestamp.fromMillis(at+RETENTION_DAYS*DAY_MS);
       tx.set(account,{
         ownerUid,updatedAt:FieldValue.serverTimestamp(),
-        lastSeverity:diagnosticSeverity(event),
+        lastSeverity:diagnosticSeverity({...event,source}),
         lastKind:event.kind,lastAction:event.action,lastModule:event.module,
         lastState:event.state,lastErrorCode:event.errorCode||""
       },{merge:true});
@@ -192,20 +262,22 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       return {recorded:true,duplicate:false};
     });
   }
-  async function writeServerFailure(request,error,startedAt=now()){
+  async function writeServerFailure(request,error,startedAt=now(),serviceName="",transactionObservation){
     if(request?.auth?.token?.email_verified!==true||!request?.auth?.uid)return;
     const ownerUid=String(request.auth.uid);
     if(!UID.test(ownerUid))return;
     const rawPath=String(request?.rawRequest?.path||"").split("?")[0].split("/").at(-1);
-    const service=safeService(rawPath);
-    const type=serverErrorCode(error);
+    const service=safeService(serviceName||rawPath);
+    const type=serverErrorCode(error),reasonCode=studioDiagnosticReason(error);
+    const correlation=correlationFields(request,service);
+    const transaction=serverTransactionContext(transactionObservation);
     const action=String(request?.data?.action||"");
     // Never include user data, arbitrary action arguments or error messages.
     const safeAction=/^[a-z][a-z0-9_-]{0,45}$/.test(action)?action:"call";
     const synthetic={
-      eventId:randomUUID(),sessionId:randomUUID(),kind:"error",module:"api",
+      eventId:randomUUID(),sessionId:randomUUID(),...correlation.ids,kind:"error",module:"api",
       action:"api_failed",state:"error",errorCode:type,route:"",release:"",
-      phase:"failed",traceId:traceFromRequest(request),
+      phase:"failed",traceId:traceFromRequest(request),...((reasonCode||Object.keys(correlation.context).length||Object.keys(transaction).length)?{context:{...correlation.context,...transaction,...(reasonCode?{reasonCode}:{})}}:{}),
       durationMs:Math.max(0,Math.min(120000,now()-(Number(startedAt)||now())))
     };
     try{return await insert(ownerUid,synthetic,{source:"backend",service:service+"."+safeAction});}
@@ -296,7 +368,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
       note:"Recently observed account activity only; accounts without recorded events are available in Platform Users and the account directory."};
   }
 
-  async function recordServerProcess(request,{service,startedAt,status="ok"}={}){
+  async function recordServerProcess(request,{service,startedAt,status="ok",transactionObservation}={}){
     // Server-owned process outcome. Never trust arbitrary request field values as
     // event text. Only a small set of write actions is instrumented in index.js.
     if(request?.auth?.token?.email_verified!==true||!UID.test(String(request?.auth?.uid||"")))return;
@@ -304,9 +376,11 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     const rawAction=String(request?.data?.action||"call");
     const safeAction=safeProcess(rawAction,48);
     const safeServiceName=safeProcess(service,64);
+    const correlation=correlationFields(request,safeServiceName);
+    const context={...correlation.context,...serverTransactionContext(transactionObservation)};
     const ms=Math.max(0,Math.min(120000,now()-(Number(startedAt)||now())));
     const event={
-      eventId:randomUUID(),sessionId:randomUUID(),kind:"action",module:"api",
+      eventId:randomUUID(),sessionId:randomUUID(),...correlation.ids,...(Object.keys(context).length?{context}:{}),kind:"action",module:"api",
       action:"api_succeeded",state:"ok",errorCode:"",route:"",
       release:"",phase:"completed",durationMs:ms,traceId:traceFromRequest(request)
     };
@@ -594,4 +668,4 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
   }
   return {service,writeServerFailure,recordServerProcess,recordNotificationDelivered,cleanup};
 }
-module.exports={RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics};
+module.exports={clientCorrelation,studioDiagnosticReason,RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics};

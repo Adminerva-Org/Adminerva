@@ -176,3 +176,81 @@ test("backend failure capture retains code and callable name, never request payl
   assert.equal(JSON.stringify(values[0]).includes("private student answer"),false);
   assert.equal(JSON.stringify(values[0]).includes("private code"),false);
 });
+
+test("bounded context accepts known controls and process snapshots only",async()=>{
+  const ctx={control:"cloudSaveProjectBtn",visibility:"visible",network:"online",focus:"focused",ready:"complete",dialog:"none",busy:"busy",
+    clientAt:T,active:[{name:"studio_cloud_save",id:SESSION,ageMs:300}],overflow:0};
+  const e=event({kind:"action",action:"control_clicked",state:"info",context:ctx});
+  assert.deepEqual(checkedEvent(e).context,ctx);
+  for(const invalid of [{...ctx,control:"student-name"},{...ctx,network:"secret"},{...ctx,text:"private"},
+    {...ctx,active:[{name:"studio_cloud_save",id:SESSION,ageMs:300,payload:"private"}]},
+    {...ctx,active:Array(7).fill(ctx.active[0])},{...ctx,active:[ctx.active[0],ctx.active[0]]}]){
+    assert.throws(()=>checkedEvent({...e,context:invalid}),/diagnostic|process/i);
+  }
+  const db=fakeDb(),api=service(db).service;
+  await api(request(USER,{action:"record",event:e}));
+  const response=await api(request(ADMIN,{action:"list",targetUid:USER,reason:"Investigating overlapping save operations"}));
+  assert.deepEqual(response.events[0].context,ctx);
+  await assert.rejects(api(request(USER,{action:"list",targetUid:USER,reason:"Investigating overlapping save operations"})),/Platform Administrator/);
+});
+
+test("fixed Studio callable lifecycle names are accepted; unknown processes are rejected",()=>{
+ const e=event({kind:"action",action:"process_started",state:"info",operationId:SESSION,phase:"started",context:{process:"studio_api_submit",active:[{name:"studio_api_submit",id:SESSION,ageMs:0}]}});
+ assert.equal(checkedEvent(e).context.process,"studio_api_submit");
+ assert.throws(()=>checkedEvent({...e,context:{process:"arbitrary"}}),/Unknown diagnostic/);
+});
+
+test("Studio server policy denials preserve callable and exact reason without recording message",async()=>{
+ const db=fakeDb(),collector=service(db);
+ await collector.writeServerFailure(request(USER,{action:"sync"}),{code:"failed-precondition",diagnosticReason:"STUDIO_EXAM_CLOSED",message:"private text"},T,"schoolStudioProjects");
+ const rows=[...db.values.values()].filter(row=>row.action==="api_failed");
+ assert.equal(rows.length,1);assert.equal(rows[0].service,"schoolStudioProjects.sync");assert.equal(rows[0].severity,"warning");assert.equal(rows[0].context.reasonCode,"STUDIO_EXAM_CLOSED");assert.equal(JSON.stringify(rows[0]).includes("private text"),false);
+ assert.throws(()=>checkedEvent(event({context:{reasonCode:"private reason"}})),/Invalid diagnostic context/);
+ assert.equal(diagnosticSeverity({...rows[0],source:"browser"}),"failure");
+});
+
+test("callable correlation is bounded and never changes authenticated ownership",async()=>{
+ const {clientCorrelation}=require("../functions/platform-account-diagnostics.js");
+ const parent="cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+ const diagnostic={sessionId:SESSION,operationId:EVENT,parentOperationId:parent};
+ const req=request(USER,{action:"sync",_diagnostic:diagnostic});
+ assert.deepEqual(clientCorrelation(req,"schoolStudioProjects"),diagnostic);
+ assert.deepEqual(clientCorrelation(req,"otherService"),{});
+ assert.deepEqual(clientCorrelation(request(USER,{action:"sync",_diagnostic:{...diagnostic,ownerUid:ADMIN}}),"schoolStudioProjects"),{});
+ assert.deepEqual(clientCorrelation(request(USER,{action:"sync",_diagnostic:{...diagnostic,parentOperationId:EVENT}}),"schoolStudioProjects"),{});
+ const db=fakeDb(),collector=service(db);
+ await collector.writeServerFailure(req,{code:"failed-precondition",diagnosticReason:"STUDIO_EXAM_CLOSED"},T,"schoolStudioProjects");
+ await collector.recordServerProcess(req,{service:"schoolStudioProjects",startedAt:T});
+ const rows=[...db.values.values()].filter(row=>["api_failed","api_succeeded"].includes(row.action));
+ assert.equal(rows.length,2);
+ for(const row of rows){assert.equal(row.ownerUid,USER);assert.equal(row.operationId,EVENT);assert.equal(row.sessionId,SESSION);assert.equal(row.context.parentOperationId,parent);}
+});
+
+test("save stages and prolonged observations are bounded and cannot claim completion",()=>{
+ const e=event({kind:"action",action:"process_progress",state:"info",operationId:EVENT,phase:"observed",context:{process:"studio_cloud_save",saveStage:"school_sync",elapsedMs:20,retryAttempt:1,waitingRequests:2}});
+ assert.deepEqual(checkedEvent(e).context,e.context);
+ for(const context of [{...e.context,saveStage:"private"},{...e.context,retryAttempt:5},{...e.context,waitingRequests:101}])assert.throws(()=>checkedEvent({...e,context}),/diagnostic/i);
+ const slow={...e,kind:"system",action:"process_prolonged",state:"unavailable",context:{...e.context,elapsedMs:60000}};
+ assert.equal(diagnosticSeverity(checkedEvent(slow)),"warning");
+ assert.throws(()=>checkedEvent({...slow,context:{...slow.context,elapsedMs:59999}}),/prolonged/);
+ assert.throws(()=>checkedEvent({...slow,state:"ok"}),/prolonged/);
+});
+
+test("backend transaction metrics cannot be forged by browser events or request payloads",async()=>{
+ const metrics={transactionAttempts:2,transactionMs:125,transactionOutcome:"returned"};
+ assert.throws(()=>checkedEvent(event({context:metrics})),/Backend transaction/);
+ const db=fakeDb(),collector=service(db);
+ await collector.recordServerProcess(request(USER,{action:"sync",...metrics}),{service:"schoolStudioProjects",startedAt:T});
+ await collector.recordServerProcess(request(USER,{action:"sync"}),{service:"schoolStudioProjects",startedAt:T,transactionObservation:metrics});
+ const rows=[...db.values.values()].filter(row=>row.action==="api_succeeded");
+ assert.equal(rows.length,2);
+ assert.equal(rows.filter(row=>row.context?.transactionAttempts===2).length,1);
+ assert.deepEqual(rows.find(row=>row.context?.transactionAttempts===2).context,metrics);
+});
+test("peer marker observations are bounded, client-only and cannot assert success",()=>{
+ const peer=event({kind:"system",module:"studio",action:"studio_peer_marker_changed",state:"unavailable",phase:"observed",context:{peerMarker:"pending",localSaveState:"writing",pageInstanceId:SESSION}});
+ assert.equal(diagnosticSeverity(checkedEvent(peer)),"warning");
+ assert.throws(()=>checkedEvent({...peer,state:"ok"}),/peer marker/);
+ assert.throws(()=>checkedEvent({...peer,context:{...peer.context,peerMarker:"private"}}),/diagnostic/);
+ assert.throws(()=>checkedEvent({...peer,context:{...peer.context,pageInstanceId:"project-name"}}),/diagnostic/);
+});

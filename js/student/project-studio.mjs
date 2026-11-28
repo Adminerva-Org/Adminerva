@@ -15,7 +15,7 @@ import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,listV4StudioAssignments,loadV4StudioProject,
   getV4StudioSubmissionStatus,getV4StudioSubmittedRecovery,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject,retryV4StudioSchool
-} from "./v4-studio-service.mjs?v=20261123-cloud-recovery-1";
+} from "./v4-studio-service.mjs?v=20261126-rejection-1";
 import {describeStudioCloudSaveError,studioCloudRetryDelay} from "./studio-cloud-save-recovery.mjs?v=20261123-cloud-recovery-1";
 
 const el=id=>document.getElementById(id);
@@ -175,6 +175,9 @@ export function createProjectStudio({
   let activeProject=null,selectedTemplate="java-information",initialized=false,openEpoch=0;
   const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set(),cloudPending=new Map(),markerCache=new Map();
   const cloudRetryTimers=new Map(),cloudRetryAttempts=new Map();
+  // Local-only lock observations. Never transmit a project ID.
+  const cloudWriteObservations=new Map();
+  function noteCloudWait(id){const observed=cloudWriteObservations.get(id);if(observed)observed.waitingRequests=Math.min(100,observed.waitingRequests+1);}
   // If browser storage is full or blocked, the live assessment project can
   // still save to school cloud. Do not let the student leave that only copy
   // until the exact snapshot has a confirmed cloud revision.
@@ -226,6 +229,19 @@ export function createProjectStudio({
   };
 
   function markerKey(id){return "Adminerva_Studio_Cloud_State_"+uid+"_"+id;}
+  let lastPeerMarkerAt=0;
+  function observePeerMarker(event){
+    if(guest||!cloudEnabled||auth.currentUser?.uid!==uid||!activeProject?.id||event.storageArea!==localStorage)return;
+    const id=activeProject.id,key=(scopeToken?"Adminerva_Scoped_Studio_"+scopeToken+"_":"")+markerKey(id);
+    if(event.key!==key||event.oldValue===event.newValue||Date.now()-lastPeerMarkerAt<10000)return;
+    const localSaveState=cloudWrites.has(id)?"writing":cloudPending.has(id)?"pending":"idle";
+    if(localSaveState==="idle")return;
+    let peerMarker="changed";
+    if(event.newValue===null)peerMarker="removed";else try{const marker=JSON.parse(event.newValue);if(marker?.pending===true)peerMarker="pending";else if(marker?.pending===false)peerMarker="confirmed";}catch{}
+    lastPeerMarkerAt=Date.now();
+    // Observe only: do not refresh the cached revision, mutate work, or bypass conflicts.
+    try{globalThis.AdminervaDiagnostic?.emit?.("studio_peer_marker_changed",{kind:"system",module:"studio",state:"unavailable",phase:"observed",context:{peerMarker,localSaveState}});}catch{}
+  }
   function readMarker(id){if(!markerCache.has(id)){try{markerCache.set(id,JSON.parse(projectStorage.getItem(markerKey(id))||"null")||{});}catch{markerCache.set(id,{});}}return markerCache.get(id);}
   function writeMarker(id,value){markerCache.set(id,value);try{projectStorage.setItem(markerKey(id),JSON.stringify(value));}catch(error){console.warn("Studio sync recovery marker unavailable",error);}}
   function stable(value){
@@ -349,6 +365,7 @@ export function createProjectStudio({
     clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
     if(!cloudEnabled||deletedProjects.has(id))return false;
     if(cloudWrites.has(id)){
+      noteCloudWait(id);
       await cloudWrites.get(id);
       return closingSessionEpoch?flushOneAfterWrite(id,closingSessionEpoch):
         cloudPending.has(id)?flushOneAfterWrite(id):true;
@@ -357,6 +374,7 @@ export function createProjectStudio({
   }
   async function flushOneAfterWrite(id,closingSessionEpoch=0){
     if(cloudWrites.has(id)){
+      noteCloudWait(id);
       await cloudWrites.get(id);
       return flushOneAfterWrite(id,closingSessionEpoch);
     }
@@ -365,17 +383,25 @@ export function createProjectStudio({
     // call obtained the per-project lock. An empty queue is NOT proof of
     // the teacher-close receipt: only an examFinalized server response is.
     if(!snapshot||deletedProjects.has(id))return closingSessionEpoch?false:true;
+    let finishDiagnostic,diagnosticError,diagnosticOutcome={};
+    const observed={waitingRequests:0};
+    cloudWriteObservations.set(id,observed);
+    try{finishDiagnostic=globalThis.AdminervaDiagnostic?.beginProcess?.("studio_cloud_save",{projectCategory:snapshot.assessment?"assessment":"personal",retryAttempt:cloudRetryAttempts.get(id)||0});}catch{}
+    const reportDiagnostic=success=>{try{finishDiagnostic?.(success,diagnosticError?.code,diagnosticError?.details?.diagnosticReason,{...diagnosticOutcome,waitingRequests:observed.waitingRequests});}catch{}};
+    const progress=stage=>{try{finishDiagnostic?.progress?.(stage);}catch{}};
     const work=(async()=>{
       try{
+        progress("scope_verification");
         if(auth.currentUser?.uid!==uid)throw Error("Sign in with the original project account.");
         let school=await currentV4StudioSchool();
         if(!school&&(scopeToken||snapshot.assessment?.provisionedBy==="assessment-launch"))school=await retryV4StudioSchool();
         if(auth.currentUser?.uid!==uid)throw Error("Account changed before saving.");
         let marker;
         if(school){
+          progress("school_sync");
           const base=readMarker(id);
           const result=await syncV4StudioProject(snapshot,snapshot.state,{quiet:true,expectedRevision:base.kind==="school"&&base.schoolId===school.schoolId?base.revision:null,
-            closingSaveSessionEpoch:closingSessionEpoch});
+            closingSaveSessionEpoch:closingSessionEpoch,diagnosticParentOperationId:finishDiagnostic?.correlation?.operationId||""});
           if(!result)throw Error("School cloud storage is unavailable.");
           if(closingSessionEpoch&&result.examFinalized!==true)
             throw Error("The final exam checkpoint was not confirmed by the school server.");
@@ -386,6 +412,7 @@ export function createProjectStudio({
             throw Error("Verified school cloud storage is required for assessment projects. Keep this tab open and retry Save.");
           const ref=doc(db,"student_code_projects",uid,"projects",id);
           const base=readMarker(id);
+          progress("legacy_transaction");
           const confirmedAt=await runTransaction(db,async tx=>{
             const remote=await tx.get(ref);
             if(remote.exists()){
@@ -403,6 +430,7 @@ export function createProjectStudio({
         if(same){cloudPending.delete(id);unbackedProjectIds.delete(id);}
         if(same){clearTimeout(cloudRetryTimers.get(id));cloudRetryTimers.delete(id);cloudRetryAttempts.delete(id);}
         writeMarker(id,{...marker,pending:!same});
+        progress(same?"cloud_confirmed":"newer_snapshot_pending");
         if(same){
           setCloudStatus("Saved to cloud","success",id);
           if(marker.kind==="legacy")document.dispatchEvent(new CustomEvent("adminerva:studio-cloud-confirmed"));
@@ -410,13 +438,16 @@ export function createProjectStudio({
         }
         return true;
       }catch(error){
+        diagnosticError=error;
+        progress("save_failed");
         console.warn("Studio cloud save failed:",error);
         document.dispatchEvent(new CustomEvent("adminerva:diagnostic-event",{detail:{
-          action:"cloud_save_failed",errorCode:String(error?.code||error?.name||"unavailable")
+          action:"cloud_save_failed",errorCode:String(error?.code||error?.name||"unavailable"),reasonCode:error?.details?.diagnosticReason
         }}));
         const failure=describeStudioCloudSaveError(error,{online:navigator.onLine!==false});
         const retrying=scheduleCloudRetry(id,error,closingSessionEpoch);
         const unbacked=unbackedProjectIds.has(id);
+        diagnosticOutcome={deviceBackup:unbacked?"unavailable":"available",retryState:retrying?"scheduled":"not_scheduled"};
         const suffix=retrying?" · retry scheduled":" · select Save to retry";
         setCloudStatus(unbacked?
           "No device backup or cloud confirmation · "+failure.label+" · keep this tab open":
@@ -431,7 +462,9 @@ export function createProjectStudio({
       }
     })();
     cloudWrites.set(id,work);
-    try{return await work;}finally{if(cloudWrites.get(id)===work)cloudWrites.delete(id);}
+    try{const saved=await work;reportDiagnostic(saved===true);return saved;}
+    catch(error){reportDiagnostic(false);throw error;}
+    finally{if(cloudWrites.get(id)===work){cloudWrites.delete(id);cloudWriteObservations.delete(id);}}
   }
   async function flushCloudSaves({closingSessionEpoch=0}={}){
     // Ordinary guest work can be saved locally, but an exam may never
@@ -690,6 +723,7 @@ export function createProjectStudio({
     });
     el("enableProjectDbBtn")?.addEventListener("click",()=>updateConfig({database:true}));
     document.querySelectorAll("[data-studio-view]").forEach(button=>button.addEventListener("click",()=>switchStudioView(button.dataset.studioView)));
+    window.addEventListener("storage",observePeerMarker);
     window.addEventListener("online",()=>{
       for(const timer of cloudRetryTimers.values())clearTimeout(timer);
       cloudRetryTimers.clear();cloudRetryAttempts.clear();
