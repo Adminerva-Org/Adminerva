@@ -199,7 +199,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      return {ref,snapshot,data:snapshot.data(),meta,canonicalId,checkpointOnly:true};
    }
    function checkGrade(grade,studentId){
-     if(grade&&(grade.studentId!==studentId||grade.taskId!==id))
+     if(grade&&(grade.studentId!==studentId||grade.taskId!==id||(grade.schoolId&&grade.schoolId!==ctx.schoolId)))
        deny("failed-precondition","Historical grade belongs to a different learner or assessment.");
    }
    if(input.action==="legacy_github_bulk_publish"){
@@ -335,7 +335,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      for(const doc of gradePage.docs){
        const grade=doc.data();
        if(grade.taskId!==id||typeof grade.studentId!=="string"||
-          !inScope(grade.studentId,grade.section))continue;
+          !inScope(grade.studentId,grade.section)||(grade.schoolId&&grade.schoolId!==ctx.schoolId))continue;
        try{legacyDocumentId(grade.studentId,"Historical student",220);}catch{continue;}
        const existing=byStudent.get(grade.studentId);
        if(existing&&doc.id!==existing.evidenceId){
@@ -421,6 +421,11 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
          gradeRevision:Number(grade.gradeVersion||1),hasSubmission:false,checkpointGradeable:false});
        activityGradeCount++;if(grade.published===true)publishedCount++;else draftCount++;
      }
+     for(const row of results){
+       if(row.gradeOnly&&row.originalGradeId&&!row.gradeException&&!row.activityOnly){
+         try{legacyDocumentId("grade:"+row.originalGradeId,"Original grade history reference");row.gradeHistoryOnly=true;row.evidenceId="grade:"+row.originalGradeId;}catch{}
+       }
+     }
      return {task:taskInfo,evidence:results,coverage:{
        evidenceCount:rows.length,gradeCount:publishedCount+draftCount,
        originalReceiptCount:[...receiptsByStudent.values()].reduce((sum,list)=>sum+list.length,0),activityGradeCount,
@@ -431,6 +436,24 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      }};
    }
    const recordId=legacyDocumentId(input.legacyEvidenceId,"Historical submission ID");
+   if(recordId.startsWith("grade:")){
+     if(!["legacy_github_inspect","legacy_github_history"].includes(input.action))
+       deny("failed-precondition","Original grade-only records cannot be edited without verified evidence.");
+     const gradeId=legacyDocumentId(recordId.slice("grade:".length),"Original grade ID");
+     const source=await gradeRef(gradeId).get(),grade=source.exists?source.data():null;
+     if(!grade||grade.taskId!==id||typeof grade.studentId!=="string"||
+        !inScope(grade.studentId,grade.section)||(grade.schoolId&&grade.schoolId!==ctx.schoolId))
+       deny("permission-denied","Original score is outside the verified assessment and class.");
+     const page=await db.collection("student_grades").where("taskId","==",id).limit(1001).get();
+     if(page.size>=1001||page.docs.filter(doc=>doc.data().studentId===grade.studentId).length!==1)
+       deny("failed-precondition","Original grade identity requires reconciliation.");
+     const summary=gradeSummary(grade,rubric,custody?total:null);
+     if(input.action==="legacy_github_history")return require("./school-grade-revision-history.js").readLegacyGradeHistory({
+       db,schoolId:ctx.schoolId,taskId:id,studentId:grade.studentId,gradeId
+     });
+     return {task:taskInfo,snapshot:{gradeHistoryOnly:true,status:"recorded",version:summary.revision,hasSubmission:false},
+       grade:summary};
+   }
    if(recordId.startsWith("activity:")){
      if(!["legacy_github_inspect","legacy_github_history","legacy_github_activity_edit"].includes(input.action))
        deny("failed-precondition","Original activity scores use individual score editing, not submission grading.");

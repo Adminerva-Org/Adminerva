@@ -978,5 +978,5 @@ export function createV4BulkEvaluationController({
     }
   });
   render();
-  return {onInbox,reset};
+  return {onInbox,reset,hasUnsaved:()=>staged.size>0||referenceMap.size>0};
 }

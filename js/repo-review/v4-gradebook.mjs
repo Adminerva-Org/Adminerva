@@ -78,7 +78,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null,currentConversation=null,currentClassRecordStatus=null;
   let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher",reviewNeedsRefresh=false,pendingStudentDeepLink=requestedStudentUid;
   let bulkEvaluator=null;
-  let queueRows=[],reviewRows=[],savedForm=null,checkpointPackageDigest=null;
+  let queueRows=[],reviewRows=[],savedForm=null,checkpointPackageDigest=null,allOffset=0,allTasks=[];
+  const ALL_TASKS="__all_assessments__";
   const queueTools=document.getElementById("gbV4QueueTools"),queueSearch=document.getElementById("gbV4QueueSearch"),queueFilter=document.getElementById("gbV4QueueFilter"),queueCount=document.getElementById("gbV4QueueCount");
   function resetQueue(){queueRows=[];reviewRows=[];queueTools.hidden=true;queueSearch.value="";queueFilter.value="all";}
   function filterQueue(){const query=queueSearch.value.trim().toLocaleLowerCase(),mode=queueFilter.value;let visible=0;reviewRows=[];for(const item of queueRows){const match=queueMatches(item,query,mode);item.card.hidden=!match;item.card.classList.toggle("hidden",!match);if(match){visible++;if(item.reviewable)reviewRows.push(item.row);}}queueCount.textContent=visible+" / "+queueRows.length;refreshQueueNavigation();}
@@ -162,11 +163,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     renderConversation();
   }
   function refreshReviewControls(){
-    const published=currentGrade?.status==="published",activityOnly=currentSnapshot?.activityOnly===true;
+    const published=currentGrade?.status==="published",activityOnly=currentSnapshot?.activityOnly===true,gradeHistoryOnly=currentSnapshot?.gradeHistoryOnly===true;
     const dirty=isGradeDirty();
     document.getElementById("gbV4DirtyIndicator").hidden=!dirty;
     document.getElementById("gbV4ReloadReview").disabled=busy||!currentRow;
-    for(const field of document.querySelectorAll("#gbV4Rubric input,#gbV4Rubric textarea,#gbV4Feedback"))field.disabled=busy||!currentSnapshot||reviewNeedsRefresh;
+    for(const field of document.querySelectorAll("#gbV4Rubric input,#gbV4Rubric textarea,#gbV4Feedback"))field.disabled=busy||!currentSnapshot||reviewNeedsRefresh||gradeHistoryOnly;
     const reopened=currentRow?.status==="reopened";
     const loaded=Boolean(currentTask&&currentRow&&currentSnapshot&&!reviewNeedsRefresh);
     const evidenceReady=currentTask?.submissionSource!=="github"||
@@ -179,13 +180,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const historicalScalar=historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1";
     const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1"&&!readThrough;
     for(const id of ["gbV4SystemCheck","gbV4ExternalCopy","gbV4ExternalApply"])
-      document.getElementById(id).disabled=busy||!loaded||activityOnly||currentTask?.historicalRubricMode==="scalar_manual";
+      document.getElementById(id).disabled=busy||!loaded||activityOnly||gradeHistoryOnly||currentTask?.historicalRubricMode==="scalar_manual";
     const save=document.getElementById("gbV4SaveDraft");
-    save.textContent=activityOnly?(published?"Save correction":"Save score"):"Save draft";
+    save.textContent=activityOnly?(published?"Save correction":"Save score"):"Save draft";save.hidden=gradeHistoryOnly;
     save.disabled=activityOnly?busy||!loaded||!dirty:busy||!loaded||!evidenceReady||published||reopened||legacyScalar;
-    document.getElementById("gbV4Publish").hidden=activityOnly;
+    document.getElementById("gbV4Publish").hidden=activityOnly||gradeHistoryOnly;
     document.getElementById("gbV4Publish").disabled=
-      activityOnly||busy||!loaded||dirty||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar||Number(currentGrade?.pending||0)>0;
+      activityOnly||gradeHistoryOnly||busy||!loaded||dirty||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar||Number(currentGrade?.pending||0)>0;
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened||readThrough;
     document.getElementById("gbV4RevisionPanel").hidden=published||readThrough;
@@ -193,7 +194,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const convert=document.getElementById("gbV4ConvertLegacy");
     convert.disabled=busy||!loaded||!legacyScalar||readThrough;
     document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar||readThrough;
-    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",activityOnly||!published||legacyScalar||(historicalStudio&&currentGrade?.gradeSchema==="legacy_scalar_v1")||(readThrough&&!historicalGithub&&!historicalStudio));
+    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",activityOnly||gradeHistoryOnly||!published||legacyScalar||(historicalStudio&&currentGrade?.gradeSchema==="legacy_scalar_v1")||(readThrough&&!historicalGithub&&!historicalStudio));
     document.getElementById("gbV4Refresh").disabled=busy;
 
     refreshQueueNavigation();
@@ -279,6 +280,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     taskSelect.replaceChildren();
     const start=new Option(items.length?"Choose an assessment…":"No deployed V4 assessments","");
     start.disabled=true;start.selected=true;taskSelect.add(start);
+    if(items.length)taskSelect.add(new Option("All assessments",ALL_TASKS));
     for(const task of items){
       const label=(task.legacyCompatibility?"Historical · ":"")+sourceLabel(task.submissionSource)+" · "+task.title+" · "+
         (task.legacyCompatibility?(task.deploymentCount+" deployment"+(task.deploymentCount===1?"":"s")):(task.sectionId||"class"))+
@@ -296,12 +298,59 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(requested&&tasks.has(requested)){
       taskSelect.value=requested;
       await loadInbox();
-    }else if(requestedOfferingId&&v4Items.length===1){
-      taskSelect.value=v4Items[0].taskId;
+    }else if(requestedOfferingId&&items.length===1){
+      taskSelect.value=items[0].taskId;
       await loadInbox();
+    }else if(items.length){taskSelect.value=ALL_TASKS;await loadAllAssessmentQueue();}
+  }
+  async function loadAllAssessmentQueue(append=false){
+    const token=++generation;
+    if(!append){clearTaskContext();allTasks=[...tasks.values()];allOffset=0;syncGradebookUrl(null);queueSearch.placeholder="Search learner, class or assessment";}
+    const more=document.getElementById("gbV4MoreAssessments");if(more)more.remove();
+    const batch=allTasks.slice(allOffset,allOffset+4);
+    status.textContent="Loading assessment queue…";
+    const load=async task=>{
+      try{
+        const github=task.submissionSource==="github",historical=task.legacyCompatibility;
+        const [result,grades]=historical?[await scoped(migrationApi,github?"legacy_github_inbox":"legacy_review_inbox",{
+          legacyAssessmentId:task.legacyAssessmentId,...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{})}),null]:await Promise.all([
+          scoped(sourceApi(task.submissionSource,{studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi}),"inbox",{taskId:task.taskId}),
+          scoped(gradeApi,"list_task_results",{taskId:task.taskId})]);
+        const map=new Map((grades?.results||[]).map(row=>[row.studentUid,row]));
+        return {task,rows:(github?result.evidence:result.submissions)||[],map};
+      }catch(error){return {task,error:error?.message||"Unavailable"};}
+    };
+    for(let i=0;i<batch.length;i+=2){
+      const results=await Promise.all(batch.slice(i,i+2).map(load));
+      if(token!==generation||taskSelect.value!==ALL_TASKS)return;
+      for(const {task,rows,map,error} of results){
+        const group=make("section","rounded-lg border border-slate-200 p-2 space-y-1");
+        const heading=make("div","flex flex-wrap items-center justify-between gap-2");
+        heading.append(make("h3","font-bold text-sm break-words",(task.legacyCompatibility?"Historical · ":"")+task.title));
+        const open=make("button","text-xs font-bold text-indigo-700 underline","Open assessment");open.type="button";
+        open.addEventListener("click",()=>{if(busy)return;taskSelect.value=task.taskId;pendingStudentDeepLink="";void loadInbox();});heading.append(open);group.append(heading);
+        if(error)group.append(make("p","text-xs text-amber-800",error));
+        else if(!rows.length)group.append(make("p","text-xs text-slate-500","No recorded submissions"));
+        else for(const row of rows){
+          const grade=map.get(row.studentUid)||row,gradeStatus=grade.status==="published"||grade.gradeStatus==="published"?"published":grade.status==="draft"||grade.gradeStatus==="draft"?"draft":"ungraded";
+          const attention=!!(row.gradeException||row.evidenceException||row.gradeOnly||grade.reviewSuggested||Number(grade.pending||0));
+          const card=make("button","w-full rounded border border-slate-200 px-2 py-2 text-left flex flex-wrap justify-between gap-1 text-xs");card.type="button";
+          card.append(make("span","font-semibold break-words",row.studentName||"Learner"),make("span","text-slate-600",gradeStatus==="published"?"Published":gradeStatus==="draft"?"Draft":"Ungraded"));
+          if(attention)card.append(make("span","text-amber-800","Review suggested"));
+          card.addEventListener("click",()=>{if(busy)return;taskSelect.value=task.taskId;pendingStudentDeepLink=row.studentUid||"";void loadInbox();});
+          group.append(card);queueRows.push({card,row,reviewable:false,gradeStatus,attention,search:[row.studentName,row.section,task.title,task.subject,task.sectionId].join(" ").toLocaleLowerCase()});
+        }
+        inbox.append(group);
+      }
     }
+    if(token!==generation)return;
+    allOffset+=batch.length;queueTools.hidden=false;filterQueue();
+    status.textContent=allOffset+" / "+allTasks.length+" assessments loaded";
+    if(allOffset<allTasks.length){const button=make("button","rounded-lg border border-indigo-300 px-3 py-2 text-sm font-bold text-indigo-800","Load more assessments");button.id="gbV4MoreAssessments";button.type="button";button.addEventListener("click",()=>{button.disabled=true;void loadAllAssessmentQueue(true);});inbox.append(button);}
   }
   async function loadInbox(){
+    if(taskSelect.value===ALL_TASKS){await loadAllAssessmentQueue();return;}
+    queueSearch.placeholder="Search learner or section";
     const token=++generation;
     const task=tasks.get(taskSelect.value);
     if(currentTask?.taskId!==task?.taskId)resetQueue();else{queueRows=[];reviewRows=[];queueTools.hidden=true;}
@@ -445,7 +494,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         button.type="button";
         if(row.checkpointGradeable)button.textContent="Review checkpoint";
         if(row.activityEditable)button.textContent="Edit score";
-        if(row.gradeOnly||row.gradeException||(!row.activityEditable&&(row.evidenceException||(row.receiptOnly&&!row.checkpointGradeable)||row.activityOnly))){
+        if(row.gradeHistoryOnly)button.textContent="View grade history";
+        if((row.gradeOnly&&!row.gradeHistoryOnly)||row.gradeException||(!row.activityEditable&&!row.gradeHistoryOnly&&(row.evidenceException||(row.receiptOnly&&!row.checkpointGradeable)||row.activityOnly))){
           button.textContent=row.gradeException?"Reconcile original grade":row.activityOnly?"Activity score — read only":row.receiptOnly?"Checkpoint receipt — read only":row.evidenceException?"Evidence unavailable — read only":"Original score — read only";
           button.disabled=true;button.title="No matching frozen student submission. The saved original score is preserved but cannot be edited through evidence review.";
           button.classList.add("opacity-60","cursor-not-allowed");
@@ -630,6 +680,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   function renderRubric(grade){
     const host=document.getElementById("gbV4Rubric");host.replaceChildren();
     const prior=Array.isArray(grade?.criteria)?grade.criteria:[];
+    if(currentSnapshot?.gradeHistoryOnly){host.append(make("p","font-bold text-lg",String(grade.awarded)+" / "+grade.total));for(const item of prior)host.append(make("p","text-sm",item.name+" · "+item.awardedPoints+" / "+item.maximum));document.getElementById("gbV4Feedback").value=grade.feedback||"";document.getElementById("gbV4ScoreSummary").textContent=grade.status==="published"?"Published":"Draft";return;}
     if(currentTask?.legacyCompatibility&&grade?.status==="published"&&
        grade?.gradeSchema==="legacy_scalar_v1"&&currentTask.submissionSource!=="github"){
       host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
@@ -809,7 +860,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   document.getElementById("gbV4Next").addEventListener("click",()=>void moveReview(reviewRows[reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid)+1]));
   document.getElementById("gbV4NextUngraded").addEventListener("click",()=>void moveReview(nextUngraded()));
   document.getElementById("gbV4ReloadReview").addEventListener("click",()=>void moveReview(currentRow));
-  window.addEventListener("beforeunload",event=>{if(dialog.open&&isGradeDirty()){event.preventDefault();event.returnValue="";}});
+  window.addEventListener("beforeunload",event=>{if(dialog.open&&isGradeDirty()||bulkEvaluator?.hasUnsaved()){event.preventDefault();event.returnValue="";}});
   dialog.addEventListener("input",event=>{if(event.target.closest("#gbV4Rubric")||event.target.id==="gbV4Feedback")refreshReviewControls();});
   async function openReview(row,replace=false){
     if(busy||!currentTask||(dialog.open&&!replace))return;
@@ -941,6 +992,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           document.getElementById("gbV4PersonalizedNotes").textContent=
             currentSnapshot.personalizedTask.evaluationNotes||"No private variant notes were saved.";
         }
+      }else if(currentSnapshot.gradeHistoryOnly){
+        document.getElementById("gbV4GithubEvidence").classList.add("hidden");
+        document.getElementById("gbV4GeneralEvidence").classList.remove("hidden");
+        document.getElementById("gbV4EvidenceType").textContent="Historical grade";
+        document.getElementById("gbV4GeneralHeading").textContent="Original recorded score";
+        document.getElementById("gbV4GeneralMeta").textContent=currentGrade.status==="published"?"Published":"Draft";
+        document.getElementById("gbV4GeneralBody").textContent="No verified submission is available. Grade history is read-only.";
+        document.getElementById("gbV4GeneralLink").classList.add("hidden");document.getElementById("gbV4GeneralNote").classList.add("hidden");
       }else if(currentSnapshot.activityOnly){
         document.getElementById("gbV4GithubEvidence").classList.add("hidden");
         document.getElementById("gbV4GeneralEvidence").classList.remove("hidden");
@@ -978,11 +1037,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         "Extension deadline (optional before original deadline)";
       const published=currentGrade?.status==="published";
       const reopened=row.status==="reopened";
-      document.getElementById("gbV4ExternalEvaluationPanel").classList.toggle("hidden",currentSnapshot.activityOnly===true||currentTask.historicalRubricMode==="scalar_manual");
+      document.getElementById("gbV4ExternalEvaluationPanel").classList.toggle("hidden",currentSnapshot.activityOnly===true||currentSnapshot.gradeHistoryOnly===true||currentTask.historicalRubricMode==="scalar_manual");
       document.getElementById("gbV4RevisionPanel").hidden=Boolean(currentTask.legacyCompatibility)||published;
       document.getElementById("gbV4ConversationPanel").hidden=Boolean(currentTask.legacyCompatibility);
       refreshReviewControls();
-      document.getElementById("gbV4ReviewStatus").textContent=currentSnapshot.activityOnly?"Original activity score · edit without changing visibility.":published?
+      if(currentSnapshot.gradeHistoryOnly)gradeHistory.open=true;
+      document.getElementById("gbV4ReviewStatus").textContent=currentSnapshot.gradeHistoryOnly?"Original grade · read only.":currentSnapshot.activityOnly?"Original activity score · edit without changing visibility.":published?
         (historicalStudio?
           "Original published Studio grade preserved. Use grade correction to record a new audited revision.":
           historicalGithub?
@@ -1129,7 +1189,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       status.textContent=error?.message||"Bulk publication did not complete.";
     }finally{setBusy(false);}
   })());
-  taskSelect.addEventListener("change",()=>void loadInbox());
+  taskSelect.addEventListener("change",()=>{if(bulkEvaluator?.hasUnsaved()&&!confirm("Leave this assessment? Unsaved AI suggestions or packages will be cleared.")){taskSelect.value=currentTask?.taskId||ALL_TASKS;return;}void loadInbox();});
   document.getElementById("gbV4Refresh").addEventListener("click",()=>{if(busy||dialog.open)return;if(tasks.size)void loadInbox();else void loadTasks().catch(error=>{taskSelect.disabled=false;status.textContent=error?.message||"Assessment list could not be loaded.";});});
   document.getElementById("gbV4SaveDraft").addEventListener("click",()=>void (async()=>{
     if(busy||reviewNeedsRefresh||!currentTask||!currentRow||!currentSnapshot)return;
