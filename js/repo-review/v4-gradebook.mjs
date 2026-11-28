@@ -42,9 +42,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   function syncGradebookUrl(task){
     const url=new URL(location.href);url.searchParams.set("view",view);
     if(task?.taskId)url.searchParams.set("task",task.taskId);else url.searchParams.delete("task");
-    if(task?.offeringId)url.searchParams.set("offeringId",task.offeringId);
+    if(task?.offeringId||task?.legacyOfferingId)url.searchParams.set("offeringId",task.offeringId||task.legacyOfferingId);
     else if(!requestedOfferingId)url.searchParams.delete("offeringId");
     history.replaceState(null,"",url.pathname+"?"+url.searchParams.toString()+url.hash);
+    document.querySelectorAll('nav[aria-label="Assessment workflow views"] a').forEach(link=>{const target=new URL(link.href,location.href);for(const key of ["task","offeringId"]){const value=url.searchParams.get(key);if(value)target.searchParams.set(key,value);else target.searchParams.delete(key);}link.href=target.pathname+target.search;});
   }
   const requestedStudentUid=String(pageParams.get("studentUid")||"");
   const viewCopy={
@@ -77,7 +78,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null,currentConversation=null,currentClassRecordStatus=null;
   let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher",reviewNeedsRefresh=false,pendingStudentDeepLink=requestedStudentUid;
   let bulkEvaluator=null;
-  function clearTaskContext(){bulkEvaluator?.reset();currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentClassRecordStatus=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();renderClassRecordHandoff();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
+  let queueRows=[],reviewRows=[],savedForm=null;
+  const queueTools=document.getElementById("gbV4QueueTools"),queueSearch=document.getElementById("gbV4QueueSearch"),queueFilter=document.getElementById("gbV4QueueFilter"),queueCount=document.getElementById("gbV4QueueCount");
+  function resetQueue(){queueRows=[];reviewRows=[];queueTools.hidden=true;queueSearch.value="";queueFilter.value="all";}
+  function filterQueue(){const query=queueSearch.value.trim().toLocaleLowerCase(),mode=queueFilter.value;let visible=0;reviewRows=[];for(const item of queueRows){const match=(!query||item.search.includes(query))&&(mode==="all"||mode===item.gradeStatus||(mode==="attention"&&item.attention));item.card.hidden=!match;item.card.classList.toggle("hidden",!match);if(match){visible++;if(item.reviewable)reviewRows.push(item.row);}}queueCount.textContent=visible+" / "+queueRows.length;refreshQueueNavigation();}
+  queueSearch.addEventListener("input",filterQueue);queueFilter.addEventListener("change",filterQueue);
+  function clearTaskContext(){resetQueue();bulkEvaluator?.reset();currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentClassRecordStatus=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();renderClassRecordHandoff();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
 
   async function scoped(api,action,details={}){
     if(!picker?.scope.current)throw Error("Choose a verified school first.");
@@ -160,6 +166,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   }
   function refreshReviewControls(){
     const published=currentGrade?.status==="published";
+    const dirty=isGradeDirty();
     const reopened=currentRow?.status==="reopened";
     const loaded=Boolean(currentTask&&currentRow&&currentSnapshot&&!reviewNeedsRefresh);
     const evidenceReady=currentTask?.submissionSource!=="github"||
@@ -176,7 +183,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4SaveDraft").disabled=
       busy||!loaded||!evidenceReady||published||reopened||legacyScalar;
     document.getElementById("gbV4Publish").disabled=
-      busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar||Number(currentGrade?.pending||0)>0;
+      busy||!loaded||dirty||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar||Number(currentGrade?.pending||0)>0;
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened||readThrough;
     document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||(readThrough&&!historicalGithub&&!historicalStudio)||!evidenceReady;
@@ -186,6 +193,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||(readThrough&&!historicalGithub&&!historicalStudio));
     document.getElementById("gbV4Refresh").disabled=busy;
 
+    refreshQueueNavigation();
     if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
     if(document.getElementById("gbV4ConversationForm"))renderConversation();
   }
@@ -297,6 +305,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   async function loadInbox(){
     const token=++generation;
     const task=tasks.get(taskSelect.value);
+    if(currentTask?.taskId!==task?.taskId)resetQueue();else{queueRows=[];reviewRows=[];queueTools.hidden=true;}
     syncGradebookUrl(task||null);
     currentTask=task||null;currentClassRecordStatus=null;inbox.replaceChildren();renderClassRecordHandoff();
     if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}
@@ -315,6 +324,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           legacyAssessmentId:task.legacyAssessmentId,
           ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{})
         });
+        if(token!==generation)return;
         currentTask={...task,...result.task};
       }else{
         [result,resultData,classRecordStatus]=await Promise.all([
@@ -323,7 +333,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           scoped(classRecordApi,"assessment_link_status",{offeringId:task.offeringId,taskId:task.taskId})
             .catch(error=>({status:"unavailable",error:error?.message||"Class Record status unavailable"}))
         ]);
-        currentClassRecordStatus=classRecordStatus;renderClassRecordHandoff();
+        if(token!==generation)return;
       }
       if(token!==generation)return;
       currentClassRecordStatus=classRecordStatus;renderClassRecordHandoff();
@@ -355,29 +365,16 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         task:currentTask,rows,gradeMap,
         schoolId:picker.scope.current?.schoolId||picker.scope.lease().schoolId
       });
-      if(historicalGithub){
-        const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
-        notice.append(make("h3","font-bold text-violet-950","Historical GitHub evidence · V4 review interface"));
-        notice.append(make("p","text-violet-900 mt-1",
-          "Actual student-submitted commit selections are eligible for V4 grading. Historical teacher-discovered repository snapshots are retained as context but excluded from new grades, even if previously approved. Existing historical grades are preserved. "+
-          (result.coverage?result.coverage.gradeCount+" original grade records ("+
-            result.coverage.publishedCount+" published, "+result.coverage.draftCount+" draft) · "+
-            result.coverage.evidenceCount+" evidence records · "+
-            result.coverage.evidenceWithoutGrade+" evidence-only · "+
-            result.coverage.gradeOnly+" grade-only · "+
-            (result.coverage.originalReceiptCount||0)+" earlier checkpoint receipts · "+
-            (result.coverage.activityGradeCount||0)+" activity scores · "+
-            (result.coverage.evidenceExceptions||0)+" evidence exceptions · "+
-            (result.coverage.gradeExceptions||0)+" grade conflicts.":"")));
-        if(currentTask.historicalRubricMode==="scalar_manual")notice.append(make("p","text-sm text-amber-900 mt-2","Original rubric unavailable — individual numerical grading is available; AI evaluation is disabled."));
+      if(historicalGithub&&result.coverage){
+        const c=result.coverage,notice=make("details","rounded-lg border border-violet-200 bg-violet-50 p-2 text-xs text-violet-950");
+        notice.append(make("summary","cursor-pointer font-bold","Historical sources · "+c.gradeCount+" grades · "+(c.originalReceiptCount||0)+" earlier receipts"),
+          make("p","mt-1",c.evidenceCount+" evidence records · "+(c.activityGradeCount||0)+" activity scores · "+c.gradeOnly+" grade-only · "+(c.evidenceExceptions||0)+" evidence issues · "+(c.gradeExceptions||0)+" grade conflicts"));
+        if(currentTask.historicalRubricMode==="scalar_manual")notice.append(make("p","mt-1","Original rubric unavailable — manual total only."));
         inbox.append(notice);
       }
       if(historicalStudio){
-        const notice=make("section","rounded-xl border border-violet-200 bg-violet-50 p-3 sm:p-4 text-sm");
-        notice.append(make("h3","font-bold text-violet-950",
-          "Historical Studio evidence · V4 review interface"));
-        notice.append(make("p","text-violet-900 mt-1",
-          "Frozen code and grades are read from the original submission records. No student files, variants, or grades have been copied into school V4 collections."));
+        const notice=make("details","rounded-lg border border-violet-200 bg-violet-50 p-2 text-xs");
+        notice.append(make("summary","cursor-pointer font-bold text-violet-950","Historical Studio · migration tools"));
         const button=make("button",
           "mt-3 rounded-lg border border-violet-300 px-3 py-2 font-bold text-violet-950 focus-visible:outline-2",
           "Check migration readiness");
@@ -409,8 +406,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       }
       status.textContent=rows.length?
         (historical?"Historical "+(historicalStudio?"Studio":"GitHub")+" evidence · ":"")+
-          (historicalGithub?rows.filter(row=>row.hasSubmission).length+" student-submitted · "+
-            rows.filter(row=>!row.hasSubmission).length+" without student submission · ":
+          (historicalGithub?rows.filter(row=>row.hasSubmission||row.receiptOnly).length+" submitted · "+
+            rows.filter(row=>!row.hasSubmission&&!row.receiptOnly).length+" no receipt · ":
             rows.length+" submitted · ")+
           published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
         "No student evidence yet for this assessment.";
@@ -426,7 +423,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       let deepLinkRow=null;
       for(const row of rows){
         const grade=gradeMap.get(row.studentUid)||null;
-        const card=make("article","rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
+        const card=make("article","rounded-lg border border-slate-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2");
         const details=make("div","min-w-0");
         details.append(
           make("h3","font-extrabold text-slate-900",row.studentName||"Student"),
@@ -471,7 +468,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           details.append(receipts);
         }
         card.append(details,button);inbox.append(card);
+        queueRows.push({card,row:normalized,reviewable:!button.disabled,gradeStatus:grade?.status||"ungraded",attention:!!(row.gradeException||row.evidenceException||row.gradeOnly||row.activityOnly||(row.receiptOnly&&!row.checkpointGradeable)||grade?.reviewSuggested||grade?.pending),search:[row.studentName,row.section,row.studentUid].join(" ").toLocaleLowerCase()});
       }
+      queueTools.hidden=false;filterQueue();
       if(deepLinkRow&&!dialog.open){
         pendingStudentDeepLink="";
         await openReview(deepLinkRow);
@@ -613,15 +612,16 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   }
   function updateScore(){
     if(!currentTask)return;
-    let awarded=0,pending=0,total=0;
+    let awarded=0,pending=0,total=0,blank=0;
     document.querySelectorAll("#gbV4Rubric [data-rubric-row]").forEach((row,index)=>{
       const max=Number(currentTask.rubric[index]?.points||0);
       total+=max;
-      awarded+=Number(row.querySelector("[data-awarded]").value||0);
+      const value=row.querySelector("[data-awarded]").value;if(value.trim()==="")blank++;
+      awarded+=Number(value||0);
       pending+=Number(row.querySelector("[data-pending]").value||0);
     });
     document.getElementById("gbV4ScoreSummary").textContent=
-      awarded+" / "+total+(pending?" · "+pending+" pending":"");
+      awarded+" / "+total+(pending?" · "+pending+" pending":"")+(blank?" · "+blank+" unscored":"");
   }
   function renderRubric(grade){
     const host=document.getElementById("gbV4Rubric");host.replaceChildren();
@@ -648,19 +648,19 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const row=make("div","rounded-xl border border-slate-200 bg-slate-50 p-3");
       row.dataset.rubricRow=String(index);
       row.append(make("div","font-bold text-slate-900",criterion.name+" · "+criterion.points+" pts"));
-      const grid=make("div","grid sm:grid-cols-2 gap-3 mt-2");
+      const grid=make("div","grid grid-cols-2 gap-2 mt-1");
       const awardLabel=make("label","text-xs font-bold text-slate-700","Awarded points");
       const awarded=make("input","mt-1 w-full border border-slate-300 rounded-lg p-2");
       awarded.type="number";awarded.min="0";awarded.max=String(criterion.points);awarded.step="0.5";
-      awarded.dataset.awarded="1";awarded.value=String(saved.awardedPoints??(grade?.gradeSchema==="legacy_scalar_v1"&&currentTask?.legacyCompatibility?"":0));awardLabel.append(awarded);
+      awarded.dataset.awarded="1";awarded.value=String(saved.awardedPoints??"");awardLabel.append(awarded);
       const pendingLabel=make("label","text-xs font-bold text-slate-700","Pending points");
       const pending=make("input","mt-1 w-full border border-slate-300 rounded-lg p-2");
       pending.type="number";pending.min="0";pending.max=String(criterion.points);pending.step="0.5";
       pending.dataset.pending="1";pending.value=String(saved.pendingPoints??0);pendingLabel.append(pending);
       grid.append(awardLabel,pendingLabel);row.append(grid);
-      const feedbackLabel=make("label","block text-xs font-bold text-slate-700 mt-2","Criterion feedback");
+      const feedbackLabel=make("label","block text-xs font-bold text-slate-700 mt-1","Comment");
       const comment=make("textarea","mt-1 w-full border border-slate-300 rounded-lg p-2");
-      comment.rows=2;comment.maxLength=1000;comment.dataset.comment="1";comment.value=saved.comment||"";
+      comment.rows=1;comment.maxLength=1000;comment.dataset.comment="1";comment.value=saved.comment||"";
       feedbackLabel.append(comment);row.append(feedbackLabel);
       awarded.addEventListener("input",updateScore);pending.addEventListener("input",updateScore);
       host.append(row);
@@ -701,7 +701,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       row.querySelector("[data-comment]").value=criterion.comment||"";
     });
     if(suggestion.feedback)document.getElementById("gbV4Feedback").value=suggestion.feedback;
-    updateScore();
+    updateScore();refreshReviewControls();
     document.getElementById("gbV4ExternalStatus").textContent=
       label+" applied to the unsaved grade draft. Review every criterion before saving.";
   }
@@ -792,9 +792,24 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   gradeHistory.addEventListener("toggle",()=>{if(gradeHistory.open&&!historyLoaded)void loadGradeHistory();});
   historyRefresh.addEventListener("click",()=>void loadGradeHistory());
   dialog.addEventListener("close",resetGradeHistory);
+  function formFingerprint(){return JSON.stringify([...document.querySelectorAll("#gbV4Rubric input,#gbV4Rubric textarea,#gbV4Feedback")].map(el=>el.value));}
+  function isGradeDirty(){return savedForm!==null&&savedForm!==formFingerprint();}
+  function rememberForm(){savedForm=formFingerprint();}
+  function mayLeave(){return !isGradeDirty()||confirm("Discard unsaved grade changes?");}
+  function refreshQueueNavigation(){const index=reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid);document.getElementById("gbV4ReviewPosition").textContent=index>=0?(index+1)+" / "+reviewRows.length:"";document.getElementById("gbV4Previous").disabled=busy||index<=0;document.getElementById("gbV4Next").disabled=busy||index<0||index>=reviewRows.length-1;document.getElementById("gbV4NextUngraded").disabled=busy||!nextUngraded();}
+  function nextUngraded(){const i=reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid);return reviewRows.slice(i+1).find(row=>queueRows.find(item=>item.row.studentUid===row.studentUid)?.gradeStatus==="ungraded")||reviewRows.slice(0,Math.max(0,i)).find(row=>queueRows.find(item=>item.row.studentUid===row.studentUid)?.gradeStatus==="ungraded");}
+  async function moveReview(row){if(!row||busy||!mayLeave())return;dialog.close();await openReview(row);}
+  document.getElementById("gbV4Previous").addEventListener("click",()=>void moveReview(reviewRows[reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid)-1]));
+  document.getElementById("gbV4Next").addEventListener("click",()=>void moveReview(reviewRows[reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid)+1]));
+  document.getElementById("gbV4NextUngraded").addEventListener("click",()=>void moveReview(nextUngraded()));
+  dialog.addEventListener("input",event=>{if(event.target.closest("#gbV4Rubric")||event.target.id==="gbV4Feedback")refreshReviewControls();});
   async function openReview(row){
     if(busy||!currentTask||dialog.open)return;
-    reviewNeedsRefresh=false;resetGradeHistory();
+    reviewNeedsRefresh=false;savedForm=null;resetGradeHistory();
+    document.getElementById("gbV4ExternalEvaluationPanel").open=false;
+    document.getElementById("gbV4CorrectionPanel").open=false;
+    document.getElementById("gbV4ConversationPanel").open=false;
+    document.getElementById("gbV4RevisionPanel").open=false;
     currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentDraftSource="teacher";
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
@@ -920,7 +935,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             "Commit metadata does not independently establish authorship.";
         }
       }else renderGeneralEvidence(currentSnapshot);
-      renderRubric(currentGrade);
+      renderRubric(currentGrade);rememberForm();
       const revisionDue=document.getElementById("gbV4RevisionDue");
       const revisionDueLabel=document.getElementById("gbV4RevisionDueLabel");
       const originalDeadlinePassed=Number(currentTask.dueAt||0)>0&&Date.now()>Number(currentTask.dueAt);
@@ -931,6 +946,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         "Extension deadline (optional before original deadline)";
       const published=currentGrade?.status==="published";
       const reopened=row.status==="reopened";
+      document.getElementById("gbV4ExternalEvaluationPanel").classList.toggle("hidden",currentSnapshot.checkpointOnly===true||currentTask.historicalRubricMode==="scalar_manual");
+      document.getElementById("gbV4RevisionPanel").hidden=Boolean(currentTask.legacyCompatibility)||published;
+      document.getElementById("gbV4ConversationPanel").hidden=Boolean(currentTask.legacyCompatibility);
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=published?
         (historicalStudio?
@@ -1026,8 +1044,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }
   });
 
-  document.getElementById("gbV4Close").addEventListener("click",()=>{if(!busy)dialog.close();});
-  dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
+  document.getElementById("gbV4Close").addEventListener("click",()=>{if(!busy&&mayLeave())dialog.close();});
+  dialog.addEventListener("cancel",event=>{if(busy||!mayLeave())event.preventDefault();});
   bulkPublish?.addEventListener("click",()=>void (async()=>{
     if(busy||!currentTask||bulkPublish.dataset.ready!=="true")return;
     const count=Number((bulkPublish.textContent.match(/\((\d+)\)/)||[])[1]||0);
@@ -1100,13 +1118,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           legacyAssessmentId:currentTask.legacyAssessmentId,
           ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
           legacySubmissionId:currentRow.recordId,criteria,
+          expectedGradeRevision:currentGrade?.revision||0,expectedSubmissionVersion:currentSnapshot.version,expectedSnapshotHash:currentSnapshot.contentDigest,
           feedback:document.getElementById("gbV4Feedback").value.trim(),
           draftSource:currentDraftSource
         });
       }else{
         await scoped(gradeApi,"save_draft",{
           taskId:currentTask.taskId,studentUid:currentRow.studentUid,
-          submissionVersion:currentSnapshot.version,criteria,
+          submissionVersion:currentSnapshot.version,criteria,expectedGradeRevision:currentGrade?.revision||0,
           feedback:document.getElementById("gbV4Feedback").value.trim(),
           draftSource:currentDraftSource
         });
@@ -1124,7 +1143,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           taskId:currentTask.taskId,studentUid:currentRow.studentUid
         });
       currentGrade=refreshed.grade;
-      renderRubric(currentGrade);
+      renderRubric(currentGrade);rememberForm();
       refreshReviewControls();
       historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       document.getElementById("gbV4ReviewStatus").textContent=
@@ -1136,7 +1155,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   })());
   document.getElementById("gbV4Publish").addEventListener("click",()=>void (async()=>{
     if(busy||reviewNeedsRefresh||!currentTask||!currentRow)return;
-    if(!confirm("Publish this reviewed grade to the student? The current V4 workflow does not allow ordinary edits after publication."))return;
+    if(isGradeDirty()){document.getElementById("gbV4ReviewStatus").textContent="Save changes before publishing.";return;}
+    if(!confirm("Publish the saved grade to this learner?"))return;
     try{
       setBusy(true,"Verifying current submission and publishing grade…");
       const result=currentTask.legacyCompatibility?
@@ -1156,7 +1176,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           })
         }):
         await scoped(gradeApi,"publish",{
-          taskId:currentTask.taskId,studentUid:currentRow.studentUid
+          taskId:currentTask.taskId,studentUid:currentRow.studentUid,expectedGradeRevision:currentGrade?.revision
         });
       document.getElementById("gbV4ReviewStatus").textContent="Published "+result.awarded+" / "+result.total+" to the student.";
       currentGrade={...(currentGrade||{}),status:"published",revision:result.revision??currentGrade?.revision};
@@ -1205,7 +1225,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const refreshed=await scoped(gradeApi,"get_draft",{
         taskId:currentTask.taskId,studentUid:currentRow.studentUid
       });
-      currentGrade=refreshed.grade;renderRubric(currentGrade);refreshReviewControls();
+      currentGrade=refreshed.grade;renderRubric(currentGrade);rememberForm();refreshReviewControls();
       historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       document.getElementById("gbV4LegacyReason").value="";
       document.getElementById("gbV4ReviewStatus").textContent=
@@ -1253,7 +1273,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         historicalStudio?await scoped(migrationApi,"legacy_review_inspect",{legacyAssessmentId:currentTask.legacyAssessmentId,legacySubmissionId:currentRow.recordId}):
         await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       currentGrade=refreshed.grade;
-      renderRubric(currentGrade);refreshReviewControls();
+      renderRubric(currentGrade);rememberForm();refreshReviewControls();
       historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       document.getElementById("gbV4CorrectionReason").value="";
       document.getElementById("gbV4ReviewStatus").textContent=
