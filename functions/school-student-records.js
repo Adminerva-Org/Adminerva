@@ -148,14 +148,14 @@ function createSchoolStudentRecordsService({db}){
       const profile=profileDoc.exists?profileDoc.data():null,claimDoc=profile?.lrn&&/^\d{12}$/.test(profile.lrn)?await db.doc(root+"student_lrn_claims/"+key("lrn",profile.lrn)).get():null;
       const registrations=regSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().personId===personId).map(doc=>doc.data()),
         guardians=guardianSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().studentPersonId===personId).map(doc=>doc.data()),
-        numberMatches=numberSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().kind==="student").length;
+        numberMatches=numberSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().kind==="student"&&!(doc.data().status==="archived"&&!doc.data().authUid&&doc.data().mergedIntoPersonId===personId)).length;
       const issues=studentReadinessIssues({person,profile,claim:claimDoc?.exists?claimDoc.data():null,numberMatches,registrations,guardians,schoolId:ctx.schoolId,personId});
       const candidates=new Map();
       for(const [snapshot,match] of [[numberSnap,"Student number"],[emailSnap,"Activation identity"]])for(const doc of snapshot.docs){
         const row=doc.data();if(doc.id===personId||row.schoolId!==ctx.schoolId||row.kind!=="student")continue;
-        const entry=candidates.get(doc.id)||{personId:doc.id,displayName:row.displayName||"Student",studentNumber:row.studentNumber||"",status:row.status||"unknown",matches:[]};entry.matches.push(match);candidates.set(doc.id,entry);
+        const entry=candidates.get(doc.id)||{personId:doc.id,displayName:row.displayName||"Student",studentNumber:row.studentNumber||"",status:row.status||"unknown",reviewedAlias:row.status==="archived"&&!row.authUid&&row.mergedIntoPersonId===personId,matches:[]};entry.matches.push(match);candidates.set(doc.id,entry);
       }
-      if([...candidates.values()].some(row=>row.matches.includes("Activation identity")))issues.push({code:"duplicate_activation_identity",level:"conflict",view:"identity",label:"The student activation identity is shared by multiple school records."});
+      if([...candidates.values()].some(row=>!row.reviewedAlias&&row.matches.includes("Activation identity")))issues.push({code:"duplicate_activation_identity",level:"conflict",view:"identity",label:"The student activation identity is shared by multiple school records."});
       const partial=regSnap.size===101||guardianSnap.size===51||numberSnap.docs.length===3||emailSnap.docs.length===3;
       if(partial)issues.push({code:"bounded_history",level:"review",view:"registrations",label:"Some history exceeds readiness scan limits. Review the paginated records."});
       return {personId,asOf:Date.now(),partial,issues,identityCandidates:[...candidates.values()],registrationCount:registrations.length,guardianCount:guardians.length,
