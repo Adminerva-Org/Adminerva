@@ -395,7 +395,11 @@ export function createProjectStudio({
     if(!cloudEnabled||deletedProjects.has(id))return false;
     if(cloudWrites.has(id)){
       noteCloudWait(id);
-      await cloudWrites.get(id);
+      const saved=await cloudWrites.get(id);
+      // Coalesced ordinary callers share a failed attempt instead of turning
+      // a single rejection into a burst of immediate retries. The queued
+      // draft and existing retry policy remain responsible for recovery.
+      if(!saved&&!closingSessionEpoch)return false;
       return closingSessionEpoch?flushOneAfterWrite(id,closingSessionEpoch):
         cloudPending.has(id)?flushOneAfterWrite(id):true;
     }
@@ -404,7 +408,8 @@ export function createProjectStudio({
   async function flushOneAfterWrite(id,closingSessionEpoch=0){
     if(cloudWrites.has(id)){
       noteCloudWait(id);
-      await cloudWrites.get(id);
+      const saved=await cloudWrites.get(id);
+      if(!saved&&!closingSessionEpoch)return false;
       return flushOneAfterWrite(id,closingSessionEpoch);
     }
     const snapshot=cloudPending.get(id);
