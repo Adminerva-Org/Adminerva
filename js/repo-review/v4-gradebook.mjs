@@ -1,3 +1,4 @@
+import {observedAcademicCallable} from "../core/academic-callable-diagnostics.mjs?v=20261128-academic-trace";
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
@@ -66,11 +67,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const functions=getFunctions(app,"asia-southeast1");
   const assessmentApi=httpsCallable(functions,"schoolAssessments");
   const migrationApi=httpsCallable(functions,"schoolAssessmentMigration");
-  const submissionApi=httpsCallable(functions,"schoolStudioSubmissions");
-  const generalSubmissionApi=httpsCallable(functions,"schoolAssessmentSubmissions");
-  const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
-  const gradeApi=httpsCallable(functions,"schoolGradebook");
-  const classRecordApi=httpsCallable(functions,"schoolClassRecord");
+  const submissionApi=observedAcademicCallable("schoolStudioSubmissions",httpsCallable(functions,"schoolStudioSubmissions"));
+  const generalSubmissionApi=observedAcademicCallable("schoolAssessmentSubmissions",httpsCallable(functions,"schoolAssessmentSubmissions"));
+  const githubEvidenceApi=observedAcademicCallable("schoolGithubEvidence",httpsCallable(functions,"schoolGithubEvidence"));
+  const gradeApi=observedAcademicCallable("schoolGradebook",httpsCallable(functions,"schoolGradebook"));
+  const classRecordApi=observedAcademicCallable("schoolClassRecord",httpsCallable(functions,"schoolClassRecord"));
   const verificationApi=httpsCallable(functions,"studioSubmissionVerification");
   const conversationApi=httpsCallable(functions,"schoolAssessmentConversation");
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null,currentConversation=null,currentClassRecordStatus=null;
