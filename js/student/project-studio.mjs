@@ -173,6 +173,9 @@ export function createProjectStudio({
   const projectStorage=scopedProjectStorage(localStorage,scopeToken);
   const undoKey=projectId=>"Adminerva_Code_Project_Undo_v1_"+uid+"_"+(scopeToken?scopeToken+"_":"")+projectId;
   let activeProject=null,selectedTemplate="java-information",initialized=false,openEpoch=0;
+  // Keep an immutable content fingerprint of the last accepted active snapshot.
+  // Design, database and evidence can mutate the live object before store().
+  let activeContentBaseline=null;
   const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set(),cloudPending=new Map(),markerCache=new Map();
   const cloudRetryTimers=new Map(),cloudRetryAttempts=new Map();
   // Local-only lock observations. Never transmit a project ID.
@@ -282,7 +285,9 @@ export function createProjectStudio({
     validateProject(project);
     const previous=activeProject?.id===project.id?activeProject:
       findCodeProject(projectStorage,uid,project.id);
-    const changed=!previous||contentKey(previous)!==contentKey(project);
+    const previousKey=activeContentBaseline?.id===project.id?activeContentBaseline.key:
+      previous?contentKey(previous):null;
+    const changed=previousKey!==contentKey(project);
     let deviceSaved=true;
     try{
       activeProject=changed?saveCodeProject(projectStorage,uid,project):
@@ -296,6 +301,8 @@ export function createProjectStudio({
       unbackedProjectIds.add(project.id);
       deviceSaved=false;
     }
+    // Advance only after device persistence or the existing memory-only fallback.
+    activeContentBaseline={id:activeProject.id,key:contentKey(activeProject)};
     updateProjectHeading();updateQuotaUI();
     if(cloudEnabled&&cloud&&(changed||readMarker(project.id).pending||
        !readMarker(project.id).kind||unbackedProjectIds.has(project.id)))
@@ -327,6 +334,7 @@ export function createProjectStudio({
       activeProject=draft;
       unbackedProjectIds.add(draft.id);
     }
+    activeContentBaseline={id:activeProject.id,key:contentKey(activeProject)};
     if(cloudEnabled)scheduleCloudSave(activeProject);
     return {queued:cloudEnabled,deviceSaved};
   }
@@ -930,7 +938,7 @@ export function createProjectStudio({
       }
     }
     ++openEpoch;++diagramEpoch;
-    activeProject=null;void flushCloudSaves();
+    activeProject=null;activeContentBaseline=null;void flushCloudSaves();
     window.dispatchEvent(new CustomEvent("adminerva:studio-home"));
     renderProjectHome();
     el("projectHome")?.classList.remove("hidden");
@@ -1465,6 +1473,7 @@ export function createProjectStudio({
     initialize();
     activeProject={...project,lastOpenedAt:new Date().toISOString()};
     activeProject=cacheProject(activeProject);
+    activeContentBaseline={id:activeProject.id,key:contentKey(activeProject)};
     el("projectHome")?.classList.add("hidden");
     el("studioShell")?.classList.remove("hidden");
     updateProjectHeading();
