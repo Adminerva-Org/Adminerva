@@ -283,7 +283,7 @@ function createSchoolStudentRecordsService({db}){
         .map(doc=>[doc.id,doc.data()]));
 
       const gradeRows=gradeSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
-        doc.data().status==="finalized");
+        doc.data().status==="finalized"&&doc.data().personId===personId&&doc.id===key(doc.data().offeringId,personId));
       const offeringIds=[...new Set(gradeRows.map(doc=>doc.data().offeringId).filter(Boolean))];
       const finalizations=await Promise.all(offeringIds.map(offeringId=>
         db.doc(root+"class_record_finalizations/"+id(offeringId,"Course offering ID",330)).get()));
@@ -299,10 +299,10 @@ function createSchoolStudentRecordsService({db}){
            Number(historical.data().finalizationRevision)!==releasedRevision)return null;
         return historical;
       }));
-      const releasedGrades=releasedGradeDocs.filter(Boolean).map(doc=>({
+      const releasedGrades=releasedGradeDocs.filter(doc=>doc&&doc.data().status==="finalized"&&doc.data().personId===personId&&typeof doc.data().finalGrade==="number"&&Number.isFinite(doc.data().finalGrade)).map(doc=>({
         offeringId:doc.data().offeringId,yearId:doc.data().yearId,termId:doc.data().termId,
         subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,
-        initialGrade:Number(doc.data().initialGrade),periodGrade:Number(doc.data().periodGrade),
+        initialGrade:Number.isFinite(doc.data().initialGrade)?doc.data().initialGrade:null,periodGrade:Number.isFinite(doc.data().periodGrade)?doc.data().periodGrade:null,
         finalGrade:Number(doc.data().finalGrade),revision:Number(doc.data().finalizationRevision)||1,
         releasedRevision:released.get(doc.data().offeringId),finalizedAt:millis(doc.data().finalizedAt)
       }));
