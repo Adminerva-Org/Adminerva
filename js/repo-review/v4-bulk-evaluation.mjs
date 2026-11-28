@@ -200,10 +200,10 @@ function summarizeBulkReview({criteria,feedback,teacherConfirmationCriteria=[],t
   const teacherConfirmation=confirmations.length>0;
   return {criteria,feedback,awarded,pending,teacherConfirmation,
     teacherConfirmationCriteria:confirmations,teacherResolvedCriteria:resolved,
-    saveEligible:awarded>0&&pending===0&&!teacherConfirmation,
+    saveEligible:true,reviewSuggested:awarded===0||pending>0||teacherConfirmation,
     reason:awarded<=0?"Zero-score result; needs individual attention":
       pending>0?"Unresolved points; enter final criterion scores":
-      teacherConfirmation?"Evaluator requires teacher confirmation":""};
+      teacherConfirmation?"Review suggested":""};
 }
 
 export function bulkSuggestionState(suggestion,task){
@@ -276,6 +276,10 @@ export function readBulkExternalResponse(raw,{batchId,allowedRefs,task,parseResp
   return validated;
 }
 
+function matchesDraftRevision(row,item){
+  return !!row&&(item.expectedDraftRevision!=null?
+    row.gradeStatus==="draft"&&Number(row.gradeRevision)===item.expectedDraftRevision:!row.gradeStatus);
+}
 export function bulkSaveableStages({staged,saveSelection,rows}){
   // Evaluation selection and private-draft selection are independent.
   // A valid imported result stays saveable even after the teacher clears the
@@ -285,18 +289,18 @@ export function bulkSaveableStages({staged,saveSelection,rows}){
   return [...staged.values()].filter(item=>{
     const row=byId.get(item.key);
     return saveSelection.has(item.key)&&item.review?.saveEligible===true&&
-      row&&!row.gradeStatus&&row.bulkReady!==false&&
+      matchesDraftRevision(row,item)&&row.bulkReady!==false&&
       !["reopened","revision_requested"].includes(row.status)&&
       Number(row.version)===Number(item.version);
   });
 }
 
-export function nextBulkSelection(rows,{excluded=new Set(),limit=BULK_MAX_BATCH}={}){
+export function nextBulkSelection(rows,{excluded=new Set(),limit=BULK_MAX_BATCH,reevaluate=false}={}){
   const ids=[],maximum=Math.min(BULK_MAX_BATCH,Math.max(0,Math.floor(limit)));
   if(!maximum)return ids;
   for(const row of rows||[]){
     const id=String(row?.submissionId||row?.evidenceId||row?.recordId||"");
-    if(!id||ids.includes(id)||excluded.has(id)||row.gradeStatus||row.bulkReady===false||
+    if(!id||ids.includes(id)||excluded.has(id)||(reevaluate?row.gradeStatus!=="draft"||!(Number(row.gradeRevision)>0):!!row.gradeStatus)||row.bulkReady===false||
       ["reopened","revision_requested"].includes(row.status))continue;
     ids.push(id);
     if(ids.length>=maximum)break;
@@ -327,7 +331,7 @@ export function createV4BulkEvaluationController({
   const btn=id=>el(id);
   let task=null,rows=[],selection=new Set(),saveSelection=new Set(),staged=new Map(),
     exceptions=new Map(),batchId="",referenceMap=new Map(),stopped=false,
-    running=false,schoolSignature="",scopeGeneration=0,autoSelectNext=true,
+    running=false,schoolSignature="",scopeGeneration=0,autoSelectNext=true,reevaluate=false,
     verifiedEvidence=new Set(),evidenceNotes=new Map();
   const supported=t=>BULK_SOURCE_TYPES.includes(t?.submissionSource);
   const batchLimit=()=>bulkBatchLimit(task);
@@ -336,8 +340,9 @@ export function createV4BulkEvaluationController({
   // Only external links still need a separate human artifact inspection.
   const requiresArtifactReview=()=>task?.submissionSource==="link";
   const key=row=>String(row.submissionId||row.evidenceId||row.recordId||"");
+  const eligibleStatus=row=>reevaluate?row.gradeStatus==="draft"&&Number(row.gradeRevision)>0:!row.gradeStatus;
   const selectedEligible=()=>rows.filter(row=>selection.has(key(row))&&
-    !row.gradeStatus&&row.bulkReady!==false&&
+    eligibleStatus(row)&&row.bulkReady!==false&&
     !["reopened","revision_requested"].includes(row.status));
   const candidates=()=>selectedEligible().filter(row=>
     !staged.has(key(row))&&!exceptions.has(key(row)));
@@ -346,24 +351,26 @@ export function createV4BulkEvaluationController({
       String(evidenceNotes.get(item.key)||"").trim().length>=15));
   const appendStatus=(message)=>{status.textContent=message;};
   const taskKey=t=>t?(t.legacyCompatibility?"legacy:":"native:")+
-    String(t.legacyAssessmentId||t.taskId):"";
+    String(t.legacyAssessmentId||t.taskId)+":"+String(t.legacyOfferingId||""):"";
   function render(){
     const ready=selectedEligible(),remaining=candidates(),saveReady=saveable();
     root.hidden=!supported(task);
     if(root.hidden)return;
     const maximum=batchLimit();
     el("gbV4BulkCounts").textContent=selection.size+"/"+maximum+
-      " selected for this batch · "+ready.length+" ungraded · "+
+      " selected for this batch · "+ready.length+(reevaluate?" drafts · ":" ungraded · ")+
       staged.size+" suggestions staged · "+saveReady.length+
       " ready to save · "+exceptions.size+" exceptions";
     for(const id of ["gbV4BulkRun","gbV4BulkExport"])
       btn(id).disabled=running||isBusy()||remaining.length===0;
     btn("gbV4BulkImport").disabled=running||isBusy()||!batchId;
     btn("gbV4BulkSave").disabled=running||isBusy()||saveReady.length===0;
-    btn("gbV4BulkSave").textContent="Save "+saveReady.length+" eligible private draft"+
+    btn("gbV4BulkSave").textContent="Save "+saveReady.length+" eligible draft"+
       (saveReady.length===1?"":"s");
     btn("gbV4BulkSelect").disabled=running||isBusy();
     btn("gbV4BulkSelect").textContent="Select next "+maximum+" ungraded";
+    btn("gbV4BulkReevaluate").disabled=running||isBusy()||!rows.some(row=>row.gradeStatus==="draft"&&Number(row.gradeRevision)>0&&row.bulkReady!==false);
+    btn("gbV4BulkReevaluate").textContent="Re-evaluate drafts"+(reevaluate?" (selected mode)":"");
     btn("gbV4BulkRun").textContent="Run Internal AI (up to "+maximum+")";
     btn("gbV4BulkExport").textContent="Prepare External AI batch (up to "+maximum+")";
     btn("gbV4BulkClear").disabled=running||isBusy();
@@ -376,7 +383,7 @@ export function createV4BulkEvaluationController({
       line.className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm";
       const input=document.createElement("input");input.type="checkbox";
       input.className="mt-1";input.checked=selection.has(id);
-      input.disabled=running||isBusy()||Boolean(row.gradeStatus)||row.bulkReady===false||
+      input.disabled=running||isBusy()||!eligibleStatus(row)||row.bulkReady===false||
         ["reopened","revision_requested"].includes(row.status)||
         (!selection.has(id)&&selection.size>=maximum);
       input.addEventListener("change",()=>{
@@ -394,7 +401,7 @@ export function createV4BulkEvaluationController({
       });
       const text=document.createElement("span");text.className="min-w-0";
       text.textContent=String(row.studentName||"Learner")+" · version "+row.version+
-        (row.gradeStatus?" · "+row.gradeStatus+" grade (protected)":
+        (row.gradeStatus==="published"?" · Published (protected)":row.gradeStatus==="draft"?" · Draft":
           row.status==="reopened"?" · revision requested":
           row.bulkReady===false?" · no qualifying student submission":
           staged.has(id)?" · suggestion staged":" · needs evaluation");
@@ -410,7 +417,7 @@ export function createV4BulkEvaluationController({
       summary.textContent=(student?.studentName||"Learner")+
         " · "+data.source+" · "+data.review.awarded+" pts"+
         (data.review.pending?" · "+data.review.pending+" pending":"")+
-        (data.review.reason?" · "+data.review.reason:" · eligible private draft");
+        (data.review.reason?" · "+data.review.reason:" · eligible draft");
       line.append(summary);
       // External artifacts remain available for actual teacher inspection.
       // Never replace an exact pinned GitHub SHA with a moving branch URL.
@@ -448,7 +455,7 @@ export function createV4BulkEvaluationController({
       }
       if(links.submissionUrl)addEvidenceLink("Open submitted artifact ↗",links.submissionUrl);
       const submitted=rows.find(row=>key(row)===data.key);
-      const stillGradeable=Boolean(submitted&&!submitted.gradeStatus&&
+      const stillGradeable=Boolean(matchesDraftRevision(submitted,data)&&
         !["reopened","revision_requested"].includes(submitted.status)&&
         Number(submitted.version)===Number(data.version));
       if(requiresArtifactReview()&&data.review.saveEligible){
@@ -480,7 +487,7 @@ export function createV4BulkEvaluationController({
           evidenceNotes.set(data.key,note.value);
           const ready=saveable();
           btn("gbV4BulkSave").disabled=running||isBusy()||!ready.length;
-          btn("gbV4BulkSave").textContent="Save "+ready.length+" eligible private draft"+
+          btn("gbV4BulkSave").textContent="Save "+ready.length+" eligible draft"+
             (ready.length===1?"":"s");
         });
         noteLabel.append(note);
@@ -498,7 +505,7 @@ export function createV4BulkEvaluationController({
           render();
         });
         include.append(input,document.createTextNode(stillGradeable?
-          "Include this result when saving private drafts":
+          "Include this result when saving drafts":
           "Already graded, reopened, or changed version — cannot save from this batch"));
         line.append(include);
       }
@@ -565,7 +572,7 @@ export function createV4BulkEvaluationController({
     verifiedEvidence.clear();evidenceNotes.clear();
     referenceMap.clear();batchId="";payload.value="";
     el("gbV4BulkResponse").value="";
-    stopped=false;running=false;autoSelectNext=true;
+    stopped=false;running=false;autoSelectNext=true;reevaluate=false;
     schoolSignature="";status.textContent="";render();
   }
   function onInbox({task:next,rows:nextRows,gradeMap,schoolId}){
@@ -575,20 +582,21 @@ export function createV4BulkEvaluationController({
       selection.clear();saveSelection.clear();staged.clear();exceptions.clear();referenceMap.clear();
       verifiedEvidence.clear();evidenceNotes.clear();
       batchId="";payload.value="";el("gbV4BulkResponse").value="";
-      autoSelectNext=true;schoolSignature=signature;
+      autoSelectNext=true;reevaluate=false;schoolSignature=signature;
     }
     task=next;rows=(nextRows||[]).map(row=>{
       const gradeStatus=gradeMap?.get(row.studentUid)?.status||row.gradeStatus||null;
       const github=next?.submissionSource==="github";
       const gradeable=github?["submitted","approved","reviewed"].includes(row.status):
         ["submitted","reviewed"].includes(row.status);
-      return {...row,gradeStatus,bulkReady:next?.historicalRubricMode!=="scalar_manual"&&gradeable&&
+      const gradeRevision=Number(gradeMap?.get(row.studentUid)?.revision||row.gradeRevision||0);
+      return {...row,gradeStatus,gradeRevision,bulkReady:next?.historicalRubricMode!=="scalar_manual"&&gradeable&&
         (!github||((row.selectedCount||0)>0&&
           (!next?.legacyCompatibility||row.hasSubmission===true)))};
     });
     const available=new Set(rows.map(key));
     for(const id of selection)if(!available.has(id)||
-      rows.find(row=>key(row)===id)?.gradeStatus)selection.delete(id);
+      !eligibleStatus(rows.find(row=>key(row)===id)))selection.delete(id);
     for(const id of staged)if(!available.has(id)){
       staged.delete(id);saveSelection.delete(id);
     }
@@ -617,6 +625,7 @@ export function createV4BulkEvaluationController({
       result=await scoped(migrationApi,source==="github"?
         "legacy_github_inspect":"legacy_review_inspect",{
         legacyAssessmentId:task.legacyAssessmentId,
+        ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{}),
         ...(source==="github"?{legacyEvidenceId:id}:{legacySubmissionId:id})
       });
     }else{
@@ -632,8 +641,9 @@ export function createV4BulkEvaluationController({
       result={snapshot,grade:grade.grade,
         checkingInstructions:privateConfig?.checkingInstructions||""};
     }
-    if(result.grade||row.gradeStatus)
-      throw Error("An existing private or published grade is protected from bulk replacement.");
+    const expectedDraftRevision=reevaluate?Number(row.gradeRevision):null;
+    if(reevaluate?result.grade?.status!=="draft"||Number(result.grade.revision)!==expectedDraftRevision:!!result.grade||!!row.gradeStatus)
+      throw Error("Grade status or revision changed; refresh before evaluation. Published grades are protected.");
     let snapshot=result.snapshot;
     if(!snapshot||Number(snapshot.version)!==Number(row.version))
       throw Error("The frozen submission version changed; refresh submissions.");
@@ -686,7 +696,7 @@ export function createV4BulkEvaluationController({
     const context={
       task,snapshot,checkingInstructions:result.checkingInstructions||""
     };
-    return {key:id,row,version:snapshot.version,digest,reviewLinks,
+    return {key:id,row,expectedDraftRevision,version:snapshot.version,digest,reviewLinks,
       evidenceRevision:Number(snapshot.evidenceRevision??snapshot.version),
       checkpointSha:snapshot.checkpointSha||"",
       sourceLanguage:snapshot.sourceLanguage||"",
@@ -704,7 +714,7 @@ export function createV4BulkEvaluationController({
   async function processBatch(){
     const session=scopeGeneration;
     const work=candidates().slice(0,batchLimit());
-    if(!work.length){appendStatus("No selected ungraded submissions remain.");return;}
+    if(!work.length){appendStatus("No selected submissions remain.");return;}
     await execute("Bulk evaluation",async()=>{
       let done=0;
       for(const row of work){
@@ -829,10 +839,8 @@ export function createV4BulkEvaluationController({
   async function saveDrafts(){
     const session=scopeGeneration;
     const eligible=saveable();
-    if(!eligible.length){appendStatus("No eligible positive, fully resolved evaluations selected.");return;}
-    if(!confirm("Save "+eligible.length+" verified non-zero evaluation(s) as PRIVATE grade drafts? "+
-      "Published grades and existing drafts are protected; zero/pending grades are excluded. "+
-      "You may review results individually before publishing."))return;
+    if(!eligible.length){appendStatus("No eligible evaluations selected.");return;}
+    if(!confirm("Save "+eligible.length+" evaluation(s) as drafts? Selected re-evaluations replace only the verified draft revision. Published grades remain protected; pending points must be completed before publication."))return;
     await execute("Bulk save",async()=>{
       let saved=0,skipped=0;
       const savedIds=new Set();
@@ -842,7 +850,8 @@ export function createV4BulkEvaluationController({
         try{
           const details={
             criteria:item.review.criteria,feedback:item.review.feedback,
-            draftSource:item.source,onlyIfUngraded:true,
+            draftSource:item.source,reviewSuggested:item.review.reviewSuggested===true,
+            ...(item.expectedDraftRevision!=null?{expectedDraftRevision:item.expectedDraftRevision}:{onlyIfUngraded:true}),
             ...(task.submissionSource==="link"?{
               externalArtifactVerified:verifiedEvidence.has(item.key),
               artifactReviewNote:String(evidenceNotes.get(item.key)||"").trim()
@@ -851,17 +860,18 @@ export function createV4BulkEvaluationController({
           if(task.legacyCompatibility&&task.submissionSource==="github"){
             await scoped(migrationApi,"legacy_github_save_draft",{
               legacyAssessmentId:task.legacyAssessmentId,
+              ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{}),
               legacyEvidenceId:item.key,
               expectedEvidenceRevision:item.evidenceRevision,
               expectedEvidenceRevisionMode:"canonical",
               expectedCheckpointSha:item.checkpointSha,
-              expectedGradeRevision:0,
-              reviewNote:"Teacher bulk-reviewed this student-submitted checkpoint and rubric suggestions; Git commit metadata is not independent authorship proof.",
+              expectedGradeRevision:item.expectedDraftRevision??0,
               ...details
             });
           }else if(task.legacyCompatibility){
             await scoped(migrationApi,"legacy_review_save_draft",{
               legacyAssessmentId:task.legacyAssessmentId,
+              ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{}),
               legacySubmissionId:item.key,
               expectedSubmissionVersion:item.version,
               expectedSnapshotHash:item.digest,
@@ -902,10 +912,10 @@ export function createV4BulkEvaluationController({
         // The actual saved records are reloaded from the server; only then
         // select the next 20 still-ungraded learners. This avoids retrying
         // already-saved students and leaves failed evaluations visible.
-        selection.clear();autoSelectNext=true;
+        selection.clear();reevaluate=false;autoSelectNext=true;
         await onSaved();
         if(session===scopeGeneration){
-          appendStatus(saved+" private draft(s) saved; "+skipped+
+          appendStatus(saved+" draft(s) saved; "+skipped+
             " failed or changed. Nothing was published. "+
             selection.size+" next ungraded learner(s) selected."+
             (clearedExchange?" The completed JSON exchange was cleared.":
@@ -913,7 +923,7 @@ export function createV4BulkEvaluationController({
           render();
         }
       }else{
-        appendStatus(saved+" private draft(s) saved; "+skipped+
+        appendStatus(saved+" draft(s) saved; "+skipped+
           " failed or changed. Nothing was published.");
       }
     });
@@ -925,7 +935,13 @@ export function createV4BulkEvaluationController({
   btn("gbV4BulkStop").addEventListener("click",()=>{
     stopped=true;appendStatus("Stop requested. Finishing the current evaluation before stopping.");
   });
+  btn("gbV4BulkReevaluate").addEventListener("click",()=>{
+    reevaluate=true;autoSelectNext=false;
+    selection=new Set(nextBulkSelection(rows,{reevaluate:true,excluded:new Set([...staged.keys(),...exceptions.keys()]),limit:batchLimit()}));
+    appendStatus(selection.size+" existing draft(s) selected. Published grades remain protected.");render();
+  });
   btn("gbV4BulkSelect").addEventListener("click",()=>{
+    reevaluate=false;
     selection=new Set(nextBulkSelection(rows,{
       excluded:new Set([...staged.keys(),...exceptions.keys()]),
       limit:batchLimit()

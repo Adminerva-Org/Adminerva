@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
+import {createRequire} from "node:module";
+const require=createRequire(import.meta.url);
 const source=readFileSync(new URL("../functions/school-legacy-github-review.js",import.meta.url),"utf8");
 const digest=(...items)=>createHash("sha256").update(JSON.stringify(items)).digest("hex");
 const ctx={schoolId:"school-one",uid:"teacher-one",roles:["teacher"],platformOverride:false};
@@ -19,6 +21,7 @@ function install(){
      FieldPath:{documentId:()=>"__name__"}
    };
    if(name==="./tenant-access.js")return {TenantAccessError};
+   if(name==="./school-legacy-recovery-sources.js")return require("../functions/school-legacy-recovery-sources.js");
    if(name==="./school-legacy-custody.js")return {
      authorizedTeacherCustody:async()=>null,validCustody:()=>false,
      normalized:value=>String(value||"").trim().toLowerCase()
@@ -236,7 +239,7 @@ test("bulk GitHub save cannot overwrite an existing original grade draft",async(
  assert.equal(f.map.get("student_grades/"+evidenceId).score,33);
  assert.equal(f.writes.length,0);
 });
-test("zero or unresolved points cannot be published, and stale versions cannot publish",async()=>{
+test("legitimate zero scores can be published; stale grade revisions cannot",async()=>{
  const f=fixture();
  await f.service(f.request("legacy_github_save_draft",{
    ...f.gradeArgs,criteria:[
@@ -246,13 +249,14 @@ test("zero or unresolved points cannot be published, and stale versions cannot p
  }));
  await assert.rejects(f.service(f.request("legacy_github_publish",{
    legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
-   expectedCheckpointSha:checkpoint,expectedGradeRevision:1
- })),error=>error.code==="failed-precondition");
- await assert.rejects(f.service(f.request("legacy_github_publish",{
-   legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
    expectedCheckpointSha:checkpoint,expectedGradeRevision:0
  })),error=>error.code==="failed-precondition");
- assert.equal(f.map.get("student_grades/"+evidenceId).published,false);
+ const result=await f.service(f.request("legacy_github_publish",{
+   legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,
+   expectedCheckpointSha:checkpoint,expectedGradeRevision:1
+ }));
+ assert.equal(result.published,true);
+ assert.equal(f.map.get("student_grades/"+evidenceId).score,0);
 });
 
 test("historical GitHub bulk publishing uses the same frozen evidence checks and is idempotent",async()=>{
@@ -268,7 +272,7 @@ test("historical GitHub bulk publishing uses the same frozen evidence checks and
  assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,2,
    "retry cannot duplicate a completed publication or audit event");
 });
-test("historical GitHub bulk publication excludes zero points and teacher-only discoveries",async()=>{
+test("historical GitHub bulk publication includes legitimate zeros but excludes teacher-only discoveries",async()=>{
  const zero=fixture();
  await zero.service(zero.request("legacy_github_save_draft",{
    ...zero.gradeArgs,
@@ -276,9 +280,9 @@ test("historical GitHub bulk publication excludes zero points and teacher-only d
      {awardedPoints:0,pendingPoints:0,comment:"No qualifying behavior"}]
  }));
  const zeroResult=await zero.service(zero.request("legacy_github_bulk_publish"));
- assert.equal(zeroResult.published,0);
- assert.equal(zeroResult.zeroSkipped,1);
- assert.equal(zero.map.get("student_grades/"+evidenceId).published,false);
+ assert.equal(zeroResult.published,1);
+ assert.equal(zeroResult.zeroSkipped,0);
+ assert.equal(zero.map.get("student_grades/"+evidenceId).published,true);
  const discovered=fixture({discovery:true,approval:true,
    grade:{studentId,taskId,score:35,maxScore:40,gradeVersion:1,pending:0}});
  const noReceipt=await discovered.service(discovered.request("legacy_github_bulk_publish"));
@@ -335,4 +339,126 @@ test("historical assessment without verified rubric supports manual total-score 
  const result=await f.service(f.request("legacy_github_save_draft",input));
  assert.equal(result.awarded,33);assert.equal(result.total,40);
  assert.equal(f.map.get("student_grades/"+evidenceId).score,33);
+});
+
+
+test("historical GitHub draft and publication do not require routine teacher approval notes or advisory review clearance",async()=>{
+ const f=fixture({approval:false});
+ const input={...f.gradeArgs};delete input.reviewNote;
+ const saved=await f.service(f.request("legacy_github_save_draft",input));
+ assert.equal(saved.awarded,35);
+ const grade=f.map.get("student_grades/"+evidenceId);
+ assert.equal(grade.reviewSuggested,true);
+ grade.reviewRequired=true;
+ const result=await f.service(f.request("legacy_github_publish",{
+   legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,expectedCheckpointSha:checkpoint,expectedGradeRevision:1
+ }));
+ assert.equal(result.published,true);
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,true);
+ assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,2);
+});
+
+
+test("pending historical scores save as drafts but cannot be published",async()=>{
+ const f=fixture();
+ const criteria=[{awardedPoints:15,pendingPoints:5,comment:"Incomplete"},{awardedPoints:17,pendingPoints:0,comment:"Checked"}];
+ await f.service(f.request("legacy_github_save_draft",{...f.gradeArgs,criteria}));
+ assert.equal(f.map.get("student_grades/"+evidenceId).pending,5);
+ await assert.rejects(f.service(f.request("legacy_github_publish",{legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,expectedCheckpointSha:checkpoint,expectedGradeRevision:1})),error=>error.code==="failed-precondition");
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,false);
+});
+test("explicit published historical correction records before and after and preserves visibility",async()=>{
+ const f=fixture();
+ await f.service(f.request("legacy_github_save_draft",f.gradeArgs));
+ await f.service(f.request("legacy_github_publish",{legacyEvidenceId:evidenceId,expectedEvidenceRevision:7,expectedCheckpointSha:checkpoint,expectedGradeRevision:1}));
+ const corrected=await f.service(f.request("legacy_github_correct_published",{...f.gradeArgs,expectedGradeRevision:1,
+   criteria:[{awardedPoints:19,pendingPoints:0,comment:"Corrected"},{awardedPoints:19,pendingPoints:0,comment:"Checked"}]}));
+ assert.equal(corrected.awarded,38);assert.equal(corrected.revision,2);
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,true);
+ await assert.rejects(f.service(f.request("legacy_github_correct_published",{...f.gradeArgs,expectedGradeRevision:1})),error=>error.code==="failed-precondition");
+ assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,3);
+});
+
+
+test("earlier checkpoint receipts and exact activity grades are visible without fabricating selected commits",async()=>{
+ const f=fixture(),earlier="earlier-student",sha="b".repeat(40);
+ const receipt={studentId:earlier,assessmentId:taskId,submittedByUid:"original-uid",repoUrl:"https://github.com/learner/project",revisionSha:sha,section:"Grade 12 ICT",sourcePath:"app/Main.java",submittedAt:{toMillis:()=>1000}};
+ f.map.set("student_submissions/"+earlier+"_"+taskId+"_"+sha,receipt);
+ f.map.set("student_submissions/invalid-key",{...receipt,studentId:"wrong"});
+ f.map.set("activity_grades/old-activity",{taskId,studentId:earlier,section:"Grade 12 ICT",score:0,maxScore:40,published:false});
+ f.map.set("activity_grades/title-only",{activity:"Java OOP",studentId:"title-only",section:"Grade 12 ICT",score:20,maxScore:40});
+ const result=await f.service(f.request("legacy_github_inbox"));
+ const row=result.evidence.find(row=>row.studentId===earlier);
+ assert.equal(row.receiptOnly,true);assert.equal(row.activityOnly,true);
+ assert.equal(row.hasSubmission,false);assert.equal(row.awarded,0);
+ assert.equal(row.originalReceipts[0].checkpointSha,sha);
+ assert.equal(row.originalReceipts[0].sourcePath,"app/Main.java");
+ assert.equal(result.coverage.originalReceiptCount,1);assert.equal(result.coverage.activityGradeCount,1);
+ assert.equal(result.evidence.some(row=>row.studentId==="title-only"||row.studentId==="wrong"),false);
+ assert.equal(f.writes.length,0);
+});
+test("activity ledger protects against duplicate grade writes",async()=>{
+ const f=fixture();
+ f.map.set("activity_grades/older-score",{taskId,studentId,section:"Grade 12 ICT",score:0,maxScore:40});
+ const list=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(list.evidence[0].activityOnly,true);assert.equal(list.evidence[0].awarded,0);
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",f.gradeArgs)),error=>error.code==="failed-precondition"&&/activity grade/i.test(error.message));
+ assert.equal(f.writes.length,0);
+});
+
+
+test("checkpoint-only submissions are manually gradeable without creating selected commits or parallel grades",async()=>{
+ const f=fixture(),sha="b".repeat(40),receiptId=studentId+"_"+taskId+"_"+sha;
+ const record={studentId,assessmentId:taskId,submittedByUid:"original-uid",repoUrl:"https://github.com/learner/project",revisionSha:sha,section:"Grade 12 ICT",sourcePath:"src/Main.java",submittedAt:{toMillis:()=>1000}};
+ f.map.delete("assessment_evidence/"+evidenceId);
+ f.map.set("student_submissions/"+receiptId,record);
+ const list=await f.service(f.request("legacy_github_inbox"));
+ const row=list.evidence.find(row=>row.studentId===studentId);
+ assert.equal(row.checkpointGradeable,true);assert.equal(row.hasSubmission,false);
+ const legacyEvidenceId="receipt:"+receiptId;
+ const view=await f.service(f.request("legacy_github_inspect",{legacyEvidenceId}));
+ assert.equal(view.snapshot.checkpointOnly,true);
+ assert.equal(view.snapshot.selectedCommitShas.length,0);
+ assert.equal(view.snapshot.checkpointSha,sha);
+ assert.equal(view.snapshot.sourcePath,"src/Main.java");
+ const args={...f.gradeArgs,legacyEvidenceId,expectedEvidenceRevision:0,expectedCheckpointSha:sha,expectedReceiptDigest:view.snapshot.receiptDigest};
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",{...args,draftSource:"external_ai"})),error=>error.code==="failed-precondition");
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",{...args,expectedReceiptDigest:"stale"})),error=>error.code==="failed-precondition");
+ const saved=await f.service(f.request("legacy_github_save_draft",args));
+ assert.equal(saved.awarded,35);
+ const grade=f.map.get("student_grades/"+evidenceId);
+ assert.equal(grade.checkpointReceiptId,receiptId);
+ assert.equal(grade.gradedSha,sha);
+ assert.equal(grade.contributionEvidence.selectedCommits.length,0);
+ assert.equal(f.map.has("assessment_evidence/"+evidenceId),false);
+ assert.equal(f.map.has("student_grades/"+legacyEvidenceId),false);
+ assert.equal((await f.service(f.request("legacy_github_inbox"))).evidence[0].checkpointGradeable,true);
+ const pub=await f.service(f.request("legacy_github_publish",{...args,expectedGradeRevision:1}));
+ assert.equal(pub.published,true);
+ const corrected=await f.service(f.request("legacy_github_correct_published",{...args,expectedGradeRevision:1,criteria:[{awardedPoints:19,pendingPoints:0},{awardedPoints:20,pendingPoints:0}]}));
+ assert.equal(corrected.awarded,39);assert.equal(corrected.revision,2);
+ assert.equal(f.map.get("student_grades/"+evidenceId).published,true);
+ assert.equal(f.map.get("student_submissions/"+receiptId),record);
+ assert.equal(f.writes.filter(([,path])=>path.startsWith("grade_revisions/")).length,3);
+});
+test("checkpoint grading rejects newer submissions and preserves unrelated original grades",async()=>{
+ const f=fixture(),sha="b".repeat(40),receiptId=studentId+"_"+taskId+"_"+sha;
+ const record={studentId,assessmentId:taskId,submittedByUid:"original-uid",repoUrl:"https://github.com/learner/project",revisionSha:sha,section:"Grade 12 ICT",sourcePath:"src/Main.java",submittedAt:{toMillis:()=>1000}};
+ const modern=f.map.get("assessment_evidence/"+evidenceId);
+ f.map.delete("assessment_evidence/"+evidenceId);
+ f.map.set("student_submissions/"+receiptId,record);
+ const legacyEvidenceId="receipt:"+receiptId;
+ const view=await f.service(f.request("legacy_github_inspect",{legacyEvidenceId}));
+ const args={...f.gradeArgs,legacyEvidenceId,expectedEvidenceRevision:0,expectedCheckpointSha:sha,expectedReceiptDigest:view.snapshot.receiptDigest};
+ const next="d".repeat(40),nextId=studentId+"_"+taskId+"_"+next;
+ f.map.set("student_submissions/"+nextId,{...record,revisionSha:next,submittedAt:{toMillis:()=>2000}});
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",args)),error=>error.code==="failed-precondition");
+ f.map.delete("student_submissions/"+nextId);
+ f.map.set("assessment_evidence/"+evidenceId,modern);
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",args)),error=>error.code==="failed-precondition");
+ f.map.delete("assessment_evidence/"+evidenceId);
+ f.map.set("student_grades/"+evidenceId,{studentId,taskId,section:"Grade 12 ICT",score:22,maxScore:40,published:true});
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",args)),error=>error.code==="failed-precondition");
+ assert.equal(f.map.get("student_grades/"+evidenceId).score,22);
+ assert.equal(f.writes.length,0);
 });

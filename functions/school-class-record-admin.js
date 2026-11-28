@@ -65,12 +65,15 @@ function markRecoveryOverlaps(rows){
   return rows.map(({matchedPersonIds,...row})=>conflicts.has(row.offeringId)?
     {...row,eligible:false,status:"overlapping_class_rosters"}:row);
 }
+const {originalReceipt,originalActivityGrade}=require("./school-legacy-recovery-sources.js");
 function createSchoolClassRecordAdminService({db,resolveUsers=null}){
   async function handle(request,recoverySource=null){
     const input=request.data||{};
     const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["school_admin"]});
     const prefix="schools/"+ctx.schoolId+"/";
 
+    if(ctx.compatibilityMode==="v4_only"&&["discover_legacy_custody_classes","preview_legacy_custody","approve_legacy_custody"].includes(input.action))
+      deny("failed-precondition","Historical assessment recovery is not available in V4-only schools.");
     if(input.action==="discover_legacy_custody_classes"){
       if(ctx.platformOverride)
         deny("permission-denied","Use an active school administrator membership.");
@@ -88,13 +91,15 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       const anchor=anchorDoc.data(),data=original.data();
       if(anchor.primaryTeacherUid===ctx.uid||data.ownerUid===anchor.primaryTeacherUid)
         deny("failed-precondition","Use an independent school administrator for custody approval.");
-      const [offeringPage,receiptPage,gradePage,grants]=await Promise.all([
+      const [offeringPage,receiptPage,gradePage,grants,earlierReceipts,activityPage]=await Promise.all([
         db.collection(prefix+"course_offerings").where("primaryTeacherUid","==",anchor.primaryTeacherUid).limit(101).get(),
         db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
         db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get(),
-        db.collection(prefix+"legacy_assessment_custody").where("assessmentId","==",assessmentId).limit(101).get()
+        db.collection(prefix+"legacy_assessment_custody").where("assessmentId","==",assessmentId).limit(101).get(),
+        db.collection("student_submissions").where("assessmentId","==",assessmentId).limit(501).get(),
+        db.collection("activity_grades").where("taskId","==",assessmentId).limit(501).get()
       ]);
-      if(offeringPage.size>=101||receiptPage.size>=501||gradePage.size>=501||grants.size>=101)
+      if(offeringPage.size>=101||receiptPage.size>=501||gradePage.size>=501||grants.size>=101||earlierReceipts.size>=501||activityPage.size>=501)
         deny("resource-exhausted","Historical recovery requires pagination for this source or teacher.");
       const offerings=offeringPage.docs.filter(doc=>sameRecoveryCohort(anchor,doc.data(),ctx.schoolId));
       if(offerings.length>12)deny("resource-exhausted","More than 12 matching classes. Verify individual classes instead.");
@@ -114,7 +119,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
           if(sections.length&&!originalSection)return {...label,eligible:false,status:"original_section_review_required"};
           try{
             const preview=await handle({...request,data:{schoolId:ctx.schoolId,action:"preview_legacy_custody",
-              assessmentId,offeringId:doc.id,originalSection}},{assessmentId,original,receiptPage,gradePage});
+              assessmentId,offeringId:doc.id,originalSection}},{assessmentId,original,receiptPage,gradePage,earlierReceipts,activityPage});
             const prior=existing.get(doc.id);
             if(prior)return {...preview,...label,eligible:false,status:validCustody(prior,{
               schoolId:ctx.schoolId,assessmentId,offeringId:doc.id,teacherUid:offering.primaryTeacherUid,task:data
@@ -230,11 +235,13 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       // preparation. Require assessment-specific original student evidence
       // (a real submission receipt, or an existing grade) before delegation.
       const verifiedIds=new Set(validStudentIds);
-      const [receiptPage,gradePage]=cached?[cached.receiptPage,cached.gradePage]:await Promise.all([
+      const [receiptPage,gradePage,earlierReceipts,activityPage]=cached?[cached.receiptPage,cached.gradePage,cached.earlierReceipts,cached.activityPage]:await Promise.all([
         db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
-        db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get()
+        db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get(),
+        db.collection("student_submissions").where("assessmentId","==",assessmentId).limit(501).get(),
+        db.collection("activity_grades").where("taskId","==",assessmentId).limit(501).get()
       ]);
-      if(receiptPage.size>=501||gradePage.size>=501)
+      if([receiptPage,gradePage,earlierReceipts,activityPage].some(page=>page.size>=501))
         deny("resource-exhausted","Historical assessment source evidence requires paginated verification.");
       const sourceProof=new Set();
       for(const receipt of receiptPage.docs){
@@ -249,6 +256,8 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
            Number.isFinite(Number(grade.score)))
           sourceProof.add(grade.studentId);
       }
+      for(const doc of earlierReceipts.docs){const row=originalReceipt(doc,assessmentId);if(row&&verifiedIds.has(row.studentId)&&(identityOnly||normalized(row.section)===normalized(section)))sourceProof.add(row.studentId);}
+      for(const doc of activityPage.docs){const row=originalActivityGrade(doc,assessmentId);if(row&&verifiedIds.has(row.studentId)&&(identityOnly||normalized(row.section)===normalized(section)))sourceProof.add(row.studentId);}
       if(identityOnly){
         validStudentIds.splice(0,validStudentIds.length,...validStudentIds.filter(id=>sourceProof.has(id)));
         verifiedPeople=new Set(validStudentIds.map(id=>identities.get(id)));
@@ -431,7 +440,7 @@ function createSchoolClassRecordAdminService({db,resolveUsers=null}){
       }).sort((a,b)=>
         (a.subjectName+" "+a.sectionName+" "+a.termName).localeCompare(
           b.subjectName+" "+b.sectionName+" "+b.termName,undefined,{sensitivity:"base"}));
-      return {records:result};
+      return {records:result,historicalRecoveryAllowed:ctx.compatibilityMode!=="v4_only"&&validOrigin({},ctx.schoolId)};
     }
 
     if(input.action==="audit"){

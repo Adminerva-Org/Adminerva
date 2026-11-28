@@ -18,6 +18,7 @@ const {rowKey,checkId}=require("./school-academics.js");
 const {HISTORICAL_SOURCE,historicalMapping,mappingMatches,historicalPublishedGrades,historicalSections,historicalSubjectMatches,verifiedHistoricalSectionMapping,resolveHistoricalRoster,validOrigin}=require("./school-class-record-historical.js");
 const {custodyRef,validCustody,authorizedTeacherCustody,historicalCustodianRecord,normalized,identityOnlyCustody,custodyMaximum}=require("./school-legacy-custody.js");
 
+const {originalReceipt,originalActivityGrade}=require("./school-legacy-recovery-sources.js");
 const MAX_COLUMNS=80;
 const MAX_CLASS_SIZE=100;
 const MAX_SCORE=10000;
@@ -69,11 +70,13 @@ async function exactCustodyCandidate({db,schoolId,assessmentId,task,identities,r
     return new Set([...ids].map(id=>identities.get(id))).size>=required;
   });
   if(!identityOnly&&!proven.length)return null;
-  const [receipts,grades]=await Promise.all([
+  const [receipts,grades,earlierReceipts,activities]=await Promise.all([
     db.collection("assessment_evidence").where("assessmentId","==",assessmentId).limit(501).get(),
-    db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get()
+    db.collection("student_grades").where("taskId","==",assessmentId).limit(501).get(),
+    db.collection("student_submissions").where("assessmentId","==",assessmentId).limit(501).get(),
+    db.collection("activity_grades").where("taskId","==",assessmentId).limit(501).get()
   ]);
-  if(receipts.size>=501||grades.size>=501)return null;
+  if([receipts,grades,earlierReceipts,activities].some(page=>page.size>=501))return null;
   const proof=new Set();
   for(const doc of receipts.docs){
     const row=doc.data();
@@ -83,6 +86,8 @@ async function exactCustodyCandidate({db,schoolId,assessmentId,task,identities,r
     const row=doc.data();
     if(row.taskId===assessmentId&&row.score!==undefined&&row.score!==null&&Number.isFinite(Number(row.score)))proof.add(row.studentId);
   }
+  for(const doc of earlierReceipts.docs){const row=originalReceipt(doc,assessmentId);if(row)proof.add(row.studentId);}
+  for(const doc of activities.docs){const row=originalActivityGrade(doc,assessmentId);if(row)proof.add(row.studentId);}
   const verified=proven.filter(section=>[...sectionStudents.get(normalized(section))].some(id=>proof.has(id)));
   if(identityOnly){
     if(new Set(ids.filter(id=>proof.has(id)).map(id=>identities.get(id))).size<required)return null;
@@ -870,7 +875,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     async function ownedHistoricalAssessments(offering,labels){
       // Read only original assessments owned by this verified teacher, and only
       // from the confirmed legacy origin. Never enumerate another tenant.
-      const stats={supported:ctx.schoolId===LEGACY_BRIDGE_SCHOOL,ownedCount:0,
+      const stats={supported:ctx.schoolId===LEGACY_BRIDGE_SCHOOL&&ctx.compatibilityMode!=="v4_only",ownedCount:0,
         availableCount:0,sectionReviewCount:0,subjectReviewCount:0,subjectMismatchCount:0,
         noSectionCount:0,invalidScoreCount:0,originMismatchCount:0};
       if(!stats.supported)return {items:[],stats};
@@ -1229,11 +1234,12 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       await verifyOffering();
       if(!teacher&&!ctx.platformOverride)
         deny("permission-denied","Only an assigned teacher can search their assessment sources.");
+      const historicalAllowed=ctx.schoolId===LEGACY_BRIDGE_SCHOOL&&ctx.compatibilityMode!=="v4_only";
       const rawQuery=text(input.query,"Assessment search",140);
       const exactId=exactAssessmentSearchId(rawQuery);
       if(exactId){
         const scopes=[["school_assessment",prefix+"assessments/"],["imported_blueprint",prefix+"assessment_blueprints/"],
-          ...(ctx.schoolId===LEGACY_BRIDGE_SCHOOL?[["original_assessment","assessments/"]]:[])];
+          ...(historicalAllowed?[["original_assessment","assessments/"]]:[])];
         const docs=await Promise.all(scopes.map(([,path])=>db.doc(path+exactId).get()));
         const results=[],legacyRepositoryCandidates=[];
         for(let index=0;index<docs.length;index++){
@@ -1263,7 +1269,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
               scope==="imported_blueprint"?"School blueprint; not a graded deployment.":"Exact school assessment."});
         }
         return {query:rawQuery,exactId,results,legacyRepositoryCandidates,
-          canRequestCustody:ctx.schoolId===LEGACY_BRIDGE_SCHOOL&&teacher&&!ctx.platformOverride};
+          canRequestCustody:historicalAllowed&&teacher&&!ctx.platformOverride};
       }
       const query=rawQuery.toLocaleLowerCase("en");
       if(query.length<2)deny("invalid-argument","Use at least two characters to search.");
@@ -1275,7 +1281,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         db.collection(prefix+"assessments").where("ownerUid","==",ctx.uid).limit(max).get(),
         db.collection(prefix+"assessments").where("reviewerUid","==",ctx.uid).limit(max).get(),
         db.collection(prefix+"assessment_blueprints").where("ownerUid","==",ctx.uid).limit(max).get(),
-        ...(ctx.schoolId===LEGACY_BRIDGE_SCHOOL?
+        ...(historicalAllowed?
           [db.collection("assessments").where("ownerUid","==",ctx.uid).limit(max).get()]:[])
       ];
       const sources=await Promise.all(queries);
@@ -1318,7 +1324,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         counts.importedBlueprints++;
         add("imported_blueprint",doc,data);
       }
-      if(ctx.schoolId===LEGACY_BRIDGE_SCHOOL){
+      if(historicalAllowed){
         for(const doc of sources[3].docs){
           const data=doc.data();
           if(!canDiscloseAssessmentSource("original_assessment",data,ctx.schoolId,ctx.uid))continue;
@@ -1332,7 +1338,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       // owner-reconciliation lead. Only this teacher's active assigned course
       // may reveal minimal metadata from a verified original student cohort.
       let legacyRepositoryCandidates=[],legacyRepositoryDiagnostic="";
-      if(ctx.schoolId===LEGACY_BRIDGE_SCHOOL&&
+      if(historicalAllowed&&
          ![...found.values()].some(item=>item.sourceType==="original_assessment")){
         const activeGrant=await grantRef.get();
         if(activeGrant.exists&&activeGrant.data().schoolId===ctx.schoolId&&
