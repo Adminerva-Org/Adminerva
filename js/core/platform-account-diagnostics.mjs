@@ -16,7 +16,7 @@ const ID=()=>crypto.randomUUID();
 let pageInstanceId="";
 const allowedRoutes=/(?:^\/$|^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]{1,80}\.html$)/;
 const allowedCodes=/^[-a-zA-Z0-9_./]{1,64}$/;
-const release="v20261126-trace-6"; // The emitter revision, not the full app release.
+const release="v20261128-academic-trace"; // The emitter revision, not the full app release.
 function environment(){
   // Convert the browser environment to coarse allowlisted categories; never
   // transmit a full user-agent string, fingerprint, IP address or screen size.
@@ -38,7 +38,7 @@ function environment(){
 const controls=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
 const processes=new Map();
 const studioReasons=new Set(["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_STATE_CHANGED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_CLOSED","STUDIO_FINAL_CHECKPOINT_REQUIRED","STUDIO_FINAL_CHECKPOINT_CONFLICT","STUDIO_FINAL_CHECKPOINT_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EMPTY_SNAPSHOT_REJECTED","STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_NOT_ARCHIVED"]);
-const processNames=new Set(["studio_cloud_save","studio_api_sync","studio_api_get","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery"]);
+const processNames=new Set(["studio_cloud_save","studio_api_sync","studio_api_get","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery","assessment_draft_save","assessment_response_submit","assessment_revision_request","assessment_studio_revision_request","assessment_github_submit","assessment_github_revision_request","gradebook_draft_save","gradebook_publish","gradebook_bulk_publish","gradebook_correct","gradebook_legacy_convert","gradebook_legacy_published_convert","class_record_scheme_save","class_record_scheme_archive","class_record_scheme_restore","class_record_layout_save","class_record_scores_save","class_record_status_save","class_record_finalize","class_record_release","class_record_withdraw","class_record_custody_approve","class_record_custody_revoke"]);
 const MAX_TRACKED=24,PROLONGED_MS=60000;
 const saveStages=new Set(["scope_verification","school_sync","legacy_transaction","cloud_confirmed","newer_snapshot_pending","save_failed"]);
 const elapsed=start=>Math.min(3600000,Math.max(0,Math.round(performance.now()-start)));
@@ -53,6 +53,7 @@ function snapshotContext(extra={}){
 function beginProcess(name,metadata={}){
   if(!enabled||!processNames.has(name)||processes.size>=MAX_TRACKED)return ()=>{};
   const id=ID(),start=performance.now(),turn=epoch;
+  const module=name.startsWith("assessment_")?"assessments":name.startsWith("gradebook_")||name.startsWith("class_record_")?"grades":"studio";
   const parent=processes.has(metadata.parentOperationId)?metadata.parentOperationId:"";
   const parentContext=parent?{parentOperationId:parent}:{};
   const correlation=Object.freeze({sessionId,operationId:id,...parentContext});
@@ -65,10 +66,10 @@ function beginProcess(name,metadata={}){
     if(turn!==epoch||processes.get(id)!==tracked)return;
     const age=elapsed(start);
     if(age<PROLONGED_MS){tracked.timer=setTimeout(observeProlonged,Math.max(1,PROLONGED_MS-age));return;}
-    try{emit("process_prolonged",{kind:"system",module:"studio",state:"unavailable",operationId:id,phase:"observed",context:{...fixedContext,...stageContext(),elapsedMs:elapsed(start)}});}catch{}
+    try{emit("process_prolonged",{kind:"system",module,state:"unavailable",operationId:id,phase:"observed",context:{...fixedContext,...stageContext(),elapsedMs:elapsed(start)}});}catch{}
   };
   tracked.timer=setTimeout(observeProlonged,PROLONGED_MS);
-  try{emit("process_started",{module:"studio",operationId:id,phase:"started",context:fixedContext});}catch{}
+  try{emit("process_started",{module,operationId:id,phase:"started",context:fixedContext});}catch{}
   let finished=false;
   const finish=(success,errorCode,reasonCode,outcome={})=>{
     if(finished)return;finished=true;
@@ -76,7 +77,7 @@ function beginProcess(name,metadata={}){
     clearTimeout(tracked.timer);
     const context={...fixedContext,...stageContext(),...(Number.isInteger(outcome.waitingRequests)&&outcome.waitingRequests>=0&&outcome.waitingRequests<=100?{waitingRequests:outcome.waitingRequests}:{}),elapsedMs:elapsed(start),...(["available","unavailable","unknown"].includes(outcome.deviceBackup)?{deviceBackup:outcome.deviceBackup}:{}),...(["scheduled","not_scheduled"].includes(outcome.retryState)?{retryState:outcome.retryState}:{}),...(["revision_lookup","not_attempted","matched","mismatch","lookup_failed"].includes(outcome.recovery)?{recovery:outcome.recovery}:{}),...(studioReasons.has(reasonCode)?{reasonCode}:{}),...(["personal","assessment","unknown"].includes(metadata.projectCategory)?{projectCategory:metadata.projectCategory}:{})};
     processes.delete(id);
-    emit(success===true?"process_finished":"process_failed",{module:"studio",kind:success===true?"action":"error",
+    emit(success===true?"process_finished":"process_failed",{module,kind:success===true?"action":"error",
       state:success===true?"ok":"error",operationId:id,phase:success===true?"completed":"failed",
       errorCode:success===true?"":code(errorCode)||(name==="studio_cloud_save"?"cloud_save_failed":"unavailable"),context});
   };
@@ -84,7 +85,7 @@ function beginProcess(name,metadata={}){
     if(finished||turn!==epoch||name!=="studio_cloud_save"||!saveStages.has(stage)||stage===saveStage)return;
     saveStage=stage;
     // Emit only meaningful stages, never every editor change.
-    try{emit("process_progress",{module:"studio",state:"info",operationId:id,phase:"observed",context:{...fixedContext,saveStage,elapsedMs:elapsed(start)}});}catch{}
+    try{emit("process_progress",{module,state:"info",operationId:id,phase:"observed",context:{...fixedContext,saveStage,elapsedMs:elapsed(start)}});}catch{}
   };
   finish.correlation=correlation;
   return finish;
