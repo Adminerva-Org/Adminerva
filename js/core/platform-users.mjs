@@ -25,7 +25,7 @@ function when(value){
 }
 function setBusy(value,message=""){
   busy=value;
-  for(const id of ["pu-refresh","pu-create","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-create-submit","pu-test-toggle","pu-test-grant"]){
+  for(const id of ["pu-refresh","pu-create","pu-consent-open","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-create-submit","pu-test-toggle","pu-test-grant"]){
     const target=el(id);if(target)target.disabled=value;
   }
   if(message)status.textContent=message;
@@ -331,6 +331,56 @@ async function copyInput(input,statusTarget){
 
 for(const id of ["pu-search","pu-account-filter","pu-role-filter"])el(id).addEventListener(id==="pu-search"?"input":"change",render);
 el("pu-refresh").addEventListener("click",()=>void loadAll());
+const consentDialog=el("pu-consent-dialog"),consentPreview=el("pu-consent-preview"),consentApply=el("pu-consent-apply"),consentInput=el("pu-consent-accounts"),consentConfirm=el("pu-consent-confirm"),consentResult=el("pu-consent-result");
+let eligibleConsent=[],consentBusy=false,consentVersion=0;
+function invalidateConsent(){++consentVersion;eligibleConsent=[];consentConfirm.checked=false;consentApply.disabled=true;consentResult.replaceChildren();}
+function consentRows(rows){
+  const labels={eligible:"Ready to initialize",initialized:"Enabled",already_enabled:"Already enabled",existing_choice_preserved:"Saved choice preserved",v4_only_legacy_unavailable:"V4 only · legacy collector unavailable",no_active_legacy_student:"No eligible legacy student",account_ineligible:"Not eligible",account_missing:"Account no longer exists"};
+  consentResult.replaceChildren();
+  const counts=new Map();for(const row of rows)counts.set(row.status,(counts.get(row.status)||0)+1);
+  consentResult.append(node("p","font-semibold text-sm", [...counts].map(([key,count])=>count+" "+(labels[key]||key)).join(" · ")));
+  const listing=node("div","max-h-60 overflow-auto divide-y");
+  for(const row of rows){const item=items.find(x=>x.uid===row.uid);listing.append(node("p","text-xs py-1 break-all",(item?.email||row.uid)+" — "+(labels[row.status]||row.status)));}
+  consentResult.append(listing);
+}
+async function runConsent(apply){
+ if(consentBusy||!auth.currentUser)return;
+ const owner=auth.currentUser.uid,turn=++consentVersion;
+ if(!apply){
+   eligibleConsent=[];consentConfirm.checked=false;
+   const tokens=[...new Set(consentInput.value.split(/[\s,;]+/).map(x=>x.trim()).filter(Boolean))];
+   if(!tokens.length){consentResult.textContent="Enter the account emails or IDs from the consented cohort.";return;}
+   const found=tokens.map(token=>items.filter(item=>item.uid===token||item.email?.toLowerCase()===token.toLowerCase()));
+   if(found.some(matches=>matches.length!==1)){consentResult.textContent="Some entries are missing or ambiguous. Reload the directory and check the account list.";return;}
+   eligibleConsent=[...new Set(found.map(matches=>matches[0].uid))];
+ }else if(!consentConfirm.checked||!eligibleConsent.length)return;
+ const targets=[...eligibleConsent],rows=[];
+ consentBusy=true;consentInput.disabled=true;consentPreview.disabled=true;consentApply.disabled=true;consentConfirm.disabled=true;
+ try{
+   for(let offset=0;offset<targets.length;offset+=25){
+     if(turn!==consentVersion||auth.currentUser?.uid!==owner)return;
+     const result=(await api({action:apply?"initialize_activity_consent":"preview_activity_consent",uids:targets.slice(offset,offset+25),...(apply?{consentConfirmed:true}:{})})).data;
+     if(turn!==consentVersion||auth.currentUser?.uid!==owner)return;
+     rows.push(...(result.rows||[]));consentRows(rows);
+   }
+   eligibleConsent=apply?[]:rows.filter(row=>row.status==="eligible").map(row=>row.uid);
+   consentConfirm.checked=false;
+ }catch(error){
+   eligibleConsent=[];consentRows(rows);
+   consentResult.append(node("p","text-sm text-red-700","Batch stopped. Completed results above remain valid; preview again before retrying."));
+ }finally{
+   consentBusy=false;consentInput.disabled=false;consentPreview.disabled=false;consentConfirm.disabled=false;
+   consentApply.disabled=!eligibleConsent.length||!consentConfirm.checked;
+ }
+}
+el("pu-consent-open").addEventListener("click",()=>{if(busy||!items.length)return;consentInput.value="";invalidateConsent();consentDialog.showModal();});
+el("pu-consent-close").addEventListener("click",()=>{if(!consentBusy)consentDialog.close();});
+consentDialog.addEventListener("cancel",event=>{if(consentBusy)event.preventDefault();else invalidateConsent();});
+consentInput.addEventListener("input",invalidateConsent);
+consentPreview.addEventListener("click",()=>void runConsent(false));
+consentConfirm.addEventListener("change",()=>{consentApply.disabled=consentBusy||!eligibleConsent.length||!consentConfirm.checked;});
+consentApply.addEventListener("click",()=>void runConsent(true));
+
 el("pu-create").addEventListener("click",()=>{
   if(busy)return;
   el("pu-create-form").reset();el("pu-create-output").hidden=true;el("pu-create-link").value="";el("pu-create-status").textContent="";
