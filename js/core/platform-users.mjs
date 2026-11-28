@@ -332,38 +332,48 @@ async function copyInput(input,statusTarget){
 for(const id of ["pu-search","pu-account-filter","pu-role-filter"])el(id).addEventListener(id==="pu-search"?"input":"change",render);
 el("pu-refresh").addEventListener("click",()=>void loadAll());
 const consentDialog=el("pu-consent-dialog"),consentPreview=el("pu-consent-preview"),consentApply=el("pu-consent-apply"),consentInput=el("pu-consent-accounts"),consentConfirm=el("pu-consent-confirm"),consentResult=el("pu-consent-result");
-let eligibleConsent=[],consentBusy=false,consentVersion=0;
-function invalidateConsent(){++consentVersion;eligibleConsent=[];consentConfirm.checked=false;consentApply.disabled=true;consentResult.replaceChildren();}
+let eligibleConsent=[],consentRowsSnapshot=[],consentBusy=false,consentVersion=0;
+function invalidateConsent(){++consentVersion;eligibleConsent=[];consentRowsSnapshot=[];consentConfirm.checked=false;consentApply.disabled=true;consentResult.replaceChildren();}
 function consentRows(rows){
   const labels={eligible:"Ready to initialize",initialized:"Enabled",already_enabled:"Already enabled",existing_choice_preserved:"Saved choice preserved",v4_only_legacy_unavailable:"V4 only · legacy collector unavailable",no_active_legacy_student:"No eligible legacy student",account_ineligible:"Not eligible",account_missing:"Account no longer exists"};
   consentResult.replaceChildren();
   const counts=new Map();for(const row of rows)counts.set(row.status,(counts.get(row.status)||0)+1);
   consentResult.append(node("p","font-semibold text-sm", [...counts].map(([key,count])=>count+" "+(labels[key]||key)).join(" · ")));
+  const browserLabels={on:"On",default_on:"Default on",off:"Off"};
+  const researchLabels={on_if_school_eligible:"On if school eligible",off:"Off",not_designated:"Not designated"};
+  const browserCounts=new Map();for(const row of rows)if(row.browserPreference)browserCounts.set(row.browserPreference,(browserCounts.get(row.browserPreference)||0)+1);
+  if(browserCounts.size)consentResult.append(node("p","text-xs text-slate-600","Browser diagnostics: "+[...browserCounts].map(([key,count])=>count+" "+browserLabels[key]).join(" · ")));
   const listing=node("div","max-h-60 overflow-auto divide-y");
-  for(const row of rows){const item=items.find(x=>x.uid===row.uid);listing.append(node("p","text-xs py-1 break-all",(item?.email||row.uid)+" — "+(labels[row.status]||row.status)));}
+  for(const row of rows){
+    const item=items.find(x=>x.uid===row.uid),entry=node("div","py-2");
+    entry.append(node("p","text-xs font-semibold break-all",(item?.email||row.uid)+" — "+(labels[row.status]||row.status)));
+    if(row.browserPreference)entry.append(node("p","text-xs text-slate-600","Browser: "+browserLabels[row.browserPreference]+" · Studio research: "+researchLabels[row.researchPreference]));
+    listing.append(entry);
+  }
   consentResult.append(listing);
 }
 async function runConsent(apply){
  if(consentBusy||!auth.currentUser)return;
  const owner=auth.currentUser.uid,turn=++consentVersion;
  if(!apply){
-   eligibleConsent=[];consentConfirm.checked=false;
+   eligibleConsent=[];consentRowsSnapshot=[];consentConfirm.checked=false;consentApply.disabled=true;
    const tokens=[...new Set(consentInput.value.split(/[\s,;]+/).map(x=>x.trim()).filter(Boolean))];
    if(!tokens.length){consentResult.textContent="Enter the account emails or IDs from the consented cohort.";return;}
    const found=tokens.map(token=>items.filter(item=>item.uid===token||item.email?.toLowerCase()===token.toLowerCase()));
    if(found.some(matches=>matches.length!==1)){consentResult.textContent="Some entries are missing or ambiguous. Reload the directory and check the account list.";return;}
    eligibleConsent=[...new Set(found.map(matches=>matches[0].uid))];
  }else if(!consentConfirm.checked||!eligibleConsent.length)return;
- const targets=[...eligibleConsent],rows=[];
+ const targets=[...eligibleConsent],rows=apply?consentRowsSnapshot.map(row=>({...row})):[];
  consentBusy=true;consentInput.disabled=true;consentPreview.disabled=true;consentApply.disabled=true;consentConfirm.disabled=true;
  try{
    for(let offset=0;offset<targets.length;offset+=25){
      if(turn!==consentVersion||auth.currentUser?.uid!==owner)return;
      const result=(await api({action:apply?"initialize_activity_consent":"preview_activity_consent",uids:targets.slice(offset,offset+25),...(apply?{consentConfirmed:true}:{})})).data;
      if(turn!==consentVersion||auth.currentUser?.uid!==owner)return;
-     rows.push(...(result.rows||[]));consentRows(rows);
+     for(const row of result.rows||[]){const index=rows.findIndex(value=>value.uid===row.uid);if(index<0)rows.push(row);else rows[index]={...rows[index],...row};}
+     consentRows(rows);
    }
-   eligibleConsent=apply?[]:rows.filter(row=>row.status==="eligible").map(row=>row.uid);
+   consentRowsSnapshot=rows;eligibleConsent=apply?[]:rows.filter(row=>row.status==="eligible").map(row=>row.uid);
    consentConfirm.checked=false;
  }catch(error){
    eligibleConsent=[];consentRows(rows);
