@@ -61,6 +61,7 @@ async function send(event){
     if(epoch!==generation||auth.currentUser?.uid!==uid||schoolId!==target||paused)return;
     try{
       const response=(await endpoint({action:"record",schoolId:target,event})).data;
+      if(epoch===generation&&schoolId===target&&auth.currentUser?.uid===uid&&response?.disabled===true){enabled=false;paused=true;pending=[];setStatus("Pilot research disabled in account privacy settings. Studio work is unaffected.");return;}
       if(epoch===generation&&schoolId===target&&auth.currentUser?.uid===uid&&response?.recorded===true)
         setStatus("Pilot research active: last event confirmed at "+new Date().toLocaleTimeString()+".");
       return;
