@@ -187,3 +187,72 @@ test("blocked assessment drafts remain queued without ordinary timers or retries
   assert.match(source,/await verifyAssessmentProjectOpen\(next,\{resumeBlocked:true\}\)/);
   assert.match(source,/closingSessionEpoch\?"STUDIO_EXAM_CLOSED":readMarker\(id\)\.assessmentSaveBlock/);
 });
+
+
+test("resource limits are distinct from an offline or transient connection failure",()=>{
+  const error={code:"functions/resource-exhausted",message:"Resource exhausted"};
+  for(const online of [true,false]){
+    const result=describeStudioCloudSaveError(error,{online});
+    assert.equal(result.category,"resource-limit");
+    assert.equal(result.retryable,false);
+  }
+});
+
+test("a recovery copy must be durable before the original draft can be replaced",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  function recoverCopy("),end=source.indexOf("  async function resolveCloudProject(",start);
+  assert.ok(start>=0&&end>start);
+  const run=new Function(`
+    const uid="student",projectStorage={};
+    const initial={id:"original",title:"Project",assessment:{taskId:"task"},state:{files:{main:"unsynced code"}},database:{rows:[1]},design:{diagram:"draft"}};
+    let rows=[initial],failure=false,silentFailure=false;
+    const createCodeProject=(storage,uid,opts)=>{
+      if(storage===projectStorage)throw Error("must not write a starter");
+      return {id:"copy",title:opts.title,createdAt:"now",updatedAt:"now",lastOpenedAt:"now"};
+    };
+    const normalizeProject=p=>JSON.parse(JSON.stringify(p));
+    const validateProject=p=>{if(!p?.state?.files)throw Error("invalid");};
+    const readCodeProjects=()=>rows;
+    const writeCodeProjects=(storage,uid,next)=>{
+      if(failure)throw Error("quota");
+      if(!silentFailure)rows=next;
+    };
+    const findCodeProject=(storage,uid,id)=>rows.find(p=>p.id===id);
+    const contentKey=p=>JSON.stringify(p);
+    ${source.slice(start,end)}
+    return {backup:()=>recoverCopy(initial),rows:()=>rows,fail:()=>failure=true,
+      silent:()=>{failure=false;silentFailure=true;},allow:()=>{failure=false;silentFailure=false;}};
+  `)();
+  run.fail();assert.throws(()=>run.backup(),/quota/);
+  assert.equal(run.rows().length,1);
+  run.silent();assert.throws(()=>run.backup(),/could not be verified/);
+  assert.equal(run.rows()[0].state.files.main,"unsynced code");
+  run.allow();assert.equal(run.backup(),"copy");
+  assert.equal(run.rows()[0].state.files.main,"unsynced code");
+  assert.equal(run.rows()[0].database.rows[0],1);
+  assert.equal(run.rows()[0].design.diagram,"draft");
+  assert.equal(run.rows()[0].assessment,null);
+  assert.equal(run.rows()[1].assessment.taskId,"task");
+});
+
+test("concurrent ordinary save waiters share failure but final checkpoint remains eligible",async()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  async function flushOne("),end=source.indexOf("  async function flushOneAfterWrite(",start);
+  assert.ok(start>=0&&end>start);
+  const run=new Function(`
+    const cloudTimers=new Map(),deletedProjects=new Set(),cloudPending=new Map(),cloudWrites=new Map();
+    const cloudEnabled=true;let waiting=0,attempts=[];
+    const clearTimeout=()=>{},noteCloudWait=()=>waiting++;
+    const flushOneAfterWrite=(id,epoch=0)=>{attempts.push([id,epoch]);return true;};
+    ${source.slice(start,end)}
+    return {flushOne,attempts:()=>attempts,waiting:()=>waiting,begin:(promise)=>{
+      cloudPending.set("p",{});cloudWrites.set("p",promise);
+    }};
+  `)();
+  let finish;run.begin(new Promise(resolve=>finish=resolve));
+  const waiters=[run.flushOne("p"),run.flushOne("p"),run.flushOne("p",3)];
+  finish(false);
+  assert.deepEqual(await Promise.all(waiters),[false,false,true]);
+  assert.deepEqual(run.attempts(),[["p",3]]);
+  assert.equal(run.waiting(),3);
+});
