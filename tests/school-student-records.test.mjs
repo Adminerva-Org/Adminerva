@@ -234,3 +234,11 @@ test("canonical identity amendments are revision checked and recovery refuses Re
   assert.match(directory,/This student number belongs to another directory record/);assert.match(enrollment,/A conflicting school identity exists/);
   assert.match(service,/identityCandidates:\[\.\.\.candidates.values\(\)\]/);
 });
+
+
+test("confirmed archived recovery aliases are distinguished from unresolved identities",()=>{
+  assert.match(enrollment,/doc.data\(\).mergedIntoPersonId===personId/);
+  assert.match(service,/reviewedAlias:row.status==="archived"/);
+  assert.match(recordsUi,/Reviewed archived alias/);
+  assert.match(enrollment,/displayName:person.data\(\).displayName\|\|source.displayName/);
+});
