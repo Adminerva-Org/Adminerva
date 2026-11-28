@@ -128,3 +128,11 @@ test("active learner report deduplicates person IDs and excludes conflicts from 
   const result=summarizeActivePlacements([{...base,personId:"a"},{...base,personId:"b"},{...base,personId:"b"},{...base,personId:"c",sectionId:"missing"},{...base,personId:""},{...base,schoolId:"other",personId:"x"}],sections,scope);
   assert.equal(result.uniqueLearners,3);assert.equal(result.duplicateLearners,1);assert.equal(result.unresolvedLearners,1);assert.equal(result.invalidRecords,2);assert.equal(result.assignedLearners,1);assert.equal(result.bySection[0].learnerCount,1);assert.equal(result.byGrade[0].learnerCount,1);
 });
+
+
+test("Registrar overview opens canonical queue scopes and exact transfer handoff validates both record and person",()=>{
+  const source=require("node:fs").readFileSync(new URL("../functions/school-enrollment.js",import.meta.url),"utf8");
+  assert.match(source,/if\(input.action==="registrar_overview"\)/);assert.match(source,/query.where\("status","==",status\).count\(\).get\(\)/);
+  assert.match(source,/scan.where\("status","in",\["submitted","needs_information","accepted"\]\)/);
+  assert.match(source,/doc.data\(\).personId!==personId\)deny\("not-found","The linked registration/);
+});
