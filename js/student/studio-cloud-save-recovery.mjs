@@ -37,3 +37,12 @@ export function describeStudioCloudSaveError(error,{online=true}={}){
 export function studioCloudRetryDelay(attempt){
   return Math.min(30000,3000*(2**Math.min(4,Math.max(0,Number.isInteger(attempt)?attempt:0))));
 }
+
+// This is an account-private working backup, not school academic evidence.
+// Never route a school-bound project or a manual exam to the legacy store.
+export function studioLegacyBackupAllowed(project,school,marker={},scopeToken=""){
+  const binding=project?.assessment;
+  return Boolean(school?.schoolId&&school.compatibilityMode==="legacy_allowed"&&!scopeToken&&
+    marker.kind!=="school"&&binding?.provisionedBy==="assessment-launch"&&
+    binding.assessmentOrigin==="legacy"&&!binding.offeringId&&Number(binding.sessionEpoch||0)===0);
+}
