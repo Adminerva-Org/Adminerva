@@ -642,7 +642,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         "Historical published "+grade.awarded+" / "+grade.total;
       return;
     }
-    if(currentTask?.historicalRubricMode==="scalar_manual"){
+    if(currentTask?.historicalRubricMode==="scalar_manual"&&!currentSnapshot?.activityOnly){
       host.append(make("p","text-sm text-slate-600 mb-2","Original rubric unavailable. Review the submission and enter the total score manually."));
     }else if(currentTask?.legacyCompatibility&&grade?.gradeSchema==="legacy_scalar_v1"){
       host.append(make("p","rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950",
@@ -949,7 +949,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         document.getElementById("gbV4EvidenceType").textContent="Historical activity";
         document.getElementById("gbV4GeneralHeading").textContent="Original activity score";
         document.getElementById("gbV4GeneralMeta").textContent=currentGrade.status==="published"?"Published":"Draft";
-        document.getElementById("gbV4GeneralBody").textContent="No frozen submission is required for this recorded activity. Edit the original total; visibility stays unchanged.";
+        document.getElementById("gbV4GeneralBody").textContent="Recorded activity · publication state preserved.";
         document.getElementById("gbV4GeneralLink").classList.add("hidden");
         document.getElementById("gbV4GeneralNote").classList.add("hidden");
       }else if(currentTask.submissionSource==="github"){
