@@ -151,12 +151,11 @@ function createSchoolStudioProjectService({db}){
       task.data().submissionSource!=="studio")
     deny("failed-precondition","This Studio assessment is no longer available.","STUDIO_ASSESSMENT_UNAVAILABLE");
    const data=task.data();
-   if(data.manualOpenRequired!==true)return {finalSave:false};
-   // A project marked for another offering must not be accepted as evidence
-   // for this task's class, even if an old browser supplies a valid task ID.
-   if(binding.offeringId!==data.offeringId)
+   // An assessment binding must match its exact canonical class, regardless
+   // of whether this is a manually opened examination or ordinary coursework.
+   if(!data.offeringId||binding.offeringId!==data.offeringId)
     deny("permission-denied","This assessment project is bound to a different course offering.");
-   // Verify the student belongs to this exact section on every protected save,
+   // Verify the student belongs to this exact section on every assessment save,
    // including when a new class session reuses a previously saved project.
    const member=await tx.get(membershipRef),
      personId=checkId(member.data()?.personId,"Student person",128);
@@ -172,8 +171,14 @@ function createSchoolStudioProjectService({db}){
       enrollment.data().personId!==personId||enrollment.data().offeringId!==data.offeringId||
       enrollment.data().status!=="active")
     deny("permission-denied","Your school enrollment is no longer active for this exam.");
+   if(data.manualOpenRequired!==true){
+    if(closingEpoch)deny("failed-precondition","This task has no teacher-controlled final checkpoint.","STUDIO_EXAM_STATE_CHANGED");
+    return {finalSave:false,taskId,personId};
+   }
    const epoch=Number(data.manualSessionEpoch||0);
    if(data.manualAccessState==="open") {
+    if(data.published!==true||(data.lifecycle||"active")!=="active")
+      deny("failed-precondition","The Studio exam is not published and active.","STUDIO_EXAM_CLOSED");
     if(closingEpoch)deny("failed-precondition","Exam closing state changed. Reload the assessment.","STUDIO_EXAM_STATE_CHANGED");
     if(epoch<1||Number(binding.sessionEpoch||0)!==epoch)
       deny("failed-precondition","This project belongs to an earlier exam session. Reopen the assessment from My Assessments.","STUDIO_EXAM_SESSION_EXPIRED");
