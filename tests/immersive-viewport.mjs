@@ -115,9 +115,24 @@ try{
       if(role==='student'){
         const tools=page.locator('.avx-world-destinations');
         const destinations=tools.locator('[data-world-destination]');
-        assert.equal(await destinations.count(),5);
+        assert.equal(await destinations.count(),6);
         assert.equal(await tools.evaluate(n=>n.parentElement.classList.contains('avx-learning-world')),true);
         assert.equal(await destinations.filter({hasText:'My Grades'}).isVisible(),false,'restricted grades must remain hidden');
+        const world=page.locator('.avx-learning-world');
+        const studio=tools.locator('[data-world-destination="studio"]');
+        const classroom=tools.locator('[data-world-destination="classroom"]');
+        const grades=tools.locator('[data-world-destination="grades"]');
+        await studio.focus();
+        assert.equal(await world.getAttribute('data-world-focus'),'studio');
+        assert.equal(await page.locator('.avx-world-preview-caption strong').textContent(),'Adminerva Studio');
+        await studio.evaluate(n=>{n.style.display='none';});
+        await page.waitForFunction(()=>!document.querySelector('.avx-learning-world').hasAttribute('data-world-focus'));
+        await studio.evaluate(n=>{n.style.display='';});
+        await classroom.focus();
+        assert.equal(await world.getAttribute('data-world-focus'),'classroom');
+        assert.equal(await grades.isVisible(),false);
+        await page.locator('.avx-experience-launch').focus();
+        assert.equal(await world.getAttribute('data-world-focus'),null);
         const original=await destinations.evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href')));
         await tools.evaluate(n=>{n.dataset.qaIdentity='original';});
         if(['desktop-wide','tablet-landscape','mobile-320'].includes(viewport.name)){
@@ -127,6 +142,7 @@ try{
         await page.getByRole('button',{name:'Quick Mode'}).click();
         assert.equal(await tools.evaluate(n=>n.parentElement.tagName),'MAIN');
         assert.equal(await tools.getAttribute('data-qa-identity'),'original');
+        assert.equal(await world.getAttribute('data-world-focus'),null);
         assert.equal(await destinations.filter({hasText:'My Grades'}).isVisible(),false);
         assert.deepEqual(await destinations.evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href'))),original);
         await page.locator('.avx-view-trigger').click();
