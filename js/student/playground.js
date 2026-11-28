@@ -287,7 +287,8 @@ async function lockAndCloseStudioExam(taskId,sessionEpoch){
     actions=overlay.querySelector("#studioExamClosingActions"),
     retry=overlay.querySelector("#studioExamRetryFinalSave"),
     returnLink=overlay.querySelector('a[href="student-assessments.html"]');
-  let captured=persistWorkspace(),deviceCopySaved=captured;
+  projectStudio?.suspendOrdinaryAssessmentSave?.();
+  let captured=persistWorkspace(),deviceCopySaved=captured&&!projectStudio?.hasUnbackedActiveProject?.();
   if(!captured){
     try{
       const fallback=projectStudio?.captureClosingState?.(currentState());
@@ -369,7 +370,8 @@ async function checkStudioExamSession(taskId=watchedExamId){
       document.getElementById("studioExamConnectionOverlay")?.remove();
       editorInstance?.updateOptions({readOnly:true});
       document.getElementById("studioShell")?.setAttribute("inert","");
-      const captured=persistWorkspace(),overlay=examCloseOverlay();
+      projectStudio?.suspendOrdinaryAssessmentSave?.();
+      const captured=persistWorkspace()&&!projectStudio?.hasUnbackedActiveProject?.(),overlay=examCloseOverlay();
       overlay.querySelector("#studioExamClosingMessage").textContent=
         "This editor belongs to an earlier class session. The teacher has already opened a newer session.";
       overlay.querySelector("#studioExamClosingNotice").textContent=captured?
@@ -1523,7 +1525,7 @@ window.adminervaFlushStudioSubmission=async expectedProjectId=>{
     throw Error("The active project changed before submission. Reopen the assigned project.");
   if(!persistWorkspace())
     throw Error("The current code could not be saved on this device. Export a ZIP before leaving.");
-  const confirmed=await projectStudio.flushCloudSaves();
+  const confirmed=await projectStudio.flushCloudSaves({projectId:expectedProjectId});
   if(!confirmed)
     throw Error("Your latest project was not confirmed in school cloud storage. Submission was stopped to protect your code. Reconnect and try Save before submitting.");
   return {project:projectStudio.getActiveProject(),state:currentState()};
@@ -3064,7 +3066,7 @@ function bindUIEvents() {
       const button=document.getElementById("saveProjectBtn");
       if(button)button.disabled=true;
       try{
-        const saved=await projectStudio.flushCloudSaves();
+        const saved=await projectStudio.flushCloudSaves({projectId:projectStudio.getActiveProject().id});
         if(!saved) return; // The project controller keeps the actual cloud failure detail.
       }finally{if(button)button.disabled=false;}
     }
