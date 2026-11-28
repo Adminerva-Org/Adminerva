@@ -257,7 +257,7 @@ function renderRegistrations(){
     info.append(name,meta);
     const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;justify-content:flex-end";
     const badge=document.createElement("span");badge.className="en-badge";badge.dataset.state=item.status||"active";
-    badge.textContent=item.status==="ended"&&item.progressionType
+    badge.textContent=item.status==="ended"&&item.endReasonType==="progression"&&item.progressionType
       ?"ended · "+progressionTypeLabel(item.progressionType).toLowerCase()
       :item.status==="ended"&&item.endReasonType
         ?"ended · "+endTypeLabel(item.endReasonType).toLowerCase()
@@ -1514,6 +1514,7 @@ async function loadApplications({more=false,refreshItem=null}={}){
     const filter=get("en-application-status").value||"pending";
     const result=await latest("applications","list_applications",refreshItem?{applicationId:refreshItem}:{status:filter,...(cursor?{cursor}:{})});
     if(!result)return;
+    if(!refreshItem&&filter!==(get("en-application-status").value||"pending"))return;
     const rows=new Map((more||refreshItem?applications:[]).map(item=>[item.applicationId,item]));
     for(const item of result.items||[])rows.set(item.applicationId,item);
     applications=[...rows.values()].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));if(!refreshItem)applicationCursor=result.nextCursor||null;
