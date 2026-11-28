@@ -340,3 +340,42 @@ test("stale-device revision marker survives a lock update and clears only after 
   assert.match(source,/if\(readMarker\(project.id\).requiresCloudReload\)\{incomplete=true;continue;\}/);
   assert.match(source,/prior.pending&&sameBase&&\(!prior.requiresCloudReload\|\|cloudPending.has\(id\)\)/);
 });
+
+
+test("school assessment writes require exact enrollment and preserve final checkpoint authorization",async()=>{
+  const source=readFileSync("functions/school-studio-projects.js","utf8");
+  const start=source.indexOf("  async function authorizeAssessmentProject("),end=source.indexOf("  async function authorizeTransaction(",start);
+  assert.ok(start>=0&&end>start);
+  const create=new Function("task","enrollment","person",`
+    const ctx={schoolId:"s",uid:"student"},prefix="schools/s/";
+    const membershipRef="membership";
+    const db={doc:path=>path},checkId=id=>id,rowKey=(a,b)=>a+"_"+b;
+    const deny=(code,message,diagnosticReason)=>{throw Object.assign(Error(message),{code,diagnosticReason});};
+    const tx={get:async path=>{
+      const data=path==="membership"?{personId:"p"}:path.endsWith("/assessments/t")?task:
+        path.endsWith("/people/p")?person:path.endsWith("/enrollments/p_o")?enrollment:null;
+      return {exists:Boolean(data),data:()=>data};
+    }};
+    ${source.slice(start,end)}
+    return (binding,closingEpoch=0)=>authorizeAssessmentProject(tx,{assessment:binding},{closingEpoch});
+  `);
+  const task={schoolId:"s",offeringId:"o",submissionSource:"studio",published:true,lifecycle:"active",
+    manualOpenRequired:true,manualAccessState:"open",manualSessionEpoch:2};
+  const enrollment={schoolId:"s",personId:"p",offeringId:"o",status:"active"};
+  const person={schoolId:"s",authUid:"student",kind:"student",status:"active"};
+  const binding={provisionedBy:"assessment-launch",taskId:"t",offeringId:"o",sessionEpoch:2};
+  const make=(patch={},enroll=enrollment)=>create({...task,...patch},enroll,person);
+  assert.equal((await make()(binding)).finalSave,false);
+  await assert.rejects(make()({...binding,offeringId:"other"}),/different course offering/);
+  await assert.rejects(make({manualOpenRequired:false},null)(binding),/enrollment/);
+  await assert.rejects(make({published:false})(binding),/not published/);
+  await assert.rejects(make({lifecycle:"closed"})(binding),/not published/);
+  await assert.rejects(make()({...binding,sessionEpoch:1}),/earlier exam session/);
+  await assert.rejects(make({manualAccessState:"closed"})(binding),/closed to edits/);
+  const final=await make({manualAccessState:"closed",published:false,manualCloseGraceUntil:{toMillis:()=>Date.now()+60000}})(binding,2);
+  assert.equal(final.finalSave,true);assert.equal(final.receiptLookupOnly,false);
+  const expired=await make({manualAccessState:"closed",manualCloseGraceUntil:{toMillis:()=>0}})(binding,2);
+  assert.equal(expired.receiptLookupOnly,true);
+  await assert.rejects(make({manualOpenRequired:false})(binding,2),/no teacher-controlled/);
+  assert.equal((await make({manualOpenRequired:false})(binding)).finalSave,false);
+});
