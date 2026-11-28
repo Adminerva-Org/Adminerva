@@ -16,7 +16,7 @@ import {
   getV4StudioSubmissionStatus,getV4StudioSubmittedRecovery,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject,retryV4StudioSchool
 } from "./v4-studio-service.mjs?v=20261126-rejection-1";
-import {describeStudioCloudSaveError,studioCloudRetryDelay,studioAssessmentSaveBlock,studioAssessmentBlockLabel} from "./studio-cloud-save-recovery.mjs?v=20261128-studio-stability-1";
+import {describeStudioCloudSaveError,studioCloudRetryDelay,studioAssessmentSaveBlock,studioAssessmentBlockLabel,studioLegacyBackupAllowed} from "./studio-cloud-save-recovery.mjs?v=20261128-studio-stability-1";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -158,7 +158,7 @@ function matchesTemplateStarter(project,template){
 
 export function createProjectStudio({
   uid,openProject,captureState,onConfigChange,onRevealEvidence=null,legacyDraftAvailable=false,importLegacyDraft=null,
-  cloudEnabled=true,guest=false,limits={},projectScope=""
+  cloudEnabled=true,guest=false,limits={},projectScope="",verifiedSchoolId=""
 }){
   const policy={
     maxProjects:guest?3:Infinity,
@@ -292,10 +292,13 @@ export function createProjectStudio({
     const previousKey=activeContentBaseline?.id===project.id?activeContentBaseline.key:
       previous?contentKey(previous):null;
     const changed=previousKey!==contentKey(project);
+    // A previous quota failure is not a durable backup. Retry the device
+    // write even when the live snapshot has not changed.
     let deviceSaved=true;
     try{
-      activeProject=changed?saveCodeProject(projectStorage,uid,project):
+      activeProject=(changed||unbackedProjectIds.has(project.id))?saveCodeProject(projectStorage,uid,project):
         {...previous,lastOpenedAt:project.lastOpenedAt||previous.lastOpenedAt};
+      if(unbackedProjectIds.has(project.id))unbackedProjectIds.delete(project.id);
     }catch(error){
       if(!cloudEnabled)throw error;
       console.warn("Studio device backup unavailable; retaining live project in memory",error);
@@ -331,6 +334,7 @@ export function createProjectStudio({
     try{
       activeProject=saveCodeProject(projectStorage,uid,draft);
       deviceSaved=true;
+      unbackedProjectIds.delete(draft.id);
     }catch(error){
       // A full/disabled localStorage must not prevent uploading the in-memory
       // editor snapshot. Do not claim a device backup was made.
@@ -364,13 +368,16 @@ export function createProjectStudio({
     const snapshot=clone(project),id=snapshot.id;
     cloudPending.set(id,snapshot);
     writeMarker(id,{...readMarker(id),pending:true});
+    clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
     if(showBlockedSave(id))return;
     const deviceUnavailable=unbackedProjectIds.has(id);
     setCloudStatus(deviceUnavailable?
       "Device backup unavailable · cloud save pending · keep this tab open":
       navigator.onLine===false?"Offline · saved on device":"Syncing to cloud…",
       deviceUnavailable?"error":"info",id);
-    clearTimeout(cloudTimers.get(id));
+    // Do not issue a callable while the browser is known offline. Reconnect
+    // and explicit Save use the same retained snapshot.
+    if(navigator.onLine===false)return;
     cloudTimers.set(id,setTimeout(()=>{void flushOne(id);},900));
   }
   function scheduleCloudRetry(id,error,closingSessionEpoch){
@@ -414,6 +421,10 @@ export function createProjectStudio({
     }
     const snapshot=cloudPending.get(id);
     if(snapshot&&!closingSessionEpoch&&showBlockedSave(id))return false;
+    if(snapshot&&navigator.onLine===false){
+      setCloudStatus(unbackedProjectIds.has(id)?"Offline · no device backup · keep this tab open":"Offline · saved on device","error",id);
+      return false;
+    }
     // A normal autosave may have consumed the pending write before this
     // call obtained the per-project lock. An empty queue is NOT proof of
     // the teacher-close receipt: only an examFinalized server response is.
@@ -431,8 +442,13 @@ export function createProjectStudio({
         let school=await currentV4StudioSchool();
         if(!school&&(scopeToken||snapshot.assessment?.provisionedBy==="assessment-launch"))school=await retryV4StudioSchool();
         if(auth.currentUser?.uid!==uid)throw Error("Account changed before saving.");
+        const priorMarker=readMarker(id);
+        if((verifiedSchoolId&&school?.schoolId!==verifiedSchoolId)||
+           (priorMarker.kind==="school"&&priorMarker.schoolId!==school?.schoolId))
+          throw Error("Reconnect your verified school before saving this project.");
+        const legacyAssessment=studioLegacyBackupAllowed(snapshot,school,priorMarker,scopeToken);
         let marker;
-        if(school){
+        if(school&&!legacyAssessment){
           progress("school_sync");
           const base=readMarker(id);
           const result=await syncV4StudioProject(snapshot,snapshot.state,{quiet:true,expectedRevision:base.kind==="school"&&base.schoolId===school.schoolId?base.revision:null,
@@ -443,7 +459,7 @@ export function createProjectStudio({
           marker={kind:"school",schoolId:school.schoolId,revision:result.revision};
         }else{
           if(closingSessionEpoch)throw Error("Verified school cloud storage is required to finalize this exam.");
-          if(scopeToken||snapshot.assessment?.provisionedBy==="assessment-launch")
+          if(scopeToken||(snapshot.assessment?.provisionedBy==="assessment-launch"&&!legacyAssessment))
             throw Error("Verified school cloud storage is required for assessment projects. Keep this tab open and retry Save.");
           const ref=doc(db,"student_code_projects",uid,"projects",id);
           const base=readMarker(id);
@@ -545,6 +561,10 @@ export function createProjectStudio({
     if(!cloudEnabled)return local;
     if(auth.currentUser?.uid!==uid)throw Error("Sign in with your project account.");
     const school=await currentV4StudioSchool();
+    const priorMarker=readMarker(id);
+    if((verifiedSchoolId&&school?.schoolId!==verifiedSchoolId)||
+       (priorMarker.kind==="school"&&priorMarker.schoolId!==school?.schoolId))
+      throw Error("Reconnect your verified school before loading this project.");
     let remote=null,base=null;
     if(school){
       try{
@@ -578,7 +598,7 @@ export function createProjectStudio({
       alert("The cloud has a different version of this project. Your device changes were preserved as a separate Device recovery project; the main project will open the cloud version.");
     }
     if(base.kind==="school")rememberV4StudioRevision(id,base.revision);
-    const needsSync=chosen===local&&differs||Boolean(school&&base.kind==="legacy");
+    const needsSync=chosen===local&&differs||Boolean(school&&base.kind==="legacy"&&!studioLegacyBackupAllowed(chosen,school,base,scopeToken));
     writeMarker(id,{...base,pending:Boolean(needsSync),...(prior.assessmentSaveBlock?{assessmentSaveBlock:prior.assessmentSaveBlock}:{})});
     cloudPending.delete(id);clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
     clearTimeout(cloudRetryTimers.get(id));cloudRetryTimers.delete(id);cloudRetryAttempts.delete(id);
@@ -1178,6 +1198,7 @@ export function createProjectStudio({
     const desiredConfig={...template.config,...(context.config||{})};
     const ownership={
       assessmentId,
+      assessmentOrigin:context.assessmentOrigin==="legacy"?"legacy":context.offeringId?"school":"",
       taskId:String(context.taskId||assessmentId),
       sessionEpoch:Number(context.manualSessionEpoch||0),
       title:String(context.title||"Studio assessment").slice(0,180),
@@ -1195,6 +1216,12 @@ export function createProjectStudio({
     };
 
     if(project){
+      const oldBinding=project.assessment;
+      if(oldBinding?.provisionedBy==="assessment-launch"&&
+         ((oldBinding.taskId||oldBinding.assessmentId)!==(ownership.taskId||ownership.assessmentId)||
+          (oldBinding.offeringId&&oldBinding.offeringId!==ownership.offeringId)||
+          (oldBinding.assessmentOrigin==="school"&&ownership.assessmentOrigin==="legacy")))
+        throw Error("This project belongs to a different assessment or class. The original draft is retained.");
       // If an earlier Adminerva version generated the wrong starter and the learner
       // has not changed that starter at all, replace only that untouched scaffold.
       // Any edited source/database/design data is preserved.
@@ -1229,7 +1256,9 @@ export function createProjectStudio({
         JSON.stringify(project.config||{})!==JSON.stringify(next.config||{});
       if(!sameOpenAssessment&&readMarker(project.id).assessmentSaveBlock){
         // Resume only after the canonical assignment and its current epoch are verified.
-        await verifyAssessmentProjectOpen(next,{resumeBlocked:true});
+        const school=await currentV4StudioSchool();
+        if(studioLegacyBackupAllowed(next,school,readMarker(project.id),scopeToken))clearOrdinarySaveBlock(project.id);
+        else await verifyAssessmentProjectOpen(next,{resumeBlocked:true});
       }
       if(sameOpenAssessment){
         // Updating the variant or session binding is not a request to
