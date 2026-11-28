@@ -67,6 +67,18 @@ async function accessibleAssessments(sections){
 document.addEventListener("analytics-teacher-change", () => {
   initDashboard();
 });
+const classResultsRefresh=document.getElementById("analytics-refresh");
+classResultsRefresh?.addEventListener("click",async()=>{
+  if(classResultsRefresh.disabled)return;
+  classResultsRefresh.disabled=true;
+  classResultsRefresh.setAttribute("aria-busy","true");
+  try{
+    await initDashboard();
+  }finally{
+    classResultsRefresh.disabled=false;
+    classResultsRefresh.removeAttribute("aria-busy");
+  }
+});
 if(document.getElementById("analytics-teacher").value)void initDashboard();
 
 async function initDashboard() {
