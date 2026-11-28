@@ -222,3 +222,15 @@ test("student file only shows exact canonical finite released grades, not missin
   assert.match(service,/typeof doc.data\(\).finalGrade==="number"&&Number.isFinite/);
   assert.match(recordsHtml,/id="sr-request-status"/);
 });
+
+
+test("canonical identity amendments are revision checked and recovery refuses Registrar evidence",()=>{
+  const {checkedBirthDate,studentIdentityChange}=require("../functions/people-directory.js");
+  assert.equal(checkedBirthDate("2012-02-29"),"2012-02-29");assert.throws(()=>checkedBirthDate("2011-02-29"));
+  assert.deepEqual(studentIdentityChange({displayName:"Original",studentNumber:"001",birthDate:"2012-02-29"},{displayName:"Corrected",studentNumber:"001",birthDate:"2012-02-29"}),{displayName:"Corrected"});
+  const directory=readFileSync(new URL("../functions/people-directory.js",import.meta.url),"utf8");
+  assert.match(directory,/verified School Administrator must review student identity corrections/);
+  assert.match(directory,/Resolve pending linked admissions/);assert.match(directory,/registrarEvidence\[0\].exists/);
+  assert.match(directory,/This student number belongs to another directory record/);assert.match(enrollment,/A conflicting school identity exists/);
+  assert.match(service,/identityCandidates:\[\.\.\.candidates.values\(\)\]/);
+});
