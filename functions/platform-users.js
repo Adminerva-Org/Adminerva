@@ -6,6 +6,7 @@
  * records remain in their canonical school-scoped services.
  */
 const {FieldValue}=require("firebase-admin/firestore");
+const {importExistingActivityConsent}=require("./existing-activity-consent.js");
 const {platformAuthority,TenantAccessError,schoolEnrollmentMode}=require("./tenant-access.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -109,6 +110,8 @@ function createPlatformUserService({db,auth}){
     const authority=await platformAuthority({db,request});
     if(!authority.platformAdmin)deny("permission-denied","System Administrator access is required.");
     const input=request.data||{},action=String(input.action||"").trim();
+
+    if(["preview_activity_consent","initialize_activity_consent"].includes(action))return importExistingActivityConsent({db,auth,FieldValue,authority,input});
 
     if(action==="list"){
       const pageSize=Math.min(1000,Math.max(10,Number.isInteger(input.pageSize)?input.pageSize:100));
