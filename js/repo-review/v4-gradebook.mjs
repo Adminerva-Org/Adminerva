@@ -763,7 +763,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{}),
         ...(task.submissionSource==="github"?{legacyEvidenceId:row.recordId}:{legacySubmissionId:row.recordId})
       }):await scoped(gradeApi,"grade_history",{taskId:task.taskId,studentUid:row.studentUid});
-      if(id!==historyGeneration||!dialog.open||currentRow!==row)return;
+      if(id!==historyGeneration||!dialog.open||currentRow!==row||currentTask?.taskId!==task.taskId)return;
       historyLoaded=true;
       const entries=result.entries||[];
       historyStatus.textContent=result.limitReached?"More than 200 recorded revisions. A paginated view is required.":
@@ -1124,6 +1124,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       currentGrade=refreshed.grade;
       renderRubric(currentGrade);
       refreshReviewControls();
+      historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       document.getElementById("gbV4ReviewStatus").textContent=
         "Draft saved against frozen submission version "+currentSnapshot.version+".";
     }catch(error){
@@ -1156,11 +1157,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           taskId:currentTask.taskId,studentUid:currentRow.studentUid
         });
       document.getElementById("gbV4ReviewStatus").textContent="Published "+result.awarded+" / "+result.total+" to the student.";
-      currentGrade={...(currentGrade||{}),status:"published"};
+      currentGrade={...(currentGrade||{}),status:"published",revision:result.revision??currentGrade?.revision};
       currentRow={...currentRow,status:"reviewed"};
       if(!currentTask.legacyCompatibility)
         currentSnapshot={...(currentSnapshot||{}),status:"reviewed"};
       refreshReviewControls();
+      historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       await loadInbox();
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade was not published.";
@@ -1202,6 +1204,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         taskId:currentTask.taskId,studentUid:currentRow.studentUid
       });
       currentGrade=refreshed.grade;renderRubric(currentGrade);refreshReviewControls();
+      historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       document.getElementById("gbV4LegacyReason").value="";
       document.getElementById("gbV4ReviewStatus").textContent=
         "Historical rubric breakdown reconstructed at "+result.awarded+" / "+result.total+
