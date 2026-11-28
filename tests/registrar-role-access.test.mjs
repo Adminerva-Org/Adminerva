@@ -88,3 +88,40 @@ test("shared workflow shell collapses Registrar navigation to Enrollment and Stu
   assert.match(workflow,/items\.filter\(item=>\["enrollment","student-records"\]\.includes\(item\.key\)\)/);
   assert.match(workflow,/Registrar workflow/);
 });
+
+
+test("canonical identity correction enforces school membership, duplicate numbers and stale revisions",async()=>{
+  const {createPeopleDirectoryService}=require("../functions/people-directory.js");
+  function fixture({role="school_admin",memberSchool="school-a",platform=false,duplicate=false,linkedAdmission=false}={}){
+    const schoolId="school-a",root="schools/"+schoolId+"/",writes=[];
+    const rows=new Map([
+      ["platform_schools/"+schoolId,{state:"pilot",compatibilityMode:"v4_only"}],
+      [root+"memberships/admin",{schoolId:memberSchool,status:"active",roles:[role]}],
+      [root+"people/student-a",{schoolId,kind:"student",status:"active",displayName:"Original",studentNumber:"001",birthDate:"2012-01-01",activationEmailHash:"hash",revision:3}]
+    ]);
+    if(platform)rows.set("platform_admins/admin",{status:"active",role:"platform_admin"});
+    if(duplicate)rows.set(root+"people/student-b",{schoolId,kind:"student",status:"active",studentNumber:"002"});
+    if(linkedAdmission)rows.set(root+"enrollment_applications/app-a",{schoolId,personId:"student-a",status:"accepted"});
+    const ref=path=>({path,id:path.split("/").at(-1),get:async()=>snap(path)});
+    const snap=path=>({id:path.split("/").at(-1),exists:rows.has(path),data:()=>rows.get(path),ref:ref(path)});
+    let counter=0;
+    const query=(path,filters=[],cap=Infinity)=>({
+      doc:id=>ref(path+"/"+(id||"audit-"+(++counter))),
+      where:(field,op,value)=>{assert.equal(op,"==");return query(path,[...filters,[field,value]],cap);},
+      limit:n=>query(path,filters,n),
+      get:async()=>{const docs=[...rows.keys()].filter(key=>key.startsWith(path+"/")&&key.split("/").length===path.split("/").length+1&&filters.every(([field,value])=>rows.get(key)[field]===value)).slice(0,cap).map(snap);return {docs,size:docs.length};}
+    });
+    const db={doc:ref,collection:query,runTransaction:async callback=>callback({get:target=>target.get(),update:(target,value)=>writes.push({path:target.path,value}),create:(target,value)=>writes.push({path:target.path,value})})};
+    const invoke=details=>createPeopleDirectoryService({db})({auth:{uid:"admin",token:{email_verified:true,email:"admin@example.test"}},data:{schoolId,action:"update_person",personId:"student-a",expectedRevision:3,displayName:"Corrected",studentNumber:"002",birthDate:"2012-01-02",reason:"Reviewed original identity document",...details}});
+    return {invoke,writes};
+  }
+  for(const options of [{role:"registrar"},{memberSchool:"school-b"},{role:"teacher",platform:true},{duplicate:true},{linkedAdmission:true}]){
+    const f=fixture(options);await assert.rejects(f.invoke({}),error=>["permission-denied","already-exists","failed-precondition"].includes(error.code));assert.equal(f.writes.length,0);
+  }
+  const stale=fixture();await assert.rejects(stale.invoke({expectedRevision:2}),error=>error.code==="failed-precondition");assert.equal(stale.writes.length,0);
+  const valid=fixture();await valid.invoke({});
+  assert.equal(valid.writes.find(row=>row.path.endsWith("/people/student-a")).value.birthDate,"2012-01-02");
+  const audit=valid.writes.find(row=>row.value.action==="student_identity_corrected");
+  assert.equal(audit.value.before.studentNumber,"001");assert.equal(audit.value.after.studentNumber,"002");
+  assert.ok(!valid.writes.some(row=>/student_registrations|class_record_period_grades|enrollments\//.test(row.path)));
+});

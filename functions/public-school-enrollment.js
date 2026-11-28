@@ -7,9 +7,8 @@
  * Registrar/School Admin review remains the authority boundary.
  */
 const {FieldValue}=require("firebase-admin/firestore");
-const {createHash}=require("node:crypto");
 const {TenantAccessError}=require("./tenant-access.js");
-const {standardSchool}=require("./school-enrollment.js");
+const {standardSchool,admissionApplicationId}=require("./school-enrollment.js");
 // Current public intake remains an MCS pilot adapter. Keep this pilot selector
 // local so the canonical Enrollment & Registration service stays school-neutral.
 const PUBLIC_PILOT_SCHOOL_ID="manila-cathedral-school";
@@ -56,9 +55,7 @@ function publicReference(applicationId){
   return "MCS-"+applicationId.slice(0,10).toUpperCase();
 }
 function applicationIdFor({yearId,displayName,birthDate,guardianEmail}){
-  return createHash("sha256")
-    .update([PUBLIC_PILOT_SCHOOL_ID,yearId,displayName.toLowerCase(),birthDate,guardianEmail].join("\0"))
-    .digest("hex").slice(0,48);
+  return admissionApplicationId({schoolId:PUBLIC_PILOT_SCHOOL_ID,yearId,displayName,birthDate,guardianEmail});
 }
 
 function createPublicSchoolEnrollmentService({db}){
@@ -146,14 +143,20 @@ function createPublicSchoolEnrollmentService({db}){
           const prior=current.data();
           if(prior.schoolId!==PUBLIC_PILOT_SCHOOL_ID)
             deny("failed-precondition","Enrollment application identity collision requires school review.");
-          if(["enrolled","rejected","withdrawn"].includes(prior.status))
-            deny("failed-precondition","This application has already reached a final school decision.");
+          if(prior.source==="onsite"||prior.personId||prior.staffCorrected||["accepted","enrolled","rejected","withdrawn"].includes(prior.status))
+            deny("failed-precondition","This application is locked for school review. Contact the Registrar if corrections are needed.");
           revision=(Number(prior.revision)||1)+1;
           status=prior.status==="needs_information"?"submitted":(prior.status||"submitted");
+          // A changed applicant revision must be reviewed again; retain the list,
+          // but do not carry verified decisions to an unreviewed resubmission.
+          const requirements=Array.isArray(prior.requirements)?prior.requirements.map(item=>({
+            label:item.label,status:item.status==="verified"?"received":item.status
+          })):[];
           tx.set(ref,{
             schoolId:PUBLIC_PILOT_SCHOOL_ID,applicationType,displayName,birthDate,incomingLevel,
             yearId,preferredProgramId,guardianName,guardianRelationship,guardianEmail,guardianMobile,
             studentEmail,studentEmailType,studentEmailRequired,source:"online",status,
+            requirements,requirementsReviewed:false,noRequirements:false,
             reference:publicReference(applicationId),consentAcknowledged:true,revision,updatedAt:now,lastSubmittedAt:now
           },{merge:true});
         }else{

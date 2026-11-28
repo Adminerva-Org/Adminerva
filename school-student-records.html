@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="css/adminerva-ui.css">
   <script defer src="https://cdn.tailwindcss.com"></script>
   <style>
-    .sr-shell{max-width:1220px;margin:auto;padding:1rem}.sr-hero{border-radius:1.2rem;padding:1.25rem;background:#172554;color:white}
+    .sr-shell{max-width:1600px;margin:auto;padding:1rem}.sr-hero{padding:.25rem 0;color:#0f172a}.sr-grid>*{min-width:0}.sr-row>div{min-width:0;overflow-wrap:anywhere}
     .sr-grid{display:grid;grid-template-columns:minmax(280px,.72fr) minmax(0,1.6fr);gap:1rem}
     .sr-card{border:1px solid #dbe3ef;border-radius:1rem;background:white;padding:1rem}.sr-list{display:grid;gap:.6rem}
     .sr-row{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;padding:.8rem;border:1px solid #e2e8f0;border-radius:.8rem;background:#f8fafc}
@@ -26,6 +26,7 @@
     .sr-badge[data-state="ready"]{background:#fef3c7;color:#92400e}.sr-badge[data-state="released"]{background:#dcfce7;color:#166534}
     .sr-dialog{border:0;border-radius:1rem;padding:0;width:min(94vw,580px);box-shadow:0 24px 70px #0f172a55}.sr-dialog::backdrop{background:#020617aa}
     .sr-table{width:100%;border-collapse:collapse}.sr-table th,.sr-table td{padding:.65rem;border-bottom:1px solid #e2e8f0;text-align:left;font-size:.85rem;vertical-align:top}
+    .sr-file-tabs{display:flex;gap:.4rem;overflow-x:auto;padding:.15rem 0}.sr-file-tabs button{white-space:nowrap;flex:none}.sr-file-tabs button[aria-pressed="true"]{background:#1d4ed8;color:white;border-color:#1d4ed8}.sr-history-controls{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:.75rem}
     [hidden]{display:none!important}@media(max-width:840px){.sr-grid{grid-template-columns:1fr}.sr-shell{padding:.7rem}.sr-row{flex-direction:column}.sr-table{display:block;overflow-x:auto}}
   </style>
   <link rel="stylesheet" href="css/school-admin-workflow.css?v=20261121-admin-flow1">
@@ -37,38 +38,42 @@
   <header class="sr-hero">
     <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
       <div>
-        <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">Registrar &amp; SIS · Student master record</p>
-        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Student Records / 201 File</h1>
-        <p class="text-sm text-blue-100 mt-2 max-w-3xl">Open one learner's school record across canonical identity, official placements, guardian relationships, released Final Grades and registrar document requests. Identity and enrollment remain edited in their owning workspaces.</p>
+        <h1 class="text-xl sm:text-2xl font-extrabold">Student Records / 201 File</h1>
       </div>
       <div id="sr-school-picker" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
     </div>
   </header>
 
-  <section class="sr-notice"><strong>One record, not another student table.</strong> Student Records aggregates authoritative school data. Guardian relationships and document-request lifecycle are maintained here; People &amp; Access remains the identity authority and Enrollment remains the placement authority.</section>
   <p id="sr-status" class="sr-notice" role="status" aria-live="polite">Checking Student Records access…</p>
 
+  <nav id="sr-workspace-nav" class="sr-file-tabs" aria-label="Registrar records workspace" hidden><button id="sr-mode-students" type="button" class="sr-btn secondary" aria-pressed="true">Student files</button><button id="sr-mode-requests" type="button" class="sr-btn secondary" aria-pressed="false">Document requests</button></nav>
+  <section id="sr-requests-workspace" class="sr-card" hidden>
+    <div class="flex flex-wrap gap-2 items-start justify-between"><h2 class="text-lg font-extrabold">Document request queue</h2><div class="flex flex-wrap gap-2"><button id="sr-certificate-settings" type="button" class="sr-btn secondary" hidden>Certificate settings</button><button id="sr-certificate-verify" type="button" class="sr-btn secondary">Verify reference</button><button id="sr-queue-refresh" type="button" class="sr-btn secondary">Refresh</button></div></div>
+    <div class="grid sm:grid-cols-2 gap-2 mt-3"><label class="text-sm font-bold">Status<select id="sr-queue-filter" class="sr-input mt-1"><option value="open">Open requests</option><option value="requested">Requested</option><option value="in_review">In review</option><option value="ready">Ready</option><option value="released">Released</option><option value="cancelled">Cancelled</option><option value="all">All</option></select></label><label class="text-sm font-bold">Find request<input id="sr-queue-search" class="sr-input mt-1" type="search" placeholder="Student, number or document"></label></div>
+    <div id="sr-queue-list" class="sr-list mt-3"></div><div class="sr-history-controls"><button id="sr-queue-more" type="button" class="sr-btn secondary" hidden>Load more</button><span id="sr-queue-status" class="sr-muted" aria-live="polite"></span></div>
+  </section>
   <section id="sr-workspace" class="sr-grid" hidden>
     <aside class="sr-card">
       <h2 class="text-lg font-extrabold">Student directory</h2>
-      <p class="sr-muted mt-1">Search canonical student person records.</p>
       <label class="block text-sm font-bold mt-3">Find student
         <input id="sr-search" class="sr-input mt-1" type="search" autocomplete="off" placeholder="Name or student number">
       </label>
-      <button id="sr-search-button" class="sr-btn mt-3" type="button">Search</button>
+      <div class="flex gap-2 flex-wrap mt-3"><button id="sr-search-button" class="sr-btn" type="button">Search</button><button id="sr-lrn-find" class="sr-btn secondary" type="button">Find by LRN</button></div>
       <div id="sr-student-list" class="sr-list mt-4" role="list"></div>
+      <button id="sr-more" class="sr-btn secondary mt-3" type="button" hidden>Load more</button>
+      <p id="sr-search-progress" class="sr-muted mt-2" aria-live="polite"></p>
     </aside>
 
+    <p id="sr-empty-file" class="sr-card sr-muted" role="status">Select a student to open their 201 file.</p>
     <section id="sr-file" class="space-y-4" hidden>
       <section class="sr-card">
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <p class="text-xs font-extrabold uppercase tracking-wider text-blue-700">Canonical student file</p>
             <h2 id="sr-student-name" class="text-xl font-extrabold mt-1">Student</h2>
             <p id="sr-student-meta" class="sr-muted mt-1"></p>
           </div>
           <div class="flex gap-2 flex-wrap">
-            <a id="sr-open-people" class="sr-btn secondary" href="people-access.html" style="display:inline-flex;align-items:center;text-decoration:none">Identity &amp; access</a>
+            <a id="sr-open-people" hidden class="sr-btn secondary" href="people-access.html" style="display:inline-flex;align-items:center;text-decoration:none">Identity &amp; access</a>
             <a id="sr-open-enrollment" class="sr-btn secondary" href="school-enrollment.html" style="display:inline-flex;align-items:center;text-decoration:none">Enrollment</a>
           </div>
         </div>
@@ -79,40 +84,79 @@
         </div>
       </section>
 
-      <section class="sr-card">
+      <nav class="sr-file-tabs" aria-label="Student file sections"><button class="sr-btn secondary" type="button" data-sr-view="readiness" aria-pressed="false">Record review</button><button class="sr-btn secondary" type="button" data-sr-view="registrations" aria-pressed="true">Registration</button><button class="sr-btn secondary" type="button" data-sr-view="profile" aria-pressed="false">Profile</button><button class="sr-btn secondary" type="button" data-sr-view="releasedGrades" aria-pressed="false">Academics</button><button class="sr-btn secondary" type="button" data-sr-view="guardians" aria-pressed="false">Family</button><button class="sr-btn secondary" type="button" data-sr-view="documents" aria-pressed="false">Documents</button><button class="sr-btn secondary" type="button" data-sr-view="audit" aria-pressed="false">History</button></nav>
+      <section class="sr-card" data-sr-panel="readiness" hidden>
+        <div class="flex flex-wrap justify-between gap-2"><h2 class="text-lg font-extrabold">Record review</h2><button id="sr-readiness-refresh" class="sr-btn secondary" type="button">Check records</button></div>
+        <p id="sr-readiness-status" class="sr-muted mt-2" role="status" aria-live="polite"></p><div id="sr-readiness-list" class="sr-list mt-3"></div>
+        <div class="flex flex-wrap gap-2 mt-3"><button id="sr-readiness-academic" type="button" class="sr-btn secondary">Check academic evidence</button></div>
+      </section>
+      <section class="sr-card" data-sr-panel="profile" hidden>
+        <div class="flex justify-between gap-2 items-start flex-wrap"><h2 class="text-lg font-extrabold">Student profile</h2><button id="sr-profile-refresh" class="sr-btn secondary" type="button">Refresh</button></div>
+        <p id="sr-profile-status" class="sr-muted mt-2" role="status" aria-live="polite"></p>
+        <form id="sr-profile-form" class="mt-3 grid gap-3" hidden>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="text-sm font-bold">Learner Reference Number (LRN)<input name="lrn" class="sr-input mt-1" inputmode="numeric" autocomplete="off" maxlength="12" pattern="[0-9]{12}"></label>
+            <label class="text-sm font-bold">LRN status<select name="lrnState" class="sr-input mt-1"><option value="unrecorded">Not recorded</option><option value="recorded">Recorded, not verified</option><option value="verified">Verified against official record</option></select></label>
+            <label class="text-sm font-bold">Sex on official record<select name="sex" class="sr-input mt-1"><option value="">Not recorded</option><option value="male">Male</option><option value="female">Female</option></select></label>
+            <label class="text-sm font-bold">Place of birth<input name="birthPlace" class="sr-input mt-1" maxlength="160"></label>
+            <label class="text-sm font-bold">Nationality<input name="nationality" class="sr-input mt-1" maxlength="80"></label>
+            <label class="text-sm font-bold">Previous school<input name="previousSchool" class="sr-input mt-1" maxlength="180"></label>
+          </div>
+          <h3 class="font-bold">Address</h3>
+          <label class="text-sm font-bold">Street / house / building<input name="addressLine" class="sr-input mt-1" maxlength="200"></label>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="text-sm font-bold">Barangay / district<input name="barangay" class="sr-input mt-1" maxlength="100"></label>
+            <label class="text-sm font-bold">City / municipality<input name="cityMunicipality" class="sr-input mt-1" maxlength="100"></label>
+            <label class="text-sm font-bold">Province / region<input name="province" class="sr-input mt-1" maxlength="100"></label>
+            <label class="text-sm font-bold">Postal code<input name="postalCode" class="sr-input mt-1" maxlength="20"></label>
+            <label class="text-sm font-bold">Country<input name="country" class="sr-input mt-1" maxlength="80"></label>
+          </div>
+          <label class="text-sm font-bold">Review reason<input name="reason" class="sr-input mt-1" minlength="8" maxlength="500" required></label>
+          <p class="sr-muted">Record only existing LRNs issued by the education authority. Verification is a Registrar review, not an LIS lookup.</p>
+          <div><button id="sr-profile-save" class="sr-btn" type="submit">Save profile</button></div>
+        </form>
+      </section>
+      <section class="sr-card" data-sr-panel="guardians" hidden>
         <div class="flex items-start justify-between gap-3 flex-wrap">
-          <div><h2 class="text-lg font-extrabold">Guardian relationships</h2><p class="sr-muted mt-1">Canonical guardian contact and student-to-guardian relationships. Parent/Guardian portal access can link to these records later without changing enrollment history.</p></div>
+          <div><h2 class="text-lg font-extrabold">Guardian relationships</h2></div>
           <div class="flex gap-2 flex-wrap">
             <button id="sr-adopt-guardian" class="sr-btn secondary" type="button" hidden>Adopt existing primary guardian</button>
             <button id="sr-add-guardian" class="sr-btn" type="button">Add guardian</button>
           </div>
         </div>
         <div id="sr-guardian-list" class="sr-list mt-4"></div>
+        <div class="sr-history-controls"><button id="sr-history-more-guardians" class="sr-btn secondary" type="button" data-sr-history="guardians" hidden>Load more</button><span id="sr-history-count-guardians" class="sr-muted" aria-live="polite"></span></div>
       </section>
 
-      <section class="sr-card">
+      <section class="sr-card" data-sr-panel="registrations">
         <h2 class="text-lg font-extrabold">Official registration history</h2>
-        <p class="sr-muted mt-1">Effective placement history stays in Enrollment; this view is read-only.</p>
         <div id="sr-registration-list" class="sr-list mt-4"></div>
+        <div class="sr-history-controls"><button id="sr-history-more-registrations" class="sr-btn secondary" type="button" data-sr-history="registrations" hidden>Load more</button><span id="sr-history-count-registrations" class="sr-muted" aria-live="polite"></span></div>
       </section>
 
-      <section class="sr-card">
-        <h2 class="text-lg font-extrabold">Released academic results</h2>
-        <p class="sr-muted mt-1">Only Class Record Final Grade revisions that were formally released are shown.</p>
+      <section class="sr-card" data-sr-panel="releasedGrades" hidden>
+        <div class="flex gap-2 justify-between items-start flex-wrap"><h2 class="text-lg font-extrabold">Released Final Grades</h2><div class="flex gap-2 flex-wrap"><button id="sr-external-open" type="button" class="sr-btn secondary">Previous-school records</button><button id="sr-academic-prepare" type="button" class="sr-btn secondary">Prepare academic record</button></div></div>
         <div class="overflow-x-auto mt-3"><table class="sr-table"><thead><tr><th>Period</th><th>Subject</th><th>Section</th><th>Final Grade</th><th>Revision</th></tr></thead><tbody id="sr-grade-list"></tbody></table></div>
+        <div class="sr-history-controls"><button id="sr-history-more-releasedGrades" class="sr-btn secondary" type="button" data-sr-history="releasedGrades" hidden>Load more</button><span id="sr-history-count-releasedGrades" class="sr-muted" aria-live="polite"></span></div>
       </section>
 
-      <section class="sr-card">
+      <section class="sr-card" data-sr-panel="documents" hidden>
+        <div class="flex items-center justify-between gap-2 flex-wrap"><h2 class="text-lg font-extrabold">Admission documents</h2><button id="sr-load-admission-docs" class="sr-btn secondary" type="button">Load documents</button></div>
+        <div id="sr-admission-docs" class="sr-list mt-3"></div>
+      </section>
+      <section class="sr-card" data-sr-panel="documents" hidden>
         <div class="flex items-start justify-between gap-3 flex-wrap">
-          <div><h2 class="text-lg font-extrabold">Registrar document requests</h2><p class="sr-muted mt-1">Track requests, preparation, readiness and controlled release. This does not fabricate a transcript or certificate file.</p></div>
+          <div><h2 class="text-lg font-extrabold">Registrar document requests</h2></div>
           <button id="sr-new-request" class="sr-btn" type="button">New request</button>
         </div>
         <div id="sr-request-list" class="sr-list mt-4"></div>
+        <div class="sr-history-controls"><button id="sr-history-more-documentRequests" class="sr-btn secondary" type="button" data-sr-history="documentRequests" hidden>Load more</button><span id="sr-history-count-documentRequests" class="sr-muted" aria-live="polite"></span></div>
       </section>
 
-      <section class="sr-card">
+      <section class="sr-card" data-sr-panel="audit" hidden>
         <h2 class="text-lg font-extrabold">Student Records audit</h2>
         <div id="sr-audit-list" class="sr-list mt-3"></div>
+        <div class="sr-history-controls"><button id="sr-history-more-audit" class="sr-btn secondary" type="button" data-sr-history="audit" hidden>Load more</button><span id="sr-history-count-audit" class="sr-muted" aria-live="polite"></span></div>
       </section>
     </section>
   </section>
@@ -139,15 +183,90 @@
     </form>
   </dialog>
 
+  <dialog id="sr-external-dialog" class="sr-dialog" aria-labelledby="sr-external-title">
+    <div class="sr-card">
+      <div class="flex flex-wrap gap-2 justify-between items-start"><h2 id="sr-external-title" class="text-lg font-extrabold">Previous-school academic records</h2><button id="sr-external-close" class="sr-btn secondary" type="button">Close</button></div>
+      <p class="sr-muted mt-2">Transcribe verified source records separately from local grades.</p>
+      <div class="flex gap-2 mt-3"><button id="sr-external-add" class="sr-btn" type="button">Add source record</button><button id="sr-external-refresh" class="sr-btn secondary" type="button">Refresh</button></div>
+      <div id="sr-external-list" class="sr-list mt-3"></div>
+      <p id="sr-external-status" class="sr-muted mt-2" role="status"></p>
+      <button id="sr-external-more" class="sr-btn secondary mt-2" type="button" hidden>Load more</button>
+      <form id="sr-external-form" class="grid gap-2 mt-3" hidden>
+        <h3 id="sr-external-form-title" class="font-bold">Source record</h3>
+        <label class="text-sm font-bold">Previous school<input name="sourceSchool" class="sr-input mt-1" maxlength="180" required></label>
+        <div class="grid sm:grid-cols-2 gap-2">
+          <label class="text-sm font-bold">Academic year<input name="schoolYear" class="sr-input mt-1" maxlength="80" required></label>
+          <label class="text-sm font-bold">Grade level<input name="gradeLevel" class="sr-input mt-1" maxlength="60" required></label>
+        </div>
+        <label class="text-sm font-bold">Academic period<input name="period" class="sr-input mt-1" maxlength="80" required></label>
+        <label class="text-sm font-bold">Source record reference<input name="sourceReference" class="sr-input mt-1" maxlength="150" required placeholder="Institutional custody reference"></label>
+        <div id="sr-external-results" class="sr-list"></div>
+        <button id="sr-external-result-add" class="sr-btn secondary" type="button">Add subject</button>
+        <label class="text-sm font-bold">Review reason<input name="reason" class="sr-input mt-1" minlength="8" maxlength="500" required></label>
+        <div class="flex gap-2"><button type="submit" class="sr-btn">Save source record</button><button id="sr-external-cancel" class="sr-btn secondary" type="button">Cancel edit</button></div>
+      </form>
+    </div>
+  </dialog>
+  <dialog id="sr-lrn-dialog" class="sr-dialog" aria-labelledby="sr-lrn-title"><form id="sr-lrn-form" class="sr-card grid gap-3"><div class="flex justify-between gap-2"><h2 id="sr-lrn-title" class="text-lg font-extrabold">Find by LRN</h2><button id="sr-lrn-close" class="sr-btn secondary" type="button">Close</button></div><label class="text-sm font-bold">Learner Reference Number<input id="sr-lrn-value" class="sr-input mt-1" inputmode="numeric" pattern="[0-9]{12}" maxlength="12" autocomplete="off" required></label><button type="submit" class="sr-btn">Find student</button><p id="sr-lrn-status" role="status" class="sr-muted"></p></form></dialog>
+  <dialog id="sr-academic-dialog" class="sr-dialog" aria-labelledby="sr-academic-title">
+    <div class="sr-card">
+      <div class="flex justify-between gap-2 items-start"><h2 id="sr-academic-title" class="text-lg font-extrabold">Academic record preparation</h2><button id="sr-academic-close" class="sr-btn secondary" type="button">Close</button></div>
+      <form id="sr-academic-form" class="grid gap-2 mt-3">
+        <label class="text-sm font-bold">Record type<select id="sr-academic-mode" class="sr-input mt-1"><option value="sf9">SF9 data · progress report</option><option value="sf10">SF10 data · permanent record</option></select></label>
+        <label class="text-sm font-bold">Academic year<select id="sr-academic-year" class="sr-input mt-1" required></select></label>
+        <button type="submit" class="sr-btn">Prepare data</button>
+      </form>
+      <p class="sr-muted mt-2">Working data only. Use the approved current LIS form for official preparation.</p>
+      <p id="sr-academic-status" class="sr-muted mt-2" role="status" aria-live="polite"></p>
+      <div id="sr-academic-blockers" class="sr-list mt-2"></div>
+      <div id="sr-academic-results" class="sr-list mt-2"></div>
+      <button id="sr-academic-export" type="button" class="sr-btn secondary mt-3" disabled>Export working CSV</button>
+    </div>
+  </dialog>
+  <dialog id="sr-certificate-settings-dialog" class="sr-dialog" aria-labelledby="sr-certificate-settings-title">
+    <form id="sr-certificate-settings-form" class="sr-card grid gap-2">
+      <div class="flex justify-between gap-2"><h2 id="sr-certificate-settings-title" class="text-lg font-extrabold">Institutional certificate settings</h2><button id="sr-certificate-settings-close" class="sr-btn secondary" type="button">Close</button></div>
+      <label class="text-sm font-bold">Certificate type<select name="type" id="sr-certificate-type" class="sr-input mt-1"><option value="certificate_of_enrollment">Enrollment</option><option value="graduation_certificate">Graduation</option><option value="transfer_certificate">Transfer-out</option><option value="good_moral_certificate">Good Moral Character</option></select></label>
+      <label class="text-sm font-bold">Authorized signatory name<input name="signatoryName" class="sr-input mt-1" maxlength="160" required></label>
+      <label class="text-sm font-bold">Signatory title<input name="signatoryTitle" class="sr-input mt-1" maxlength="100" required></label>
+      <label class="text-sm font-bold">School letterhead address<input name="schoolAddress" class="sr-input mt-1" maxlength="220"></label>
+      <label class="text-sm font-bold">School identifier<input name="schoolIdentifier" class="sr-input mt-1" maxlength="80"></label>
+      <label class="text-sm font-bold">Change reason<input name="reason" class="sr-input mt-1" minlength="8" maxlength="500" required></label>
+      <p id="sr-certificate-settings-status" class="sr-muted" role="status"></p><button id="sr-certificate-settings-save" type="submit" class="sr-btn" disabled>Save settings</button>
+    </form>
+  </dialog>
+  <dialog id="sr-certificate-dialog" class="sr-dialog" aria-labelledby="sr-certificate-title">
+    <div class="sr-card">
+      <div class="flex justify-between gap-2"><h2 id="sr-certificate-title" class="text-lg font-extrabold">Institutional certificate</h2><button id="sr-certificate-close" class="sr-btn secondary" type="button">Close</button></div>
+      <form id="sr-certificate-prepare-form" class="grid gap-2 mt-3" hidden>
+        <label class="text-sm font-bold">Official registration<select id="sr-certificate-registration" class="sr-input mt-1" required></select></label>
+        <button type="submit" class="sr-btn">Prepare draft</button>
+        <div id="sr-good-moral-approval" class="grid gap-2" hidden><p id="sr-good-moral-state" class="sr-muted"></p><button id="sr-good-moral-attest" type="button" class="sr-btn secondary" hidden>Record office approval</button><button id="sr-good-moral-withdraw" type="button" class="sr-btn secondary" hidden>Withdraw office approval</button></div>
+      </form>
+      <div id="sr-certificate-preview" class="sr-list mt-3"></div><p id="sr-certificate-status" class="sr-muted mt-2" role="status" aria-live="polite"></p>
+      <div class="flex gap-2 flex-wrap mt-3">
+        <button id="sr-certificate-print" class="sr-btn secondary" type="button" hidden>Print unsigned copy</button>
+        <button id="sr-certificate-issue" class="sr-btn" type="button" hidden>Issue</button>
+        <button id="sr-certificate-revoke" class="sr-btn danger" type="button" hidden>Revoke</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="sr-certificate-verify-dialog" class="sr-dialog" aria-labelledby="sr-certificate-verify-title">
+    <form id="sr-certificate-verify-form" class="sr-card grid gap-2">
+      <div class="flex justify-between gap-2"><h2 id="sr-certificate-verify-title" class="text-lg font-extrabold">Verify institutional reference</h2><button id="sr-certificate-verify-close" class="sr-btn secondary" type="button">Close</button></div>
+      <label class="text-sm font-bold">Certificate reference<input id="sr-certificate-reference" class="sr-input mt-1" required maxlength="100" autocomplete="off"></label>
+      <button class="sr-btn" type="submit">Verify record</button><div id="sr-certificate-verify-result" class="sr-list" role="status"></div>
+    </form>
+  </dialog>
   <dialog id="sr-request-dialog" class="sr-dialog" aria-labelledby="sr-request-title">
     <form id="sr-request-form" class="sr-card">
-      <div class="flex justify-between items-start gap-3"><div><h2 id="sr-request-title" class="text-xl font-extrabold">New document request</h2><p class="sr-muted mt-1">Create a registrar workflow record. Actual document generation remains a separate controlled step.</p></div><button id="sr-request-close" type="button" class="sr-btn secondary">Close</button></div>
+      <div class="flex justify-between items-start gap-3"><div><h2 id="sr-request-title" class="text-xl font-extrabold">New document request</h2><p id="sr-request-placement" class="sr-muted" hidden></p><p class="sr-muted mt-1">Institutional certificates or external record requests.</p></div><button id="sr-request-close" type="button" class="sr-btn secondary">Close</button></div>
       <label class="block text-sm font-bold mt-4">Record / credential
-        <select name="type" class="sr-input mt-1" required><option value="">Choose request type</option><option value="certificate_of_enrollment">Certificate of Enrollment</option><option value="report_card">Report Card</option><option value="transcript_of_records">Transcript of Records</option><option value="student_record_copy">Student Record Copy</option><option value="graduation_certificate">Graduation Certificate</option><option value="other">Other school record</option></select>
+        <select name="type" class="sr-input mt-1" required><option value="">Choose request type</option><option value="certificate_of_enrollment">Certificate of Enrollment</option><option value="report_card">Report Card</option><option value="transcript_of_records">Transcript of Records</option><option value="student_record_copy">Student Record Copy</option><option value="graduation_certificate">Certificate of Graduation</option><option value="transfer_certificate">Certificate of Transfer-out</option><option value="good_moral_certificate">Certificate of Good Moral Character</option><option value="other">Other school record</option></select>
       </label>
       <label class="block text-sm font-bold mt-3">Purpose<textarea name="purpose" class="sr-input mt-1" rows="2" maxlength="300" required></textarea></label>
       <label class="block text-sm font-bold mt-3">Notes<textarea name="notes" class="sr-input mt-1" rows="2" maxlength="500"></textarea></label>
-      <button class="sr-btn mt-4" type="submit">Create request</button>
+      <p id="sr-request-status" class="sr-muted mt-2" role="status" aria-live="polite"></p><button class="sr-btn mt-4" type="submit">Create request</button>
     </form>
   </dialog>
 
@@ -165,7 +284,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/student-records.mjs?v=20261121-student-records1"></script>
+<script type="module" src="js/school-admin/student-records.mjs?v=20261128-registrar15"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-student-records1"></script>
 </body>
 </html>

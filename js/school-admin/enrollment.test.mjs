@@ -6,7 +6,7 @@ import vm from "node:vm";
 // Run the actual enrollment controller with a small DOM/callable adapter.
 function harness(){
   class Element{
-    constructor(){this.value="";this.children=[];this.listeners={};this.style={};this.disabled=false;this.hidden=false;this.open=false;this.textContent="";}
+    constructor(){this.value="";this.children=[];this.listeners={};this.style={};this.dataset={};this.disabled=false;this.hidden=false;this.open=false;this.textContent="";}
     replaceChildren(...items){this.children=[];this.append(...items);}
     append(...items){this.children.push(...items);for(const item of items)if(item.selected)this.value=item.value;}
     addEventListener(type,callback){(this.listeners[type]??=[]).push(callback);}
@@ -42,9 +42,10 @@ function harness(){
   for(const field of cohortForm.elements)cohortForm.elements[field.name]=field;
   cohortForm.reset=()=>{for(const field of cohortForm.elements)field.value="";};
   cohortForm.reportValidity=()=>true;
+  for(const id of ["en-clearance-form","en-clearance-policy-form"]){const dialogForm=get(id);dialogForm.reset=()=>{for(const control of dialogForm.children){control.value="";control.checked=false;}};}
   const actionButton=new Element(),requests=[];
   let allowDiscard=true,pickerOptions;
-  const scope={lease:()=>({schoolId:"manila-cathedral-school",uid:"admin"}),assertLease(){}};
+  const scope={current:{schoolId:"manila-cathedral-school",roles:["school_admin"],enrollmentMode:"canonical"},lease:()=>({schoolId:"manila-cathedral-school",uid:"admin"}),assertLease(){}};
   const context=vm.createContext({
     app:{},auth:{currentUser:{uid:"admin"}},getFunctions:()=>({}),
     httpsCallable:()=>payload=>new Promise((resolve,reject)=>requests.push({payload,resolve:data=>resolve({data}),reject})),
@@ -67,7 +68,7 @@ function harness(){
       {offeringId:"elective-offering",yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"other-section",subjectId:"elective-subject",rosterMode:"selective"}
     ]};
   context.setCatalog(catalog);
-  const applicant={applicationId:"app-new",reference:"MCS-NEW",displayName:"New student",birthDate:"2013-03-01",guardianEmail:"new.parent@example.test",incomingLevel:"7",yearId:"new-year",preferredProgramId:"new-program"};
+  const applicant={applicationId:"app-new",status:"accepted",requirementsReady:true,revision:7,reference:"MCS-NEW",displayName:"New student",birthDate:"2013-03-01",guardianEmail:"new.parent@example.test",incomingLevel:"7",yearId:"new-year",preferredProgramId:"new-program"};
   return {context,form,get,applicant,requests,actionButton,setDiscard:value=>{allowDiscard=value;},get pickerOptions(){return pickerOptions;}};
 }
 
@@ -192,7 +193,7 @@ test("reviewed directory student handoff binds Enrollment to the exact person re
   assert.equal(h.form.elements.applicationId.value,"");
 });
 
-test("registering a reviewed directory student sends its exact person ID",async()=>{
+test("returning onsite application sends its exact existing person ID before enrollment",async()=>{
   const h=harness(),loading=h.context.loadStudentCandidate("person-7",{scroll:false});
   h.requests[0].resolve({
     person:{
@@ -213,7 +214,8 @@ test("registering a reviewed directory student sends its exact person ID",async(
   h.form.elements.studentEmailType.value="personal";
   h.form.dispatch("submit");
   assert.equal(h.requests.length,2);
-  assert.equal(h.requests[1].payload.action,"register_student");
+  assert.equal(h.requests[1].payload.action,"create_onsite_application");
+  assert.equal(h.requests[1].payload.applicationType,"returning");
   assert.equal(h.requests[1].payload.personId,"person-7");
   assert.equal(h.requests[1].payload.applicationId,"");
 });
@@ -282,4 +284,68 @@ test("graduation readiness preview is revision-safe and does not invent a target
   assert.equal(h.requests[0].payload.expectedRevision,9);
   assert.equal(h.requests[0].payload.progressionType,"graduation");
   assert.equal("targetSectionId" in h.requests[0].payload,false);
+});
+
+
+test("only accepted applications open the registration form",()=>{
+  const h=harness();h.context.loadApplicationIntoForm({...h.applicant,status:"submitted"});
+  assert.equal(h.form.elements.applicationId.value,"");
+  h.context.loadApplicationIntoForm(h.applicant);
+  assert.equal(h.form.elements.applicationId.value,"app-new");
+  assert.equal(h.get("en-register").hidden,false);
+});
+test("enrollment sends the exact accepted application revision",()=>{
+  const h=harness();h.context.loadApplicationIntoForm(h.applicant);
+  h.form.elements.termId.value="new-period";h.form.elements.sectionId.value="other-section";
+  h.form.elements.studentEmail.value="student@example.test";h.form.elements.studentEmailType.value="personal";
+  h.form.dispatch("submit");
+  assert.equal(h.requests[0].payload.applicationId,"app-new");
+  assert.equal(h.requests[0].payload.applicationRevision,7);
+});
+
+
+test("acceptance is blocked until admission requirements are reviewed",()=>{
+  const h=harness();h.context.reviewApplication({applicationId:"app-review",status:"submitted",revision:1,requirementsReady:false},"accepted");
+  assert.equal(h.requests.length,0);
+  assert.match(h.get("en-status").textContent,/Verify admission requirements/);
+});
+
+
+test("applicant checklist includes mandatory template items without overwriting verified rows",()=>{
+  const h=harness();h.context.openRequirements({applicationId:"app-review",displayName:"Applicant",reference:"APP-1",status:"submitted",requirements:[{label:"Existing",status:"verified"}],templateLabels:["Existing","New requirement"],templateRevision:2});
+  assert.equal(h.get("en-requirements-list").children.length,2);
+  assert.equal(h.get("en-requirements-list").children[0].children[2].disabled,true);
+  assert.equal(h.get("en-requirements-list").children[1].children[2].disabled,true);
+  assert.equal(h.get("en-requirements-none").disabled,true);
+});
+
+
+test("a returning student with an active placement can prepare an advance application",async()=>{
+  const h=harness(),loading=h.context.loadStudentCandidate("person-8",{scroll:false});
+  h.requests[0].resolve({person:{personId:"person-8",displayName:"Returning Student",birthDate:"2012-01-01",studentNumber:"S-008"},activeRegistrations:[{registrationId:"old-registration",yearId:"old-year",termId:"old-period"}],activeLegacyEnrollments:[{registrationId:"old-registration",yearId:"old-year",termId:"old-period"}]});
+  assert.equal(await loading,true);assert.equal(h.form.elements.personId.value,"person-8");assert.equal(h.get("en-register").hidden,false);
+});
+
+
+test("bulk enrollment preserves exact accepted application and existing student identity",()=>{
+  const h=harness(),item={...h.applicant,personId:"student-existing",studentNumber:"S-007",studentEmail:"student@example.test",studentEmailType:"personal"};
+  const payload=h.context.bulkRegistrationPayload(item,{yearId:"new-year",programId:"new-program",termId:"new-period",sectionId:"other-section"});
+  assert.equal(payload.applicationId,item.applicationId);assert.equal(payload.applicationRevision,item.revision);
+  assert.equal(payload.personId,"student-existing");assert.equal(payload.studentNumber,"S-007");assert.equal(payload.sectionId,"other-section");
+});
+test("bulk selection cannot combine unrelated academic years or grades",()=>{
+  const h=harness();h.context.selectBulkApplication(h.applicant,true);
+  assert.equal(h.get("en-bulk-open").textContent,"Enroll selected (1)");
+  h.context.selectBulkApplication({...h.applicant,applicationId:"different",yearId:"old-year"},true);
+  assert.equal(h.get("en-bulk-open").textContent,"Enroll selected (1)");
+  assert.match(h.get("en-status").textContent,/same school year and incoming grade/);
+});
+
+
+test("clearance pending prevents individual and bulk enrollment selection",()=>{
+  const h=harness(),blocked={...h.applicant,clearanceRequired:true,clearanceReady:false};
+  h.context.loadApplicationIntoForm(blocked);
+  assert.equal(h.form.elements.applicationId.value,"");
+  h.context.selectBulkApplication(blocked,true);
+  assert.match(h.get("en-status").textContent,/complete requirements and clearance/);
 });

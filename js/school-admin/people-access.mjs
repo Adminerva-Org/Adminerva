@@ -1150,12 +1150,14 @@ function openPersonDialog(person,mode){
     reasonField=get("pa-person-reason-field"),nameInput=form.elements.displayName,
     reasonInput=form.elements.reason,confirm=get("pa-person-dialog-confirm");
   form.reset();get("pa-person-dialog-target").textContent=person.displayName+" · "+person.kind;
-  nameField.hidden=mode!=="edit";reasonField.hidden=mode==="edit";
-  nameInput.required=mode==="edit";reasonInput.required=mode!=="edit";
+  const studentEdit=mode==="edit"&&person.kind==="student";
+  nameField.hidden=mode!=="edit";reasonField.hidden=mode==="edit"&&!studentEdit;
+  nameInput.required=mode==="edit";reasonInput.required=mode!=="edit"||studentEdit;
   nameInput.value=person.displayName||"";
   const studentFields=get("pa-student-profile-fields");
   studentFields.hidden=mode!=="edit"||person.kind!=="student";
   form.elements.studentNumber.value=person.studentNumber||"";
+  form.elements.birthDate.value=person.birthDate||"";
   get("pa-person-dialog-title").textContent=mode==="edit"?"Edit school person":
     mode==="archive"?"Archive school person":"Restore school person";
   confirm.textContent=mode==="edit"?"Save profile":mode==="archive"?"Archive person":"Restore person";
@@ -1190,8 +1192,11 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   if(mode==="edit"){
     details.expectedRevision=Number(person.revision)||1;
     details.displayName=String(values.get("displayName")||"").trim();
-    if(person.kind==="student")
+    if(person.kind==="student"){
       details.studentNumber=String(values.get("studentNumber")||"").trim();
+      const birthDate=String(values.get("birthDate")||"").trim();if(birthDate)details.birthDate=birthDate;
+      details.reason=String(values.get("reason")||"").trim();
+    }
   }
   else {
     details.expectedRevision=Number(person.revision)||1;
