@@ -85,7 +85,7 @@ function createSchoolAssessmentMigrationService({db}){
   }
   if(/^legacy_review_(?:inbox|inspect|history|save_draft|publish|bulk_publish|correct_published)$/.test(String(input.action||"")))
    return legacyStudioReview({ctx,input});
-  if(/^legacy_github_(?:inbox|inspect|history|save_draft|publish|bulk_publish|correct_published)$/.test(String(input.action||"")))
+  if(/^legacy_github_(?:inbox|inspect|history|save_draft|publish|bulk_publish|correct_published|activity_edit)$/.test(String(input.action||"")))
    return legacyGithubReview({ctx,input});
   if(input.action==="preview_evidence_migration")
    return previewLegacyEvidenceMigration({db,ctx,legacyAssessmentId:String(input.legacyAssessmentId||"")});
