@@ -65,134 +65,134 @@ jobs:
             base="$(git rev-parse FETCH_HEAD)"
             git checkout --detach "$base"
             export VERSION="$(git rev-parse --short=12 HEAD)"
-            python - <<'PY'
-            from pathlib import Path
-            import os, re
+          python - <<'PY'
+          from pathlib import Path
+          import os, re
 
-            version=os.environ["VERSION"]
+          version=os.environ["VERSION"]
 
-            loader=Path("js/core/adminerva-loader.js")
-            if loader.exists():
-                text=loader.read_text(encoding="utf-8")
-                updated=re.sub(
-                    r'page-help\.mjs\?v=[^"\']+',
-                    f'page-help.mjs?v={version}',
-                    text
-                )
-                if updated!=text:
-                    loader.write_text(updated,encoding="utf-8")
+          loader=Path("js/core/adminerva-loader.js")
+          if loader.exists():
+              text=loader.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'page-help\.mjs\?v=[^"\']+',
+                  f'page-help.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  loader.write_text(updated,encoding="utf-8")
 
-            page_help=Path("js/help/page-help.mjs")
-            if page_help.exists():
-                text=page_help.read_text(encoding="utf-8")
-                updated=re.sub(
-                    r'activity-preferences\.mjs\?v=[^"\']+',
-                    f'activity-preferences.mjs?v={version}',
-                    text
-                )
-                if updated!=text:
-                    page_help.write_text(updated,encoding="utf-8")
+          page_help=Path("js/help/page-help.mjs")
+          if page_help.exists():
+              text=page_help.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'activity-preferences\.mjs\?v=[^"\']+',
+                  f'activity-preferences.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  page_help.write_text(updated,encoding="utf-8")
 
-            activity=Path("js/help/activity-preferences.mjs")
-            if activity.exists():
-                text=activity.read_text(encoding="utf-8")
-                updated=re.sub(
-                    r'activity-client\.mjs\?v=[^"\']+',
-                    f'activity-client.mjs?v={version}',
-                    text
-                )
-                if updated!=text:
-                    activity.write_text(updated,encoding="utf-8")
+          activity=Path("js/help/activity-preferences.mjs")
+          if activity.exists():
+              text=activity.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'activity-client\.mjs\?v=[^"\']+',
+                  f'activity-client.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  activity.write_text(updated,encoding="utf-8")
 
-            nav=Path("js/core/adminerva-nav.js")
-            if nav.exists():
-                text=nav.read_text(encoding="utf-8")
-                updated=re.sub(
-                    r'navigation-ia\.mjs\?v=[^"\']+',
-                    f'navigation-ia.mjs?v={version}',
-                    text
-                )
-                updated=re.sub(
-                    r'account-context-switcher\.mjs\?v=[^"\']+',
-                    f'account-context-switcher.mjs?v={version}',
-                    updated
-                )
-                if updated!=text:
-                    nav.write_text(updated,encoding="utf-8")
+          nav=Path("js/core/adminerva-nav.js")
+          if nav.exists():
+              text=nav.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'navigation-ia\.mjs\?v=[^"\']+',
+                  f'navigation-ia.mjs?v={version}',
+                  text
+              )
+              updated=re.sub(
+                  r'account-context-switcher\.mjs\?v=[^"\']+',
+                  f'account-context-switcher.mjs?v={version}',
+                  updated
+              )
+              if updated!=text:
+                  nav.write_text(updated,encoding="utf-8")
 
-            for module_path in [
-                "js/student/school-student-settings.mjs",
-                "js/student/school-student-projects.mjs",
-            ]:
-                module=Path(module_path)
-                if module.exists():
-                    text=module.read_text(encoding="utf-8")
-                    updated=re.sub(
-                        r'github-session\.mjs\?v=[^"\']+',
-                        f'github-session.mjs?v={version}',
-                        text
-                    )
-                    if updated!=text:
-                        module.write_text(updated,encoding="utf-8")
+          for module_path in [
+              "js/student/school-student-settings.mjs",
+              "js/student/school-student-projects.mjs",
+          ]:
+              module=Path(module_path)
+              if module.exists():
+                  text=module.read_text(encoding="utf-8")
+                  updated=re.sub(
+                      r'github-session\.mjs\?v=[^"\']+',
+                      f'github-session.mjs?v={version}',
+                      text
+                  )
+                  if updated!=text:
+                      module.write_text(updated,encoding="utf-8")
 
-            assessments=Path("js/student/assessments.js")
-            if assessments.exists():
-                text=assessments.read_text(encoding="utf-8")
-                updated=re.sub(
-                    r'student-access\.mjs\?v=[^"\']+',
-                    f'student-access.mjs?v={version}',
-                    text
-                )
-                if updated!=text:
-                    assessments.write_text(updated,encoding="utf-8")
+          assessments=Path("js/student/assessments.js")
+          if assessments.exists():
+              text=assessments.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'student-access\.mjs\?v=[^"\']+',
+                  f'student-access.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  assessments.write_text(updated,encoding="utf-8")
 
-            dashboard=Path("js/student/dashboard.js")
-            if dashboard.exists():
-                text=dashboard.read_text(encoding="utf-8")
-                updated=re.sub(
-                    r'student-access\.mjs\?v=[^"\']+',
-                    f'student-access.mjs?v={version}',
-                    text
-                )
-                if updated!=text:
-                    dashboard.write_text(updated,encoding="utf-8")
+          dashboard=Path("js/student/dashboard.js")
+          if dashboard.exists():
+              text=dashboard.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'student-access\.mjs\?v=[^"\']+',
+                  f'student-access.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  dashboard.write_text(updated,encoding="utf-8")
 
-            changed=0
-            for path in Path(".").rglob("*.html"):
-                if ".git" in path.parts:
-                    continue
-                text=path.read_text(encoding="utf-8")
-                updated=re.sub(r'css/adminerva-ui\.css\?v=[^"\']+', f'css/adminerva-ui.css?v={version}', text)
-                updated=re.sub(r'css/public-shell\.css\?v=[^"\']+', f'css/public-shell.css?v={version}', updated)
-                updated=re.sub(r'css/documentation\.css\?v=[^"\']+', f'css/documentation.css?v={version}', updated)
-                updated=re.sub(r'js/core/adminerva-loader\.js\?v=[^"\']+', f'js/core/adminerva-loader.js?v={version}', updated)
-                updated=re.sub(r'js/core/release-footer\.js\?v=[^"\']+', f'js/core/release-footer.js?v={version}', updated)
-                updated=re.sub(r'js/core/owner-school-registry\.mjs\?v=[^"\']+', f'js/core/owner-school-registry.mjs?v={version}', updated)
-                updated=re.sub(r'js/core/adminerva-nav\.js\?v=[^"\']+', f'js/core/adminerva-nav.js?v={version}', updated)
-                updated=re.sub(r'js/core/public-shell\.mjs\?v=[^"\']+', f'js/core/public-shell.mjs?v={version}', updated)
-                updated=re.sub(r'js/core/auth-guard-v4-pilot\.js\?v=[^"\']+', f'js/core/auth-guard-v4-pilot.js?v={version}', updated)
-                updated=re.sub(r'js/school-admin/people-access\.mjs\?v=[^"\']+', f'js/school-admin/people-access.mjs?v={version}', updated)
-                updated=re.sub(r'js/student/assessments\.js\?v=[^"\']+', f'js/student/assessments.js?v={version}', updated)
-                updated=re.sub(r'js/student/dashboard\.js\?v=[^"\']+', f'js/student/dashboard.js?v={version}', updated)
-                updated=re.sub(r'js/student/assessment-evidence\.mjs\?v=[^"\']+', f'js/student/assessment-evidence.mjs?v={version}', updated)
-                updated=re.sub(r'js/student/submission-receipts\.mjs\?v=[^"\']+', f'js/student/submission-receipts.mjs?v={version}', updated)
-                updated=re.sub(r'js/student/school-student-settings\.mjs\?v=[^"\']+', f'js/student/school-student-settings.mjs?v={version}', updated)
-                updated=re.sub(r'js/student/school-student-projects\.mjs\?v=[^"\']+', f'js/student/school-student-projects.mjs?v={version}', updated)
-                updated=re.sub(r'js/settings/settings-core\.js\?v=[^"\']+', f'js/settings/settings-core.js?v={version}', updated)
-                updated=re.sub(r'js/settings/account-preferences\.mjs\?v=[^"\']+', f'js/settings/account-preferences.mjs?v={version}', updated)
-                updated=re.sub(r'js/settings/role-settings\.mjs\?v=[^"\']+', f'js/settings/role-settings.mjs?v={version}', updated)
-                if 'js/core/adminerva-loader.js' in updated and 'js/core/release-footer.js' not in updated:
-                    match=re.search(r'<script[^>]+src=["\']((?:\.\./)*js/core/adminerva-loader\.js\?v=[^"\']+)["\'][^>]*></script>', updated)
-                    if match:
-                        loader_src=match.group(1)
-                        prefix=loader_src.split('js/core/adminerva-loader.js',1)[0]
-                        tag=f'<script defer src="{prefix}js/core/release-footer.js?v={version}"></script>'
-                        updated=updated[:match.start()]+tag+'\n'+updated[match.start():]
-                if updated!=text:
-                    path.write_text(updated,encoding="utf-8")
-                    changed+=1
-            print(f"Updated {changed} HTML files")
-            PY
+          changed=0
+          for path in Path(".").rglob("*.html"):
+              if ".git" in path.parts:
+                  continue
+              text=path.read_text(encoding="utf-8")
+              updated=re.sub(r'css/adminerva-ui\.css\?v=[^"\']+', f'css/adminerva-ui.css?v={version}', text)
+              updated=re.sub(r'css/public-shell\.css\?v=[^"\']+', f'css/public-shell.css?v={version}', updated)
+              updated=re.sub(r'css/documentation\.css\?v=[^"\']+', f'css/documentation.css?v={version}', updated)
+              updated=re.sub(r'js/core/adminerva-loader\.js\?v=[^"\']+', f'js/core/adminerva-loader.js?v={version}', updated)
+              updated=re.sub(r'js/core/release-footer\.js\?v=[^"\']+', f'js/core/release-footer.js?v={version}', updated)
+              updated=re.sub(r'js/core/owner-school-registry\.mjs\?v=[^"\']+', f'js/core/owner-school-registry.mjs?v={version}', updated)
+              updated=re.sub(r'js/core/adminerva-nav\.js\?v=[^"\']+', f'js/core/adminerva-nav.js?v={version}', updated)
+              updated=re.sub(r'js/core/public-shell\.mjs\?v=[^"\']+', f'js/core/public-shell.mjs?v={version}', updated)
+              updated=re.sub(r'js/core/auth-guard-v4-pilot\.js\?v=[^"\']+', f'js/core/auth-guard-v4-pilot.js?v={version}', updated)
+              updated=re.sub(r'js/school-admin/people-access\.mjs\?v=[^"\']+', f'js/school-admin/people-access.mjs?v={version}', updated)
+              updated=re.sub(r'js/student/assessments\.js\?v=[^"\']+', f'js/student/assessments.js?v={version}', updated)
+              updated=re.sub(r'js/student/dashboard\.js\?v=[^"\']+', f'js/student/dashboard.js?v={version}', updated)
+              updated=re.sub(r'js/student/assessment-evidence\.mjs\?v=[^"\']+', f'js/student/assessment-evidence.mjs?v={version}', updated)
+              updated=re.sub(r'js/student/submission-receipts\.mjs\?v=[^"\']+', f'js/student/submission-receipts.mjs?v={version}', updated)
+              updated=re.sub(r'js/student/school-student-settings\.mjs\?v=[^"\']+', f'js/student/school-student-settings.mjs?v={version}', updated)
+              updated=re.sub(r'js/student/school-student-projects\.mjs\?v=[^"\']+', f'js/student/school-student-projects.mjs?v={version}', updated)
+              updated=re.sub(r'js/settings/settings-core\.js\?v=[^"\']+', f'js/settings/settings-core.js?v={version}', updated)
+              updated=re.sub(r'js/settings/account-preferences\.mjs\?v=[^"\']+', f'js/settings/account-preferences.mjs?v={version}', updated)
+              updated=re.sub(r'js/settings/role-settings\.mjs\?v=[^"\']+', f'js/settings/role-settings.mjs?v={version}', updated)
+              if 'js/core/adminerva-loader.js' in updated and 'js/core/release-footer.js' not in updated:
+                  match=re.search(r'<script[^>]+src=["\']((?:\.\./)*js/core/adminerva-loader\.js\?v=[^"\']+)["\'][^>]*></script>', updated)
+                  if match:
+                      loader_src=match.group(1)
+                      prefix=loader_src.split('js/core/adminerva-loader.js',1)[0]
+                      tag=f'<script defer src="{prefix}js/core/release-footer.js?v={version}"></script>'
+                      updated=updated[:match.start()]+tag+'\n'+updated[match.start():]
+              if updated!=text:
+                  path.write_text(updated,encoding="utf-8")
+                  changed+=1
+          print(f"Updated {changed} HTML files")
+          PY
             if git diff --quiet -- '*.html' 'js/core/adminerva-nav.js' 'js/core/adminerva-loader.js' 'js/help/page-help.mjs' 'js/help/activity-preferences.mjs' 'js/student/assessments.js' 'js/student/dashboard.js' 'js/student/school-student-settings.mjs' 'js/student/school-student-projects.mjs'; then
               echo "No shared shell references needed updating."
               exit 0
