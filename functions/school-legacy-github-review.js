@@ -389,7 +389,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        if(data.taskId!==id||typeof data.studentId!=="string"||!inScope(data.studentId,data.section))continue;
        try{legacyDocumentId(data.studentId,"Historical student",220);}catch{continue;}
        const list=activitiesByStudent.get(data.studentId)||[];
-       list.push({id:doc.id,grade:originalActivityGrade(doc,id)});activitiesByStudent.set(data.studentId,list);
+       list.push({id:doc.id,grade:data.schoolId&&data.schoolId!==ctx.schoolId?null:originalActivityGrade(doc,id)});activitiesByStudent.set(data.studentId,list);
      }
      let activityGradeCount=0;
      for(const [studentId,list] of activitiesByStudent){
@@ -399,7 +399,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
          row.gradeException=true;row.hasSubmission=false;row.checkpointGradeable=false;continue;
        }
        const grade=list[0].grade;
-       const editable=grade.maxScore===total&&grade.pending===0&&Number.isSafeInteger(grade.gradeVersion??0)&&(grade.gradeVersion??0)>=0&&(!grade.schoolId||grade.schoolId===ctx.schoolId);
+       let validId=true;try{legacyDocumentId("activity:"+list[0].id,"Original activity reference");}catch{validId=false;}
+       const editable=validId&&grade.maxScore===total&&grade.pending===0&&Number.isSafeInteger(grade.gradeVersion??0)&&(grade.gradeVersion??0)>=0&&(!grade.schoolId||grade.schoolId===ctx.schoolId);
        Object.assign(row,{activityOnly:true,activityEditable:editable,activityGradeId:list[0].id,
          ...(editable?{evidenceId:"activity:"+list[0].id,gradeOnly:false}:{}),gradeStatus:grade.published===true?"published":"draft",
          awarded:grade.score,maxScore:grade.maxScore,pending:grade.pending,reviewSuggested:grade.published!==true,
@@ -484,7 +485,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        const changes={score:input.score,feedback:input.feedback.trim(),gradeVersion:revision,
          reviewedBy:ctx.uid,updatedAt:now,lastCorrectedByUid:ctx.uid,lastCorrectedAt:now};
        const auditState=data=>({studentId:data.studentId,taskId:data.taskId,section:data.section||"",
-         score:data.score,maxScore:data.maxScore,published:data.published===true,gradeVersion:data.gradeVersion??0,
+         score:Number(data.score),maxScore:Number(data.maxScore),published:data.published===true,gradeVersion:data.gradeVersion??0,
          feedback:clean(data.feedback,5000),pending:Number(data.pending??0)});
        tx.create(db.doc("activity_grades/"+activityId+"/versions/"+revision),{
          schoolId:ctx.schoolId,gradeId:activityId,taskId:id,studentId:original.studentId,
