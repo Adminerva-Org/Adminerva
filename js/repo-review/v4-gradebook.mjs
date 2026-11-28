@@ -183,6 +183,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar||readThrough;
     document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||(readThrough&&!historicalGithub));
     document.getElementById("gbV4Refresh").disabled=busy;
+
     if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
     if(document.getElementById("gbV4ConversationForm"))renderConversation();
   }
@@ -722,9 +723,76 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       return {awardedPoints,pendingPoints,comment:row.querySelector("[data-comment]").value.trim()};
     });
   }
+  const gradeHistory=document.getElementById("gbV4GradeHistory"),
+    historyStatus=document.getElementById("gbV4GradeHistoryStatus"),
+    historyEntries=document.getElementById("gbV4GradeHistoryEntries"),
+    historyRefresh=document.getElementById("gbV4GradeHistoryRefresh");
+  let historyGeneration=0,historyLoaded=false;
+  function resetGradeHistory(){
+    historyGeneration++;historyLoaded=false;gradeHistory.open=false;
+    historyEntries.replaceChildren();historyStatus.textContent="Open to load recorded revisions.";
+    historyRefresh.disabled=false;
+  }
+  function stateLabel(value){
+    if(!value)return "No prior record";
+    const score=value.awarded==null?"Score not recorded":String(value.awarded)+(value.total==null?"":" / "+value.total);
+    return score+(value.status?" · "+(value.status==="published"?"Published":"Draft"):"")+
+      (value.pending?" · "+value.pending+" pending":"")+(value.revision!=null?" · Rev "+value.revision:"");
+  }
+  function appendRevisionState(host,label,value){
+    if(!value)return;
+    const section=make("div","min-w-0 rounded border border-slate-200 bg-white p-2");
+    section.append(make("p","text-xs font-bold text-slate-500",label),
+      make("p","text-sm font-semibold break-words",stateLabel(value)));
+    if(value.feedback) section.append(make("p","text-xs whitespace-pre-wrap break-words mt-1",value.feedback));
+    for(const criterion of value.criteria||[]){
+      section.append(make("p","text-xs break-words mt-1",criterion.name+" · "+
+        (criterion.awarded??"—")+" / "+(criterion.maximum??"—")+
+        (criterion.pending?" · "+criterion.pending+" pending":"")+(criterion.comment?" · "+criterion.comment:"")));
+    }
+    host.append(section);
+  }
+  async function loadGradeHistory(){
+    if(!dialog.open||!currentTask||!currentRow||!currentSnapshot||reviewNeedsRefresh)return;
+    const id=++historyGeneration,task=currentTask,row=currentRow;
+    historyRefresh.disabled=true;historyStatus.textContent="Loading revisions…";historyEntries.replaceChildren();
+    try{
+      const historical=task.legacyCompatibility;
+      const result=historical?await scoped(migrationApi,task.submissionSource==="github"?"legacy_github_history":"legacy_review_history",{
+        legacyAssessmentId:task.legacyAssessmentId,
+        ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{}),
+        ...(task.submissionSource==="github"?{legacyEvidenceId:row.recordId}:{legacySubmissionId:row.recordId})
+      }):await scoped(gradeApi,"grade_history",{taskId:task.taskId,studentUid:row.studentUid});
+      if(id!==historyGeneration||!dialog.open||currentRow!==row)return;
+      historyLoaded=true;
+      const entries=result.entries||[];
+      historyStatus.textContent=result.limitReached?"More than 200 recorded revisions. A paginated view is required.":
+        entries.length?entries.length+" recorded revision(s) · newest first":"No recorded revisions found. Existing scores may predate audit logging.";
+      for(const entry of entries){
+        const card=make("details","rounded-lg border border-slate-200 bg-slate-50 p-2");
+        const title=entry.source==="historical"?"Historical revision":
+          ({teacher_draft_saved:"Draft saved",grade_corrected:"Grade corrected",grade_published:"Published"}[entry.action]||entry.action.replaceAll("_"," "));
+        card.append(make("summary","cursor-pointer text-sm font-bold break-words",title+" · "+
+          (entry.at?new Date(entry.at).toLocaleString():"Date unavailable")+" · "+stateLabel(entry.after)));
+        const states=make("div","grid sm:grid-cols-2 gap-2 mt-2");
+        appendRevisionState(states,"Before",entry.before);appendRevisionState(states,"After",entry.after);
+        card.append(states);
+        if(entry.evidenceVersion!=null)card.append(make("p","text-xs text-slate-500 mt-2","Evidence revision "+entry.evidenceVersion));
+        if(entry.checkpointReceiptId)card.append(make("p","text-xs text-slate-500 break-all","Receipt: "+entry.checkpointReceiptId));
+        if(entry.actorUid)card.append(make("p","text-xs text-slate-500 break-all","Recorded by: "+entry.actorUid));
+        if(entry.note)card.append(make("p","text-xs text-slate-600 whitespace-pre-wrap break-words mt-1",entry.note));
+        historyEntries.append(card);
+      }
+    }catch(error){
+      if(id===historyGeneration){historyLoaded=false;historyStatus.textContent=error?.message||"Grade history unavailable.";}
+    }finally{if(id===historyGeneration)historyRefresh.disabled=false;}
+  }
+  gradeHistory.addEventListener("toggle",()=>{if(gradeHistory.open&&!historyLoaded)void loadGradeHistory();});
+  historyRefresh.addEventListener("click",()=>void loadGradeHistory());
+  dialog.addEventListener("close",resetGradeHistory);
   async function openReview(row){
     if(busy||!currentTask||dialog.open)return;
-    reviewNeedsRefresh=false;
+    reviewNeedsRefresh=false;resetGradeHistory();
     currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentDraftSource="teacher";
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
@@ -1175,6 +1243,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       currentGrade=refreshed.grade;
       renderRubric(currentGrade);refreshReviewControls();
+      historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       document.getElementById("gbV4CorrectionReason").value="";
       document.getElementById("gbV4ReviewStatus").textContent=
         "Published grade corrected to "+result.awarded+" / "+result.total+
