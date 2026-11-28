@@ -87,7 +87,7 @@ if(publicLike){
   if(hero){
     home.classList.add('avx-canonical-home','avx-canonical-home--'+role);
     home.dataset.avxCanonicalHome='true';
-    hero.classList.add('avx-canonical-home-hero','avx-canonical-home-hero--'+role);
+    hero.classList.add('avx-canonical-home-hero--'+role);
     hero.dataset.avxCanonicalHome='true';
 
     const art=el('div','avx-canonical-art');art.setAttribute('aria-hidden','true');
@@ -95,6 +95,26 @@ if(publicLike){
     const guide=guideCharacter('avx-canonical-guide');
     art.append(brand,guide,toolMotifs());
     hero.prepend(art);
+    const destinations=role==='student'?home.querySelector('.avx-world-destinations'):null;
+    if(destinations){
+      const origin=document.createComment('canonical student tool location');
+      destinations.before(origin);
+      hero.classList.add('avx-learning-world');
+      // Keep the existing anchors, visibility flags, search listeners and DOM identity.
+      // Full moves the real tools into the scene; Quick restores their original location.
+      const sync=()=>{
+        const full=document.documentElement.dataset.adminervaExperience==='full';
+        hero.classList.toggle('avx-canonical-home-hero',full);
+        if(full && destinations.parentElement!==hero)hero.append(destinations);
+        if(!full && destinations.parentElement===hero)origin.after(destinations);
+      };
+      sync();
+      document.addEventListener('adminerva:experience-mode-change',sync);
+    }else{
+      const sync=()=>hero.classList.toggle('avx-canonical-home-hero',document.documentElement.dataset.adminervaExperience==='full');
+      sync();
+      document.addEventListener('adminerva:experience-mode-change',sync);
+    }
     bindDepth(hero);
   }
 }
