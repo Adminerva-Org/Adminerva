@@ -39,7 +39,8 @@ if(main){
   status.textContent='Finding the latest published discoveries…';
   container.append(head,cards,status);
   const anchor=main.querySelector('.av-activity-stage')||main.querySelector('.av-home-hero,.av-guest-motion-hero,.av-public-hero,header');
-  if(anchor)anchor.after(container);else main.prepend(container);
+  const editorialSlot=main.querySelector('[data-student-home-slot="editorial"]');
+  if(editorialSlot)editorialSlot.append(container);else if(anchor)anchor.after(container);else main.prepend(container);
   const channels=['announcements','weekly-pulse','opportunities','experiences'];
   const result=await Promise.allSettled(channels.map(channel=>loadPublicChannel(channel,{role})));
   const available=new Map(channels.map((channel,index)=>[
