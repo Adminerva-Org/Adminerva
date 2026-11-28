@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {describeStudioCloudSaveError,studioCloudRetryDelay,studioAssessmentSaveBlock,studioAssessmentBlockLabel} from "../js/student/studio-cloud-save-recovery.mjs";
+import {describeStudioCloudSaveError,studioCloudRetryDelay,studioAssessmentSaveBlock,studioAssessmentBlockLabel,studioLegacyBackupAllowed} from "../js/student/studio-cloud-save-recovery.mjs";
 
 test("temporary Studio cloud failures retry with bounded backoff",()=>{
   assert.equal(describeStudioCloudSaveError({code:"functions/unavailable"}).retryable,true);
@@ -92,7 +92,7 @@ test("mutable Studio artifacts persist against the last accepted snapshot, not t
       saves++;device=structuredClone(p);return structuredClone(p);
     };
     const normalizeProject=p=>structuredClone(p);
-    const readMarker=()=>({kind:"school",pending:false});
+    const readMarker=()=>({kind:"school",pending:queued>0&&failDevice});
     const scheduleCloudSave=()=>{queued++;};
     const updateProjectHeading=()=>{},updateQuotaUI=()=>{},setCloudStatus=()=>{};
     const window={dispatchEvent(){}};
@@ -111,6 +111,7 @@ test("mutable Studio artifacts persist against the last accepted snapshot, not t
       device:()=>device,
       memory:()=>activeProject,
       fail:()=>{failDevice=true;},
+      restore:()=>{failDevice=false;},
       unbacked:()=>unbackedProjectIds.has("p")
     };
   `)();
@@ -137,6 +138,10 @@ test("mutable Studio artifacts persist against the last accepted snapshot, not t
   assert.equal(run.memory().design.useCase,"memory-only");
   assert.notEqual(run.device().design.useCase,"memory-only");
   assert.deepEqual(run.counts(),[5,6]);
+  run.restore();run.save();
+  assert.equal(run.unbacked(),false);
+  assert.equal(run.device().design.useCase,"memory-only");
+  assert.deepEqual(run.counts(),[6,7]);
 });
 
 
@@ -165,7 +170,7 @@ test("blocked assessment drafts remain queued without ordinary timers or retries
     ${source.slice(start,end)}
     return {blockOrdinarySave,clearOrdinarySaveBlock,scheduleCloudSave,scheduleCloudRetry,
       marker:readMarker,pending:id=>cloudPending.get(id),timers:()=>cloudTimers.size,
-      status:()=>status};
+      status:()=>status,offline:()=>navigator.onLine=false,online:()=>navigator.onLine=true};
   `);
   const run=make(studioAssessmentBlockLabel,describeStudioCloudSaveError);
   run.scheduleCloudSave({id:"exam",state:{files:{main:"old"}}});
@@ -255,4 +260,83 @@ test("concurrent ordinary save waiters share failure but final checkpoint remain
   assert.deepEqual(await Promise.all(waiters),[false,false,true]);
   assert.deepEqual(run.attempts(),[["p",3]]);
   assert.equal(run.waiting(),3);
+});
+
+
+test("legacy working backup never accepts school projects, v4-only schools or exam epochs",()=>{
+  const legacy={assessment:{provisionedBy:"assessment-launch",assessmentOrigin:"legacy",offeringId:"",sessionEpoch:0}};
+  const school={schoolId:"school-one",compatibilityMode:"legacy_allowed"};
+  assert.equal(studioLegacyBackupAllowed(legacy,school),true);
+  assert.equal(studioLegacyBackupAllowed(legacy,{...school,compatibilityMode:"v4_only"}),false);
+  assert.equal(studioLegacyBackupAllowed(legacy,null),false);
+  assert.equal(studioLegacyBackupAllowed(legacy,school,{kind:"school",schoolId:"school-one"}),false);
+  assert.equal(studioLegacyBackupAllowed(legacy,school,{},"school_scope"),false);
+  for(const patch of [{offeringId:"offering"},{sessionEpoch:1},{assessmentOrigin:"school"},{assessmentOrigin:""}]){
+    assert.equal(studioLegacyBackupAllowed({assessment:{...legacy.assessment,...patch}},school),false);
+  }
+});
+
+test("canonical assignment lookup failures never fall through to historical task reads",async()=>{
+  const source=readFileSync("js/student/playground.js","utf8");
+  const start=source.indexOf("async function resolveAssessmentProjectContext("),end=source.indexOf("async function provisionAssessmentProject(",start);
+  assert.ok(start>=0&&end>start);
+  const make=new Function("listV4StudioAssignments","getDocFromServer",`
+    const document={getElementById:()=>null},db={},doc=()=>({});
+    ${source.slice(start,end)}
+    return resolveAssessmentProjectContext;
+  `);
+  let rootReads=0;
+  const read=async()=>{rootReads++;return {exists:()=>true,id:"task",data:()=>({published:true,submissionSource:"studio"})};};
+  const school={schoolId:"s",compatibilityMode:"legacy_allowed"};
+  await assert.rejects(make(async()=>{throw Error("offline");},read)("task",school),/offline/);
+  await assert.rejects(make(async()=>null,read)("task",school),/unavailable/);
+  await assert.rejects(make(async()=>[],read)("task",{...school,compatibilityMode:"v4_only"}),/not assigned/);
+  assert.equal(rootReads,0);
+  const result=await make(async()=>[],read)("task",school);
+  assert.equal(result.canonicalV4,false);assert.equal(rootReads,1);
+  const native=await make(async()=>[{taskId:"task",submissionSource:"studio",offeringId:"o"}],read)("task",school);
+  assert.equal(native.canonicalV4,true);assert.equal(rootReads,1);
+  await assert.rejects(make(async()=>[{taskId:"task",submissionSource:"studio",manualOpenRequired:true,manualAccessState:"closed"}],read)("task",school),/closed/);
+  assert.equal(rootReads,1);
+});
+
+test("offline snapshots are retained without initiating a cloud timer",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  function blockOrdinarySave("),end=source.indexOf("  async function flushOne(",start);
+  const make=new Function("studioAssessmentBlockLabel","describeStudioCloudSaveError",`
+    const cloudEnabled=true,deletedProjects=new Set(),cloudPending=new Map(),unbackedProjectIds=new Set();
+    const cloudTimers=new Map(),cloudRetryTimers=new Map(),cloudRetryAttempts=new Map(),markers=new Map();
+    const readMarker=id=>markers.get(id)||{},writeMarker=(id,value)=>markers.set(id,value);
+    const clone=p=>JSON.parse(JSON.stringify(p));
+    const navigator={onLine:false};let count=0,status="";
+    const setCloudStatus=m=>status=m,setTimeout=()=>++count,clearTimeout=()=>{};
+    ${source.slice(start,end)}
+    return {save:scheduleCloudSave,pending:id=>cloudPending.get(id),timers:()=>cloudTimers.size,
+      status:()=>status,online:()=>navigator.onLine=true};
+  `);
+  const run=make(studioAssessmentBlockLabel,describeStudioCloudSaveError);
+  run.save({id:"p",state:{files:{main:"offline work"}}});
+  assert.equal(run.pending("p").state.files.main,"offline work");
+  assert.equal(run.timers(),0);assert.match(run.status(),/Offline/);
+  run.online();run.save(run.pending("p"));assert.equal(run.timers(),1);
+});
+
+test("stale-device revision marker survives a lock update and clears only after verified backup",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  function readMarker("),end=source.indexOf("  function stable(",start);
+  const run=new Function(`
+    const markerCache=new Map(),saved=new Map(),markerKey=id=>id;
+    const projectStorage={setItem:(id,value)=>saved.set(id,value),getItem:id=>saved.get(id)};
+    ${source.slice(start,end)}
+    return {readMarker,writeMarker,stored:id=>JSON.parse(saved.get(id)),reload:()=>markerCache.clear()};
+  `)();
+  run.writeMarker("p",{kind:"school",revision:8},{requiresCloudReload:true});
+  run.writeMarker("p",{...run.readMarker("p"),assessmentSaveBlock:"STUDIO_EXAM_CLOSED"});
+  run.reload();
+  assert.equal(run.readMarker("p").requiresCloudReload,true);
+  assert.equal(run.readMarker("p").revision,8);
+  run.writeMarker("p",{...run.readMarker("p"),pending:false},{requiresCloudReload:false});
+  assert.equal(run.stored("p").requiresCloudReload,undefined);
+  assert.match(source,/if\(readMarker\(project.id\).requiresCloudReload\)\{incomplete=true;continue;\}/);
+  assert.match(source,/prior.pending&&sameBase&&\(!prior.requiresCloudReload\|\|cloudPending.has\(id\)\)/);
 });
