@@ -9,6 +9,19 @@ function field(value,max,label) {
   if(typeof value!=="string"||!value.trim()||value.trim().length>max)invalid(label+" is required and must be shorter.");
   return value.trim();
 }
+function checkedBirthDate(value){
+  if(typeof value!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(value))invalid("Enter a valid birth date.");
+  const date=new Date(value+"T00:00:00Z");
+  if(!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==value||date.getTime()>Date.now()||date.getUTCFullYear()<1900)invalid("Enter a valid birth date.");
+  return value;
+}
+function studentIdentityChange(current,details){
+  const changes={};
+  for(const key of ["displayName","studentNumber","birthDate"]){
+    if(details[key]!==undefined&&(current[key]||"")!==(details[key]||""))changes[key]=details[key]||null;
+  }
+  return changes;
+}
 function invitationIsActivePending(data,now=Date.now()){
   if(!data||data.status!=="pending")return false;
   const expires=data.expiresAt?.toMillis?.();
@@ -117,6 +130,12 @@ function createPeopleDirectoryService({db}) {
         canonicalMemberRef?read(canonicalMemberRef):Promise.resolve(null),
         ...queries.map(query=>read(query))
       ];
+      const registrarRoot="schools/"+ctx.schoolId+"/";
+      const registrarEvidence=await Promise.all([
+        read(db.doc(registrarRoot+"student_registrar_profiles/"+replacementPersonId)),
+        ...["student_document_requests","student_external_academic_records","enrollment_applications","student_lrn_claims"].map(name=>read(db.collection(registrarRoot+name).where("personId","==",replacementPersonId).limit(1))),
+        read(db.collection(registrarRoot+"guardian_relationships").where("studentPersonId","==",replacementPersonId).limit(1))
+      ]);
       const [replacementMember,canonicalMember,registrations,enrollments,grades,studio,
         responses,githubEvidence,repositoryConfigs,classRecordGrades,assessmentThreads,linkedPeople]=
         await Promise.all(reads);
@@ -132,6 +151,7 @@ function createPeopleDirectoryService({db}) {
         blockers.push("The replacement login has another school role. Resolve that role before student account recovery.");
       if(linkedPeople.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).length!==1)
         blockers.push("The replacement login is linked to more than one school person. Resolve the directory integrity issue first.");
+      if(registrarEvidence[0].exists||registrarEvidence.slice(1).some(snapshot=>snapshot.size>0))blockers.push("The replacement student has Registrar identity, admission, guardian or institutional evidence. Manual reconciliation is required before account recovery.");
       if(registrations.size===51||enrollments.size===101)
         blockers.push("The duplicate student has too much academic history for automatic recovery.");
       if(registrations.docs.some(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"))
@@ -1095,6 +1115,7 @@ function createPeopleDirectoryService({db}) {
         return result;
       };
       const studentNumber=input.studentNumber===undefined?undefined:clean(input.studentNumber,80,"Student number");
+      const birthDate=input.birthDate===undefined?undefined:checkedBirthDate(input.birthDate);
       const guardianName=input.primaryGuardianName===undefined?undefined:clean(input.primaryGuardianName,140,"Guardian name");
       const guardianEmail=input.primaryGuardianEmail===undefined?undefined:clean(input.primaryGuardianEmail,254,"Guardian email").toLowerCase();
       const guardianMobile=input.primaryGuardianMobile===undefined?undefined:clean(input.primaryGuardianMobile,40,"Guardian mobile");
@@ -1111,11 +1132,30 @@ function createPeopleDirectoryService({db}) {
         const currentRevision=Number(person.data().revision)||1;
         if(currentRevision!==expectedRevision)
           throw new TenantAccessError("failed-precondition","This person record changed after you opened it. Refresh the directory and review the latest profile before saving.");
+        const current=person.data(),identityChanges=current.kind==="student"?studentIdentityChange(current,{displayName,studentNumber,birthDate}):{};
+        const identityFields=Object.keys(identityChanges);
+        let identityReason=null;
+        if(identityFields.length){
+          // Legal identity amendments require actual school authority, even during platform assist.
+          const member=await tx.get(adminRef);
+          if(!member.exists||member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||!member.data().roles?.includes("school_admin"))throw new TenantAccessError("permission-denied","A verified School Administrator must review student identity corrections.");
+          identityReason=field(input.reason,500,"Identity correction reason");if(identityReason.length<12)invalid("Document the identity correction reason in at least 12 characters.");
+          if((identityFields.includes("displayName")||identityFields.includes("birthDate"))&&!current.activationEmailHash)
+            throw new TenantAccessError("failed-precondition","Name or birth-date corrections without a stable activation identity require manual identity reconciliation. The guardian-derived admission key must not be changed implicitly.");
+          if(identityChanges.studentNumber){
+            const matches=await tx.get(base.where("studentNumber","==",identityChanges.studentNumber).limit(3));
+            if(matches.size===3||matches.docs.some(doc=>doc.id!==personId))throw new TenantAccessError("already-exists","This student number belongs to another directory record. Review the duplicate; do not reuse it.");
+          }
+          const applications=await tx.get(db.collection("schools/"+ctx.schoolId+"/enrollment_applications").where("personId","==",personId).limit(101));
+          if(applications.size===101||applications.docs.some(doc=>doc.data().schoolId!==ctx.schoolId||["submitted","needs_information","accepted"].includes(doc.data().status)))
+            throw new TenantAccessError("failed-precondition","Resolve pending linked admissions before changing the student identity.");
+        }
         const now=FieldValue.serverTimestamp(),revision=currentRevision+1;
         const change={displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+personId,
           revision,updatedAt:now,updatedByUid:ctx.uid};
         if(person.data().kind==="student"){
           if(studentNumber!==undefined)change.studentNumber=studentNumber||null;
+          if(birthDate!==undefined)change.birthDate=birthDate;
           if(guardianName!==undefined)change.primaryGuardianName=guardianName||null;
           if(guardianEmail!==undefined)change.primaryGuardianEmail=guardianEmail||null;
           if(guardianMobile!==undefined)change.primaryGuardianMobile=guardianMobile||null;
@@ -1130,7 +1170,8 @@ function createPeopleDirectoryService({db}) {
         if(member?.exists&&member.data().schoolId===ctx.schoolId)
           tx.update(memberRef,{displayName,updatedAt:now});
         tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
-          action:"person_profile_updated",revision,createdAt:now});
+          action:"person_profile_updated",revision,createdAt:now,...(identityFields.length?{reason:identityReason,identityFields}: {})});
+        if(identityFields.length)tx.create(db.collection("schools/"+ctx.schoolId+"/student_records_audit").doc(),{schoolId:ctx.schoolId,personId,actorUid:ctx.uid,action:"student_identity_corrected",fields:identityFields,reason:identityReason,revision,createdAt:now});
       });
       return {personId,displayName};
     }
@@ -1376,4 +1417,4 @@ function createInvitationAcceptanceService({db}) {
   };
 }
 
-module.exports={createPeopleDirectoryService,createInvitationAcceptanceService,importIdentity,normalizedImport,invitationIsActivePending};
+module.exports={createPeopleDirectoryService,createInvitationAcceptanceService,importIdentity,normalizedImport,invitationIsActivePending,checkedBirthDate,studentIdentityChange};
