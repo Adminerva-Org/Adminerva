@@ -140,7 +140,9 @@ async function send(event,replay=false){
   for(let attempt=0;attempt<2;attempt++){
     if(!enabled||auth.currentUser?.uid!==uid||turn!==epoch)return;
     try{
-      await record({action:"record",event});
+      const result=await record({action:"record",event});
+      if(turn!==epoch||auth.currentUser?.uid!==uid)return;
+      if(result.data?.disabled===true){pauseCollection();return;}
       if(turn===epoch&&!flushing&&pending.length)void flushPending();
       return;
     }catch(error){
