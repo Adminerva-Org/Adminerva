@@ -167,6 +167,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         ((currentSnapshot?.selectedCommitShas?.length||0)>0||currentSnapshot?.checkpointOnly===true));
     const readThrough=Boolean(currentTask?.legacyCompatibility);
     const historicalGithub=readThrough&&currentTask?.submissionSource==="github";
+    const historicalStudio=readThrough&&currentTask?.submissionSource==="studio";
     const historicalScalar=historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1";
     const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1"&&!readThrough;
     for(const id of ["gbV4SystemCheck","gbV4ExternalCopy","gbV4ExternalApply"])
@@ -177,11 +178,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar||Number(currentGrade?.pending||0)>0;
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened||readThrough;
-    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||(readThrough&&!historicalGithub)||!evidenceReady;
+    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||(readThrough&&!historicalGithub&&!historicalStudio)||!evidenceReady;
     const convert=document.getElementById("gbV4ConvertLegacy");
     convert.disabled=busy||!loaded||!legacyScalar||readThrough;
     document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar||readThrough;
-    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||(readThrough&&!historicalGithub));
+    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||(readThrough&&!historicalGithub&&!historicalStudio));
     document.getElementById("gbV4Refresh").disabled=busy;
 
     if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
@@ -932,7 +933,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=published?
         (historicalStudio?
-          "Original published Studio grade preserved. Corrections still require the audited historical correction workflow.":
+          "Original published Studio grade preserved. Use grade correction to record a new audited revision.":
           historicalGithub?
           "Original published GitHub grade preserved. Use grade correction to record a new audited revision.":
           currentGrade?.gradeSchema==="legacy_scalar_v1"?
@@ -1230,6 +1231,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     try{
       setBusy(true,"Verifying the frozen submission and recording the published-grade correction…");
       const historical=currentTask.legacyCompatibility&&currentTask.submissionSource==="github";
+      const historicalStudio=currentTask.legacyCompatibility&&currentTask.submissionSource==="studio";
       const historicalIds={legacyAssessmentId:currentTask.legacyAssessmentId,legacyEvidenceId:currentRow.recordId,
         ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{})};
       const feedback=document.getElementById("gbV4Feedback").value.trim();
@@ -1238,11 +1240,16 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
         expectedCheckpointSha:currentSnapshot.checkpointSha,
           ...(currentSnapshot.checkpointOnly?{expectedReceiptDigest:currentSnapshot.receiptDigest}:{}),criteria,feedback
+      }):historicalStudio?await scoped(migrationApi,"legacy_review_correct_published",{
+        legacyAssessmentId:currentTask.legacyAssessmentId,legacySubmissionId:currentRow.recordId,
+        expectedGradeRevision:currentGrade.revision,expectedSubmissionVersion:currentSnapshot.version,
+        expectedSnapshotHash:currentSnapshot.contentDigest,criteria,feedback
       }):await scoped(gradeApi,"correct_published",{
         taskId:currentTask.taskId,studentUid:currentRow.studentUid,
         expectedRevision:currentGrade.revision,criteria,feedback,reason
       });
       const refreshed=historical?await scoped(migrationApi,"legacy_github_inspect",historicalIds):
+        historicalStudio?await scoped(migrationApi,"legacy_review_inspect",{legacyAssessmentId:currentTask.legacyAssessmentId,legacySubmissionId:currentRow.recordId}):
         await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       currentGrade=refreshed.grade;
       renderRubric(currentGrade);refreshReviewControls();
