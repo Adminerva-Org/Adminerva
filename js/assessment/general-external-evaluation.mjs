@@ -151,7 +151,8 @@ function compactEvidence(source,snapshot={}){
     personalizedTask:compactAssignedTask(snapshot)
   };
   if(source==="github")return {
-    type:"github_frozen_commit_evidence",
+    type:snapshot.checkpointOnly===true?"github_historical_checkpoint_source":"github_frozen_commit_evidence",
+    ...(snapshot.checkpointOnly===true?{sourcePath:text(snapshot.sourcePath,240),checkpointOnly:true,checkpointRef:text(snapshot.evidenceDigest,64)}:{}),
     version:Number(snapshot.version||0),
     personalizedTask:compactAssignedTask(snapshot),
     checkpointSha:text(snapshot.checkpointSha,40),
@@ -188,10 +189,11 @@ function compactEvidence(source,snapshot={}){
   };
   throw Error("This evidence type still uses its specialized evaluation workflow.");
 }
-export function responseShape(task={}){
+export function responseShape(task={},checkpointRef=""){
   const rubric=Array.isArray(task.rubric)?task.rubric:[];
   return {
     format:GENERAL_EXTERNAL_RESPONSE_FORMAT,
+    ...(checkpointRef?{checkpointRef}:{}),
     criteria:rubric.map(row=>({
       name:String(row.name||""),
       maximumPoints:Number(row.points||0),
@@ -232,7 +234,8 @@ export function buildGeneralExternalEvaluationData({task={},snapshot={},checking
         "Do not claim facts about linked external content unless the evaluator actually accessed it. The frozen URL/note alone may be insufficient for some criteria.":
         "Evaluate only the frozen content supplied in this package.",
       repositoryBoundary:assessment.submissionSource==="github"?
-        "Use selected SHA/path diffs for change-specific claims and the pinned checkpoint source for exact present code context. Neither Git authors nor a teacher-approved commit set independently prove individual authorship. Merge-only, missing-diff, omitted, or oversized evidence is not proof of an individual contribution. Static source does not prove compilation, execution or timing; disclose partial coverage. Identify supporting SHA/path references in rationales.":
+        (evidence.checkpointOnly?"Evaluate only the submitted checkpoint source in its recorded scope. No selected contribution commits exist. Do not infer individual authorship or contribution from source quality. Treat contribution-specific criteria without supporting evidence as unresolved; static source does not prove execution or timing. Cite exact file paths and disclose omitted files.":
+        "Use selected SHA/path diffs for change-specific claims and the pinned checkpoint source for exact present code context. Neither Git authors nor a teacher-approved commit set independently prove individual authorship. Merge-only, missing-diff, omitted, or oversized evidence is not proof of an individual contribution. Static source does not prove compilation, execution or timing; disclose partial coverage. Identify supporting SHA/path references in rationales."):
         "Not applicable."
     }
   };
@@ -260,9 +263,10 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
     "",
     "REQUIRED RULES",
     ...GENERAL_EXTERNAL_EVALUATION_REQUIRED_RULES,
+    ...(payload.evidence.checkpointOnly?["10. Return the checkpointRef exactly as supplied. Do not substitute a commit hash or omit it."]:[]),
     "",
     "REQUIRED RESPONSE JSON",
-    JSON.stringify(responseShape(task),null,2),
+    JSON.stringify(responseShape(task,payload.evidence.checkpointRef||""),null,2),
     "",
     "ASSESSMENT AND FROZEN EVIDENCE",
     JSON.stringify(payload,null,2)
@@ -277,11 +281,12 @@ function extractJson(raw){
   try{return JSON.parse(value.slice(first,last+1));}
   catch{throw Error("The pasted external evaluation is not valid JSON.");}
 }
-export function parseGeneralExternalEvaluationResponse(raw,{task={}}={}){
+export function parseGeneralExternalEvaluationResponse(raw,{task={},expectedCheckpointRef=""}={}){
   const parsed=extractJson(raw);
   if(!parsed||typeof parsed!=="object"||Array.isArray(parsed)||
      parsed.format!==GENERAL_EXTERNAL_RESPONSE_FORMAT)
     throw Error("The response is not an Adminerva general assessment evaluation.");
+  if(expectedCheckpointRef&&parsed.checkpointRef!==expectedCheckpointRef)throw Error("Evaluation belongs to a different checkpoint receipt or is missing its reference.");
   const rubric=Array.isArray(task.rubric)?task.rubric:[];
   if(!Array.isArray(parsed.criteria)||parsed.criteria.length!==rubric.length)
     throw Error("The response must include one result for every rubric criterion.");
@@ -291,6 +296,7 @@ export function parseGeneralExternalEvaluationResponse(raw,{task={}}={}){
     const returnedName=String(item?.name||"");
     const maximum=Number(rubric[index]?.points||0);
     const declaredMaximum=item?.maximumPoints===undefined?maximum:Number(item.maximumPoints);
+    if(expectedCheckpointRef&&(typeof item?.awardedPoints!=="number"||typeof item?.pendingPoints!=="number"))throw Error("Criterion "+(index+1)+" needs explicit numerical points.");
     const awarded=Number(item?.awardedPoints),pending=Number(item?.pendingPoints||0);
     const comment=text(item?.comment,1000),rationale=text(item?.rationale,1500);
     const confidence=text(item?.confidence,40);

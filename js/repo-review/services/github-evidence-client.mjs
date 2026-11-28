@@ -172,6 +172,17 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
     return {files,omitted};
   }
 
+  async function listPinnedTree(repository,checkpointSha){
+    if(!/^[a-f0-9]{40}$/i.test(checkpointSha))throw Error("A full checkpoint SHA is required.");
+    const commit=await request(base(repository)+"/git/commits/"+checkpointSha);
+    const treeSha=String(commit?.tree?.sha||"");
+    if(String(commit?.sha||"").toLowerCase()!==checkpointSha.toLowerCase()||!/^[a-f0-9]{40}$/i.test(treeSha))
+      throw Error("GitHub did not return the exact submitted checkpoint.");
+    const tree=await request(base(repository)+"/git/trees/"+treeSha+"?recursive=1");
+    if(tree?.sha!==treeSha||!Array.isArray(tree.tree))throw Error("Invalid pinned repository tree.");
+    return {entries:tree.tree,complete:tree.truncated!==true};
+  }
+
   async function getBranchHead(repository, ref = null) {
     const info = await repositoryInfo(repository);
     const branch = ref || info.default_branch;
@@ -198,5 +209,5 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
       historyWarning: history.warning || null };
   }
 
-  return { repositoryInfo, listCommits, loadCommit, loadPinnedSource, getBranchHead, resolveEvidence };
+  return { repositoryInfo, listCommits, loadCommit, loadPinnedSource, listPinnedTree, getBranchHead, resolveEvidence };
 }

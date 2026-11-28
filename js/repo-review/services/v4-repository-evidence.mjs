@@ -24,6 +24,40 @@ const eligibleSourcePath=path=>SOURCE_EXTENSIONS.has(fileExtension(path))&&
  * Keep the transport separate from the evidence builder so the same frozen
  * submission can be exercised with a deterministic GitHub client in tests.
  */
+export async function buildHistoricalCheckpointEvaluationSnapshot({snapshot,client}={}){
+  if(snapshot?.historical!==true||snapshot.checkpointOnly!==true||snapshot.hasSubmission!==true||
+     !["submitted","reviewed","approved"].includes(snapshot.status)||
+     !SHA.test(snapshot.checkpointSha||"")||!/^([a-f0-9]{64})$/i.test(snapshot.receiptDigest||"")||
+     !Array.isArray(snapshot.selectedCommitShas)||snapshot.selectedCommitShas.length)
+    throw Error("A verified original checkpoint receipt is required.");
+  if(!client?.listPinnedTree||!client?.loadPinnedSource)throw Error("Pinned source inspection is unavailable.");
+  const repository=parseGithubRepository(snapshot.repository?.fullName||"").fullName;
+  const checkpointSha=snapshot.checkpointSha.toLowerCase(),scope=String(snapshot.sourcePath||"").replace(/\/+$/,"");
+  if(scope&&(scope.length>240||scope.startsWith("/")||scope.split("/").some(part=>!part||part==="."||part==="..")||/[\\\u0000-\u001f\u007f]/.test(scope)))
+    throw Error("Original submitted source path is invalid.");
+  const tree=await client.listPinnedTree(repository,checkpointSha);
+  const entries=tree.entries||[],inScope=path=>!scope||path===scope||path.startsWith(scope+"/");
+  if(scope&&!entries.some(entry=>entry.path===scope))
+    throw Error("The original submitted path could not be located at its checkpoint. Review manually.");
+  const paths=[...new Set(entries.filter(entry=>entry.type==="blob"&&["100644","100755"].includes(entry.mode)&&inScope(entry.path)&&eligibleSourcePath(entry.path)).map(entry=>entry.path))].sort();
+  if(!paths.length)throw Error("No supported source files were found at the submitted checkpoint. Review manually.");
+  const pinned=await client.loadPinnedSource(repository,checkpointSha,paths.slice(0,MAX_SOURCE_PATHS));
+  const files=(pinned.files||[]).filter(file=>paths.slice(0,MAX_SOURCE_PATHS).includes(file.path)&&typeof file.content==="string");
+  if(!files.some(file=>file.content.trim()))throw Error("No readable submitted source was recovered. Review manually.");
+  const limitations=["Original student-submitted checkpoint only. No selected contribution commits were recorded. Do not infer individual authorship, contribution history, push time or runtime behavior from static files.",
+    "Source scope: "+(scope||"submitted repository root")+"."];
+  if(!tree.complete)limitations.push("GitHub returned an incomplete repository tree.");
+  if(paths.length>MAX_SOURCE_PATHS)limitations.push((paths.length-MAX_SOURCE_PATHS)+" supported source files omitted by the inspection limit.");
+  for(const item of pinned.omitted||[])limitations.push("Source unavailable: "+item.path+" ("+item.reason+").");
+  return {version:Number(snapshot.version||1),evidenceRevision:Number(snapshot.evidenceRevision||0),
+    evidenceDigest:snapshot.receiptDigest,checkpointOnly:true,sourcePath:scope,repository,checkpointSha,
+    personalizedTask:snapshot.personalizedTask||null,selectedCommitShas:[],commits:[],
+    pinnedSource:files.map(file=>({...file,checkpointSha})),
+    analysis:{selectedCount:0,inspectedCount:0,substantiveChanges:0,nonSubstantiveChanges:0,uncertainChanges:0,
+      pinnedFileCount:files.length,complete:tree.complete===true&&paths.length===files.length&&!(pinned.omitted||[]).length},
+    limitations:limitations.slice(0,80)};
+}
+
 export async function buildV4RepositoryEvaluationSnapshot({snapshot,client}={}){
   if(!snapshot||!["submitted","approved","reviewed"].includes(snapshot.status)||
      snapshot.hasSubmission===false)

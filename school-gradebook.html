@@ -5,15 +5,25 @@
   <title>Assessment Review & Results · Adminerva</title><link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=b04b2f540c7f"><link rel="stylesheet" href="css/teacher-ux.css?v=20261115-nav1">
+  <style>
+    #gbV4ReviewDialog{width:min(98vw,1500px);max-width:none;max-height:96dvh}
+    #gbV4ReviewBody{flex:1 1 auto;min-height:0;overflow-y:auto}
+    #gbV4ReviewDialog header{flex-wrap:wrap;flex-shrink:0;padding:.75rem;gap:.5rem}
+    #gbV4ReviewDialog header>div:first-child{min-width:0;overflow-wrap:anywhere;flex:1 1 160px}
+    #gbV4ReviewDialog button:disabled{opacity:.45;cursor:not-allowed}
+    #gbV4ReviewDialog textarea,#gbV4ReviewDialog input,#gbV4ReviewDialog select{max-width:100%;min-width:0}
+    #gbV4ReviewDialog [hidden],#gbV4QueueTools[hidden],#gbV4ClassRecordHandoff[hidden]{display:none!important}
+    #gbV4ReviewDialog footer{position:relative;z-index:1}
+    @media(min-width:1024px){#gbV4ReviewDialog>div{height:94dvh}#gbV4ReviewBody{overflow:hidden;grid-template-rows:minmax(0,1fr)}#gbV4EvidenceColumn,#gbV4GradeColumn{min-height:0;overflow:auto;overscroll-behavior:contain}}
+    @media(max-width:480px){#gbV4ReviewDialog footer>div{width:100%;justify-content:space-between;gap:.25rem}#gbV4ReviewDialog footer button{font-size:.75rem;padding:.6rem .55rem}#gbV4ReviewDialog header h2{font-size:1rem}}
+  </style>
 </head>
 <body id="pageBody" class="av-teacher-refresh hidden bg-slate-50 min-h-screen text-slate-900">
 <div id="adminerva-nav" data-module="assessment" data-page="assessment-review"></div>
-<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-  <header class="mb-5 rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
-    <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Verified school workflow</p>
-    <h1 id="gbV4PageTitle" class="text-2xl sm:text-3xl font-extrabold mt-1">Review &amp; Grade</h1>
-    <p id="gbV4PageDescription" class="text-sm text-slate-200 mt-2 max-w-3xl">Review immutable written responses, links, Studio projects or GitHub evidence; save a grade draft; and publish only against the exact current student submission.</p>
-    <nav class="mt-4 flex flex-wrap gap-2 text-sm font-bold" aria-label="Assessment workflow views">
+<main class="max-w-[1600px] mx-auto px-3 sm:px-5 py-3 sm:py-4">
+  <header class="mb-3 rounded-xl bg-slate-900 text-white p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+    <h1 id="gbV4PageTitle" class="text-xl sm:text-2xl font-extrabold">Review &amp; Grade</h1>
+    <nav class="flex flex-wrap gap-1 text-sm font-bold" aria-label="Assessment workflow views">
       <a href="school-gradebook.html?view=submissions" class="rounded-lg border border-slate-600 px-3 py-2 hover:bg-slate-800">Submissions</a>
       <a href="school-gradebook.html?view=review" class="rounded-lg border border-slate-600 px-3 py-2 hover:bg-slate-800">Review &amp; Grade</a>
       <a href="school-gradebook.html?view=results" class="rounded-lg border border-slate-600 px-3 py-2 hover:bg-slate-800">Assessment Results</a>
@@ -23,23 +33,21 @@
   <section id="gbV4Panel" class="hidden rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden" aria-labelledby="gbV4Heading">
     <div class="p-4 sm:p-5 border-b border-slate-200 bg-indigo-50/60">
       <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-        <div><p class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">School-scoped assessment workflow</p>
-          <h2 id="gbV4Heading" class="text-xl font-extrabold text-slate-900 mt-1">Submissions, review &amp; results</h2>
-          <p class="text-sm text-slate-600 mt-1 max-w-2xl">Only assessments you own and course offerings you are currently assigned to teach are available.</p></div>
+        <h2 id="gbV4Heading" class="sr-only">Assessment queue</h2>
         <div id="gbV4SchoolSwitcher" hidden class="w-full lg:w-auto lg:min-w-[220px]"></div>
       </div>
       <div class="mt-4 grid md:grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-end">
-        <label class="text-sm font-bold text-slate-700">My deployed assessment
+        <label class="text-sm font-bold text-slate-700">Assessment
           <select id="gbV4Task" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2.5 bg-white"><option value="">Choose an assessment…</option></select>
         </label>
-        <button id="gbV4Refresh" type="button" class="rounded-lg border border-indigo-300 bg-white text-indigo-800 font-bold px-4 py-2.5">Refresh submissions</button>
+        <button id="gbV4Refresh" type="button" class="rounded-lg border border-indigo-300 bg-white text-indigo-800 font-bold px-4 py-2.5">Refresh</button>
         <button id="gbV4BulkPublish" type="button" disabled class="rounded-lg bg-emerald-700 text-white font-bold px-4 py-2.5 disabled:opacity-50">Publish all drafts (0)</button>
       </div>
       <p id="gbV4Status" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school assessment access…</p>
       <section id="gbV4BulkPanel" hidden class="mt-4 rounded-xl border border-indigo-200 bg-white p-3 sm:p-4" aria-label="Bulk assessment evaluation">
         <details id="gbV4BulkDetails">
-          <summary class="cursor-pointer text-base font-extrabold text-indigo-950">Bulk evaluate assessment submissions</summary>
-          <p class="mt-2 text-sm text-slate-700">Select up to 20 eligible ungraded student submissions per batch; GitHub/repository evidence is capped at 10 because its frozen commit and source evidence is substantially larger. GitHub students need an actual selected-commit submission, not a teacher approval. Instructor-discovered or zero-commit GitHub records are excluded automatically. Studio, GitHub, essays and written/link assessments share the same grading controls but use different frozen evidence. Completed JSON batches clear and the next source-appropriate learner batch is selected automatically. Internal AI checks learners individually within the batch; External AI receives one shared rubric plus independent anonymous evidence items up to the source-specific batch limit when the package fits its context limit. Pending rubric points can be resolved directly in each expanded learner by entering the final criterion score; zero and attribution concerns are advisory; incomplete or stale evidence remains protected. Drafts are unpublished until you publish.</p>
+          <summary class="cursor-pointer text-base font-extrabold text-indigo-950">Bulk evaluation</summary>
+          <p class="mt-1 text-xs text-slate-600">Up to 10 GitHub or 20 other learners per batch. Save drafts, then publish.</p>
           <p id="gbV4BulkCounts" class="mt-2 text-sm font-semibold text-indigo-800"></p>
           <div class="mt-3 flex flex-wrap gap-2">
             <button id="gbV4BulkSelect" type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold">Select next eligible ungraded</button>
@@ -58,7 +66,7 @@
           </div>
           <details class="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
             <summary class="cursor-pointer font-bold text-sm text-sky-950">External AI batch exchange</summary>
-            <p class="mt-2 text-xs text-sky-900">The package stores the shared assessment instructions and rubric once; each anonymous item contains the assigned personalized task, frozen Studio code, GitHub checkpoint evidence, essay response, or submission link as applicable. External links are not automatically fetched and cannot establish the contents of another website. External AI packages automatically include as many complete selected learners as fit within 800,000 formatted JSON characters (up to 10 GitHub or 20 other learners). Overflow learners are deferred, not truncated; individually oversized evidence needs manual review. Submissions may contain identifying text; inspect before sending outside Adminerva. Keep batch IDs and references unchanged.</p>
+            <p class="mt-1 text-xs text-sky-900">800,000 characters per package. Overflow is deferred. Inspect identifying content before sharing externally; keep batch IDs unchanged.</p>
             <label class="mt-3 block text-xs font-bold text-slate-800">Prepared JSON package
               <textarea id="gbV4BulkPayload" readonly rows="6" class="mt-1 w-full rounded-lg border border-sky-300 bg-white p-2 font-mono text-xs" placeholder="Prepare a batch above to generate the external AI package."></textarea>
             </label>
@@ -72,9 +80,9 @@
           <div id="gbV4BulkExceptions" class="mt-3 grid gap-1 max-h-40 overflow-y-auto" aria-label="Evaluation exceptions"></div>
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <button id="gbV4BulkSave" type="button" class="rounded-lg bg-emerald-700 text-white px-4 py-2.5 text-sm font-bold disabled:opacity-50">Save eligible drafts</button>
-            <span class="text-xs text-slate-600">This action never publishes grades and never replaces an existing grade.</span>
+            <span class="text-xs text-slate-600">Only selected drafts are saved; published grades stay unchanged.</span>
           </div>
-          <p class="mt-2 text-xs text-slate-500">Unsaved suggestions are temporary and will be cleared when you leave or reload the page. Save eligible drafts before navigating elsewhere.</p>
+          <p class="mt-2 text-xs text-slate-500">Save suggestions before leaving.</p>
           <p id="gbV4BulkStatus" class="mt-3 text-sm text-slate-700" role="status" aria-live="polite"></p>
         </details>
       </section>
@@ -83,17 +91,31 @@
         <div><p class="text-xs uppercase tracking-wider font-bold text-indigo-700">Official Class Record</p><p id="gbV4ClassRecordStatus" class="text-sm text-indigo-950 mt-1"></p></div>
         <a id="gbV4ClassRecordLink" href="class-record.html" class="shrink-0 rounded-lg bg-indigo-800 text-white px-4 py-2.5 text-sm font-extrabold">Open Class Record</a>
       </div>
-    <div id="gbV4Inbox" class="p-4 sm:p-5 grid gap-3"></div>
+    <div id="gbV4QueueTools" hidden class="px-3 sm:px-4 py-2 border-b border-slate-200">
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="flex-1 min-w-[120px]"><span class="sr-only">Search learner</span><input id="gbV4QueueSearch" type="search" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Search learner or section"></label>
+        <label><span class="sr-only">Grading status</span><select id="gbV4QueueFilter" class="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"><option value="all">All</option><option value="ungraded">Ungraded</option><option value="draft">Draft</option><option value="published">Published</option><option value="attention">Needs attention</option></select></label>
+        <span id="gbV4QueueCount" class="text-xs text-slate-600" role="status"></span>
+      </div>
+    </div>
+    <div id="gbV4Inbox" class="p-3 sm:p-4 grid gap-1.5"></div>
   </section>
 
-  <dialog id="gbV4ReviewDialog" class="rounded-2xl border-0 shadow-2xl p-0 w-[min(96vw,980px)] max-w-none sm:max-w-[980px] max-h-[94dvh] backdrop:bg-slate-950/70" aria-labelledby="gbV4ReviewTitle">
-    <div class="bg-white flex flex-col max-h-[94dvh]">
+  <dialog id="gbV4ReviewDialog" class="rounded-2xl border-0 shadow-2xl p-0 w-[min(98vw,1500px)] max-w-none max-h-[96dvh] backdrop:bg-slate-950/70" aria-labelledby="gbV4ReviewTitle">
+    <div class="bg-white flex flex-col max-h-[96dvh] min-h-0">
       <header class="p-4 sm:p-5 bg-slate-900 text-white flex items-start justify-between gap-4">
         <div><p id="gbV4EvidenceType" class="text-xs uppercase tracking-wider text-cyan-300 font-bold">Verified assessment evidence</p>
           <h2 id="gbV4ReviewTitle" class="text-xl font-extrabold mt-1">Review student work</h2><p id="gbV4ReviewMeta" class="text-xs text-slate-300 mt-1"></p></div>
-        <button id="gbV4Close" type="button" class="rounded-lg border border-slate-600 px-3 py-2">Close</button>
+        <div class="flex flex-wrap items-center justify-end gap-1">
+          <span id="gbV4ReviewPosition" class="text-xs text-slate-300"></span>
+          <button id="gbV4Previous" type="button" class="rounded-lg border border-slate-600 px-2 py-2 text-sm" aria-label="Previous learner">Prev</button>
+          <button id="gbV4Next" type="button" class="rounded-lg border border-slate-600 px-2 py-2 text-sm" aria-label="Next learner">Next</button>
+          <button id="gbV4ReloadReview" type="button" class="rounded-lg border border-slate-600 px-2 py-2 text-sm">Reload</button>
+          <button id="gbV4Close" type="button" class="rounded-lg border border-slate-600 px-2 py-2 text-sm">Close</button>
+        </div>
       </header>
-      <div class="overflow-y-auto p-4 sm:p-5 space-y-5">
+      <div id="gbV4ReviewBody" class="overflow-y-auto min-h-0 p-3 sm:p-4 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:overflow-hidden">
+        <div id="gbV4EvidenceColumn" class="min-w-0 space-y-3 lg:overflow-y-auto lg:pr-2">
         <section id="gbV4StudioEvidence" class="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-3 min-w-0">
           <div><label class="text-sm font-bold text-slate-700" for="gbV4File">Frozen file</label>
             <select id="gbV4File" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></select>
@@ -109,15 +131,14 @@
           </div>
           <details id="gbV4GithubCommitDetails" class="mt-3 rounded-lg border border-slate-200 bg-white p-3">
             <summary id="gbV4GithubCommitSummary" class="cursor-pointer text-sm font-bold text-indigo-800">Show commits (0)</summary>
-            <p class="mt-2 text-xs text-slate-600">Selected commit links open their exact GitHub diff in a new tab. GitHub authorship metadata is not independent proof of a learner's contribution.</p>
+            <p class="mt-2 text-xs text-slate-600">Git authorship is advisory.</p>
             <div id="gbV4GithubCommits" class="grid gap-2 mt-3"></div>
           </details>
           <p id="gbV4GithubAnalysisStatus" class="mt-2 text-xs text-slate-600" role="status" aria-live="polite"></p>
           <p id="gbV4GithubVerifyStatus" class="text-sm text-slate-600 mt-3" role="status"></p>
-          <button id="gbV4GithubVerify" type="button" class="mt-3 rounded-lg border border-indigo-300 bg-white text-indigo-800 font-bold px-4 py-2.5">Verify frozen commit set</button>
+          <button id="gbV4GithubVerify" type="button" class="mt-3 rounded-lg border border-indigo-300 bg-white text-indigo-800 font-bold px-4 py-2.5">Check commits</button>
           <section id="gbV4LegacyGithubPanel" hidden class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-            <h4 class="text-sm font-bold text-amber-950">Historical repository · original evidence and grade</h4>
-            <p class="mt-1 text-xs text-amber-900">V4 reads the original verified commit selection and writes only to its original legacy grade. This does not create a school V4 enrollment or Class Record column.</p>
+            <h4 class="text-sm font-bold text-amber-950">Historical evidence</h4>
             <p id="gbV4LegacyGithubAttribution" class="mt-2 text-xs text-amber-900" role="status"></p>
             
           </section>
@@ -141,47 +162,43 @@
           </div>
           <p id="gbV4PersonalizedPrompt" class="mt-3 text-sm text-violet-950 whitespace-pre-wrap"></p>
           <details class="mt-3 rounded-lg border border-violet-200 bg-white p-3 text-sm">
-            <summary class="font-bold text-violet-900 cursor-pointer">Teacher-only evaluation notes for this variant</summary>
+            <summary class="font-bold text-violet-900 cursor-pointer">Evaluation notes</summary>
             <p id="gbV4PersonalizedNotes" class="mt-2 whitespace-pre-wrap text-slate-700"></p>
           </details>
         </section>
 
+        </div>
+        <div id="gbV4GradeColumn" class="min-w-0 space-y-3 lg:overflow-y-auto lg:pl-2 lg:border-l lg:border-slate-200">
         <section>
-          <div class="flex items-center justify-between gap-3"><h3 class="font-extrabold text-slate-900">Grade draft</h3><span id="gbV4ScoreSummary" class="text-sm font-bold text-indigo-700"></span></div>
+          <div class="flex items-center justify-between gap-3"><h3 class="font-extrabold text-slate-900">Grade</h3><span id="gbV4ScoreSummary" class="text-sm font-bold text-indigo-700"></span></div>
           <div id="gbV4Rubric" class="grid gap-3 mt-3"></div>
-          <label class="block text-sm font-bold text-slate-700 mt-3">Overall feedback
+          <label class="block text-sm font-bold text-slate-700 mt-3">Feedback
             <textarea id="gbV4Feedback" rows="4" maxlength="5000" class="mt-1 w-full border border-slate-300 rounded-lg p-3"></textarea>
           </label>
-          <details id="gbV4ExternalEvaluationPanel" class="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3" open>
+          <details id="gbV4ExternalEvaluationPanel" class="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
             <summary class="font-bold text-sky-950 cursor-pointer">AI checker · Internal + External</summary>
-            <p class="text-xs text-sky-900 mt-2">Run either or both evaluators against the exact same frozen assessment evidence. Their reviews stay separate so you can compare them before applying either suggestion to the grade draft.</p>
             <div class="mt-3 flex flex-wrap gap-2">
               <button id="gbV4SystemCheck" type="button" class="rounded-lg bg-violet-800 text-white font-bold px-3 py-2">Run Internal AI</button>
               <button id="gbV4ExternalCopy" type="button" class="rounded-lg border border-sky-300 bg-white text-sky-900 font-bold px-3 py-2">Copy External AI package</button>
             </div>
             <div id="gbV4SystemReview" class="mt-3"></div>
-            <label class="block text-xs font-bold text-sky-950 mt-3">Paste external evaluator JSON
+            <label class="block text-xs font-bold text-sky-950 mt-3">Paste evaluator JSON
               <textarea id="gbV4ExternalResponse" rows="7" class="mt-1 w-full border border-sky-300 rounded-lg p-2.5 bg-white font-mono text-xs" placeholder='{"format":"adminerva-general-external-evaluation-response-v1",...}'></textarea>
             </label>
             <button id="gbV4ExternalApply" type="button" class="mt-3 rounded-lg bg-sky-800 text-white font-bold px-3 py-2">Import External AI review</button>
             <div id="gbV4ExternalReview" class="mt-3"></div>
             <p id="gbV4ExternalStatus" class="text-xs text-sky-900 mt-2" role="status"></p>
           </details>
-          <div class="mt-3 flex flex-wrap gap-2">
-            <button id="gbV4SaveDraft" type="button" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Save draft</button>
-            <button id="gbV4Publish" type="button" class="rounded-lg border border-emerald-400 text-emerald-800 font-bold px-4 py-2.5">Publish grade</button>
-          </div>
           <section id="gbV4LegacyGradePanel" hidden class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
             <strong class="text-sm text-amber-950">Imported historical score</strong>
-            <p class="text-xs text-amber-900 mt-1">The legacy record preserved the final score and feedback but not a trustworthy criterion-by-criterion allocation. Enter the reviewed rubric breakdown above; reconstruction must keep the exact historical score and maximum.</p>
+            <p class="text-xs text-amber-900 mt-1">Reconstruct the rubric without changing the original total.</p>
             <label class="block text-sm font-bold text-amber-950 mt-3">Reconstruction reason
               <textarea id="gbV4LegacyReason" rows="2" minlength="12" maxlength="2000" class="mt-1 w-full border border-amber-300 rounded-lg p-2.5 bg-white"></textarea>
             </label>
-            <button id="gbV4ConvertLegacy" type="button" class="mt-3 rounded-lg border border-amber-500 bg-amber-100 text-amber-950 font-bold px-4 py-2.5">Reconstruct historical rubric breakdown</button>
+            <button id="gbV4ConvertLegacy" type="button" class="mt-3 rounded-lg border border-amber-500 bg-amber-100 text-amber-950 font-bold px-4 py-2.5">Reconstruct rubric</button>
           </section>
           <details id="gbV4CorrectionPanel" class="hidden mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
             <summary class="font-bold text-rose-900 cursor-pointer">Correct a published grade</summary>
-            <p class="text-xs text-rose-800 mt-2">Corrections preserve the prior published revision and cannot alter the frozen student evidence.</p>
             <label class="block text-sm font-bold text-rose-900 mt-3">Correction note (optional)
               <textarea id="gbV4CorrectionReason" rows="2" maxlength="2000" class="mt-1 w-full border border-rose-300 rounded-lg p-2.5 bg-white"></textarea>
             </label>
@@ -195,16 +212,11 @@
             </div>
             <div id="gbV4GradeHistoryEntries" class="mt-2 space-y-2 max-h-96 overflow-auto"></div>
           </details>
-          <p id="gbV4ReviewStatus" class="text-sm text-slate-600 mt-2" role="status" aria-live="polite"></p>
         </section>
 
-        <details class="rounded-xl border border-amber-200 bg-amber-50 p-4">
-        <section class="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
-          <div>
-            <p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Private to this learner</p>
-            <h3 class="font-extrabold text-cyan-950 mt-1">Assessment conversation</h3>
-            <p class="text-xs text-cyan-900 mt-1">Use this for learner-specific questions and clarification. It is separate from the public classroom stream and from the published grade feedback.</p>
-          </div>
+        <details id="gbV4ConversationPanel" class="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+          <summary class="cursor-pointer font-bold text-cyan-950">Learner messages</summary>
+        <section class="mt-2">
           <div id="gbV4Conversation" class="mt-3 max-h-64 overflow-auto rounded-lg border border-cyan-200 bg-white p-3 space-y-2">
             <p class="text-sm text-slate-500">Open a learner submission to load private messages.</p>
           </div>
@@ -214,9 +226,9 @@
           </form>
           <p id="gbV4ConversationStatus" class="text-xs text-cyan-900 mt-2" role="status"></p>
         </section>
-
-          <summary class="font-bold text-amber-950 cursor-pointer">More actions · Request student revision</summary>
-          <p class="text-xs text-amber-900 mt-2">After the original deadline, an explicit extension is required. Published grades use the correction workflow instead.</p>
+        </details>
+        <details id="gbV4RevisionPanel" class="rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <summary class="font-bold text-amber-950 cursor-pointer">Request revision</summary>
           <label class="block text-sm font-bold mt-3">Revision feedback (optional)
             <textarea id="gbV4RevisionReason" rows="3" maxlength="2000" class="mt-1 w-full border border-amber-300 rounded-lg p-3 bg-white"></textarea>
           </label>
@@ -225,7 +237,14 @@
           </label>
           <button id="gbV4RequestRevision" type="button" class="mt-3 rounded-lg bg-amber-700 text-white font-bold px-4 py-2.5">Request revision</button>
         </details>
+        </div>
       </div>
+      <footer class="shrink-0 border-t border-slate-200 bg-white p-2 sm:px-4 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex-1 min-w-[100px]"><span id="gbV4DirtyIndicator" class="text-xs font-bold text-amber-800" role="status" hidden>Unsaved changes</span>
+        <p id="gbV4ReviewStatus" class="text-xs sm:text-sm text-slate-600 flex-1 min-w-[100px] break-words" role="status" aria-live="polite"></p></div>
+        <div class="flex flex-wrap gap-2"><button id="gbV4SaveDraft" type="button" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Save draft</button>
+            <button id="gbV4Publish" type="button" class="rounded-lg border border-emerald-400 text-emerald-800 font-bold px-4 py-2.5">Publish grade</button><button id="gbV4NextUngraded" type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold">Next ungraded</button></div>
+      </footer>
     </div>
   </dialog>
 </main>
@@ -233,5 +252,5 @@
 <script src="js/core/adminerva-loader.js?v=b04b2f540c7f"></script>
 <script defer src="js/core/adminerva-nav.js?v=b04b2f540c7f"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=b04b2f540c7f"></script>
-<script type="module" src="js/repo-review/v4-gradebook.mjs?v=20261128-studio-corrections"></script>
+<script type="module" src="js/repo-review/v4-gradebook.mjs?v=20261128-checkpoint-activity-2"></script>
 </body></html>
