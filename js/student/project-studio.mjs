@@ -16,7 +16,7 @@ import {
   getV4StudioSubmissionStatus,getV4StudioSubmittedRecovery,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject,retryV4StudioSchool
 } from "./v4-studio-service.mjs?v=20261126-rejection-1";
-import {describeStudioCloudSaveError,studioCloudRetryDelay} from "./studio-cloud-save-recovery.mjs?v=20261123-cloud-recovery-1";
+import {describeStudioCloudSaveError,studioCloudRetryDelay,studioAssessmentSaveBlock,studioAssessmentBlockLabel} from "./studio-cloud-save-recovery.mjs?v=20261123-cloud-recovery-1";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -212,6 +212,10 @@ export function createProjectStudio({
     showHome,
     saveState,
     captureClosingState,
+    suspendOrdinaryAssessmentSave:()=>{
+      if(activeProject?.assessment?.provisionedBy==="assessment-launch")blockOrdinarySave(activeProject.id,"STUDIO_EXAM_CLOSED");
+    },
+    hasUnbackedActiveProject:()=>Boolean(activeProject&&unbackedProjectIds.has(activeProject.id)),
     flushCloudSaves,
     hasPendingCloudSaves:()=>cloudEnabled&&cloudPending.size>0,
     recordRun,
@@ -338,12 +342,29 @@ export function createProjectStudio({
     if(cloudEnabled)scheduleCloudSave(activeProject);
     return {queued:cloudEnabled,deviceSaved};
   }
+  function blockOrdinarySave(id,reason){
+    writeMarker(id,{...readMarker(id),assessmentSaveBlock:reason});
+    clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
+    clearTimeout(cloudRetryTimers.get(id));cloudRetryTimers.delete(id);
+  }
+  function clearOrdinarySaveBlock(id){
+    const {assessmentSaveBlock,...marker}=readMarker(id);
+    if(assessmentSaveBlock){writeMarker(id,marker);cloudRetryAttempts.delete(id);}
+  }
+  function showBlockedSave(id){
+    const reason=readMarker(id).assessmentSaveBlock;
+    if(!reason)return false;
+    const prefix=unbackedProjectIds.has(id)?"No device backup · keep this tab open":"Device draft retained";
+    setCloudStatus(prefix+" · "+studioAssessmentBlockLabel(reason),"error",id);
+    return true;
+  }
   function scheduleCloudSave(project){
     if(!cloudEnabled||deletedProjects.has(project.id))return;
     clearTimeout(cloudRetryTimers.get(project.id));cloudRetryTimers.delete(project.id);
     const snapshot=clone(project),id=snapshot.id;
     cloudPending.set(id,snapshot);
     writeMarker(id,{...readMarker(id),pending:true});
+    if(showBlockedSave(id))return;
     const deviceUnavailable=unbackedProjectIds.has(id);
     setCloudStatus(deviceUnavailable?
       "Device backup unavailable · cloud save pending · keep this tab open":
@@ -357,7 +378,7 @@ export function createProjectStudio({
     // Never silently convert a closing checkpoint into an ordinary cloud save.
     if(closingSessionEpoch)return false;
     const failure=describeStudioCloudSaveError(error,{online:navigator.onLine!==false});
-    if(!failure.retryable||navigator.onLine===false||!cloudPending.has(id)||deletedProjects.has(id))return false;
+    if(!failure.retryable||readMarker(id).assessmentSaveBlock||navigator.onLine===false||!cloudPending.has(id)||deletedProjects.has(id))return false;
     const attempt=cloudRetryAttempts.get(id)||0;
     if(attempt>=4)return false;
     cloudRetryAttempts.set(id,attempt+1);
@@ -387,6 +408,7 @@ export function createProjectStudio({
       return flushOneAfterWrite(id,closingSessionEpoch);
     }
     const snapshot=cloudPending.get(id);
+    if(snapshot&&!closingSessionEpoch&&showBlockedSave(id))return false;
     // A normal autosave may have consumed the pending write before this
     // call obtained the per-project lock. An empty queue is NOT proof of
     // the teacher-close receipt: only an examFinalized server response is.
@@ -437,7 +459,10 @@ export function createProjectStudio({
         const same=cloudPending.get(id)===snapshot;
         if(same){cloudPending.delete(id);unbackedProjectIds.delete(id);}
         if(same){clearTimeout(cloudRetryTimers.get(id));cloudRetryTimers.delete(id);cloudRetryAttempts.delete(id);}
-        writeMarker(id,{...marker,pending:!same});
+        // A close signal may arrive while an ordinary write is in flight.
+        // Only a confirmed final checkpoint clears its ordinary-save block.
+        const assessmentSaveBlock=closingSessionEpoch?null:readMarker(id).assessmentSaveBlock;
+        writeMarker(id,{...marker,pending:!same,...(assessmentSaveBlock?{assessmentSaveBlock}:{})});
         progress(same?"cloud_confirmed":"newer_snapshot_pending");
         if(same){
           setCloudStatus("Saved to cloud","success",id);
@@ -452,18 +477,20 @@ export function createProjectStudio({
         document.dispatchEvent(new CustomEvent("adminerva:diagnostic-event",{detail:{
           action:"cloud_save_failed",errorCode:String(error?.code||error?.name||"unavailable"),reasonCode:error?.details?.diagnosticReason
         }}));
+        const block=studioAssessmentSaveBlock(error);
+        if(block&&snapshot.assessment?.provisionedBy==="assessment-launch")blockOrdinarySave(id,block);
         const failure=describeStudioCloudSaveError(error,{online:navigator.onLine!==false});
         const retrying=scheduleCloudRetry(id,error,closingSessionEpoch);
         const unbacked=unbackedProjectIds.has(id);
         diagnosticOutcome={deviceBackup:unbacked?"unavailable":"available",retryState:retrying?"scheduled":"not_scheduled"};
-        const suffix=retrying?" · retry scheduled":" · select Save to retry";
+        const suffix=retrying?" · retry scheduled":block?" · reopen from My Assessments":" · select Save to retry";
         setCloudStatus(unbacked?
           "No device backup or cloud confirmation · "+failure.label+" · keep this tab open":
           "Device copy saved · "+failure.label+suffix,"error",id);
         if(!activeProject)setCloudStatus(unbacked?
           "Unsaved in-memory draft · keep this tab open":
           "Device drafts retained · "+failure.label,"error");
-        const explanation=failure.detail+" · "+(retrying?"Automatic retry scheduled.":"Save again after resolving the problem.");
+        const explanation=failure.detail+" · "+(retrying?"Automatic retry scheduled.":block?"Draft retained. Reopen from My Assessments when authorized.":"Save again after resolving the problem.");
         const indicator=el("autoSaveIndicator");if(indicator&&activeProject?.id===id)indicator.title=explanation;
         const badge=el("activeProjectStorageBadge");if(badge&&activeProject?.id===id)badge.title=explanation;
         return false;
@@ -474,7 +501,7 @@ export function createProjectStudio({
     catch(error){reportDiagnostic(false);throw error;}
     finally{if(cloudWrites.get(id)===work){cloudWrites.delete(id);cloudWriteObservations.delete(id);}}
   }
-  async function flushCloudSaves({closingSessionEpoch=0}={}){
+  async function flushCloudSaves({closingSessionEpoch=0,projectId=null}={}){
     // Ordinary guest work can be saved locally, but an exam may never
     // report finalization without a school-owned cloud receipt.
     if(!cloudEnabled)return !closingSessionEpoch;
@@ -489,10 +516,10 @@ export function createProjectStudio({
       const saved=await flushOne(id,closingSessionEpoch);
       return Boolean(saved)&&!cloudPending.has(id);
     }
-    const ids=[...cloudPending.keys()];
+    const ids=projectId?[projectId]:[...cloudPending.keys()];
     if(!ids.length)return true;
     const result=await Promise.all(ids.map(id=>flushOne(id)));
-    return result.every(Boolean)&&!cloudPending.size;
+    return result.every(Boolean)&&(projectId?!cloudPending.has(projectId):!cloudPending.size);
   }
   function recoverCopy(project){
     const copy=createCodeProject(projectStorage,uid,{title:(project.title.slice(0,94)+" · Device recovery"),templateId:project.template,config:project.config});
@@ -538,7 +565,7 @@ export function createProjectStudio({
     }
     if(base.kind==="school")rememberV4StudioRevision(id,base.revision);
     const needsSync=chosen===local&&differs||Boolean(school&&base.kind==="legacy");
-    writeMarker(id,{...base,pending:Boolean(needsSync)});
+    writeMarker(id,{...base,pending:Boolean(needsSync),...(prior.assessmentSaveBlock?{assessmentSaveBlock:prior.assessmentSaveBlock}:{})});
     cloudPending.delete(id);clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
     const cached=cacheProject(chosen);
     if(needsSync)scheduleCloudSave(cached);
@@ -1185,6 +1212,10 @@ export function createProjectStudio({
         JSON.stringify(project.assessment||{})!==JSON.stringify(ownership)||
         project.template!==next.template||project.lang!==next.lang||
         JSON.stringify(project.config||{})!==JSON.stringify(next.config||{});
+      if(!sameOpenAssessment&&readMarker(project.id).assessmentSaveBlock){
+        // Resume only after the canonical assignment and its current epoch are verified.
+        await verifyAssessmentProjectOpen(next,{resumeBlocked:true});
+      }
       if(sameOpenAssessment){
         // Updating the variant or session binding is not a request to
         // reopen/reset source code. Keep the existing editor models intact.
@@ -1311,20 +1342,25 @@ export function createProjectStudio({
     }finally{button.disabled=false;}
   }
 
-  async function verifyAssessmentProjectOpen(project){
+  async function verifyAssessmentProjectOpen(project,{resumeBlocked=false}={}){
     const binding=project?.assessment;
-    if(binding?.provisionedBy!=="assessment-launch"||!binding.offeringId)return;
+    if(binding?.provisionedBy!=="assessment-launch")return;
+    if(!binding.offeringId&&!resumeBlocked)return;
     const tasks=await listV4StudioAssignments();
     if(!Array.isArray(tasks))
       throw Error("Your school exam access could not be checked. Reconnect and open the assessment from My Assessments.");
     const task=tasks.find(item=>item.taskId===(binding.taskId||binding.assessmentId));
-    if(!task||task.submissionSource!=="studio")
+    if(!task||task.submissionSource!=="studio"||(binding.offeringId&&task.offeringId!==binding.offeringId))
       throw Error("This school assessment is unavailable. Open it from My Assessments.");
     if(task.manualOpenRequired===true){
       if(task.manualAccessState!=="open"||task.lifecycle!=="active"||task.windowStatus==="closed")
         throw Error("Your teacher has closed this exam session. The project can be resumed after the next teacher opening.");
       if(Number(binding.sessionEpoch||0)!==Number(task.manualSessionEpoch||0))
         throw Error("This project belongs to an earlier class session. Reenter through My Assessments to resume its current session.");
+    }
+    if(resumeBlocked){
+      if(task.lifecycle!=="active"||task.windowStatus==="closed")throw Error("This school assessment is not open. Your device draft is retained.");
+      clearOrdinarySaveBlock(project.id);
     }
   }
   async function openProjectById(id){
