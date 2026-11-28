@@ -673,7 +673,7 @@ get("sr-guardian-lifecycle-form").addEventListener("submit",event=>{
 function closeRequest(){if(saving)return;requestPlacement=null;get("sr-request-dialog").close();}
 function openNewRequest(record=null){
   if(!current||saving)return;const form=get("sr-request-form");form.reset();requestPlacement=record?{personId:current.person.personId,registrationId:record.registrationId}:null;
-  form.elements.type.value=record?"transfer_certificate":"";const placement=get("sr-request-placement");placement.hidden=!record;placement.textContent=record?recordLabel(record):"";get("sr-request-dialog").showModal();
+  form.elements.type.value=record?"transfer_certificate":"";get("sr-request-status").textContent="";const placement=get("sr-request-placement");placement.hidden=!record;placement.textContent=record?recordLabel(record):"";get("sr-request-dialog").showModal();
 }
 get("sr-new-request").addEventListener("click",()=>openNewRequest());
 get("sr-request-close").addEventListener("click",closeRequest);
@@ -689,7 +689,7 @@ get("sr-request-form").addEventListener("submit",event=>{
       await perform("create_document_request",{personId,type,...(requestPlacement?{registrationId:requestPlacement.registrationId}:{}),
         purpose:String(data.get("purpose")||"").trim(),notes:String(data.get("notes")||"").trim()});
       requestPlacement=null;get("sr-request-dialog").close();await openStudent(personId,{force:true});showFileView("documents");status.textContent="Document request created.";
-    }catch(error){status.textContent=error?.message||"Document request was not created.";}
+    }catch(error){get("sr-request-status").textContent=error?.message||"Document request was not created.";}
     finally{setSaving(false);}
   })();
 });
