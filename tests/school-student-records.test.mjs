@@ -204,3 +204,14 @@ test("withdrawn office approval invalidates the unissued Good Moral draft",()=>{
   const block=source.slice(source.indexOf('if(input.action==="withdraw_good_moral_attestation")'),source.indexOf('if(input.action==="record_good_moral_attestation")'));
   assert.match(block,/certificateDraft:FieldValue.delete\(\)/);assert.match(block,/status:"withdrawn"/);assert.match(block,/school_admin/);assert.match(block,/revision:expected\+1/);
 });
+
+
+test("record review detects duplicate identifiers and placements without treating optional profile fields as enrollment gates",()=>{
+  const {studentReadinessIssues}=require("../functions/school-student-records.js");
+  const scope={schoolId:"school",personId:"student",person:{displayName:"Student",birthDate:"2012-01-01",studentNumber:"A",status:"active",accountResponsibility:"guardian"},profile:{lrn:"001234567890",lrnState:"verified",sex:"female",addressLine:"Address",cityMunicipality:"City"},claim:{schoolId:"school",personId:"student",status:"active"},numberMatches:1,registrations:[{status:"active",yearId:"year",termId:"term"}],guardians:[{status:"active",isPrimary:true}]};
+  assert.equal(studentReadinessIssues(scope).length,0);
+  const issues=studentReadinessIssues({...scope,numberMatches:2,claim:{schoolId:"school",personId:"other",status:"active"},registrations:[...scope.registrations,...scope.registrations]});
+  assert.deepEqual(issues.filter(row=>row.level==="conflict").map(row=>row.code).sort(),["duplicate_active_placement","duplicate_student_number","lrn_claim_conflict"]);
+  assert.match(service,/student_record_readiness/);assert.match(service,/requestedRegistrationId:registrationId/);
+  assert.match(recordsUi,/Request transfer certificate/);
+});
