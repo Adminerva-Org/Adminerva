@@ -180,6 +180,7 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
   }
   async function snapshot(row,registrationId,read){
     const type=credentialType(row.type);
+    if(row.requestedRegistrationId&&row.requestedRegistrationId!==registrationId)deny("failed-precondition","Use the original transfer-out registration linked to this request.");
     const personId=id(row.personId),[person,school,config,reg]=await Promise.all([
       read(db.doc(root+"people/"+personId)),read(schoolRef),read(templateRef(type)),read(db.doc(root+"student_registrations/"+id(registrationId)))
     ]);
@@ -210,7 +211,7 @@ async function registrarCredentialAction({db,ctx,input,requireMembership,student
       if(row.issuedDigest!==certificateDigest(row.issuedCertificate))deny("data-loss","Certificate snapshot integrity check failed.");
       return {type:row.type,state:row.credentialState||"issued",reference:row.releaseReference,issuedAt:row.issuedAt?.toMillis?.()||null,certificate:row.issuedCertificate,revision:Number(row.revision)||1};
     }
-    const placements=(await bounded(db.collection(root+"student_registrations").where("personId","==",row.personId),100,"Official placements")).filter(doc=>eligibleRegistration(row.type,doc.data()));
+    const placements=(await bounded(db.collection(root+"student_registrations").where("personId","==",row.personId),100,"Official placements")).filter(doc=>eligibleRegistration(row.type,doc.data())&&(!row.requestedRegistrationId||doc.id===row.requestedRegistrationId));
     return {type:row.type,state:row.status,revision:Number(row.revision)||1,certificate:row.certificateDraft||null,attestation:row.moralAttestation?{status:row.moralAttestation.status,registrationId:row.moralAttestation.registrationId,reference:row.moralAttestation.reference,office:row.moralAttestation.office}:null,
       placements:await Promise.all(placements.map(async doc=>({registrationId:doc.id,label:[await label(ref=>ref.get(),"academic_years",doc.data().yearId),await label(ref=>ref.get(),"terms",doc.data().termId),await label(ref=>ref.get(),"sections",doc.data().sectionId)].join(" · ")})))};
   }
