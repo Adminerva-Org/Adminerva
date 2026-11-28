@@ -71,3 +71,70 @@ test("cross-document marker observer does not change storage or emit identifying
  assert.match(handler,/context:\{peerMarker,localSaveState\}/);
  assert.doesNotMatch(handler,/writeMarker\(|markerCache\.set\(|cloudPending\.delete\(|flushOne\(/);
 });
+
+
+test("mutable Studio artifacts persist against the last accepted snapshot, not the live object",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const extract=(start,end)=>{
+    const a=source.indexOf(start),b=source.indexOf(end,a);
+    assert.ok(a>=0&&b>a);
+    return source.slice(a,b);
+  };
+  const run=new Function(`
+    let activeProject=null,activeContentBaseline=null,device=null;
+    let saves=0,queued=0,failDevice=false;
+    const cloudEnabled=true,projectStorage={},uid="student";
+    const unbackedProjectIds=new Set();
+    const validateProject=p=>{if(p.invalid)throw Error("invalid");};
+    const findCodeProject=()=>device;
+    const saveCodeProject=(_storage,_uid,p)=>{
+      if(failDevice)throw Error("quota");
+      saves++;device=structuredClone(p);return structuredClone(p);
+    };
+    const normalizeProject=p=>structuredClone(p);
+    const readMarker=()=>({kind:"school",pending:false});
+    const scheduleCloudSave=()=>{queued++;};
+    const updateProjectHeading=()=>{},updateQuotaUI=()=>{},setCloudStatus=()=>{};
+    const window={dispatchEvent(){}};
+    const CustomEvent=class {};
+    const console={warn(){}};
+    ${extract("  function stable(","  function setCloudStatus(")}
+    ${extract("  function store(","  function saveState(")}
+    const initial={id:"p",title:"Project",state:{files:{"Main.java":"old"}},
+      design:{},database:{tables:{}},evidence:{runs:[]}};
+    activeProject=structuredClone(initial);device=structuredClone(initial);
+    activeContentBaseline={id:initial.id,key:contentKey(initial)};
+    return {
+      mutate:fn=>fn(activeProject),
+      save:()=>store(activeProject,true),
+      counts:()=>[saves,queued],
+      device:()=>device,
+      memory:()=>activeProject,
+      fail:()=>{failDevice=true;},
+      unbacked:()=>unbackedProjectIds.has("p")
+    };
+  `)();
+  run.save();assert.deepEqual(run.counts(),[0,0]);
+  const changes=[
+    p=>{p.design.useCase="flowchart TD";},
+    p=>{p.database.tables.people={rows:[{id:1}]};},
+    p=>{p.evidence.runs.push({status:"finished"});},
+    p=>{p.state.files["Main.java"]="reset";},
+    p=>{p.title="Imported bundle";}
+  ];
+  for(const [index,change] of changes.entries()){
+    run.mutate(change);run.save();
+    assert.deepEqual(run.counts(),[index+1,index+1]);
+    assert.deepEqual(run.device(),run.memory());
+    run.save();assert.deepEqual(run.counts(),[index+1,index+1]);
+  }
+  run.mutate(p=>{p.invalid=true;});
+  assert.throws(()=>run.save(),/invalid/);
+  assert.deepEqual(run.counts(),[5,5]);
+  run.mutate(p=>{delete p.invalid;p.design.useCase="memory-only";});
+  run.fail();run.save();
+  assert.equal(run.unbacked(),true);
+  assert.equal(run.memory().design.useCase,"memory-only");
+  assert.notEqual(run.device().design.useCase,"memory-only");
+  assert.deepEqual(run.counts(),[5,6]);
+});
