@@ -13,7 +13,7 @@ let requestedPersonId=(()=>{try{
 let picker=null,students=[],current=null,saving=false,searchRun=0,fileRun=0,
   guardianChange=null,guardianLifecycle=null,requestLifecycle=null;
 let directoryCursor=null,directoryQuery="",directoryBusy=false;
-let fileView="registrations",historyBusy=false;
+let fileView="registrations",historyBusy=false,readinessRun=0,readinessData=null,requestPlacement=null;
 let profileData=null,profileRun=0,profileDirty=false;
 let requestedQueueStatus=(()=>{try{const url=new URL(location.href),value=url.searchParams.get("status");return url.searchParams.get("view")==="requests"&&["requested","in_review","ready","released","cancelled","open","all"].includes(value)?value:"";}catch{return "";}})();
 let recordsMode="students",queueRows=[],queueCursor=null,queueRun=0,queueBusy=false,queueSkipped=0;
@@ -153,6 +153,7 @@ function renderRegistrations(data){
     if(record.status==="active"&&picker.scope.current.enrollmentMode==="canonical"){
       const link=document.createElement("a");link.className="sr-btn secondary";link.textContent="Transfer out";link.href="school-enrollment.html?schoolId="+encodeURIComponent(picker.scope.current.schoolId)+"&personId="+encodeURIComponent(data.person.personId)+"&registrationId="+encodeURIComponent(record.registrationId)+"&intent=transfer_out";row.append(link);
     }
+    if(record.status==="ended"&&record.endReasonType==="transfer_out")row.append(button("Request transfer certificate",{tone:"secondary",onClick:()=>openNewRequest(record)}));
     host.append(row);
   }
 }
@@ -240,14 +241,33 @@ get("sr-load-admission-docs").addEventListener("click",()=>void loadAdmissionDoc
 const historyKeys={registrations:"registrationId",guardians:"relationshipId",documentRequests:"requestId",releasedGrades:"offeringId",audit:"auditId"};
 const historyRenderers={registrations:renderRegistrations,guardians:renderGuardians,documentRequests:renderRequests,releasedGrades:renderGrades,audit:renderAudit};
 function showFileView(view){
-  if(!["registrations","profile","releasedGrades","guardians","documents","audit"].includes(view))return;
+  if(!["readiness","registrations","profile","releasedGrades","guardians","documents","audit"].includes(view))return;
   if(fileView==="profile"&&view!=="profile"&&profileDirty&&!confirm("Discard unsaved profile changes?"))return;
   if(fileView==="profile"&&view!=="profile"&&profileDirty)clearProfile();
   fileView=view;
   for(const panel of document.querySelectorAll("[data-sr-panel]"))panel.hidden=panel.dataset.srPanel!==view;
   for(const control of document.querySelectorAll("[data-sr-view]"))control.setAttribute("aria-pressed",String(control.dataset.srView===view));
   if(view==="profile"&&current&&!profileData)void loadProfile();
+  if(view==="readiness"&&current&&!readinessData)void loadReadiness();
 }
+function clearReadiness(){++readinessRun;readinessData=null;get("sr-readiness-list").replaceChildren();get("sr-readiness-status").textContent="";}
+async function loadReadiness(){
+  if(saving||!current)return;const personId=current.person.personId,run=++readinessRun,host=get("sr-readiness-list");host.replaceChildren();get("sr-readiness-status").textContent="Checking canonical records…";
+  try{
+    const data=await perform("student_record_readiness",{personId});if(run!==readinessRun||current?.person.personId!==personId)return;
+    readinessData=data;const conflicts=data.issues.filter(issue=>issue.level==="conflict").length;
+    get("sr-readiness-status").textContent=conflicts+" conflicts · "+(data.issues.length-conflicts)+" items to review"+(data.partial?" · partial scan":"")+" · "+fmt(data.asOf);
+    if(!data.issues.length)empty(host,"No issues found in this record check. Academic evidence is checked separately.");
+    for(const issue of data.issues){
+      const row=document.createElement("article");row.className="sr-row";row.append(textNode("strong",issue.label));
+      if(issue.view==="identity"){if(!get("sr-open-people").hidden){const link=document.createElement("a");link.className="sr-btn secondary";link.href=get("sr-open-people").href;link.textContent="Identity & access";row.append(link);}else row.append(textNode("span","School Administrator review","sr-muted"));}
+      else row.append(button("Review",{tone:"secondary",onClick:()=>showFileView(issue.view)}));
+      host.append(row);
+    }
+  }catch(error){if(run===readinessRun)get("sr-readiness-status").textContent=error?.message||"Record check unavailable.";}
+}
+get("sr-readiness-refresh").addEventListener("click",()=>void loadReadiness());
+get("sr-readiness-academic").addEventListener("click",()=>{if(current&&!saving){showFileView("releasedGrades");academicOptions();get("sr-academic-dialog").showModal();}});
 function renderHistoryControls(){
   for(const section of Object.keys(historyKeys)){
     const cursor=current?.nextCursors?.[section];
@@ -541,7 +561,7 @@ function renderFile(data){
 async function openStudent(personId,{force=false}={}){
   if(saving&&!force)return;
   if(profileDirty&&!force&&!confirm("Discard unsaved profile changes?"))return;
-  clearProfile();resetAcademic();
+  clearProfile();resetAcademic();clearReadiness();requestPlacement=null;
   if(current?.person.personId!==personId){fileView="registrations";fileHost.hidden=true;}
   historyBusy=false;const run=++fileRun;status.textContent="Loading student record…";
   try{
@@ -650,21 +670,25 @@ get("sr-guardian-lifecycle-form").addEventListener("submit",event=>{
   })();
 });
 
-function closeRequest(){if(saving)return;get("sr-request-dialog").close();}
-get("sr-new-request").addEventListener("click",()=>{
-  if(!current||saving)return;get("sr-request-form").reset();get("sr-request-dialog").showModal();
-});
+function closeRequest(){if(saving)return;requestPlacement=null;get("sr-request-dialog").close();}
+function openNewRequest(record=null){
+  if(!current||saving)return;const form=get("sr-request-form");form.reset();requestPlacement=record?{personId:current.person.personId,registrationId:record.registrationId}:null;
+  form.elements.type.value=record?"transfer_certificate":"";const placement=get("sr-request-placement");placement.hidden=!record;placement.textContent=record?recordLabel(record):"";get("sr-request-dialog").showModal();
+}
+get("sr-new-request").addEventListener("click",()=>openNewRequest());
 get("sr-request-close").addEventListener("click",closeRequest);
-get("sr-request-dialog").addEventListener("cancel",event=>{if(saving)event.preventDefault();});
+get("sr-request-dialog").addEventListener("cancel",event=>{if(saving)event.preventDefault();else requestPlacement=null;});
 get("sr-request-form").addEventListener("submit",event=>{
   event.preventDefault();if(saving||!current||!event.currentTarget.reportValidity())return;
   const data=new FormData(event.currentTarget),personId=current.person.personId;
   void (async()=>{
     setSaving(true,"Creating registrar document request…");
     try{
-      await perform("create_document_request",{personId,type:String(data.get("type")||""),
+      const type=String(data.get("type")||"");
+      if(requestPlacement&&(requestPlacement.personId!==personId||type!=="transfer_certificate"))throw new Error("Open a new request to select a different document type.");
+      await perform("create_document_request",{personId,type,...(requestPlacement?{registrationId:requestPlacement.registrationId}:{}),
         purpose:String(data.get("purpose")||"").trim(),notes:String(data.get("notes")||"").trim()});
-      get("sr-request-dialog").close();await openStudent(personId,{force:true});status.textContent="Document request created.";
+      requestPlacement=null;get("sr-request-dialog").close();await openStudent(personId,{force:true});showFileView("documents");status.textContent="Document request created.";
     }catch(error){status.textContent=error?.message||"Document request was not created.";}
     finally{setSaving(false);}
   })();
@@ -769,7 +793,7 @@ picker=createTenantSchoolPicker({
     if(profileDirty&&!confirm("Discard unsaved profile changes?"))throw new Error("Finish the profile edit before switching schools.");
     if(externalDirty&&!confirm("Discard unsaved source record changes?"))throw new Error("Finish the source record edit before switching schools.");
     clearExternal();
-    clearProfile();resetAcademic();closeCertificate();closeCertificateSettings();clearVerify();clearLrnLookup();
+    clearProfile();resetAcademic();clearReadiness();requestPlacement=null;closeCertificate();closeCertificateSettings();clearVerify();clearLrnLookup();
     ++searchRun;++fileRun;requestedPersonId="";requestedQueueStatus="";students=[];current=null;historyBusy=false;fileView="registrations";guardianChange=null;guardianLifecycle=null;requestLifecycle=null;
     directoryCursor=null;directoryQuery="";directoryBusy=false;get("sr-more").hidden=true;get("sr-search-progress").textContent="";
     ++queueRun;queueRows=[];queueCursor=null;queueBusy=false;queueSkipped=0;recordsMode="students";get("sr-requests-workspace").hidden=true;get("sr-workspace-nav").hidden=true;get("sr-queue-list").replaceChildren();get("sr-queue-search").value="";get("sr-queue-filter").value="open";get("sr-queue-status").textContent="";
