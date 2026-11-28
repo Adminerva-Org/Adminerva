@@ -245,7 +245,7 @@
           <p id="pa-person-dialog-target" class="pa-muted"></p>
           <label id="pa-person-name-field">Display name<input name="displayName" class="pa-field" maxlength="140"></label>
           <div id="pa-student-profile-fields" hidden style="display:grid;gap:.6rem;margin:.7rem 0">
-            <label>Student number<input name="studentNumber" class="pa-field" maxlength="80" placeholder="Student number"></label>
+            <label>Student number<input name="studentNumber" class="pa-field" maxlength="80" placeholder="Student number"></label><label>Birth date<input name="birthDate" type="date" class="pa-field"></label><p class="pa-muted">Name and birth-date amendments require a stable student activation identity. Historical records remain unchanged.</p>
             <p class="pa-muted">Guardian contacts and relationships are maintained in Student Records / 201 File. The older primary-guardian snapshot is preserved for compatibility but is no longer edited from People &amp; Access.</p>
           </div>
           <label id="pa-person-reason-field" hidden>Reason<input name="reason" class="pa-field" minlength="12" maxlength="500" placeholder="Explain why this record status is changing"></label>
@@ -498,7 +498,7 @@
 <script defer src="js/core/adminerva-nav.js?v=7fe6ab08fd82"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7fe6ab08fd82"></script>
 <script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=20261120-assist-context"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=7fe6ab08fd82"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=20261128-registrar-identity"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
