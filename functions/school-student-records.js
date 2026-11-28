@@ -68,6 +68,24 @@ function normalizeRegistrarProfile(input){
     province:optional(input.province,100),postalCode:optional(input.postalCode,20),
     country:optional(input.country,80),previousSchool:optional(input.previousSchool,180)};
 }
+function studentReadinessIssues({person,profile,claim,numberMatches,registrations,guardians,schoolId,personId}){
+  const issues=[],add=(code,level,view,label)=>issues.push({code,level,view,label});
+  if(!person.displayName||!person.birthDate)add("identity_incomplete","review","identity","Legal name or birth date is missing.");
+  if(!person.studentNumber)add("student_number_missing","review","identity","Student number is not recorded.");
+  else if(numberMatches>1)add("duplicate_student_number","conflict","identity","The student number is shared by multiple school records.");
+  if(!profile?.lrn)add("lrn_missing","review","profile","LRN is not recorded.");
+  else if(!/^\d{12}$/.test(profile.lrn)||!claim||claim.schoolId!==schoolId||claim.personId!==personId||claim.status!=="active")add("lrn_claim_conflict","conflict","profile","LRN claim requires identity review.");
+  else if(profile.lrnState!=="verified")add("lrn_unverified","review","profile","LRN has not been verified.");
+  if(!profile?.sex||!profile?.addressLine||!profile?.cityMunicipality)add("profile_incomplete","review","profile","Review missing profile and address details.");
+  if(person.status==="active"&&person.accountResponsibility!=="guardian"&&!person.authUid)add("activation_pending","review","identity","Student account is not linked.");
+  if(!registrations.length)add("no_registration","review","registrations","No official registration is recorded.");
+  const active=registrations.filter(row=>row.status==="active"),periods=new Set();
+  for(const row of active){const key=JSON.stringify([row.yearId,row.termId]);if(periods.has(key)){add("duplicate_active_placement","conflict","registrations","More than one active registration exists in the same period.");break;}periods.add(key);}
+  const live=guardians.filter(row=>row.status==="active"),primary=live.filter(row=>row.isPrimary===true);
+  if(!live.length)add("guardian_missing","review","guardians","No active guardian relationship is recorded.");
+  else if(primary.length!==1)add("guardian_primary_review",primary.length>1?"conflict":"review","guardians","Review the primary guardian designation.");
+  return issues;
+}
 function requestTypeLabel(type){
   return ({
     certificate_of_enrollment:"Certificate of Enrollment",
@@ -116,6 +134,26 @@ function createSchoolStudentRecordsService({db}){
     }
     if(CREDENTIAL_ACTIONS.has(input.action))return registrarCredentialAction({db,ctx,input,requireMembership:requireRegistrarMembership,student});
     if(EXTERNAL_ACADEMIC_ACTIONS.has(input.action))return externalAcademicAction({db,ctx,input,requireMembership:requireRegistrarMembership,student});
+    if(input.action==="student_record_readiness"){
+      await requireRegistrarMembership(ref=>ref.get());
+      const personId=id(input.personId,"Person ID"),a=await student(personId),person=a.data;
+      const [profileDoc,regSnap,guardianSnap,numberSnap]=await Promise.all([
+        db.doc(root+"student_registrar_profiles/"+personId).get(),
+        db.collection(root+"student_registrations").where("personId","==",personId).limit(101).get(),
+        db.collection(root+"guardian_relationships").where("studentPersonId","==",personId).limit(51).get(),
+        person.studentNumber?db.collection(root+"people").where("studentNumber","==",person.studentNumber).limit(3).get():Promise.resolve({docs:[]})
+      ]);
+      if(profileDoc.exists&&(profileDoc.data().schoolId!==ctx.schoolId||profileDoc.data().personId!==personId))deny("data-loss","Student profile ownership mismatch.");
+      const profile=profileDoc.exists?profileDoc.data():null,claimDoc=profile?.lrn&&/^\d{12}$/.test(profile.lrn)?await db.doc(root+"student_lrn_claims/"+key("lrn",profile.lrn)).get():null;
+      const registrations=regSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().personId===personId).map(doc=>doc.data()),
+        guardians=guardianSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().studentPersonId===personId).map(doc=>doc.data()),
+        numberMatches=numberSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().kind==="student").length;
+      const issues=studentReadinessIssues({person,profile,claim:claimDoc?.exists?claimDoc.data():null,numberMatches,registrations,guardians,schoolId:ctx.schoolId,personId});
+      const partial=regSnap.size===101||guardianSnap.size===51||numberSnap.docs.length===3;
+      if(partial)issues.push({code:"bounded_history",level:"review",view:"registrations",label:"Some history exceeds readiness scan limits. Review the paginated records."});
+      return {personId,asOf:Date.now(),partial,issues,registrationCount:registrations.length,guardianCount:guardians.length,
+        academicEvidenceChecked:false};
+    }
     if(input.action==="find_student_by_lrn"){
       await requireRegistrarMembership(ref=>ref.get());
       const lrn=normalizeLrn(input.lrn);if(!lrn)deny("invalid-argument","Enter an existing 12-digit LRN.");
@@ -551,15 +589,21 @@ function createSchoolStudentRecordsService({db}){
       const type=String(input.type||"").trim();
       if(!REQUEST_TYPES.has(type))deny("invalid-argument","Choose a supported student record request type.");
       const purpose=required(input.purpose,"Request purpose",300),notes=optional(input.notes,500)||"",
-        requestRef=db.collection(root+"student_document_requests").doc(),requestId=requestRef.id;
+        requestRef=db.collection(root+"student_document_requests").doc(),requestId=requestRef.id,
+        registrationId=input.registrationId?id(input.registrationId,"Registration ID"):null;
+      if(registrationId&&type!=="transfer_certificate")deny("invalid-argument","A linked transfer-out request must be a transfer certificate.");
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
         const currentStudent=await tx.get(a.ref);
         if(!currentStudent.exists||currentStudent.data().schoolId!==ctx.schoolId||
            !["active","archived"].includes(currentStudent.data().status))
           deny("failed-precondition","The student record changed. Refresh before creating the request.");
+        if(registrationId){
+          const reg=await tx.get(db.doc(root+"student_registrations/"+registrationId));
+          if(!reg.exists||reg.data().schoolId!==ctx.schoolId||reg.data().personId!==personId||reg.data().status!=="ended"||reg.data().endReasonType!=="transfer_out")deny("failed-precondition","The transfer-out registration changed. Refresh the student file.");
+        }
         const now=FieldValue.serverTimestamp();
-        tx.create(requestRef,{schoolId:ctx.schoolId,personId,type,status:"requested",purpose,notes,
+        tx.create(requestRef,{schoolId:ctx.schoolId,personId,type,status:"requested",purpose,notes,...(registrationId?{requestedRegistrationId:registrationId}:{}),
           generationMode:Object.hasOwn(CREDENTIAL_TYPES,type)?"institutional":"external",
           requestedByUid:ctx.uid,requestedAt:now,revision:1,updatedAt:now});
         tx.create(db.collection(root+"student_records_audit").doc(),{
@@ -619,5 +663,5 @@ function createSchoolStudentRecordsService({db}){
   };
 }
 module.exports={
-  createSchoolStudentRecordsService,REQUEST_TYPES,REQUEST_TRANSITIONS,requestTypeLabel,normalizeLrn,normalizeRegistrarProfile
+  createSchoolStudentRecordsService,REQUEST_TYPES,REQUEST_TRANSITIONS,requestTypeLabel,normalizeLrn,normalizeRegistrarProfile,studentReadinessIssues
 };
