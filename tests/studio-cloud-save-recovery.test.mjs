@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {describeStudioCloudSaveError,studioCloudRetryDelay} from "../js/student/studio-cloud-save-recovery.mjs";
+import {describeStudioCloudSaveError,studioCloudRetryDelay,studioAssessmentSaveBlock,studioAssessmentBlockLabel} from "../js/student/studio-cloud-save-recovery.mjs";
 
 test("temporary Studio cloud failures retry with bounded backoff",()=>{
   assert.equal(describeStudioCloudSaveError({code:"functions/unavailable"}).retryable,true);
@@ -137,4 +137,53 @@ test("mutable Studio artifacts persist against the last accepted snapshot, not t
   assert.equal(run.memory().design.useCase,"memory-only");
   assert.notEqual(run.device().design.useCase,"memory-only");
   assert.deepEqual(run.counts(),[5,6]);
+});
+
+
+test("server-confirmed assessment rejections suspend ordinary writes even while offline",()=>{
+  for(const reason of ["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_CLOSED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_STATE_CHANGED","STUDIO_FINAL_CHECKPOINT_EXPIRED"]){
+    const error={code:"functions/failed-precondition",details:{diagnosticReason:reason}};
+    assert.equal(studioAssessmentSaveBlock(error),reason);
+    assert.equal(describeStudioCloudSaveError(error,{online:false}).retryable,false);
+  }
+  assert.equal(studioAssessmentSaveBlock({code:"functions/unavailable",details:{diagnosticReason:"STUDIO_EXAM_CLOSED"}}),"");
+  assert.equal(studioAssessmentSaveBlock({code:"functions/failed-precondition",details:{diagnosticReason:"STUDIO_REVISION_CONFLICT"}}),"");
+});
+
+test("blocked assessment drafts remain queued without ordinary timers or retries",()=>{
+  const source=readFileSync("js/student/project-studio.mjs","utf8");
+  const start=source.indexOf("  function blockOrdinarySave("),end=source.indexOf("  async function flushOne(",start);
+  assert.ok(start>=0&&end>start);
+  const make=new Function("studioAssessmentBlockLabel","describeStudioCloudSaveError",`
+    const cloudEnabled=true,deletedProjects=new Set(),cloudPending=new Map(),unbackedProjectIds=new Set();
+    const cloudTimers=new Map(),cloudRetryTimers=new Map(),cloudRetryAttempts=new Map(),markers=new Map();
+    const readMarker=id=>markers.get(id)||{},writeMarker=(id,value)=>markers.set(id,value);
+    const clone=p=>JSON.parse(JSON.stringify(p));
+    const navigator={onLine:true};let timerCount=0,status="";
+    const setCloudStatus=message=>{status=message;};
+    const setTimeout=()=>++timerCount,clearTimeout=()=>{};
+    ${source.slice(start,end)}
+    return {blockOrdinarySave,clearOrdinarySaveBlock,scheduleCloudSave,scheduleCloudRetry,
+      marker:readMarker,pending:id=>cloudPending.get(id),timers:()=>cloudTimers.size,
+      status:()=>status};
+  `);
+  const run=make(studioAssessmentBlockLabel,describeStudioCloudSaveError);
+  run.scheduleCloudSave({id:"exam",state:{files:{main:"old"}}});
+  assert.equal(run.timers(),1);
+  run.blockOrdinarySave("exam","STUDIO_EXAM_CLOSED");
+  run.scheduleCloudSave({id:"exam",state:{files:{main:"new"}}});
+  assert.equal(run.timers(),0);
+  assert.equal(run.pending("exam").state.files.main,"new");
+  assert.equal(run.marker("exam").pending,true);
+  assert.match(run.status(),/Device draft retained/);
+  assert.equal(run.scheduleCloudRetry("exam",{code:"functions/unavailable"},0),false);
+  run.scheduleCloudSave({id:"personal",state:{files:{main:"other"}}});
+  assert.equal(run.timers(),1);
+  run.clearOrdinarySaveBlock("exam");
+  run.scheduleCloudSave(run.pending("exam"));
+  assert.equal(run.timers(),2);
+  assert.match(source,/if\(snapshot&&!closingSessionEpoch&&showBlockedSave\(id\)\)return false/);
+  assert.match(source,/if\(closingSessionEpoch&&result\.examFinalized!==true\)/);
+  assert.match(source,/await verifyAssessmentProjectOpen\(next,\{resumeBlocked:true\}\)/);
+  assert.match(source,/closingSessionEpoch\?"STUDIO_EXAM_CLOSED":readMarker\(id\)\.assessmentSaveBlock/);
 });
