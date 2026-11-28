@@ -254,3 +254,39 @@ test("peer marker observations are bounded, client-only and cannot assert succes
  assert.throws(()=>checkedEvent({...peer,context:{...peer.context,peerMarker:"private"}}),/diagnostic/);
  assert.throws(()=>checkedEvent({...peer,context:{...peer.context,pageInstanceId:"project-name"}}),/diagnostic/);
 });
+
+test("academic correlation is allowed only for fixed write actions, never for grade reads",()=>{
+ const {clientCorrelation}=require("../functions/platform-account-diagnostics.js");
+ const diagnostic={sessionId:SESSION,operationId:EVENT};
+ for(const [service,action,process,module] of [
+  ["schoolAssessmentSubmissions","submit","assessment_response_submit","assessments"],
+  ["schoolGradebook","correct_published","gradebook_correct","grades"],
+  ["schoolClassRecord","finalize_period","class_record_finalize","grades"],
+  ["schoolClassRecordAdmin","approve_legacy_custody","class_record_custody_approve","grades"]]){
+   assert.deepEqual(clientCorrelation(request(USER,{action,_diagnostic:diagnostic}),service),diagnostic);
+   assert.equal(checkedEvent(event({module,kind:"action",action:"process_started",state:"info",operationId:EVENT,phase:"started",context:{process}})).context.process,process);
+ }
+ for(const [service,action] of [["schoolGradebook","my_published"],["schoolClassRecord","workspace"],["schoolClassRecordAdmin","overview"],["schoolAssessmentSubmissions","get_draft"]]){
+   assert.deepEqual(clientCorrelation(request(USER,{action,_diagnostic:diagnostic}),service),{});
+ }
+});
+test("academic callable adapter preserves payload and response, never passes private data into telemetry",async()=>{
+ const {observedAcademicCallable}=await import("../js/core/academic-callable-diagnostics.mjs");
+ const original=globalThis.AdminervaDiagnostic,calls=[],events=[],diagnostic={sessionId:SESSION,operationId:EVENT};
+ try{
+   globalThis.AdminervaDiagnostic={beginProcess(name){events.push(name);const finish=(...args)=>events.push(args);finish.correlation=diagnostic;return finish;}};
+   const input={schoolId:"school",action:"save_draft",scores:[12],feedback:"private"};
+   const response={data:{revision:3}};
+   const call=observedAcademicCallable("schoolGradebook",async payload=>{calls.push(payload);return response;});
+   assert.equal(await call(input),response);assert.deepEqual(calls[0],{...input,_diagnostic:diagnostic});
+   assert.equal(Object.hasOwn(input,"_diagnostic"),false);
+   assert.deepEqual(events,["gradebook_draft_save",[true,"unknown"]]);
+   const read={action:"get_draft"};await call(read);assert.equal(calls[1],read);assert.equal(events.length,2);
+   const failure=Object.assign(Error("private student answer"),{code:"functions/failed-precondition"});
+   await assert.rejects(observedAcademicCallable("schoolGradebook",async()=>{throw failure;})(input),error=>error===failure);
+   assert.deepEqual(events.at(-1),[false,"failed-precondition"]);
+   assert.doesNotMatch(JSON.stringify(events),/private|scores|feedback/);
+   globalThis.AdminervaDiagnostic={beginProcess(){throw Error("telemetry");}};
+   assert.equal(await call(input),response);assert.equal(calls.at(-1),input);
+ }finally{if(original===undefined)delete globalThis.AdminervaDiagnostic;else globalThis.AdminervaDiagnostic=original;}
+});

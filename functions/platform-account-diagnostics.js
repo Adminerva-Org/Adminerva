@@ -54,7 +54,7 @@ function release(value){
 }
 
 const CONTROLS=new Set(["runBtn","studioConfirmSubmit","evidenceSubmit","evidenceWithdraw","manualReviewAnalyze","newCodeProjectBtn","archivedCodeProjectsBtn","legacyDraftProjectBtn","refreshEarlierProjectsBtn","studioTaskSubmitShortcut","studioTaskOpenDesktop","studioMobileTask","backToProjectsBtn","saveProjectBtn","cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","restoreSubmittedSourceBtn","importZipBtn","exportZipBtn","resetBtn","snapshotBtn","legacyImportBtn","studioSubmitAssessment","aiTutorBtn","projectSettingsBtn","studioPreferencesBtn","studioMobileRun","studioCancelQueueBtn","cancelRunBtn","stopDesktopBtn","stopCheerpjBtn","saveDesignBtn","renderDesignBtn","enableProjectDbBtn","dbNewTableBtn","dbExportCsvBtn","dbInsertRowBtn","dbRunBtn","evidenceRefresh","projectWizardCreate","projectSettingsSave","studioReadinessJoin","pu-create","pu-refresh","pu-save-profile","pu-reset-password","pu-platform-authority","pu-lifecycle","pu-test-toggle","pu-test-grant","pu-create-submit"]);
-const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_get","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery"]);
+const PROCESS_NAMES=new Set(["studio_cloud_save","studio_api_sync","studio_api_get","studio_api_submit","studio_api_archive","studio_api_restore","studio_api_variant_assign","studio_revision_recovery","assessment_draft_save","assessment_response_submit","assessment_revision_request","assessment_studio_revision_request","assessment_github_submit","assessment_github_revision_request","gradebook_draft_save","gradebook_publish","gradebook_bulk_publish","gradebook_correct","gradebook_legacy_convert","gradebook_legacy_published_convert","class_record_scheme_save","class_record_scheme_archive","class_record_scheme_restore","class_record_layout_save","class_record_scores_save","class_record_status_save","class_record_finalize","class_record_release","class_record_withdraw","class_record_custody_approve","class_record_custody_revoke"]);
 const CONTEXT_ENUMS={visibility:["visible","hidden","other"],network:["online","offline"],focus:["focused","unfocused"],ready:["loading","interactive","complete","other"],dialog:["open","none"],busy:["busy","idle"]};
 function checkedContext(value){
   if(!value||typeof value!=="object"||Array.isArray(value))deny("invalid-argument","Invalid diagnostic context.");
@@ -147,7 +147,8 @@ function safeService(value){
 const STUDIO_REASONS=new Set(["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_STATE_CHANGED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_CLOSED","STUDIO_FINAL_CHECKPOINT_REQUIRED","STUDIO_FINAL_CHECKPOINT_CONFLICT","STUDIO_FINAL_CHECKPOINT_EXPIRED","STUDIO_PROJECT_ARCHIVED","STUDIO_EMPTY_SNAPSHOT_REJECTED","STUDIO_REVISION_REQUIRED","STUDIO_REVISION_CONFLICT","STUDIO_EXAM_PROJECT_PROTECTED","STUDIO_NOT_ARCHIVED"]);
 function studioDiagnosticReason(error){return STUDIO_REASONS.has(error?.diagnosticReason)?error.diagnosticReason:"";}
 // These identifiers are client-declared correlation hints, never identity or authority.
-const CORRELATED_CALLS={schoolStudioProjects:new Set(["sync","get","archive","restore"]),schoolStudioSubmissions:new Set(["submit"]),schoolStudioAssessmentVariant:new Set(["assign"])};
+const CORRELATED_CALLS={schoolStudioProjects:new Set(["sync","get","archive","restore"]),schoolStudioSubmissions:new Set(["submit","request_revision"]),schoolStudioAssessmentVariant:new Set(["assign"]),schoolAssessmentSubmissions:new Set(["save_draft","submit","request_revision"]),schoolGithubEvidence:new Set(["submit","request_revision"]),schoolGradebook:new Set(["save_draft","publish","publish_task_drafts","correct_published","convert_legacy_scalar","convert_legacy_published"]),schoolClassRecord:new Set(["save_scheme","archive_scheme","restore_scheme","save_layout","save_manual_scores","save_cell_status","finalize_period","release_final_grade","withdraw_final_grade"]),schoolClassRecordAdmin:new Set(["approve_legacy_custody","revoke_legacy_custody"])};
+function isCorrelatedService(service){return Object.hasOwn(CORRELATED_CALLS,service);}
 function clientCorrelation(request,service){
   if(!Object.hasOwn(CORRELATED_CALLS,service)||!CORRELATED_CALLS[service].has(request?.data?.action))return {};
   const value=request?.data?._diagnostic;
@@ -668,4 +669,4 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
   }
   return {service,writeServerFailure,recordServerProcess,recordNotificationDelivered,cleanup};
 }
-module.exports={clientCorrelation,studioDiagnosticReason,RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics};
+module.exports={isCorrelatedService,clientCorrelation,studioDiagnosticReason,RETENTION_DAYS,PER_ACCOUNT_DAILY_LIMIT,checkedEvent,diagnosticSeverity,createPlatformAccountDiagnostics};

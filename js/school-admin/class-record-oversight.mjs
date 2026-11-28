@@ -1,9 +1,10 @@
 import {app} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
+import {observedAcademicCallable} from "../core/academic-callable-diagnostics.mjs?v=20261128-academic-trace";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 
 const el=id=>document.getElementById(id);
-const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolClassRecordAdmin");
+const api=observedAcademicCallable("schoolClassRecordAdmin",httpsCallable(getFunctions(app,"asia-southeast1"),"schoolClassRecordAdmin"));
 const list=el("cro-list"),status=el("cro-status"),search=el("cro-search"),filter=el("cro-filter");
 const auditDialog=el("cro-audit-dialog"),auditList=el("cro-audit-list");
 let picker=null,records=null,busy=false;
