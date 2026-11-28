@@ -3,14 +3,14 @@ import {observedAcademicCallable} from "../core/academic-callable-diagnostics.mj
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
-import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=20261128-checkpoint-ai";
-import {buildV4RepositoryEvaluationSnapshot,buildHistoricalCheckpointEvaluationSnapshot} from "./services/v4-repository-evidence.mjs?v=20261128-checkpoint-ai";
+import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=20261129-bulk-checkpoint";
+import {buildV4RepositoryEvaluationSnapshot,buildHistoricalCheckpointEvaluationSnapshot,classifyCommitAttribution} from "./services/v4-repository-evidence.mjs?v=20261129-bulk-checkpoint";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
-import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=20261128-checkpoint-ai";
+import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=20261129-bulk-checkpoint";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
-import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261126-draft-reevaluation";
+import {createV4BulkEvaluationController} from "./v4-bulk-evaluation.mjs?v=20261129-bulk-checkpoint";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -227,14 +227,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       snapshot.verifiedContributionCommits:[];
     if(historical&&verified.some(sha=>!selected.includes(sha)))
       throw Error("Existing verified commit annotations do not match the frozen student submission.");
-    const evaluationEvidence=historical&&verified.length?
-      {...snapshot,selectedCommitShas:verified}:snapshot;
-    const result=await buildV4RepositoryEvaluationSnapshot({
-      snapshot:evaluationEvidence,client:githubClient
-    });
+    const result=await buildV4RepositoryEvaluationSnapshot({snapshot,client:githubClient});
     if(historical&&verified.length&&verified.length!==selected.length)
-      result.limitations.push((selected.length-verified.length)+
-        " selected historical commit(s) were excluded by the existing narrower teacher annotation.");
+      result.limitations.push("Earlier teacher annotations are preserved as historical context. All student-selected commits are eligible for inspection; attribution remains advisory.");
     if(result.analysis.substantiveChanges===0&&result.analysis.uncertainChanges===0)
       throw Error("No substantive code changes were detected in this submitted commit selection. Inspect the GitHub diff individually; no bulk grade is inferred.");
     return result;
@@ -356,7 +351,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const published=[...gradeMap.values()].filter(item=>item.status==="published").length;
       const draftRows=[...gradeMap.values()].filter(item=>item.status==="draft");
       const drafts=draftRows.length;
-      const individualCheckpointIds=new Set(rows.filter(row=>row.receiptOnly||row.activityOnly||row.gradeOnly||row.gradeException||row.evidenceException||(historicalGithub&&!row.hasSubmission)).map(row=>row.studentUid));
+      const individualCheckpointIds=new Set(rows.filter(row=>row.activityOnly||row.gradeOnly||row.gradeException||row.evidenceException||(historicalGithub&&!row.hasSubmission&&!row.checkpointGradeable)).map(row=>row.studentUid));
       const publishableDrafts=draftRows.filter(item=>!individualCheckpointIds.has(item.studentUid)&&typeof item.awarded==="number"&&Number.isFinite(item.awarded)&&item.awarded>=0&&Number(item.pending||0)===0).length;
       const zeroDrafts=draftRows.filter(item=>Number(item.awarded)===0).length;
       if(bulkPublish){
@@ -558,6 +553,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         row.append(make("p","text-sm font-bold text-slate-900 mt-2",
           String(commit.commit?.message||"No commit message").split("\n")[0].slice(0,180)));
         const author=commit.commit?.author||{};
+        const attribution=classifyCommitAttribution(snapshot.linkedGithubId,commit.author);
+        row.append(make("p","text-xs font-bold "+(attribution==="linked_account_differs"?"text-amber-800":"text-slate-500"),
+          ({linked_account_match:"Linked account matches",linked_account_differs:"Different GitHub account · review suggested",unknown:"Attribution unknown"})[attribution]));
         row.append(make("p","text-xs text-slate-500 mt-1",
           (author.name||"Unknown Git author")+" · "+(author.date?new Date(author.date).toLocaleString():"Date unavailable")));
       }
@@ -999,7 +997,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           "No student-submitted GitHub commits are available. Historical teacher discovery does not count as student submission.":
         historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1"?
           "This unpublished historical draft has no trustworthy rubric allocation. Enter a new reviewed criterion breakdown and save a revision of the original grade; no score changes are applied until you save.":
-        currentSnapshot.checkpointOnly?"Grade the submitted source. Publish individually.":
+        currentSnapshot.checkpointOnly?"Grade the submitted source.":
         currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
@@ -1092,13 +1090,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       let result;
       if(currentTask.legacyCompatibility){
         const totals={published:0,failed:0,zeroSkipped:0,unverifiedSkipped:0};
+        const phases=currentTask.submissionSource==="github"?[false,true]:[false];
+        for(const checkpointOnly of phases){
         let cursor="",pages=0;
         for(;;){
           const part=await scoped(migrationApi,currentTask.submissionSource==="github"
             ?"legacy_github_bulk_publish":"legacy_review_bulk_publish",{
             legacyAssessmentId:currentTask.legacyAssessmentId,
           ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{}),
-            ...(cursor?{cursor}:{})
+            ...(checkpointOnly?{checkpointOnly:true}:{}),...(cursor?{cursor}:{})
           });
           totals.published+=Number(part.published||0);
           totals.failed+=Number(part.failed||0);
@@ -1113,6 +1113,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             " published, "+totals.zeroSkipped+" zero-score drafts held by older server, "+
             totals.failed+" failed or changed, "+totals.unverifiedSkipped+
             " without verified student-submitted evidence. Preparing next page…";
+        }
         }
         result=totals;
       }else{

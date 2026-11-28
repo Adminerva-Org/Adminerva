@@ -2,7 +2,7 @@ import {
   buildGeneralExternalEvaluationData,
   GENERAL_EXTERNAL_EVALUATION_REQUIRED_RULES,
   responseShape
-} from "../assessment/general-external-evaluation.mjs?v=20261121-universal-bulk20-1";
+} from "../assessment/general-external-evaluation.mjs?v=20261129-bulk-checkpoint";
 
 /**
  * Bulk assessment review on top of the authoritative V4/historical
@@ -42,6 +42,13 @@ export function assertBulkEvidence(source,evidence,{personalized=false}={}){
       throw Error("A student has no complete frozen Studio source to evaluate.");
 
   }else if(source==="github"){
+    if(evidence.type==="github_historical_checkpoint_source"){
+      if(evidence.checkpointOnly!==true||!/^([a-f0-9]{64})$/i.test(evidence.checkpointRef||"")||!/^([a-f0-9]{40})$/i.test(evidence.checkpointSha||"")||
+         !Array.isArray(evidence.selectedCommitShas)||evidence.selectedCommitShas.length||!Array.isArray(evidence.commits)||evidence.commits.length||
+         !Array.isArray(evidence.pinnedSource)||!evidence.pinnedSource.length||!evidence.pinnedSource.every(file=>file.checkpointSha===evidence.checkpointSha&&typeof file.content==="string")||
+         !evidence.pinnedSource.some(file=>file.content.trim()))throw Error("Original checkpoint source or receipt reference is missing.");
+      return true;
+    }
     if(evidence.type!=="github_frozen_commit_evidence"||
        !/^[a-f0-9]{40}$/i.test(String(evidence.checkpointSha||""))||
        !Array.isArray(evidence.commits)||!evidence.commits.length||
@@ -130,7 +137,7 @@ export function buildCompactBulkExternalEvaluationPackage({batchId,entries,task}
         "Apply the shared published rubric, instructions and evaluator rules to every item.",
         "For each item, apply only its own personalizedTask and frozenEvidence. Never mix source files, scenarios, runtime proof or feedback across references.",
         "For Studio projects, treat matching platform automaticVerification as authoritative for the submitted source; unmatched runs are not proof of compilation or execution.",
-        "For GitHub, only cite the approved checkpoint and inspected individual changes. Preserve missing-diff, incomplete-coverage and attribution uncertainty; Git author fields never prove who wrote code.",
+        "For GitHub, inspect each evidence type independently. Checkpoint-only source is not proof of individual commits. For each checkpoint-only result, copy its frozenEvidence.checkpointRef into response.checkpointRef exactly. Preserve incomplete-coverage and attribution uncertainty.",
         "For essays, cite the submitted response. For external links, do not invent linked content or claim to have opened it; use pending points or teacher confirmation if the actual artifact is unavailable.",
         "For objectively scorable questions, honor the official answer key and deterministic scoring when a verified objective-response adapter is available; never guess missing answers or invent a rubric.",
         "Keep each assessment independent; return one result per ref in exactly the expected batch JSON format. No Markdown.",
@@ -269,7 +276,7 @@ export function readBulkExternalResponse(raw,{batchId,allowedRefs,task,parseResp
       throw Error("External response contains an unknown or duplicated anonymous reference.");
     found.add(key);
     const suggestion=parseResponse(
-      typeof row.response==="string"?row.response:JSON.stringify(row.response),{task}
+      typeof row.response==="string"?row.response:JSON.stringify(row.response),{task,expectedCheckpointRef:allowedRefs.get(key)?.receiptDigest||""}
     );
     validated.push({ref:key,suggestion,review:bulkSuggestionState(suggestion,task)});
   }
@@ -340,7 +347,7 @@ export function createV4BulkEvaluationController({
   // Only external links still need a separate human artifact inspection.
   const requiresArtifactReview=()=>task?.submissionSource==="link";
   const key=row=>String(row.submissionId||row.evidenceId||row.recordId||"");
-  const eligibleStatus=row=>reevaluate?row.gradeStatus==="draft"&&Number(row.gradeRevision)>0:!row.gradeStatus;
+  const eligibleStatus=row=>!!row&&(reevaluate?row.gradeStatus==="draft"&&Number(row.gradeRevision)>0:!row.gradeStatus);
   const selectedEligible=()=>rows.filter(row=>selection.has(key(row))&&
     eligibleStatus(row)&&row.bulkReady!==false&&
     !["reopened","revision_requested"].includes(row.status));
@@ -432,8 +439,8 @@ export function createV4BulkEvaluationController({
       };
       if(links.repository&&/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(links.repository)&&
          /^[a-f0-9]{40}$/i.test(links.checkpointSha||"")){
-        addEvidenceLink("Open approved checkpoint ↗",
-          "https://github.com/"+links.repository+"/tree/"+links.checkpointSha);
+        addEvidenceLink("Open submitted checkpoint ↗",
+          "https://github.com/"+links.repository+"/tree/"+links.checkpointSha+(links.sourcePath?"/"+links.sourcePath.split("/").map(encodeURIComponent).join("/"):""));
         const commits=(links.commits||[]).filter(sha=>/^[a-f0-9]{40}$/i.test(sha));
         if(commits.length){
           const details=document.createElement("details");
@@ -587,12 +594,12 @@ export function createV4BulkEvaluationController({
     task=next;rows=(nextRows||[]).map(row=>{
       const gradeStatus=gradeMap?.get(row.studentUid)?.status||row.gradeStatus||null;
       const github=next?.submissionSource==="github";
-      const gradeable=github?["submitted","approved","reviewed"].includes(row.status):
+      const checkpointReady=github&&next?.legacyCompatibility&&row.checkpointGradeable===true&&!row.activityOnly&&!row.gradeException;
+      const gradeable=github?(checkpointReady||["submitted","approved","reviewed"].includes(row.status)):
         ["submitted","reviewed"].includes(row.status);
       const gradeRevision=Number(gradeMap?.get(row.studentUid)?.revision||row.gradeRevision||0);
-      return {...row,gradeStatus,gradeRevision,bulkReady:next?.historicalRubricMode!=="scalar_manual"&&gradeable&&
-        (!github||((row.selectedCount||0)>0&&
-          (!next?.legacyCompatibility||row.hasSubmission===true)))};
+      return {...row,gradeStatus,gradeRevision,bulkReady:next?.historicalRubricMode!=="scalar_manual"&&gradeable&&!row.activityOnly&&!row.gradeOnly&&!row.gradeException&&!row.evidenceException&&
+        (!github||checkpointReady||((row.selectedCount||0)>0&&(!next?.legacyCompatibility||row.hasSubmission===true)))};
     });
     const available=new Set(rows.map(key));
     for(const id of selection)if(!available.has(id)||
@@ -649,7 +656,7 @@ export function createV4BulkEvaluationController({
       throw Error("The frozen submission version changed; refresh submissions.");
     const gradeable=source==="github"?
       (["submitted","approved","reviewed"].includes(snapshot.status)&&
-        snapshot.hasSubmission!==false&&snapshot.selectedCommitShas?.length>0):
+        snapshot.hasSubmission!==false&&(snapshot.selectedCommitShas?.length>0||snapshot.checkpointOnly===true&&task.legacyCompatibility&&row.checkpointGradeable===true)):
       ["submitted","reviewed"].includes(snapshot.status);
     if(!gradeable)
       throw Error("No student-submitted GitHub commits or other gradeable frozen evidence were found.");
@@ -689,7 +696,7 @@ export function createV4BulkEvaluationController({
         source==="github"?snapshot.checkpointSha+":"+
           String(snapshot.evidenceRevision??snapshot.version):"");
     const reviewLinks=source==="github"?{
-      repository:snapshot.repository,
+      repository:snapshot.repository,sourcePath:snapshot.sourcePath||"",
       checkpointSha:snapshot.checkpointSha,
       commits:(snapshot.selectedCommitShas||[]).slice(0,20)
     }:source==="link"?{submissionUrl:snapshot.payload.url}:{};
@@ -698,7 +705,7 @@ export function createV4BulkEvaluationController({
     };
     return {key:id,row,expectedDraftRevision,version:snapshot.version,digest,reviewLinks,
       evidenceRevision:Number(snapshot.evidenceRevision??snapshot.version),
-      checkpointSha:snapshot.checkpointSha||"",
+      checkpointSha:snapshot.checkpointSha||"",receiptDigest:snapshot.checkpointOnly?snapshot.evidenceDigest:null,
       sourceLanguage:snapshot.sourceLanguage||"",
       ...(forExternal?{evaluationData:buildGeneralExternalEvaluationData(context)}:
         {packageText:buildPackage(context)})
@@ -733,7 +740,7 @@ export function createV4BulkEvaluationController({
           },{purpose:"evaluation",signal:AbortSignal.timeout(100000)});
           if(session!==scopeGeneration)break;
           const parsed=await evaluationJSON({ok:true,json:async()=>result});
-          const suggestion=parseResponse(JSON.stringify(parsed),{task});
+          const suggestion=parseResponse(JSON.stringify(parsed),{task,expectedCheckpointRef:frozen.receiptDigest||""});
           const review=bulkSuggestionState(suggestion,task);
           staged.set(id,{...frozen,source:"internal_ai",suggestion,review});
           if(review.saveEligible)saveSelection.add(id);
@@ -865,6 +872,7 @@ export function createV4BulkEvaluationController({
               expectedEvidenceRevision:item.evidenceRevision,
               expectedEvidenceRevisionMode:"canonical",
               expectedCheckpointSha:item.checkpointSha,
+              ...(item.receiptDigest?{expectedReceiptDigest:item.receiptDigest}:{}),
               expectedGradeRevision:item.expectedDraftRevision??0,
               ...details
             });

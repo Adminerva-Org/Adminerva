@@ -208,6 +208,20 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      // transactional checks used by publishing a single learner. Pagination
      // is bounded and idempotent: already published scores remain untouched.
      const cursor=input.cursor?legacyDocumentId(input.cursor,"Historical publication cursor"):null;
+     if(input.checkpointOnly===true){
+       const query=db.collection("student_grades").where("taskId","==",id).orderBy(FieldPath.documentId());
+       const page=await (cursor?query.startAfter(cursor).limit(40):query.limit(40)).get();
+       let published=0,failed=0;
+       for(const doc of page.docs){
+         const grade=doc.data();
+         if(grade.published===true||!grade.checkpointReceiptId||!grade.checkpointReceiptDigest||!inScope(grade.studentId,grade.section))continue;
+         if(doc.id!==grade.studentId+"_"+id){failed++;continue;}
+         try{await review({ctx,input:{action:"legacy_github_publish",legacyAssessmentId:id,legacyEvidenceId:"receipt:"+grade.checkpointReceiptId,
+           ...(custody?{legacyOfferingId}:{}),expectedEvidenceRevision:0,expectedCheckpointSha:grade.gradedSha,
+           expectedReceiptDigest:grade.checkpointReceiptDigest,expectedGradeRevision:Number(grade.gradeVersion||0)}});published++;}catch{failed++;}
+       }
+       return {published,failed,zeroSkipped:0,unverifiedSkipped:0,hasMore:page.size===40,nextCursor:page.size===40?page.docs.at(-1).id:null};
+     }
      const base=db.collection("assessment_evidence").where("assessmentId","==",id)
        .orderBy(FieldPath.documentId());
      const page=await (cursor?base.startAfter(cursor).limit(40):base.limit(40)).get();
@@ -376,7 +390,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
          if(!modernIds.has(studentId)&&!row.evidenceId&&!row.gradeException&&
             (list.length===1||list[0].submittedAt!==list[1].submittedAt)&&
             (!primaryIds.has(studentId)||(row.originalGradeId===canonicalId&&row.checkpointReceiptId===list[0].receiptId))){
-           row.checkpointGradeable=true;row.evidenceId="receipt:"+list[0].receiptId;
+           row.checkpointGradeable=true;row.version=1;row.evidenceId="receipt:"+list[0].receiptId;
            row.gradeOnly=false;
          }
        }
@@ -539,8 +553,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
    // The original student-selected SHA receipt is authoritative. A teacher's
    // forced discovery or optional checkpoint approval does not create a grade.
    if(!checkpointOnly)approvedEvidence(record.data,id,recordId,{requireSubmitted:true});
-   else if(input.expectedReceiptDigest!==meta.receiptDigest||input.onlyIfUngraded===true||input.expectedDraftRevision!==undefined)
-     deny("failed-precondition","Checkpoint grading requires the current original receipt and individual review.");
+   else if(input.expectedReceiptDigest!==meta.receiptDigest)
+     deny("failed-precondition","Checkpoint grading requires the current original receipt.");
    const expectedRevision=Number(input.expectedEvidenceRevision);
    const expectedSha=String(input.expectedCheckpointSha||"").toLowerCase();
    const bulkSave=input.action==="legacy_github_save_draft"&&input.onlyIfUngraded===true;
@@ -630,7 +644,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      if(!checkpointOnly&&before?.checkpointReceiptId)
        deny("failed-precondition","Existing grade is tied to an earlier checkpoint receipt. Reconcile before changing evidence.");
      const priorVersion=before?Number(before.gradeVersion||1):0;
-     if(priorVersion!==expectedGradeVersion)
+     if(priorVersion!==expectedGradeVersion||input.expectedDraftRevision!==undefined&&(!Number.isInteger(input.expectedDraftRevision)||input.expectedDraftRevision!==priorVersion||!prior.exists||before.published===true))
        deny("failed-precondition","Historical grade changed. Reload before saving or publishing.");
      if(input.action==="legacy_github_save_draft"&&input.onlyIfUngraded===true&&prior.exists)
        deny("failed-precondition","An original historical grade already exists. Bulk evaluation cannot replace a draft or published result.");
