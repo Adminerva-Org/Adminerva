@@ -1,6 +1,7 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {GithubAuthProvider,linkWithPopup,reauthenticateWithPopup} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
+import {observedAcademicCallable} from "../core/academic-callable-diagnostics.mjs?v=20261128-academic-trace";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient,parseGithubRepository} from "../repo-review/services/github-evidence-client.mjs?v=1.3.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
@@ -56,10 +57,10 @@ if(panel&&list&&status&&schoolHost){
   const functions=getFunctions(app,"asia-southeast1");
   const assessmentsApi=httpsCallable(functions,"schoolAssessments");
   const profileApi=httpsCallable(functions,"schoolStudentProfile");
-  const submissionsApi=httpsCallable(functions,"schoolStudioSubmissions");
-  const generalSubmissionsApi=httpsCallable(functions,"schoolAssessmentSubmissions");
-  const gradebookApi=httpsCallable(functions,"schoolGradebook");
-  const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
+  const submissionsApi=observedAcademicCallable("schoolStudioSubmissions",httpsCallable(functions,"schoolStudioSubmissions"));
+  const generalSubmissionsApi=observedAcademicCallable("schoolAssessmentSubmissions",httpsCallable(functions,"schoolAssessmentSubmissions"));
+  const gradebookApi=observedAcademicCallable("schoolGradebook",httpsCallable(functions,"schoolGradebook"));
+  const githubEvidenceApi=observedAcademicCallable("schoolGithubEvidence",httpsCallable(functions,"schoolGithubEvidence"));
   const reclaimsApi=httpsCallable(functions,"schoolReclaims");
   let renderGeneration=0,picker=null,githubTask=null,githubTaskStatus=null;
   let githubCommits=[],githubSelected=new Set(),githubCheckpoint="",githubBusy=false,reclaimTarget=null,githubSessionToken="";
