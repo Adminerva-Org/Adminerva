@@ -21,6 +21,7 @@ function install(){
      FieldPath:{documentId:()=>"__name__"}
    };
    if(name==="./tenant-access.js")return {TenantAccessError};
+   if(name==="./school-grade-revision-history.js")return require("../functions/school-grade-revision-history.js");
    if(name==="./school-legacy-recovery-sources.js")return require("../functions/school-legacy-recovery-sources.js");
    if(name==="./school-legacy-custody.js")return {
      authorizedTeacherCustody:async()=>null,validCustody:()=>false,
@@ -461,4 +462,35 @@ test("checkpoint grading rejects newer submissions and preserves unrelated origi
  await assert.rejects(f.service(f.request("legacy_github_save_draft",args)),error=>error.code==="failed-precondition");
  assert.equal(f.map.get("student_grades/"+evidenceId).score,22);
  assert.equal(f.writes.length,0);
+});
+
+test("historical history reads exact identity and preserves zero, missing totals and old feedback",async()=>{
+ const f=fixture();
+ await f.service(f.request("legacy_github_save_draft",f.gradeArgs));
+ const count=f.writes.length;
+ const audit={gradeId:evidenceId,studentId,taskId,editorUid:"prior-teacher",before:{score:0,published:false,feedback:"Prior feedback"},after:{score:18,published:true,feedback:"Updated feedback"},createdAt:{toMillis:()=>1000},reason:"Original audit",privatePrompt:"Do not expose"};
+ f.map.set("grade_revisions/older",audit);
+ for(const field of ["studentId","taskId","schoolId"])f.map.set("grade_revisions/wrong-"+field,{...audit,[field]:"another"});
+ const result=await f.service(f.request("legacy_github_history",{legacyEvidenceId:evidenceId}));
+ assert.equal(result.entries.length,2);
+ const entry=result.entries.find(row=>row.id==="older");
+ assert.equal(entry.before.awarded,0);assert.equal(entry.before.total,null);
+ assert.equal(entry.after.status,"published");assert.equal(entry.after.feedback,"Updated feedback");
+ assert.equal("privatePrompt" in entry,false);assert.equal(f.writes.length,count);
+});
+test("native history projection requires exact school, class, student and person identities",()=>{
+ const {nativeRevisionRows}=require("../functions/school-grade-revision-history.js");
+ const scope={schoolId:"school",taskId:"task",studentUid:"student",personId:"person",offeringId:"offering"};
+ const row={...scope,revision:2,awarded:0,total:20,status:"published",submissionVersion:3,feedback:"Recorded",action:"grade_corrected"};
+ const docs=[{id:"2",data:()=>row},{id:"1",data:()=>({...row,revision:1,awarded:12,status:"draft"})},
+ ...["schoolId","taskId","studentUid","personId","offeringId"].map((field,i)=>({id:String(i+3),data:()=>({...row,revision:i+3,[field]:"foreign"})})),{id:"invalid",data:()=>({...row,revision:9})}];
+ const result=nativeRevisionRows(docs,scope);
+ assert.equal(result.length,2);assert.equal(result[0].after.awarded,0);assert.equal(result[0].before.awarded,12);
+ assert.equal(result[0].evidenceVersion,3);assert.equal(result[1].before,null);
+});
+test("grade history explicitly reports long ledger limit",async()=>{
+ const {readLegacyGradeHistory}=require("../functions/school-grade-revision-history.js");
+ const db={collection:()=>({where:()=>({limit:()=>({get:async()=>({size:201,docs:[]})})})})};
+ const result=await readLegacyGradeHistory({db,schoolId:"school",taskId:"task",studentId:"student",gradeId:"grade"});
+ assert.equal(result.limitReached,true);assert.equal(result.entries.length,0);
 });

@@ -266,6 +266,22 @@ function createSchoolGradebookService({db}){
     deny("permission-denied","Review permission, assessment, or student submission is no longer valid.");
    return {task:currentTask.data(),submission:submission.data()};
   }
+  if(input.action==="grade_history"){
+   return db.runTransaction(async tx=>{
+    const {submission}=await authorize(tx);
+    const grade=await tx.get(gradeRef);
+    if(!grade.exists)return {entries:[],limitReached:false};
+    const data=grade.data();
+    if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||data.studentUid!==studentUid||
+       data.offeringId!==offeringId||data.personId!==submission.personId)
+      deny("permission-denied","Grade history is outside the verified review context.");
+    const page=await tx.get(gradeRef.collection("revisions").limit(201));
+    if(page.size>=201)return {entries:[],limitReached:true};
+    return {entries:require("./school-grade-revision-history.js").nativeRevisionRows(page.docs,{
+      schoolId:ctx.schoolId,taskId,studentUid,offeringId,personId:submission.personId
+    }),limitReached:false};
+   });
+  }
   if(input.action==="get_draft"){
    const grant=await grantRef.get();
    if(!ctx.platformOverride&&(!grant.exists||grant.data().status!=="active"||
