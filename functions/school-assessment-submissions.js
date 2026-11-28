@@ -391,8 +391,7 @@ function createSchoolAssessmentSubmissionService({db}){
 
   if(input.action==="request_revision"){
     const reason=String(input.reason||"").trim();
-    if(reason.length<12||reason.length>2000)
-      deny("invalid-argument","Explain the requested revision in 12–2000 characters.");
+    if(reason.length>2000)deny("invalid-argument","Revision feedback is too long.");
     const extension=extensionTimestamp(input.extensionDueAt);
     if(Date.now()>taskData.dueAt.toMillis()&&!extension)
       deny("failed-precondition","The original deadline passed. Set an explicit revision extension.");

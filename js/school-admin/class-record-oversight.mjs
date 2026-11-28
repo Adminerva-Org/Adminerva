@@ -236,6 +236,7 @@ async function load(){
     const result=await scoped("overview");
     if(request!==overviewRequest)return;
     records=result.records||[];
+    el("cro-legacy-heading").closest("section").hidden=result.historicalRecoveryAllowed!==true;
     showCustodyOfferings();
     if(deepLinkAssessment&&!el("cro-legacy-id").value){
       el("cro-legacy-id").value=deepLinkAssessment;
