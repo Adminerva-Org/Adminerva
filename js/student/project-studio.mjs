@@ -522,9 +522,18 @@ export function createProjectStudio({
     return result.every(Boolean)&&(projectId?!cloudPending.has(projectId):!cloudPending.size);
   }
   function recoverCopy(project){
-    const copy=createCodeProject(projectStorage,uid,{title:(project.title.slice(0,94)+" · Device recovery"),templateId:project.template,config:project.config});
-    cacheProject({...project,id:copy.id,title:copy.title,assessment:null,createdAt:copy.createdAt,updatedAt:copy.updatedAt,lastOpenedAt:copy.lastOpenedAt});
-    return copy.id;
+    // Generate the ID/template without first writing a blank recovery project.
+    const scratch={getItem:()=>null,setItem:()=>{},removeItem:()=>{}};
+    const copy=createCodeProject(scratch,uid,{title:(project.title.slice(0,94)+" · Device recovery"),templateId:project.template,config:project.config});
+    const recovered=normalizeProject({...project,id:copy.id,title:copy.title,assessment:null,createdAt:copy.createdAt,updatedAt:copy.updatedAt,lastOpenedAt:copy.lastOpenedAt});
+    validateProject(recovered);
+    // Unlike a cache of an already-confirmed school snapshot, this may be
+    // the ONLY copy of unsynced changes. Never suppress a storage failure.
+    const projects=readCodeProjects(projectStorage,uid);
+    writeCodeProjects(projectStorage,uid,[recovered,...projects]);
+    const verified=findCodeProject(projectStorage,uid,recovered.id);
+    if(!verified||contentKey(verified)!==contentKey(recovered))throw Error("Recovery backup could not be verified. The original draft was not replaced. Free device storage or export your work.");
+    return recovered.id;
   }
   async function resolveCloudProject(id,{local=null,shouldApply=()=>true}={}){
     local=local||findCodeProject(projectStorage,uid,id);
@@ -567,6 +576,7 @@ export function createProjectStudio({
     const needsSync=chosen===local&&differs||Boolean(school&&base.kind==="legacy");
     writeMarker(id,{...base,pending:Boolean(needsSync),...(prior.assessmentSaveBlock?{assessmentSaveBlock:prior.assessmentSaveBlock}:{})});
     cloudPending.delete(id);clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
+    clearTimeout(cloudRetryTimers.get(id));cloudRetryTimers.delete(id);cloudRetryAttempts.delete(id);
     const cached=cacheProject(chosen);
     if(needsSync)scheduleCloudSave(cached);
     return cached;
@@ -1284,7 +1294,7 @@ export function createProjectStudio({
       if(!live?.files||!Object.keys(live.files).length)
         throw Error("The current editor is not ready. No source was changed.");
       saveState(live);
-      if(!await flushCloudSaves())
+      if(!await flushCloudSaves({projectId:current.id}))
         throw Error("The current project could not be confirmed in school cloud storage. Save it first so your existing work is preserved.");
       if(activeProject?.id!==current.id)
         throw Error("The active project changed while recovery was being checked.");
@@ -1328,7 +1338,7 @@ export function createProjectStudio({
       openProject(activeProject);
       switchStudioView("code");
       renderEvidence();renderDatabase();loadDesignEditor();
-      if(!await flushCloudSaves()){
+      if(!await flushCloudSaves({projectId:current.id})){
         setCloudStatus("Submitted source restored on device · school cloud sync pending","error",current.id);
         alert("Your submitted code is visible and retained on this device, but school cloud saving is not confirmed. Reconnect and use Save. Your pre-restore device copy was saved separately as "+copyId+".");
         return;
