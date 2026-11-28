@@ -53,8 +53,24 @@ async function importExistingActivityConsent({db,auth,FieldValue,authority,input
      });
      return "initialized";
    });
-   rows.push({uid,status:outcome});
+   const row={uid,status:outcome};
+   if(!apply){
+     const [diagnostic,designation]=await Promise.all([
+       db.doc("platform_account_diagnostics/"+uid).get(),
+       db.doc("platform_test_accounts/"+uid).get()
+     ]);
+     const d=diagnostic.data(),test=designation.data();
+     row.browserPreference=d?.browserCollectionEnabled===false?"off":d?.browserCollectionEnabled===true?"on":"default_on";
+     row.researchPreference=test?.kind==="student"&&test?.status==="active"?(test.researchOptOut===true?"off":"on_if_school_eligible"):"not_designated";
+   }
+   rows.push(row);
  }
+ if(!apply)await db.collection("platform_audit").add({
+   actorUid:authority.uid,authoritySource:authority.authoritySource||null,
+   action:"existing_student_collection_preferences_previewed",
+   reason:"Prior consent initialization review",returned:rows.length,
+   createdAt:FieldValue.serverTimestamp()
+ });
  return {rows,limit:LIMIT};
 }
 module.exports={importExistingActivityConsent};
