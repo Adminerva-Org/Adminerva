@@ -1,3 +1,12 @@
+// Only server-confirmed assessment state rejections suspend ordinary writes.
+export function studioAssessmentSaveBlock(error){
+  const reason=String(error?.details?.diagnosticReason||"");
+  if(!/(?:^|\/)failed-precondition$/.test(String(error?.code||"")))return "";
+  return ["STUDIO_ASSESSMENT_UNAVAILABLE","STUDIO_EXAM_CLOSED","STUDIO_EXAM_SESSION_EXPIRED","STUDIO_EXAM_STATE_CHANGED","STUDIO_FINAL_CHECKPOINT_EXPIRED"].includes(reason)?reason:"";
+}
+export function studioAssessmentBlockLabel(reason){
+  return reason==="STUDIO_ASSESSMENT_UNAVAILABLE"?"Assessment unavailable":"Exam session locked";
+}
 /** Classify Studio cloud-save failures without changing academic write authority. */
 export function describeStudioCloudSaveError(error,{online=true}={}){
   const code=String(error?.code||"").toLowerCase();
@@ -6,6 +15,8 @@ export function describeStudioCloudSaveError(error,{online=true}={}){
     .replace(/\s*\(functions\/[^)]+\)\.?$/,"")
     .trim().slice(0,200);
   const message=detail.toLowerCase();
+  const block=studioAssessmentSaveBlock(error);
+  if(block)return {category:block==="STUDIO_ASSESSMENT_UNAVAILABLE"?"assessment-unavailable":"exam-locked",label:studioAssessmentBlockLabel(block),retryable:false,detail};
   if(/exam.*(closed|closing|earlier)|earlier exam session|session.*not open|closing state changed|exam session.*open/i.test(message))
     return {category:"exam-locked",label:"exam session not open",retryable:false,detail};
   if(/revision|changed (in school storage|on another device)|different school-saved revision|different final saved checkpoint/i.test(message))
