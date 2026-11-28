@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync} from "node:fs";
+import {readFileSync,mkdtempSync,mkdirSync,writeFileSync,rmSync} from "node:fs";
+import {execFileSync} from "node:child_process";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 import {checkPagesRelease} from "../scripts/check-pages-release.mjs";
 
 const local=path=>readFileSync(new URL("../"+path,import.meta.url));
@@ -50,4 +53,48 @@ test("network timeouts stay inside the five-minute manifest deadline and malform
   await assert.rejects(checkPagesRelease(app.options),/bounded polling window/);assert.equal(app.elapsed,300000);assert.equal(app.requests.length,12);
   const invalid=fixture();await assert.rejects(checkPagesRelease({...invalid.options,readLocal:async()=>Buffer.from("broken")}),/Local site-release\.json is not valid JSON/);
   assert.equal(invalid.requests.length,0);
+});
+
+
+test("shared UI refresh regenerates from concurrent main rather than losing a release",()=>{
+  const root=mkdtempSync(join(tmpdir(),"adminerva-cache-race-"));
+  const remote=join(root,"remote.git"),worker=join(root,"worker"),other=join(root,"other"),bin=join(root,"bin");
+  const gitBin=execFileSync("which",["git"],{encoding:"utf8"}).trim();
+  const run=(cwd,...args)=>execFileSync(gitBin,args,{cwd,stdio:"pipe",encoding:"utf8"}).trim();
+  try{
+    run(root,"init","--bare","--initial-branch=main",remote);
+    run(root,"clone",remote,worker);
+    run(worker,"config","user.name","Fixture");run(worker,"config","user.email","fixture@example.test");
+    writeFileSync(join(worker,"platform-logs.html"),'<script defer src="js/core/adminerva-nav.js?v=old"></script>');
+    // Match the tracked files staged by the real shared-shell workflow.
+    for(const file of ["js/core/adminerva-nav.js","js/core/adminerva-loader.js","js/help/page-help.mjs","js/help/activity-preferences.mjs","js/student/assessments.js","js/student/dashboard.js","js/student/school-student-settings.mjs","js/student/school-student-projects.mjs"]){
+      mkdirSync(join(worker,file.slice(0,file.lastIndexOf("/"))),{recursive:true});
+      writeFileSync(join(worker,file),"// fixture\n");
+    }
+    run(worker,"add",".");run(worker,"commit","-m","initial");run(worker,"push","origin","main");
+    run(root,"clone",remote,other);run(other,"config","user.name","Fixture");run(other,"config","user.email","fixture@example.test");
+    mkdirSync(bin);
+    const marker=join(root,"race-triggered");
+    writeFileSync(join(bin,"git"),[
+      "#!/usr/bin/env bash","set -euo pipefail",
+      'if [[ "$1" == "push" && ! -e "$RACE_MARKER" ]]; then',
+      '  touch "$RACE_MARKER"',
+      '  printf "\\n<!-- concurrent release -->\\n" >> "$OTHER_CLONE/platform-logs.html"',
+      '  "$REAL_GIT" -C "$OTHER_CLONE" add platform-logs.html',
+      '  "$REAL_GIT" -C "$OTHER_CLONE" commit -m "concurrent main update"',
+      '  "$REAL_GIT" -C "$OTHER_CLONE" push origin main',
+      "fi",'exec "$REAL_GIT" "$@"',""
+    ].join("\n"),{mode:0o755});
+    const workflow=local(".github/workflows/shared-ui-cache-bump.yml").toString();
+    const script=workflow.split("        run: |\n")[1].split("\n").map(line=>line.replace(/^ {10}/,"")).join("\n");
+    execFileSync("bash",["-n"],{input:script,stdio:["pipe","pipe","pipe"]});
+    const output=execFileSync("bash",["-c",script],{cwd:worker,encoding:"utf8",stdio:["ignore","pipe","pipe"],env:{...process.env,PATH:bin+":"+process.env.PATH,REAL_GIT:gitBin,OTHER_CLONE:other,RACE_MARKER:marker}});
+    assert.match(output,/Main advanced; regenerating references/);
+    run(other,"fetch","origin","main");
+    const refreshed=run(other,"show","origin/main:platform-logs.html");
+    const version=run(other,"rev-parse","--short=12","origin/main^");
+    assert.ok(refreshed.includes("adminerva-nav.js?v="+version));
+    assert.match(refreshed,/concurrent release/);
+    assert.equal(run(other,"log","-1","--format=%s","origin/main"),"chore(ui): refresh shared shell and access assets [skip ci]");
+  }finally{rmSync(root,{recursive:true,force:true});}
 });
