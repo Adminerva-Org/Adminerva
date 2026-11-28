@@ -1656,6 +1656,12 @@ function createSchoolEnrollmentService({db}){
           ];
         if(applicationRef)reads.push(tx.get(applicationRef));
         const records=await Promise.all(reads);
+        // Recheck all matching school identities in the same transaction as placement.
+        const [liveEmailMatches,liveNumberMatches]=await Promise.all([
+          activationEmailHash?tx.get(db.collection(root+"people").where("activationEmailHash","==",activationEmailHash).limit(3)):Promise.resolve({docs:[],size:0}),
+          studentNumber?tx.get(db.collection(root+"people").where("studentNumber","==",studentNumber).limit(3)):Promise.resolve({docs:[],size:0})
+        ]);
+        if([liveEmailMatches,liveNumberMatches].some(snapshot=>snapshot.size===3||snapshot.docs.some(doc=>doc.id!==personId)))deny("failed-precondition","A conflicting school identity exists. Review the directory before enrolling.");
         const [liveYear,liveProgram,liveTerm,liveSection,liveOfferings]=await Promise.all([tx.get(year.ref),tx.get(program.ref),tx.get(term.ref),tx.get(section.ref),tx.get(db.collection(root+"course_offerings").where("sectionId","==",sectionId).where("yearId","==",yearId).where("termId","==",termId).limit(251))]);
         if([liveYear,liveProgram,liveTerm,liveSection].some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active")||liveTerm.data().yearId!==yearId||liveTerm.data().programId!==programId||liveSection.data().programId!==programId||String(liveSection.data().gradeLevel||"").trim().toLowerCase()!==gradeLevel||liveOfferings.size===251)
           deny("failed-precondition","Academic placement changed. Refresh before enrolling.");
