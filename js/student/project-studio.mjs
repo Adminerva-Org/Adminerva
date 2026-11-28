@@ -16,7 +16,7 @@ import {
   getV4StudioSubmissionStatus,getV4StudioSubmittedRecovery,
   syncV4StudioProject,rememberV4StudioRevision,restoreV4StudioProject,retryV4StudioSchool
 } from "./v4-studio-service.mjs?v=20261126-rejection-1";
-import {describeStudioCloudSaveError,studioCloudRetryDelay,studioAssessmentSaveBlock,studioAssessmentBlockLabel} from "./studio-cloud-save-recovery.mjs?v=20261123-cloud-recovery-1";
+import {describeStudioCloudSaveError,studioCloudRetryDelay,studioAssessmentSaveBlock,studioAssessmentBlockLabel} from "./studio-cloud-save-recovery.mjs?v=20261128-studio-stability-1";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));

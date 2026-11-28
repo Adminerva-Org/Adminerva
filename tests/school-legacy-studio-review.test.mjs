@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
+import {createRequire} from "node:module";
+const require=createRequire(import.meta.url);
 
 const text=readFileSync(new URL("../functions/school-legacy-studio-review.js",import.meta.url),"utf8");
 const digest=input=>createHash("sha256").update(input).digest("hex");
@@ -21,6 +23,7 @@ function install(){
     FieldPath:{documentId:()=>"__name__"}
   };
   if(name==="./tenant-access.js")return {TenantAccessError};
+  if(name==="./school-grade-revision-history.js")return require("../functions/school-grade-revision-history.js");
   throw Error("Unknown dependency "+name);
  }},{filename:"school-legacy-studio-review.js"});
  return module.exports;
@@ -65,7 +68,7 @@ function dbHarness({tamper=false,unauthorized=false,grade=null}={}){
     doc(id){return doc(path+"/"+(id||"revision-"+(++newId)));},
     where(field,op,value){
      assert.equal(op,"==");
-     return {orderBy(name){
+     return {limit(n){return {async get(){const rows=[...map].filter(([key,row])=>key.startsWith(path+"/")&&key.split("/").length===path.split("/").length+1&&row[field]===value).slice(0,n).map(([key,row])=>({id:key.split("/").at(-1),data:()=>row}));return {size:rows.length,docs:rows};}};},orderBy(name){
        assert.equal(name,"__name__");
        let cursor="";
        const query={
@@ -287,4 +290,42 @@ test("bulk evaluation refuses an outdated frozen hash before a new grade is crea
    feedback:"The frozen work was evaluated, but this request is stale."
  }}),error=>error.code==="failed-precondition");
  assert.equal(writes.length,0);
+});
+
+test("historical Studio history retains original before and after values",async()=>{
+ const {service,map,writes}=dbHarness();
+ const audit={gradeId:submittedId,studentId,taskId:legacyId,editorUid:ctx.uid,before:{score:0,published:false},after:{score:20,published:true},createdAt:{toMillis:()=>1234}};
+ map.set("grade_revisions/one",audit);map.set("grade_revisions/foreign",{...audit,studentId:"foreign"});
+ const result=await service({ctx,input:{...input("legacy_review_history").input,legacySubmissionId:submittedId}});
+ assert.equal(result.entries.length,1);assert.equal(result.entries[0].before.awarded,0);
+ assert.equal(result.entries[0].after.awarded,20);assert.equal(writes.length,0);
+ await assert.rejects(service({ctx:{...ctx,uid:"other"},input:{...input("legacy_review_history").input,legacySubmissionId:submittedId}}),error=>error.code==="permission-denied");
+});
+
+test("historical Studio published corrections retain the original grade, frozen source and audit trail",async()=>{
+ const {service,map,writes}=dbHarness();
+ const base={legacySubmissionId:submittedId,criteria:[{awardedPoints:18,pendingPoints:0},{awardedPoints:19,pendingPoints:0}],
+  feedback:"Reviewed original submitted Java files and behavior."};
+ await service({ctx,input:{...input("legacy_review_save_draft").input,...base}});
+ await service({ctx,input:{...input("legacy_review_publish").input,legacySubmissionId:submittedId,expectedGradeRevision:1}});
+ const head=map.get("studio_submissions/"+submittedId),frozen=map.get("studio_submissions/"+submittedId+"/versions/1");
+ const correction={...input("legacy_review_correct_published").input,...base,expectedGradeRevision:1,
+  expectedSubmissionVersion:1,expectedSnapshotHash:data().hash,criteria:[{awardedPoints:0,pendingPoints:0},{awardedPoints:0,pendingPoints:0}],feedback:"Corrected score"};
+ const result=await service({ctx,input:correction});
+ assert.equal(result.awarded,0);assert.equal(result.revision,2);assert.equal(result.published,true);
+ const grade=map.get("student_grades/"+submittedId);
+ assert.equal(grade.score,0);assert.equal(grade.published,true);assert.equal(grade.gradeVersion,2);
+ assert.equal(map.get("studio_submissions/"+submittedId),head);
+ assert.equal(map.get("studio_submissions/"+submittedId+"/versions/1"),frozen);
+ const audit=[...map].filter(([key])=>key.startsWith("grade_revisions/")).at(-1)[1];
+ assert.equal(audit.before.score,37);assert.equal(audit.after.score,0);
+ assert.equal(audit.before.feedback,base.feedback);assert.equal(audit.after.feedback,"Corrected score");
+ assert.equal(audit.evidenceRevision,1);assert.equal(audit.studioSnapshotHash,data().hash);
+ assert.equal(writes.filter(([,path])=>path.startsWith("schools/")).length,0);
+ const count=writes.length;
+ await assert.rejects(service({ctx,input:correction}),error=>error.code==="failed-precondition");
+ await assert.rejects(service({ctx,input:{...correction,expectedGradeRevision:2,expectedSnapshotHash:"stale"}}),error=>error.code==="failed-precondition");
+ await assert.rejects(service({ctx,input:{...correction,expectedGradeRevision:2,criteria:[{awardedPoints:0,pendingPoints:2},{awardedPoints:0,pendingPoints:0}]}}),error=>error.code==="failed-precondition");
+ await assert.rejects(service({ctx,input:{...correction,expectedGradeRevision:2,criteria:[{awardedPoints:null,pendingPoints:0},{awardedPoints:0,pendingPoints:0}]}}),error=>error.code==="invalid-argument");
+ assert.equal(writes.length,count);
 });
