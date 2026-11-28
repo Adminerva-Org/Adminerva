@@ -51,9 +51,15 @@
 
   <section id="en-workspace" hidden class="space-y-4">
     <nav class="en-jumps" aria-label="Enrollment tasks">
-      <button type="button" class="en-btn secondary" data-en-view="registrations" aria-pressed="true">Registrations</button><button type="button" class="en-btn secondary" data-en-view="applications" aria-pressed="false">Applications</button><button type="button" class="en-btn secondary" data-en-view="register" aria-pressed="false">New enrollment</button><button type="button" class="en-btn secondary" data-en-view="progression" aria-pressed="false">Progression</button><button type="button" class="en-btn secondary" data-en-view="activation" aria-pressed="false">Activation</button><button type="button" class="en-btn secondary" data-en-view="reports" aria-pressed="false">Reports</button>
+      <button type="button" class="en-btn secondary" data-en-view="overview" aria-pressed="true">Overview</button><button type="button" class="en-btn secondary" data-en-view="registrations" aria-pressed="false">Registrations</button><button type="button" class="en-btn secondary" data-en-view="applications" aria-pressed="false">Applications</button><button type="button" class="en-btn secondary" data-en-view="register" aria-pressed="false">New enrollment</button><button type="button" class="en-btn secondary" data-en-view="progression" aria-pressed="false">Progression</button><button type="button" class="en-btn secondary" data-en-view="activation" aria-pressed="false">Activation</button><button type="button" class="en-btn secondary" data-en-view="reports" aria-pressed="false">Reports</button>
     </nav>
     <div class="space-y-3">
+      <section id="en-overview" class="en-card" hidden>
+        <div class="flex justify-between items-start gap-2 flex-wrap"><h2 class="text-lg font-extrabold">Registrar overview</h2><button id="en-overview-refresh" type="button" class="en-btn secondary">Refresh</button></div>
+        <p id="en-overview-status" class="en-muted mt-2" aria-live="polite"></p>
+        <div id="en-overview-tasks" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3"></div>
+        <div class="flex gap-2 flex-wrap mt-4"><button id="en-overview-new" type="button" class="en-btn">New application</button><a id="en-overview-students" class="en-btn secondary" href="school-student-records.html">Student files</a></div>
+      </section>
       <section id="en-register" class="en-card" hidden>
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div>
@@ -504,7 +510,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/enrollment.mjs?v=20261126-registrar14"></script>
+<script type="module" src="js/school-admin/enrollment.mjs?v=20261128-registrar15"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-admin-flow1"></script>
 </body>
 </html>
