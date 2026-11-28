@@ -114,6 +114,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
    const taskRef=db.doc("assessments/"+id),task=await taskRef.get();
    if(!task.exists)deny("not-found","Original historical assessment not found.");
    const taskData=task.data();
+   if(taskData.schoolId&&taskData.schoolId!==ctx.schoolId)deny("permission-denied","Original assessment is outside the selected school.");
    const isOwner=taskData.ownerUid===ctx.uid;
    const legacyOfferingId=String(input.legacyOfferingId||"");
    const custody=!isOwner&&legacyOfferingId?await authorizedTeacherCustody({
@@ -388,17 +389,19 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        if(data.taskId!==id||typeof data.studentId!=="string"||!inScope(data.studentId,data.section))continue;
        try{legacyDocumentId(data.studentId,"Historical student",220);}catch{continue;}
        const list=activitiesByStudent.get(data.studentId)||[];
-       list.push(originalActivityGrade(doc,id));activitiesByStudent.set(data.studentId,list);
+       list.push({id:doc.id,grade:originalActivityGrade(doc,id)});activitiesByStudent.set(data.studentId,list);
      }
      let activityGradeCount=0;
      for(const [studentId,list] of activitiesByStudent){
        if(primaryIds.has(studentId))continue;
-       const row=await ensureRow(studentId,list[0]?.section||"");
-       if(list.length!==1||!list[0]){
+       const row=await ensureRow(studentId,list[0]?.grade?.section||"");
+       if(list.length!==1||!list[0]?.grade){
          row.gradeException=true;row.hasSubmission=false;row.checkpointGradeable=false;continue;
        }
-       const grade=list[0];
-       Object.assign(row,{activityOnly:true,gradeStatus:grade.published===true?"published":"draft",
+       const grade=list[0].grade;
+       const editable=grade.maxScore===total&&grade.pending===0&&Number.isSafeInteger(grade.gradeVersion??0)&&(grade.gradeVersion??0)>=0&&(!grade.schoolId||grade.schoolId===ctx.schoolId);
+       Object.assign(row,{activityOnly:true,activityEditable:editable,activityGradeId:list[0].id,
+         ...(editable?{evidenceId:"activity:"+list[0].id,gradeOnly:false}:{}),gradeStatus:grade.published===true?"published":"draft",
          awarded:grade.score,maxScore:grade.maxScore,pending:grade.pending,reviewSuggested:grade.published!==true,
          gradeRevision:Number(grade.gradeVersion||1),hasSubmission:false,checkpointGradeable:false});
        activityGradeCount++;if(grade.published===true)publishedCount++;else draftCount++;
@@ -413,6 +416,84 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      }};
    }
    const recordId=legacyDocumentId(input.legacyEvidenceId,"Historical submission ID");
+   if(recordId.startsWith("activity:")){
+     if(!["legacy_github_inspect","legacy_github_history","legacy_github_activity_edit"].includes(input.action))
+       deny("failed-precondition","Original activity scores use individual score editing, not submission grading.");
+     const activityId=legacyDocumentId(recordId.slice("activity:".length),"Original activity grade ID");
+     const ref=db.doc("activity_grades/"+activityId);
+     const stateDigest=data=>hash(data.studentId,data.taskId,data.schoolId||null,data.section||null,
+       data.score,data.maxScore,data.pending??0,data.published??null,data.gradeVersion??0,
+       data.feedback??null,data.reviewedBy??null,data.gradedAt??null);
+     return db.runTransaction(async tx=>{
+       const [freshTask,freshImport,source,primaryPage,activityPage,freshCustody,freshAssignment,freshMembership,freshOffering]=await Promise.all([
+         tx.get(taskRef),tx.get(importRef),tx.get(ref),
+         tx.get(db.collection("student_grades").where("taskId","==",id).limit(1001)),
+         tx.get(db.collection("activity_grades").where("taskId","==",id).limit(1001)),
+         custody?tx.get(custody.ref):Promise.resolve(null),
+         custody?tx.get(db.doc(prefix+"staff_assignments/"+require("./school-academics.js").rowKey(ctx.uid,legacyOfferingId))):Promise.resolve(null),
+         custody?tx.get(db.doc(prefix+"memberships/"+ctx.uid)):Promise.resolve(null),
+         custody?tx.get(db.doc(prefix+"course_offerings/"+legacyOfferingId)):Promise.resolve(null)
+       ]);
+       const before=source.exists?source.data():null;
+       const original=originalActivityGrade(source,id);
+       if(!original||!inScope(original.studentId,original.section)||(original.schoolId&&original.schoolId!==ctx.schoolId))
+         deny("permission-denied","Activity grade is outside the verified historical assessment.");
+       const sourceUnchanged=freshTask.exists&&(!freshTask.data().schoolId||freshTask.data().schoolId===ctx.schoolId)&&
+         freshTask.data().evalCriteria===taskData.evalCriteria&&
+         (custody?custodyMaximum(freshTask.data(),freshCustody?.data()):Number(freshTask.data().maxScore||20))===total;
+       const ownerActive=sourceUnchanged&&isOwner&&freshTask.data().ownerUid===ctx.uid&&freshImport.exists&&
+         freshImport.data().schoolId===ctx.schoolId&&freshImport.data().ownerUid===ctx.uid&&freshImport.data().legacyImport?.assessmentId===id;
+       const approved=sourceUnchanged&&!!custody&&validCustody(freshCustody?.exists?freshCustody.data():null,{
+         schoolId:ctx.schoolId,assessmentId:id,offeringId:legacyOfferingId,teacherUid:ctx.uid,task:freshTask.data(),section:original.section
+       })&&freshOffering?.exists&&freshOffering.data().schoolId===ctx.schoolId&&freshOffering.data().primaryTeacherUid===ctx.uid&&
+         freshAssignment?.exists&&freshAssignment.data().schoolId===ctx.schoolId&&freshAssignment.data().status==="active"&&
+         freshAssignment.data().teacherUid===ctx.uid&&freshAssignment.data().offeringId===legacyOfferingId&&
+         freshMembership?.exists&&freshMembership.data().schoolId===ctx.schoolId&&freshMembership.data().status==="active"&&
+         freshMembership.data().roles?.includes("teacher")&&freshCustody.data().verifiedLegacyStudentIds.includes(original.studentId);
+       if(!ownerActive&&!approved)deny("permission-denied","Original ownership or verified class custody changed.");
+       if(primaryPage.size>=1001||activityPage.size>=1001)deny("resource-exhausted","Original grades require reconciliation before editing.");
+       if(primaryPage.docs.some(doc=>doc.data().studentId===original.studentId)||
+          activityPage.docs.filter(doc=>doc.data().studentId===original.studentId).length!==1)
+         deny("failed-precondition","Conflicting original grade records require reconciliation.");
+       if(custody?.grant.maximumProof==="consistent_original_grade_maxima"){
+         const basis=verifiedOriginalMaximum(freshTask.data(),primaryPage.docs.map(doc=>doc.data()),id,freshCustody.data().verifiedLegacyStudentIds);
+         if(basis?.maximum!==total||basis.proof!==custody.grant.maximumProof)
+           deny("failed-precondition","Original maximum proof changed.");
+       }
+       const version=before.gradeVersion??0;
+       if(original.maxScore!==total||original.pending!==0||!Number.isSafeInteger(version)||version<0)
+         deny("failed-precondition","Original activity maximum, pending points or revision requires reconciliation.");
+       if(input.action==="legacy_github_history"){
+         const page=await tx.get(db.collection("activity_grades/"+activityId+"/versions").limit(201));
+         return {entries:page.size>=201?[]:require("./school-grade-revision-history.js").activityRevisionRows(page.docs,{
+           schoolId:ctx.schoolId,taskId:id,studentId:original.studentId,gradeId:activityId
+         }),limitReached:page.size>=201};
+       }
+       if(input.action==="legacy_github_inspect")return {task:taskInfo,
+         snapshot:{activityOnly:true,activityDigest:stateDigest(before),version,status:"recorded",hasSubmission:false},
+         grade:{status:before.published===true?"published":"draft",gradeSchema:"activity_scalar_v1",
+           awarded:original.score,total:original.maxScore,pending:0,revision:version,
+           criteria:[{name:"Activity score",maximum:total,awardedPoints:original.score,pendingPoints:0,comment:""}],
+           feedback:clean(before.feedback,5000),draftSource:"teacher"}};
+       if(input.expectedActivityDigest!==stateDigest(before)||input.expectedGradeRevision!==version)
+         deny("failed-precondition","Activity score changed. Reload before editing.");
+       if(typeof input.score!=="number"||!Number.isFinite(input.score)||input.score<0||input.score>total||
+          typeof input.feedback!=="string"||input.feedback.length>5000)
+         deny("invalid-argument","Enter a valid original activity score and feedback.");
+       const now=FieldValue.serverTimestamp(),revision=version+1;
+       const changes={score:input.score,feedback:input.feedback.trim(),gradeVersion:revision,
+         reviewedBy:ctx.uid,updatedAt:now,lastCorrectedByUid:ctx.uid,lastCorrectedAt:now};
+       const auditState=data=>({studentId:data.studentId,taskId:data.taskId,section:data.section||"",
+         score:data.score,maxScore:data.maxScore,published:data.published===true,gradeVersion:data.gradeVersion??0,
+         feedback:clean(data.feedback,5000),pending:Number(data.pending??0)});
+       tx.create(db.doc("activity_grades/"+activityId+"/versions/"+revision),{
+         schoolId:ctx.schoolId,gradeId:activityId,taskId:id,studentId:original.studentId,
+         actorUid:ctx.uid,createdAt:now,before:auditState(before),after:auditState({...before,...changes})
+       });
+       tx.update(ref,changes);
+       return {status:before.published===true?"published":"draft",revision,awarded:input.score,total};
+     });
+   }
    const checkpointOnly=recordId.startsWith("receipt:");
    const record=checkpointOnly?await verifiedCheckpoint(recordId):await verifiedRecord(recordId);
    const meta=record.meta,canonicalId=checkpointOnly?record.canonicalId:recordId;
