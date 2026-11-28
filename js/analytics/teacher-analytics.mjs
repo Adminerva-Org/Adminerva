@@ -1,6 +1,6 @@
 /** Academic analytics for the selected instructor's configured sections; raw operations stay in the admin module. */
 import { db, auth } from "../core/firebase-core.js?v=1.3.0";
-import {selectedTeacherSections} from "./teacher-engagement.mjs?v=1.3.1";
+import {selectedTeacherSections, renderEngagement} from "./teacher-engagement.mjs?v=20261128-refresh2";
 import {staffRole} from "../core/staff-role.mjs?v=1.3.0";
 import {academicGradeEligible,queryGroups} from "./academic-model.mjs?v=1.3.0";
 import {createReviewRequests} from "../repo-review/services/review-requests.mjs?v=1.3.0";
@@ -67,18 +67,42 @@ async function accessibleAssessments(sections){
 document.addEventListener("analytics-teacher-change", () => {
   initDashboard();
 });
+const refreshButton = document.getElementById("analytics-refresh");
+refreshButton?.addEventListener("click", async () => {
+  if (refreshButton.disabled) return;
+  refreshButton.disabled = true;
+  refreshButton.setAttribute("aria-busy", "true");
+  const label = refreshButton.textContent;
+  refreshButton.textContent = "Refreshing…";
+  try {
+    await renderEngagement();
+    await initDashboard({ preserveFilters: true });
+  } catch (error) {
+    console.error("Analytics refresh failed", error);
+    document.getElementById("academic-status").textContent =
+      "Refresh failed. Try again.";
+  } finally {
+    refreshButton.textContent = label;
+    refreshButton.removeAttribute("aria-busy");
+    refreshButton.disabled = false;
+  }
+});
 if(document.getElementById("analytics-teacher").value)void initDashboard();
 
-async function initDashboard() {
+async function initDashboard({ preserveFilters = false } = {}) {
+  const previousSection = preserveFilters ? document.getElementById("sectionSelect").value : "";
+  const previousTask = preserveFilters ? document.getElementById("taskSelect").value : "";
   const request = ++dashboardRequest;
   velocityRequest?.abort();visibleGrades=[];
   globalStudents = []; globalGrades = []; globalAssessments = {};
   for (const id of ["statStudents", "statGrades", "statAvgTime", "statMastery", "tierList", "penaltyList", "criteriaList", "topStudentsList", "atRiskList", "ghostList", "equityList", "modalGradeHistory"]) document.getElementById(id).textContent = "—";
   document.getElementById("sectionSelect").replaceChildren();
+  document.getElementById("taskSelect").replaceChildren(new Option("All assessments", "ALL"));
   document.getElementById("student360Modal").classList.add("hidden");
   if (velocityChartInstance) { velocityChartInstance.destroy(); velocityChartInstance = null; }
   if (!db || !staffRole(auth.currentUser)) return;
   const end = window.beginLoading?.("Loading teacher analytics…") || (() => {});
+  document.getElementById("academic-status").textContent = "Loading class results…";
   try {
     const sections = await selectedTeacherSections();
     if(request!==dashboardRequest)return;
@@ -125,14 +149,21 @@ async function initDashboard() {
       );
     });
 
-    if (uniqueSections.size > 0) await window.loadDashboardData();
+    if (uniqueSections.size > 0) {
+      if (uniqueSections.has(previousSection)) select.value = previousSection;
+      if ([...taskSelect.options].some(option => option.value === previousTask)) {
+        taskSelect.value = previousTask;
+      }
+      await window.loadDashboardData();
+    }
     else {
       document.getElementById("sectionSelect").add(new Option("No assigned sections", ""));
       document.getElementById("academic-status").textContent = "No sections assigned to this instructor yet. Ask the administrator to save an analytics assignment.";
     }
   } catch (e) {
     console.error("Init Error", e);
-    document.getElementById("academic-status").textContent = "Academic analytics could not load. Check your connection and assigned permissions.";
+    if (request === dashboardRequest) document.getElementById("academic-status").textContent = "Academic analytics could not load. Check your connection and assigned permissions.";
+
   } finally {
     end();
   }
