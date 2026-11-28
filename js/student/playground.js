@@ -583,12 +583,11 @@ function inferAssessmentProjectSetup(task={}){
 async function resolveAssessmentProjectContext(assessmentId,studioSchool){
   if(!assessmentId)return null;
   if(studioSchool){
-    let matchedCanonicalTask=false;
     try{
       const tasks=await listV4StudioAssignments();
-      const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===assessmentId):null;
+      if(!Array.isArray(tasks))throw Error("Verified school assignments are unavailable. Reconnect before opening an assessment.");
+      const task=tasks.find(item=>item.taskId===assessmentId);
       if(task){
-        matchedCanonicalTask=true;
         if(task.submissionSource!=="studio")throw Error("This assessment is not configured for Adminerva Studio.");
         if(task.manualOpenRequired===true&&task.manualAccessState!=="open")
           throw Error(["closed","closing","held"].includes(task.manualAccessState)
@@ -597,10 +596,13 @@ async function resolveAssessmentProjectContext(assessmentId,studioSchool){
         return {...task,assessmentId:task.taskId,taskId:task.taskId,schoolId:studioSchool.schoolId,canonicalV4:true};
       }
     }catch(error){
-      if(matchedCanonicalTask||document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true")throw error;
+      // A failed canonical lookup is not evidence that the task is legacy.
+      throw error;
     }
   }
-  const snapshot=await getDoc(doc(db,"assessments",assessmentId));
+  if(studioSchool?.compatibilityMode==="v4_only"||document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true")
+    throw Error("This assessment is not assigned in your verified school.");
+  const snapshot=await getDocFromServer(doc(db,"assessments",assessmentId));
   if(!snapshot.exists())throw Error("This Studio assessment is no longer available.");
   const task={id:snapshot.id,...snapshot.data()};
   if(task.published===false)throw Error("This Studio assessment is not published.");
@@ -624,7 +626,8 @@ async function provisionAssessmentProject(assessmentId,studioSchool){
   const result=await projectStudio.ensureAssessmentProject({
     assessmentId:context.assessmentId,taskId:context.taskId,title:context.title,
     projectTitle:context.title,description:context.description,instructions:context.instructions,
-    assessmentType:context.assessmentType,subject:context.subject,offeringId:context.offeringId||"",
+    assessmentType:context.assessmentType,subject:context.subject,offeringId:context.canonicalV4?context.offeringId||"":"",
+    assessmentOrigin:context.canonicalV4?"school":"legacy",
     manualSessionEpoch:Number(context.manualSessionEpoch||0),
     personalized:context.personalizedTask?.enabled===true||context.assessmentMode==="personalized",
     studioProjectProfile:context.studioProjectProfile||"auto",
@@ -856,6 +859,7 @@ window.addEventListener("adminerva:studio-variant-ready",event=>{
     assessmentType:active.assessment.assessmentType||"Assessment",
     subject:active.assessment.subject||"Computer Programming",
     offeringId:active.assessment.offeringId||"",personalized:true,
+    assessmentOrigin:active.assessment.assessmentOrigin|| (active.assessment.offeringId?"school":""),
     manualSessionEpoch:Number(active.assessment.sessionEpoch||0),
     studioProjectProfile:active.assessment.studioProjectProfile||"auto",
     variantId:event.detail.variantId||"",attempt:event.detail.attempt,
