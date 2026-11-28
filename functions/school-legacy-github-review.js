@@ -168,6 +168,35 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        deny("permission-denied","This student evidence is outside the verified historical class.");
      return {ref,snapshot,data,meta};
    }
+   function checkpointMeta(snapshot){
+     const receipt=originalReceipt(snapshot,id);
+     if(!receipt)deny("failed-precondition","Original checkpoint receipt is invalid.");
+     return {studentId:receipt.studentId,repository:repoInfo(receipt.repository),
+       checkpointSha:receipt.checkpointSha,revision:0,selected:[],verified:[],approved:false,
+       hasSubmission:true,discoveryOnly:false,contributionScope:"",
+       receipt,receiptDigest:hash(receipt.receiptId,receipt.studentId,receipt.section,
+         receipt.repository,receipt.checkpointSha,receipt.sourcePath,receipt.submittedAt)};
+   }
+   function newestReceipt(page,studentId){
+     if(page.size>=1001)deny("resource-exhausted","Original receipt reconciliation requires pagination.");
+     const rows=page.docs.map(doc=>originalReceipt(doc,id)).filter(row=>row&&row.studentId===studentId)
+       .sort((a,b)=>b.submittedAt-a.submittedAt||a.receiptId.localeCompare(b.receiptId));
+     if(rows.length>1&&rows[0].submittedAt===rows[1].submittedAt)return null;
+     return rows[0]||null;
+   }
+   async function verifiedCheckpoint(recordId){
+     const receiptId=legacyDocumentId(recordId.slice("receipt:".length),"Original checkpoint receipt",500);
+     const ref=db.doc("student_submissions/"+receiptId),snapshot=await ref.get();
+     if(!snapshot.exists)deny("not-found","Original checkpoint receipt not found.");
+     const meta=checkpointMeta(snapshot),canonicalId=legacyDocumentId(meta.studentId+"_"+id,"Original grade");
+     if(!inScope(meta.studentId,meta.receipt.section))
+       deny("permission-denied","Original checkpoint is outside the verified class.");
+     const [modern,page]=await Promise.all([db.doc("assessment_evidence/"+canonicalId).get(),
+       db.collection("student_submissions").where("assessmentId","==",id).limit(1001).get()]);
+     if(modern.exists||newestReceipt(page,meta.studentId)?.receiptId!==receiptId)
+       deny("failed-precondition","A newer or conflicting submission exists. Reconcile the original evidence.");
+     return {ref,snapshot,data:snapshot.data(),meta,canonicalId,checkpointOnly:true};
+   }
    function checkGrade(grade,studentId){
      if(grade&&(grade.studentId!==studentId||grade.taskId!==id))
        deny("failed-precondition","Historical grade belongs to a different learner or assessment.");
@@ -313,7 +342,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
          section:clean(grade.section,160),status:"grade_only",
          gradeOnly:true,hasSubmission:false,discoveryOnly:false,
          gradeStatus:grade.published===true?"published":"draft",reviewSuggested:grade.published!==true,awarded,
-         maxScore:maximum};
+         maxScore:maximum,pending:Number(grade.pending||0),gradeRevision:Number(grade.gradeVersion||1),
+         originalGradeId:doc.id,checkpointReceiptId:grade.checkpointReceiptId||null};
        results.push(gradeRow);byStudent.set(grade.studentId,gradeRow);
      }
      const primaryIds=new Set(gradePage.docs.map(doc=>doc.data()).filter(row=>row.taskId===id).map(row=>row.studentId));
@@ -338,7 +368,16 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        const row=await ensureRow(studentId,list[0].section);
        row.originalReceipts=list.slice(0,20);
        row.originalReceiptCount=list.length;
-       if(!row.hasSubmission){row.receiptOnly=true;row.status="historical_checkpoint_receipt";}
+       if(!row.hasSubmission){
+         row.receiptOnly=true;row.status="historical_checkpoint_receipt";
+         const canonicalId=studentId+"_"+id;
+         if(!row.evidenceId&&!row.gradeException&&
+            (list.length===1||list[0].submittedAt!==list[1].submittedAt)&&
+            (!primaryIds.has(studentId)||(row.originalGradeId===canonicalId&&row.checkpointReceiptId===list[0].receiptId))){
+           row.checkpointGradeable=true;row.evidenceId="receipt:"+list[0].receiptId;
+           row.gradeOnly=false;
+         }
+       }
      }
      // An activity score is an original result, not a new grade. Do not
      // prefer it over any primary student_grades record, even an invalid one.
@@ -355,12 +394,12 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        if(primaryIds.has(studentId))continue;
        const row=await ensureRow(studentId,list[0]?.section||"");
        if(list.length!==1||!list[0]){
-         row.gradeException=true;row.hasSubmission=false;continue;
+         row.gradeException=true;row.hasSubmission=false;row.checkpointGradeable=false;continue;
        }
        const grade=list[0];
        Object.assign(row,{activityOnly:true,gradeStatus:grade.published===true?"published":"draft",
          awarded:grade.score,maxScore:grade.maxScore,pending:grade.pending,reviewSuggested:grade.published!==true,
-         gradeRevision:Number(grade.gradeVersion||1),hasSubmission:false});
+         gradeRevision:Number(grade.gradeVersion||1),hasSubmission:false,checkpointGradeable:false});
        activityGradeCount++;if(grade.published===true)publishedCount++;else draftCount++;
      }
      return {task:taskInfo,evidence:results,coverage:{
@@ -373,13 +412,16 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      }};
    }
    const recordId=legacyDocumentId(input.legacyEvidenceId,"Historical submission ID");
-   const record=await verifiedRecord(recordId);
-   const meta=record.meta;
+   const checkpointOnly=recordId.startsWith("receipt:");
+   const record=checkpointOnly?await verifiedCheckpoint(recordId):await verifiedRecord(recordId);
+   const meta=record.meta,canonicalId=checkpointOnly?record.canonicalId:recordId;
    if(input.action==="legacy_github_inspect"){
      const [grade,privateTask]=await Promise.all([
-       gradeRef(recordId).get(),db.doc("assessment_private/"+id).get()
+       gradeRef(canonicalId).get(),db.doc("assessment_private/"+id).get()
      ]);
      checkGrade(grade.exists?grade.data():null,meta.studentId);
+     if(checkpointOnly&&grade.exists&&grade.data().checkpointReceiptId!==meta.receipt.receiptId)
+       deny("failed-precondition","Existing original grade has different evidence provenance.");
      const cfg=privateTask.exists&&privateTask.data().ownerUid===ctx.uid?privateTask.data():{};
      const rules=Array.isArray(cfg.rules)?cfg.rules.slice(0,40)
        .map(rule=>clean((rule?.type?rule.type+": ":"")+String(rule?.value||""),400)):[];
@@ -394,7 +436,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
          contributionScope:meta.contributionScope,
          approvedCheckpointSha:meta.approved?meta.checkpointSha:null,
          evidenceRevision:meta.revision,
-         historical:true},
+         historical:true,...(checkpointOnly?{checkpointOnly:true,receiptDigest:meta.receiptDigest,sourcePath:meta.receipt.sourcePath,submittedAt:meta.receipt.submittedAt}:{})},
        grade:grade.exists?gradeSummary(grade.data(),rubric,custody?total:null):null,
        checkingInstructions};
    }
@@ -402,7 +444,10 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
      deny("invalid-argument","Unknown historical repository review operation.");
    // The original student-selected SHA receipt is authoritative. A teacher's
    // forced discovery or optional checkpoint approval does not create a grade.
-   approvedEvidence(record.data,id,recordId,{requireSubmitted:true});
+   if(!checkpointOnly)approvedEvidence(record.data,id,recordId,{requireSubmitted:true});
+   else if(input.expectedReceiptDigest!==meta.receiptDigest||input.onlyIfUngraded===true||input.expectedDraftRevision!==undefined||
+      ["internal_ai","external_ai"].includes(input.draftSource))
+     deny("failed-precondition","Checkpoint-only grading requires the current original receipt and manual evaluation.");
    const expectedRevision=Number(input.expectedEvidenceRevision);
    const expectedSha=String(input.expectedCheckpointSha||"").toLowerCase();
    const bulkSave=input.action==="legacy_github_save_draft"&&input.onlyIfUngraded===true;
@@ -424,21 +469,23 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
       expectedSha!==meta.checkpointSha)
      deny("failed-precondition","The frozen historical evidence changed. Refresh before grading.");
    const expectedCanonicalRevision=revisionlessBulkCompat?0:expectedRevision;
-   const gradeDocument=gradeRef(recordId);
+   const gradeDocument=gradeRef(canonicalId);
    const expectedGradeVersion=Number(input.expectedGradeRevision);
    if(!Number.isInteger(expectedGradeVersion)||expectedGradeVersion<0)
      deny("invalid-argument","Reload the current historical grade before changing it.");
    const auditRef=db.collection("grade_revisions").doc();
    let outcome;
    await db.runTransaction(async tx=>{
-     const [freshTask,freshImport,freshEvidence,prior,freshCustody,freshAssignment,freshMembership,freshOffering,originalGrades,activityGrades]=await Promise.all([
+     const [freshTask,freshImport,freshEvidence,prior,freshCustody,freshAssignment,freshMembership,freshOffering,originalGrades,activityGrades,modernEvidence,receiptPage]=await Promise.all([
        tx.get(taskRef),tx.get(importRef),tx.get(record.ref),tx.get(gradeDocument),
        custody?tx.get(custody.ref):Promise.resolve(null),
        custody?tx.get(db.doc(prefix+"staff_assignments/"+require("./school-academics.js").rowKey(ctx.uid,legacyOfferingId))):Promise.resolve(null),
        custody?tx.get(db.doc(prefix+"memberships/"+ctx.uid)):Promise.resolve(null),
        custody?tx.get(db.doc(prefix+"course_offerings/"+legacyOfferingId)):Promise.resolve(null),
        tx.get(db.collection("student_grades").where("taskId","==",id).limit(1001)),
-       tx.get(db.collection("activity_grades").where("taskId","==",id).limit(1001))
+       tx.get(db.collection("activity_grades").where("taskId","==",id).limit(1001)),
+       checkpointOnly?tx.get(db.doc("assessment_evidence/"+canonicalId)):Promise.resolve(null),
+       checkpointOnly?tx.get(db.collection("student_submissions").where("assessmentId","==",id).limit(1001)):Promise.resolve(null)
      ]);
      const sourceUnchanged=freshTask.exists&&
        freshTask.data().evalCriteria===taskData.evalCriteria&&
@@ -460,8 +507,11 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        freshCustody.data().verifiedLegacyStudentIds.includes(meta.studentId);
      if(!ownerActive&&!approvedCustody)
        deny("permission-denied","Historical assessment ownership or verified school custody changed.");
-     const latest=approvedEvidence(freshEvidence.exists?freshEvidence.data():null,id,recordId,
+     const latest=checkpointOnly?checkpointMeta(freshEvidence):approvedEvidence(freshEvidence.exists?freshEvidence.data():null,id,recordId,
        {requireSubmitted:true});
+     if(checkpointOnly&&(modernEvidence.exists||latest.receiptDigest!==meta.receiptDigest||
+        newestReceipt(receiptPage,meta.studentId)?.receiptId!==meta.receipt.receiptId))
+       deny("failed-precondition","Original checkpoint evidence changed. Reload before grading.");
      if(latest.revision!==expectedCanonicalRevision||latest.checkpointSha!==expectedSha||
         latest.repository.fullName.toLowerCase()!==meta.repository.fullName.toLowerCase()||
         latest.contributionScope!==meta.contributionScope||
@@ -475,13 +525,17 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        if(basis?.maximum!==total||basis.proof!==custody.grant.maximumProof)
          deny("failed-precondition","The recovered score maximum changed. Reconcile original grade records before continuing.");
      }
-     if(originalGrades.docs.some(doc=>doc.id!==recordId&&doc.data().studentId===meta.studentId))
+     if(originalGrades.docs.some(doc=>doc.id!==canonicalId&&doc.data().studentId===meta.studentId))
        deny("failed-precondition","An original grade exists under another document ID. Reconcile it before grading.");
      if(activityGrades.size>=1001)deny("resource-exhausted","Original activity grade reconciliation requires pagination.");
      if(!prior.exists&&activityGrades.docs.some(doc=>doc.data().taskId===id&&doc.data().studentId===meta.studentId))
        deny("failed-precondition","An original activity grade exists. Reconcile that result instead of creating a duplicate grade.");
      const before=prior.exists?prior.data():null;
      checkGrade(before,meta.studentId);
+     if(checkpointOnly&&before&&(before.checkpointReceiptId!==latest.receipt.receiptId||before.checkpointReceiptDigest!==latest.receiptDigest))
+       deny("failed-precondition","Existing grade is tied to different original evidence.");
+     if(!checkpointOnly&&before?.checkpointReceiptId)
+       deny("failed-precondition","Existing grade is tied to an earlier checkpoint receipt. Reconcile before changing evidence.");
      const priorVersion=before?Number(before.gradeVersion||1):0;
      if(priorVersion!==expectedGradeVersion)
        deny("failed-precondition","Historical grade changed. Reload before saving or publishing.");
@@ -520,6 +574,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
          reviewedBy:ctx.uid,reviewedAt:now,gradedAt:now,
          teacherReviewNote:reviewNote||before?.teacherReviewNote||"",gradedSha:latest.checkpointSha,
          evidenceRevision:latest.revision,
+         ...(checkpointOnly?{checkpointReceiptId:latest.receipt.receiptId,checkpointReceiptDigest:latest.receiptDigest,checkpointSourcePath:latest.receipt.sourcePath}:{}),
          verifiedContributionCommits:latest.verified,contributionScope:latest.contributionScope,
          contributionEvidence:{...(before?.contributionEvidence||{}),
            repository:latest.repository.fullName,selectedCommits:latest.selected,
@@ -530,11 +585,12 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        };
        if(prior.exists)tx.set(gradeDocument,{...before,...values});
        else tx.create(gradeDocument,values);
-       tx.create(auditRef,{gradeId:recordId,studentId:meta.studentId,taskId:id,editorUid:ctx.uid,
+       tx.create(auditRef,{gradeId:canonicalId,studentId:meta.studentId,taskId:id,editorUid:ctx.uid,
          reason:correcting?"Historical published grade corrected":"Historical GitHub draft saved from V4",
          before:before?{score:before.score,published:before.published===true,gradeVersion:priorVersion,feedback:before.feedback||"",criteria:before.criteria||[],pending:before.pending||0}:null,
          after:{score:scores.awarded,published:correcting,gradeVersion:revision,feedback,criteria:scores.criteria,pending:scores.pending},
-         schoolId:ctx.schoolId,evidenceRevision:latest.revision,createdAt:now});
+         schoolId:ctx.schoolId,evidenceRevision:latest.revision,
+         ...(checkpointOnly?{checkpointReceiptId:latest.receipt.receiptId,checkpointReceiptDigest:latest.receiptDigest}:{}),createdAt:now});
        outcome={status:correcting?"published":"draft",awarded:scores.awarded,total:scores.total,revision};
        return;
      }
@@ -554,11 +610,12 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        deny("failed-precondition","Grade provenance no longer matches the approved frozen evidence.");
      const now=FieldValue.serverTimestamp();
      tx.update(gradeDocument,{published:true,publishedAt:now});
-     tx.create(auditRef,{gradeId:recordId,studentId:meta.studentId,taskId:id,editorUid:ctx.uid,
+     tx.create(auditRef,{gradeId:canonicalId,studentId:meta.studentId,taskId:id,editorUid:ctx.uid,
        reason:"Teacher published exact historical GitHub grade through V4",
        before:{score:before.score,published:false,gradeVersion:priorVersion},
        after:{score:before.score,published:true,gradeVersion:priorVersion},
-       schoolId:ctx.schoolId,evidenceRevision:latest.revision,createdAt:now});
+       schoolId:ctx.schoolId,evidenceRevision:latest.revision,
+       ...(checkpointOnly?{checkpointReceiptId:latest.receipt.receiptId,checkpointReceiptDigest:latest.receiptDigest}:{}),createdAt:now});
      outcome={status:"published",published:true,awarded:scores.awarded,total:scores.total};
    });
    return outcome;
