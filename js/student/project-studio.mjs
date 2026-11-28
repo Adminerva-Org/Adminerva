@@ -274,13 +274,13 @@ export function createProjectStudio({
       indicator.classList.add(tone==="error"?"text-rose-400":tone==="success"?"text-emerald-400":"text-slate-400");}
     const storage=el("projectStorageMode");if(storage&&!activeProject)storage.textContent=message;
   }
-  function cacheProject(project){
+  function cacheProject(project,{requireDeviceBackup=false}={}){
     const items=readCodeProjects(projectStorage,uid).filter(item=>item.id!==project.id);
     const normalized=normalizeProject(project);if(!normalized)throw Error("Invalid cloud project.");
     try{
       writeCodeProjects(projectStorage,uid,[normalized,...items]);
     }catch(error){
-      if(!cloudEnabled)throw error;
+      if(!cloudEnabled||requireDeviceBackup)throw error;
       console.warn("Device project cache unavailable; preserving cloud project in memory",error);
     }
     return normalized;
@@ -292,6 +292,7 @@ export function createProjectStudio({
     const previousKey=activeContentBaseline?.id===project.id?activeContentBaseline.key:
       previous?contentKey(previous):null;
     const changed=previousKey!==contentKey(project);
+    const wasUnbacked=unbackedProjectIds.has(project.id);
     // A previous quota failure is not a durable backup. Retry the device
     // write even when the live snapshot has not changed.
     let deviceSaved=true;
@@ -311,7 +312,7 @@ export function createProjectStudio({
     // Advance only after device persistence or the existing memory-only fallback.
     activeContentBaseline={id:activeProject.id,key:contentKey(activeProject)};
     updateProjectHeading();updateQuotaUI();
-    if(cloudEnabled&&cloud&&(changed||readMarker(project.id).pending||
+    if(cloudEnabled&&cloud&&(changed||wasUnbacked||readMarker(project.id).pending||
        !readMarker(project.id).kind||unbackedProjectIds.has(project.id)))
       scheduleCloudSave(activeProject);
     if(!deviceSaved)
@@ -571,7 +572,13 @@ export function createProjectStudio({
         const detail=await loadV4StudioProject(id,{rememberRevision:false});
         if(detail){remote=v4ProjectToLocal(uid,detail);base={kind:"school",schoolId:school.schoolId,revision:detail.revision};}
       }catch(error){
-        if(!String(error?.code||"").includes("not-found"))throw error;
+        if(!String(error?.code||"").includes("not-found")){
+          // A rejected school project read proves this is not a verified
+          // absence. Never redirect that school record into legacy storage.
+          const block=studioAssessmentSaveBlock(error);
+          if(block){writeMarker(id,{...priorMarker,kind:"school",schoolId:school.schoolId,assessmentSaveBlock:block});}
+          throw error;
+        }
       }
     }
     if(!remote&&school?.compatibilityMode!=="v4_only"&&!scopeToken){
@@ -585,6 +592,8 @@ export function createProjectStudio({
     }
     if(auth.currentUser?.uid!==uid)throw Error("Account changed before loading project.");
     if(!shouldApply()||deletedProjects.has(id))return null;
+    // Prefer the retained in-memory snapshot to a stale device cache.
+    local=cloudPending.get(id)||local;
     if(!remote)return local;
     validateProject(remote);
     const prior=readMarker(id);
@@ -598,11 +607,13 @@ export function createProjectStudio({
       alert("The cloud has a different version of this project. Your device changes were preserved as a separate Device recovery project; the main project will open the cloud version.");
     }
     if(base.kind==="school")rememberV4StudioRevision(id,base.revision);
+    // Cache before retiring the pending queue. If the chosen snapshot is
+    // only in memory, failure must leave that queue available for recovery.
+    const cached=cacheProject(chosen,{requireDeviceBackup:chosen===local&&Boolean(differs)});
     const needsSync=chosen===local&&differs||Boolean(school&&base.kind==="legacy"&&!studioLegacyBackupAllowed(chosen,school,base,scopeToken));
     writeMarker(id,{...base,pending:Boolean(needsSync),...(prior.assessmentSaveBlock?{assessmentSaveBlock:prior.assessmentSaveBlock}:{})});
     cloudPending.delete(id);clearTimeout(cloudTimers.get(id));cloudTimers.delete(id);
     clearTimeout(cloudRetryTimers.get(id));cloudRetryTimers.delete(id);cloudRetryAttempts.delete(id);
-    const cached=cacheProject(chosen);
     if(needsSync)scheduleCloudSave(cached);
     return cached;
   }
@@ -613,7 +624,7 @@ export function createProjectStudio({
       try{
         const school=await currentV4StudioSchool(),ids=new Set(),archivedIds=new Set(),summaries=new Map();
         if(auth.currentUser?.uid!==uid)throw Error("Account changed before loading projects.");
-        if(scopeToken&&!school)throw Error("Reconnect your verified school to load projects.");
+        if((verifiedSchoolId&&school?.schoolId!==verifiedSchoolId)||(scopeToken&&!school))throw Error("Reconnect your verified school to load projects.");
         let incomplete=false;
         const available=id=>auth.currentUser?.uid===uid&&!deletedProjects.has(id)&&activeProject?.id!==id&&!cloudWrites.has(id)&&!cloudPending.has(id);
         if(school){
@@ -1061,7 +1072,7 @@ export function createProjectStudio({
     const assessmentId=String(context.assessmentId||"").trim();
     if(!assessmentId)throw Error("Assessment project provisioning requires an assessment ID.");
     const projectId=assessmentProjectId(assessmentId);
-    let project=findCodeProject(projectStorage,uid,projectId)||
+    let project=cloudPending.get(projectId)||findCodeProject(projectStorage,uid,projectId)||
       readCodeProjects(projectStorage,uid).find(item=>item.assessment?.assessmentId===assessmentId);
 
     // Personalized task metadata can arrive while the student is editing.
@@ -1078,6 +1089,8 @@ export function createProjectStudio({
 
     if(cloudEnabled&&!sameOpenAssessment){
       const lookupId=project?.id||projectId;
+      if(cloudWrites.has(lookupId))await cloudWrites.get(lookupId);
+      project=cloudPending.get(lookupId)||project;
       try{
         project=await resolveCloudProject(lookupId,{local:project});
       }catch(error){
@@ -1549,7 +1562,10 @@ export function createProjectStudio({
 
   function activateProject(project){
     ++openEpoch;++diagramEpoch;
-    if(activeProject&&activeProject.id!==project.id){flushDesignDraft();saveState(captureState());}
+    if(activeProject&&activeProject.id!==project.id){
+      flushDesignDraft();saveState(captureState());
+      if(unbackedProjectIds.has(activeProject.id))throw Error("Keep the current project open until its latest revision is backed up.");
+    }
     initialize();
     activeProject={...project,lastOpenedAt:new Date().toISOString()};
     activeProject=cacheProject(activeProject);
