@@ -420,6 +420,10 @@ test("Class Record recovers exact-ID activity grades only when the primary grade
  records.delete("student_grades/old_student_legacy-task");
  activityRows=[row,{...row,score:18}];
  assert.deepEqual(await historicalPublishedGrades(input),[]);
+ activityRows=[row,{...row,score:null}];
+ assert.deepEqual(await historicalPublishedGrades(input),[],"invalid duplicates must not be silently ignored");
+ activityRows=[{...row,schoolId:"foreign-school"}];
+ assert.deepEqual(await historicalPublishedGrades(input),[],"foreign school rows are not projected");
 });
 test("sectionless custody can discover exact earlier student receipt and activity grade proof",async()=>{
  const assessmentId="OriginalLegacy",schoolId="mcs-manila",sha="a".repeat(40);
