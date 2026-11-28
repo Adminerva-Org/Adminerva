@@ -619,3 +619,15 @@ html[data-adminerva-experience="quick"] .avx-learning-world>.avx-canonical-art{d
 }
 html[data-motion="reduce"] .avx-learning-world .avx-canonical-guide,
 html[data-adminerva-reduce-motion="true"] .avx-learning-world .avx-canonical-guide{transform:none!important}
+
+/* Search remains next to the actual destinations in both modes. */
+.avx-world-destinations .avx-world-search{margin:0 0 .75rem;padding:0;border:0;background:transparent}
+.avx-world-destinations .avx-world-search label{font-size:.8rem}
+.avx-world-destinations .avx-world-search input{margin:.25rem 0;padding:.6rem;min-height:44px}
+.avx-world-destinations .avx-world-search [role=status]:empty{display:none}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-search label{color:#d3e9df}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-search input{
+  width:min(100%,22rem);border:1px solid #567571;background:#102b34;color:#f3f9f5;border-radius:.55rem;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-search input::placeholder{color:#a9c3c2}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-search [role=status]{color:#b6d3cf}
