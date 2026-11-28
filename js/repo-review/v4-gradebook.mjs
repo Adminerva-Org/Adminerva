@@ -1,6 +1,6 @@
+import {observedAcademicCallable} from "../core/academic-callable-diagnostics.mjs?v=20261128-academic-trace";
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {observedAcademicCallable} from "../core/academic-callable-diagnostics.mjs?v=20261128-academic-trace";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
 import {buildV4RepositoryEvaluationSnapshot} from "./services/v4-repository-evidence.mjs?v=20261123-revisionless-save-1";
@@ -168,6 +168,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         ((currentSnapshot?.selectedCommitShas?.length||0)>0||currentSnapshot?.checkpointOnly===true));
     const readThrough=Boolean(currentTask?.legacyCompatibility);
     const historicalGithub=readThrough&&currentTask?.submissionSource==="github";
+    const historicalStudio=readThrough&&currentTask?.submissionSource==="studio";
     const historicalScalar=historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1";
     const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1"&&!readThrough;
     for(const id of ["gbV4SystemCheck","gbV4ExternalCopy","gbV4ExternalApply"])
@@ -178,12 +179,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar||Number(currentGrade?.pending||0)>0;
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened||readThrough;
-    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||(readThrough&&!historicalGithub)||!evidenceReady;
+    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||(readThrough&&!historicalGithub&&!historicalStudio)||!evidenceReady;
     const convert=document.getElementById("gbV4ConvertLegacy");
     convert.disabled=busy||!loaded||!legacyScalar||readThrough;
     document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar||readThrough;
-    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||(readThrough&&!historicalGithub));
+    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar||(readThrough&&!historicalGithub&&!historicalStudio));
     document.getElementById("gbV4Refresh").disabled=busy;
+
     if(bulkPublish)bulkPublish.disabled=busy||bulkPublish.dataset.ready!=="true";
     if(document.getElementById("gbV4ConversationForm"))renderConversation();
   }
@@ -723,9 +725,76 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       return {awardedPoints,pendingPoints,comment:row.querySelector("[data-comment]").value.trim()};
     });
   }
+  const gradeHistory=document.getElementById("gbV4GradeHistory"),
+    historyStatus=document.getElementById("gbV4GradeHistoryStatus"),
+    historyEntries=document.getElementById("gbV4GradeHistoryEntries"),
+    historyRefresh=document.getElementById("gbV4GradeHistoryRefresh");
+  let historyGeneration=0,historyLoaded=false;
+  function resetGradeHistory(){
+    historyGeneration++;historyLoaded=false;gradeHistory.open=false;
+    historyEntries.replaceChildren();historyStatus.textContent="Open to load recorded revisions.";
+    historyRefresh.disabled=false;
+  }
+  function stateLabel(value){
+    if(!value)return "No prior record";
+    const score=value.awarded==null?"Score not recorded":String(value.awarded)+(value.total==null?"":" / "+value.total);
+    return score+(value.status?" · "+(value.status==="published"?"Published":"Draft"):"")+
+      (value.pending?" · "+value.pending+" pending":"")+(value.revision!=null?" · Rev "+value.revision:"");
+  }
+  function appendRevisionState(host,label,value){
+    if(!value)return;
+    const section=make("div","min-w-0 rounded border border-slate-200 bg-white p-2");
+    section.append(make("p","text-xs font-bold text-slate-500",label),
+      make("p","text-sm font-semibold break-words",stateLabel(value)));
+    if(value.feedback) section.append(make("p","text-xs whitespace-pre-wrap break-words mt-1",value.feedback));
+    for(const criterion of value.criteria||[]){
+      section.append(make("p","text-xs break-words mt-1",criterion.name+" · "+
+        (criterion.awarded??"—")+" / "+(criterion.maximum??"—")+
+        (criterion.pending?" · "+criterion.pending+" pending":"")+(criterion.comment?" · "+criterion.comment:"")));
+    }
+    host.append(section);
+  }
+  async function loadGradeHistory(){
+    if(!dialog.open||!currentTask||!currentRow||!currentSnapshot||reviewNeedsRefresh)return;
+    const id=++historyGeneration,task=currentTask,row=currentRow;
+    historyRefresh.disabled=true;historyStatus.textContent="Loading revisions…";historyEntries.replaceChildren();
+    try{
+      const historical=task.legacyCompatibility;
+      const result=historical?await scoped(migrationApi,task.submissionSource==="github"?"legacy_github_history":"legacy_review_history",{
+        legacyAssessmentId:task.legacyAssessmentId,
+        ...(task.legacyOfferingId?{legacyOfferingId:task.legacyOfferingId}:{}),
+        ...(task.submissionSource==="github"?{legacyEvidenceId:row.recordId}:{legacySubmissionId:row.recordId})
+      }):await scoped(gradeApi,"grade_history",{taskId:task.taskId,studentUid:row.studentUid});
+      if(id!==historyGeneration||!dialog.open||currentRow!==row||currentTask?.taskId!==task.taskId)return;
+      historyLoaded=true;
+      const entries=result.entries||[];
+      historyStatus.textContent=result.limitReached?"More than 200 recorded revisions. A paginated view is required.":
+        entries.length?entries.length+" recorded revision(s) · newest first":"No recorded revisions found. Existing scores may predate audit logging.";
+      for(const entry of entries){
+        const card=make("details","rounded-lg border border-slate-200 bg-slate-50 p-2");
+        const title=entry.source==="historical"?"Historical revision":
+          ({teacher_draft_saved:"Draft saved",grade_corrected:"Grade corrected",grade_published:"Published"}[entry.action]||entry.action.replaceAll("_"," "));
+        card.append(make("summary","cursor-pointer text-sm font-bold break-words",title+" · "+
+          (entry.at?new Date(entry.at).toLocaleString():"Date unavailable")+" · "+stateLabel(entry.after)));
+        const states=make("div","grid sm:grid-cols-2 gap-2 mt-2");
+        appendRevisionState(states,"Before",entry.before);appendRevisionState(states,"After",entry.after);
+        card.append(states);
+        if(entry.evidenceVersion!=null)card.append(make("p","text-xs text-slate-500 mt-2","Evidence revision "+entry.evidenceVersion));
+        if(entry.checkpointReceiptId)card.append(make("p","text-xs text-slate-500 break-all","Receipt: "+entry.checkpointReceiptId));
+        if(entry.actorUid)card.append(make("p","text-xs text-slate-500 break-all","Recorded by: "+entry.actorUid));
+        if(entry.note)card.append(make("p","text-xs text-slate-600 whitespace-pre-wrap break-words mt-1",entry.note));
+        historyEntries.append(card);
+      }
+    }catch(error){
+      if(id===historyGeneration){historyLoaded=false;historyStatus.textContent=error?.message||"Grade history unavailable.";}
+    }finally{if(id===historyGeneration)historyRefresh.disabled=false;}
+  }
+  gradeHistory.addEventListener("toggle",()=>{if(gradeHistory.open&&!historyLoaded)void loadGradeHistory();});
+  historyRefresh.addEventListener("click",()=>void loadGradeHistory());
+  dialog.addEventListener("close",resetGradeHistory);
   async function openReview(row){
     if(busy||!currentTask||dialog.open)return;
-    reviewNeedsRefresh=false;
+    reviewNeedsRefresh=false;resetGradeHistory();
     currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentDraftSource="teacher";
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
@@ -865,7 +934,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=published?
         (historicalStudio?
-          "Original published Studio grade preserved. Corrections still require the audited historical correction workflow.":
+          "Original published Studio grade preserved. Use grade correction to record a new audited revision.":
           historicalGithub?
           "Original published GitHub grade preserved. Use grade correction to record a new audited revision.":
           currentGrade?.gradeSchema==="legacy_scalar_v1"?
@@ -1057,6 +1126,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       currentGrade=refreshed.grade;
       renderRubric(currentGrade);
       refreshReviewControls();
+      historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       document.getElementById("gbV4ReviewStatus").textContent=
         "Draft saved against frozen submission version "+currentSnapshot.version+".";
     }catch(error){
@@ -1089,11 +1159,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           taskId:currentTask.taskId,studentUid:currentRow.studentUid
         });
       document.getElementById("gbV4ReviewStatus").textContent="Published "+result.awarded+" / "+result.total+" to the student.";
-      currentGrade={...(currentGrade||{}),status:"published"};
+      currentGrade={...(currentGrade||{}),status:"published",revision:result.revision??currentGrade?.revision};
       currentRow={...currentRow,status:"reviewed"};
       if(!currentTask.legacyCompatibility)
         currentSnapshot={...(currentSnapshot||{}),status:"reviewed"};
       refreshReviewControls();
+      historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       await loadInbox();
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade was not published.";
@@ -1135,6 +1206,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         taskId:currentTask.taskId,studentUid:currentRow.studentUid
       });
       currentGrade=refreshed.grade;renderRubric(currentGrade);refreshReviewControls();
+      historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       document.getElementById("gbV4LegacyReason").value="";
       document.getElementById("gbV4ReviewStatus").textContent=
         "Historical rubric breakdown reconstructed at "+result.awarded+" / "+result.total+
@@ -1160,6 +1232,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     try{
       setBusy(true,"Verifying the frozen submission and recording the published-grade correction…");
       const historical=currentTask.legacyCompatibility&&currentTask.submissionSource==="github";
+      const historicalStudio=currentTask.legacyCompatibility&&currentTask.submissionSource==="studio";
       const historicalIds={legacyAssessmentId:currentTask.legacyAssessmentId,legacyEvidenceId:currentRow.recordId,
         ...(currentTask.legacyOfferingId?{legacyOfferingId:currentTask.legacyOfferingId}:{})};
       const feedback=document.getElementById("gbV4Feedback").value.trim();
@@ -1168,14 +1241,20 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
         expectedCheckpointSha:currentSnapshot.checkpointSha,
           ...(currentSnapshot.checkpointOnly?{expectedReceiptDigest:currentSnapshot.receiptDigest}:{}),criteria,feedback
+      }):historicalStudio?await scoped(migrationApi,"legacy_review_correct_published",{
+        legacyAssessmentId:currentTask.legacyAssessmentId,legacySubmissionId:currentRow.recordId,
+        expectedGradeRevision:currentGrade.revision,expectedSubmissionVersion:currentSnapshot.version,
+        expectedSnapshotHash:currentSnapshot.contentDigest,criteria,feedback
       }):await scoped(gradeApi,"correct_published",{
         taskId:currentTask.taskId,studentUid:currentRow.studentUid,
         expectedRevision:currentGrade.revision,criteria,feedback,reason
       });
       const refreshed=historical?await scoped(migrationApi,"legacy_github_inspect",historicalIds):
+        historicalStudio?await scoped(migrationApi,"legacy_review_inspect",{legacyAssessmentId:currentTask.legacyAssessmentId,legacySubmissionId:currentRow.recordId}):
         await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       currentGrade=refreshed.grade;
       renderRubric(currentGrade);refreshReviewControls();
+      historyLoaded=false;if(gradeHistory.open)void loadGradeHistory();
       document.getElementById("gbV4CorrectionReason").value="";
       document.getElementById("gbV4ReviewStatus").textContent=
         "Published grade corrected to "+result.awarded+" / "+result.total+
