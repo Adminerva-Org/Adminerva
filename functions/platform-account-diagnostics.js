@@ -235,6 +235,17 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     const account=root(ownerUid),entry=account.collection("entries").doc(event.eventId);
     const quota=account.collection("daily_quotas").doc(date);
     return db.runTransaction(async tx=>{
+      const preference=await tx.get(account);
+      const browserEnabled=preference.data()?.browserCollectionEnabled!==false;
+      if(source==="browser"&&!browserEnabled)deny("permission-denied","Detailed browser diagnostics are disabled in your privacy settings.");
+      // A stale browser may still send correlation hints with a necessary backend call.
+      // Keep the operational outcome, but omit optional client correlation after opt-out.
+      let storedEvent=event;
+      if(source==="backend"&&!browserEnabled&&event.operationId){
+        const {operationId,context,...rest}=event;
+        const {parentOperationId,...safeContext}=context||{};
+        storedEvent={...rest,sessionId:randomUUID(),...(Object.keys(safeContext).length?{context:safeContext}:{})};
+      }
       const existing=await tx.get(entry);
       if(existing.exists)return {recorded:true,duplicate:true};
       const counter=await tx.get(quota),count=Number(counter.data()?.count)||0;
@@ -252,7 +263,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
         lastState:event.state,lastErrorCode:event.errorCode||""
       },{merge:true});
       tx.set(quota,{count:count+1,normalCount:normalCount+(isNormal?1:0),expiresAt:expiry});
-      const sanitized={...event,ownerUid,source,...(service?{service}:{}),
+      const sanitized={...storedEvent,ownerUid,source,...(service?{service}:{}),
         diagnosticScope:GLOBAL_SCOPE,
         phase:event.phase||(event.state==="error"?"failed":event.state==="unavailable"?"interrupted":
           event.action.endsWith("_requested")?"started":event.state==="ok"?"completed":"observed"),
@@ -626,6 +637,17 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
 
   async function service(request){
     const input=request.data||{},action=String(input.action||"record");
+    if(action==="privacy_status"||action==="set_browser_collection"){
+      if(request?.auth?.token?.email_verified!==true||!request?.auth?.uid)deny("unauthenticated","Sign in with a verified account.");
+      const ownerUid=uid(request.auth.uid),ref=root(ownerUid);
+      if(action==="privacy_status"){
+        if(Object.keys(input).some(key=>key!=="action"))deny("invalid-argument","Only your own privacy status can be read.");
+        return {browserEnabled:(await ref.get()).data()?.browserCollectionEnabled!==false};
+      }
+      if(typeof input.enabled!=="boolean"||Object.keys(input).some(key=>!["action","enabled"].includes(key)))deny("invalid-argument","Choose your own browser diagnostics preference.");
+      await db.runTransaction(async tx=>{await tx.get(ref);tx.set(ref,{ownerUid,browserCollectionEnabled:input.enabled,browserPreferenceUpdatedAt:FieldValue.serverTimestamp()},{merge:true});});
+      return {browserEnabled:input.enabled};
+    }
     if(action==="record"){
       if(request?.auth?.token?.email_verified!==true||!request?.auth?.uid)
         deny("unauthenticated","Sign in with a verified account.");
