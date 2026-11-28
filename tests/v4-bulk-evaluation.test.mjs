@@ -525,3 +525,20 @@ test("bulk re-evaluation explicitly selects drafts and rejects changed or publis
  assert.equal(bulkSaveableStages({staged,saveSelection,rows:[{...rows[0],gradeRevision:6}]}).length,0);
  assert.equal(bulkSaveableStages({staged,saveSelection,rows:[{...rows[0],gradeStatus:"published"}]}).length,0);
 });
+
+test("checkpoint-only and selected-commit students can share a batch without invented contributions",()=>{
+ const assessment={...task,title:"Historical Java",submissionSource:"github",instructions:"Build Java OOP",maxScore:40};
+ const sha="a".repeat(40),receiptDigest="b".repeat(64),file={path:"Main.java",content:"class Main {}",checkpointSha:sha};
+ const common={version:1,checkpointSha:sha,repository:"student/project",pinnedSource:[file]};
+ const checkpointData=buildGeneralExternalEvaluationData({task:assessment,snapshot:{...common,checkpointOnly:true,sourcePath:"Main.java",evidenceDigest:receiptDigest,selectedCommitShas:[],commits:[]}});
+ const selectedData=buildGeneralExternalEvaluationData({task:assessment,snapshot:{...common,selectedCommitShas:[sha],commits:[{sha,files:[{path:"Main.java",patch:"+class Main {}"}]}]}});
+ const pack=buildCompactBulkExternalEvaluationPackage({batchId:"mixed",task:assessment,entries:[{ref:"receipt",evaluationData:checkpointData},{ref:"commit",evaluationData:selectedData}]});
+ assert.equal(pack.items.length,2);assert.equal(pack.items[0].frozenEvidence.checkpointRef,receiptDigest);
+ assert.deepEqual(pack.items[0].frozenEvidence.selectedCommitShas,[]);
+ const allowedRefs=new Map([["receipt",{receiptDigest}],["commit",{}]]);
+ const input={batchId:"mixed",allowedRefs,task:assessment,parseResponse:parseGeneralExternalEvaluationResponse};
+ const result=readBulkExternalResponse({format:BULK_RESPONSE_FORMAT,batchId:"mixed",results:[{ref:"receipt",response:{...suggestion,checkpointRef:receiptDigest}},{ref:"commit",response:suggestion}]},input);
+ assert.equal(result.length,2);
+ assert.throws(()=>readBulkExternalResponse({format:BULK_RESPONSE_FORMAT,batchId:"mixed",results:[{ref:"receipt",response:suggestion}]},input),/checkpoint receipt/);
+ assert.throws(()=>assertBulkEvidence("github",{...checkpointData.evidence,commits:[{sha}]}),/checkpoint source/);
+});
