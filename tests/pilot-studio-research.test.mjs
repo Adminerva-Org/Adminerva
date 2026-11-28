@@ -144,3 +144,21 @@ test("platform overview returns only cross-school aggregates to platform authori
   assert.equal(encoded.includes(UID),false);
   assert.equal(encoded.includes("private data"),false);
 });
+
+test("research opt-out is self-service, persistent and cannot confer test designation",async()=>{
+ const db=database(),api=createPilotStudioResearchService({db,FieldValue,Timestamp,now:()=>FIXED});
+ const ref="platform_test_accounts/"+UID;
+ assert.deepEqual(await api(request(UID,{action:"privacy_status"})),{designated:true,enabled:true});
+ assert.deepEqual(await api(request(UID,{action:"set_research_collection",enabled:false})),{designated:true,enabled:false});
+ assert.equal(db.records.get(ref).revision,1);assert.equal(db.records.get(ref).status,"active");
+ assert.equal((await api(request(UID,{action:"status",schoolId:SCHOOL}))).enabled,false);
+ const event={eventId:EVENT_ID,sessionId:SESSION_ID,projectId:"demo_1",type:"project_open"};
+ assert.deepEqual(await api(request(UID,{action:"record",schoolId:SCHOOL,event})),{recorded:false,disabled:true});
+ assert.equal(db.records.has("schools/"+SCHOOL+"/pilot_research_events/"+UID+"_"+EVENT_ID),false);
+ assert.deepEqual(await api(request("other",{action:"privacy_status"})),{designated:false,enabled:false});
+ await assert.rejects(api(request("other",{action:"set_research_collection",enabled:true})),/active designated test accounts/);
+ await assert.rejects(api(request("other",{action:"set_research_collection",enabled:true,uid:UID})),/own research preference/);
+ assert.equal(db.records.get(ref).researchOptOut,true);
+ assert.deepEqual(await api(request(UID,{action:"set_research_collection",enabled:true})),{designated:true,enabled:true});
+ assert.equal((await api(request(UID,{action:"record",schoolId:SCHOOL,event}))).recorded,true);
+});
