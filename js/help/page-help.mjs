@@ -76,6 +76,6 @@ export function mountHelp() {
   syncSettingsLink();
   document.addEventListener("adminerva:role-ready",event=>syncSettingsLink(event.detail||{}));
   if (privatePage && window.self === window.top) {
-    import("./activity-preferences.mjs?v=e13378684a40").then(module => module.mountActivityPreferences()).catch(() => {});
+    import("./activity-preferences.mjs?v=b04b2f540c7f").then(module => module.mountActivityPreferences()).catch(() => {});
   }
 }

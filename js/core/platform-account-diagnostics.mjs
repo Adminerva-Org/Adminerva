@@ -16,7 +16,7 @@ const ID=()=>crypto.randomUUID();
 let pageInstanceId="";
 const allowedRoutes=/(?:^\/$|^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]{1,80}\.html$)/;
 const allowedCodes=/^[-a-zA-Z0-9_./]{1,64}$/;
-const release="v20261128-academic-trace"; // The emitter revision, not the full app release.
+const release="v20261128-privacy-preferences"; // The emitter revision, not the full app release.
 function environment(){
   // Convert the browser environment to coarse allowlisted categories; never
   // transmit a full user-agent string, fingerprint, IP address or screen size.
@@ -138,15 +138,18 @@ async function send(event,replay=false){
   if(!replay){if(event.kind==="error")failureEventsSent++;else eventsSent++;}
   if(navigator.onLine===false){queueDelayed(event);return;}
   for(let attempt=0;attempt<2;attempt++){
-    if(auth.currentUser?.uid!==uid||turn!==epoch)return;
+    if(!enabled||auth.currentUser?.uid!==uid||turn!==epoch)return;
     try{
-      await record({action:"record",event});
+      const result=await record({action:"record",event});
+      if(turn!==epoch||auth.currentUser?.uid!==uid)return;
+      if(result.data?.disabled===true){pauseCollection();return;}
       if(turn===epoch&&!flushing&&pending.length)void flushPending();
       return;
     }catch(error){
       if(turn!==epoch||auth.currentUser?.uid!==uid)return;
       const raw=String(error?.code||"");
-      if(/permission-denied|unauthenticated|resource-exhausted|invalid-argument/.test(raw))return;
+      if(/permission-denied|unauthenticated/.test(raw)){pauseCollection();return;}
+      if(/resource-exhausted|invalid-argument/.test(raw))return;
       if(attempt===0)await new Promise(resolve=>setTimeout(resolve,600));
       else queueDelayed(event);
     }
@@ -180,14 +183,21 @@ function initializeSession(user){
   sessionId=id;
   if(fresh)emit("session_started",{kind:"session",state:"ok",phase:"observed"});
 }
-onAuthStateChanged(auth,user=>{
+function pauseCollection(){enabled=false;pending=[];for(const p of processes.values())clearTimeout(p.timer);processes.clear();}
+onAuthStateChanged(auth,async user=>{
   epoch++;activeUid="";sessionId="";enabled=false;eventsSent=0;failureEventsSent=0;pendingRunOperationId="";pending=[];flushing=false;errors.clear();for(const p of processes.values())clearTimeout(p.timer);processes.clear();
   if(!user?.emailVerified)return;
-  activeUid=user.uid;enabled=true;pageInstanceId=ID();
+  const turn=epoch;activeUid=user.uid;
+  try{
+    const result=await record({action:"privacy_status"});
+    if(turn!==epoch||auth.currentUser?.uid!==user.uid||result.data?.browserEnabled!==true)return;
+  }catch{return;}
+  enabled=true;pageInstanceId=ID();
   initializeSession(user);
   emit("auth_session_observed",{kind:"session",module:"auth",state:"ok",phase:"observed"});
   emit("page_open",{kind:"navigation",state:"ok",phase:"observed"});
 });
+document.addEventListener("adminerva:browser-diagnostics-disabled",()=>pauseCollection());
 window.addEventListener("error",event=>{
   if(event?.target&&event.target!==window){
     diagnosticError("resource_error",String(event.target?.tagName||"resource").toLowerCase());

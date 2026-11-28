@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {createRequire} from "node:module";
+const require=createRequire(import.meta.url);
 
 const backend=readFileSync(new URL("../functions/platform-users.js",import.meta.url),"utf8");
 const client=readFileSync(new URL("../js/core/platform-users.mjs",import.meta.url),"utf8");
@@ -123,4 +125,43 @@ test("compatibility People and Access mutations preserve explicit System Admin A
   assert.ok((peopleClient.match(/platformMode:"assist"/g)||[]).length>=3);
   assert.match(peoplePage,/people-access\.mjs\?v=[A-Za-z0-9._-]+/);
   assert.doesNotMatch(peoplePage,/people-access\.mjs\?v=e44dd05d2bec/);
+});
+
+test("prior consent import is previewed, attested, bounded and preserves saved preferences",async()=>{
+ const {importExistingActivityConsent}=require("../functions/existing-activity-consent.js");
+ const docs=new Map([
+  ["platform_schools/mcs-manila",{compatibilityMode:"legacy_allowed"}],
+  ["students/student_a",{email:"a@example.test",status:"active"}],
+  ["students/student_b",{email:"b@example.test",status:"active"}],
+  ["activity_preferences/user_b",{ownerUid:"user_b",studentId:"student_b",enabled:false}],
+  ["students/student_c",{email:"c@example.test",status:"active"}],
+  ["activity_preferences/user_c",{ownerUid:"user_c",studentId:"student_c",enabled:true}]
+ ]);
+ let audit=0;
+ const snapshot=path=>({id:path.split("/").at(-1),exists:docs.has(path),data:()=>docs.get(path)});
+ const ref=path=>({path,get:async()=>snapshot(path)});
+ const db={doc:ref,collection:path=>({
+  doc:()=>ref(path+"/audit_"+(++audit)),
+  where:(key,op,value)=>({limit:()=>({get:async()=>({docs:[...docs.keys()].filter(p=>p.startsWith(path+"/")&&docs.get(p)?.[key]===value).map(snapshot)})})})
+ }),runTransaction:async callback=>callback({get:async r=>snapshot(r.path),create:(r,value)=>{assert.equal(docs.has(r.path),false);docs.set(r.path,value);}})};
+ const auth={getUser:async uid=>({uid,email:uid.slice(-1)+"@example.test",emailVerified:uid!=="user_d",disabled:false})};
+ const run=(action,extra={},authority={uid:"admin",platformAdmin:true})=>importExistingActivityConsent({db,auth,FieldValue:{serverTimestamp:()=>123},authority,input:{action,uids:["user_a","user_b","user_c","user_d","user_e"],...extra}});
+ const preview=await run("preview_activity_consent");
+ assert.deepEqual(preview.rows.map(x=>x.status),["eligible","existing_choice_preserved","already_enabled","account_ineligible","no_active_legacy_student"]);
+ assert.equal(docs.has("activity_preferences/user_a"),false);
+ await assert.rejects(run("initialize_activity_consent"),/Confirm previously obtained consent/);
+ await assert.rejects(run("initialize_activity_consent",{consentConfirmed:true},{uid:"teacher",platformAdmin:false}),/System Administrator/);
+ const result=await run("initialize_activity_consent",{consentConfirmed:true});
+ assert.equal(result.rows[0].status,"initialized");
+ assert.deepEqual(docs.get("activity_preferences/user_a"),{ownerUid:"user_a",studentId:"student_a",enabled:true,promptDismissed:true,updatedAt:123});
+ assert.equal(docs.get("activity_preferences/user_b").enabled,false);
+ assert.equal([...docs.values()].filter(v=>v.action==="existing_student_activity_consent_initialized").length,1);
+ docs.get("activity_preferences/user_a").enabled=false;
+ assert.equal((await run("initialize_activity_consent",{consentConfirmed:true})).rows[0].status,"existing_choice_preserved");
+ assert.equal(docs.get("activity_preferences/user_a").enabled,false);
+ docs.set("platform_schools/mcs-manila",{compatibilityMode:"v4_only"});
+ assert.equal((await run("preview_activity_consent",{uids:["user_a"]})).rows[0].status,"v4_only_legacy_unavailable");
+ assert.match(page,/id="pu-consent-preview"/);
+ assert.match(page,/id="pu-consent-confirm"/);
+ assert.match(client,/consentConfirmed:true/);
 });
