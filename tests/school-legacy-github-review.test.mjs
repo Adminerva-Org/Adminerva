@@ -67,6 +67,7 @@ function fixture({published=false,grade=null,approval=true,discovery=false,
  const db={doc,
    collection(path){return {
      doc:id=>doc(path+"/"+(id||"audit-"+(++count))),
+     limit(n){return {get:async()=>{const docs=[...map].filter(([key])=>key.startsWith(path+"/")&&key.split("/").length===path.split("/").length+1).slice(0,n).map(([key,data])=>({id:key.split("/").at(-1),data:()=>data}));return {docs,size:docs.length};}};},
      where(field,op,value){assert.equal(op,"==");
        const page=(limit,last="")=>{
          const records=[...map].filter(([key,data])=>
@@ -423,10 +424,11 @@ test("checkpoint-only submissions are manually gradeable without creating select
  assert.equal(view.snapshot.checkpointSha,sha);
  assert.equal(view.snapshot.sourcePath,"src/Main.java");
  const args={...f.gradeArgs,legacyEvidenceId,expectedEvidenceRevision:0,expectedCheckpointSha:sha,expectedReceiptDigest:view.snapshot.receiptDigest};
- await assert.rejects(f.service(f.request("legacy_github_save_draft",{...args,draftSource:"external_ai"})),error=>error.code==="failed-precondition");
+ await assert.rejects(f.service(f.request("legacy_github_save_draft",{...args,draftSource:"external_ai",onlyIfUngraded:true})),error=>error.code==="failed-precondition");
  await assert.rejects(f.service(f.request("legacy_github_save_draft",{...args,expectedReceiptDigest:"stale"})),error=>error.code==="failed-precondition");
- const saved=await f.service(f.request("legacy_github_save_draft",args));
+ const saved=await f.service(f.request("legacy_github_save_draft",{...args,draftSource:"external_ai"}));
  assert.equal(saved.awarded,35);
+ assert.equal(f.map.get("student_grades/"+evidenceId).evaluationSource,"external_ai");
  const grade=f.map.get("student_grades/"+evidenceId);
  assert.equal(grade.checkpointReceiptId,receiptId);
  assert.equal(grade.gradedSha,sha);
@@ -493,4 +495,40 @@ test("grade history explicitly reports long ledger limit",async()=>{
  const db={collection:()=>({where:()=>({limit:()=>({get:async()=>({size:201,docs:[]})})})})};
  const result=await readLegacyGradeHistory({db,schoolId:"school",taskId:"task",studentId:"student",gradeId:"grade"});
  assert.equal(result.limitReached,true);assert.equal(result.entries.length,0);
+});
+
+test("exact original activity scores can be corrected in place with their canonical version ledger",async()=>{
+ const f=fixture(),path="activity_grades/original-activity",recordId="activity:original-activity";
+ f.map.set(path,{taskId,studentId,section:"Grade 12 ICT",score:20,maxScore:40,published:true,gradeVersion:3,feedback:"Original",privateExtra:"preserved"});
+ const list=await f.service(f.request("legacy_github_inbox"));
+ assert.equal(list.evidence[0].activityEditable,true);assert.equal(list.evidence[0].evidenceId,recordId);
+ const view=await f.service(f.request("legacy_github_inspect",{legacyEvidenceId:recordId}));
+ assert.equal(view.snapshot.activityOnly,true);assert.equal(view.grade.awarded,20);
+ const args={legacyEvidenceId:recordId,expectedActivityDigest:view.snapshot.activityDigest,expectedGradeRevision:3,score:0,feedback:"Corrected"};
+ const edited=await f.service(f.request("legacy_github_activity_edit",args));
+ assert.equal(edited.revision,4);assert.equal(edited.status,"published");assert.equal(f.map.get(path).score,0);
+ assert.equal(f.map.get(path).published,true);assert.equal(f.map.get(path).privateExtra,"preserved");
+ assert.equal(f.map.has("student_grades/"+evidenceId),false);
+ const revision=f.map.get(path+"/versions/4");assert.equal(revision.before.score,20);assert.equal(revision.after.score,0);
+ const history=await f.service(f.request("legacy_github_history",{legacyEvidenceId:recordId}));
+ assert.equal(history.entries[0].before.awarded,20);assert.equal(history.entries[0].after.awarded,0);
+ const count=f.writes.length;
+ await assert.rejects(f.service(f.request("legacy_github_activity_edit",args)),error=>error.code==="failed-precondition");
+ f.map.set("activity_grades/duplicate",{...f.map.get(path)});
+ await assert.rejects(f.service(f.request("legacy_github_inspect",{legacyEvidenceId:recordId})),error=>error.code==="failed-precondition");
+ f.map.delete("activity_grades/duplicate");
+ f.map.set("student_grades/"+evidenceId,{studentId,taskId,score:10,maxScore:40});
+ await assert.rejects(f.service(f.request("legacy_github_inspect",{legacyEvidenceId:recordId})),error=>error.code==="failed-precondition");
+ assert.equal(f.writes.length,count);
+});
+test("activity correction rejects a mismatched assessment maximum, blank score and foreign school",async()=>{
+ const f=fixture(),path="activity_grades/old",legacyEvidenceId="activity:old";
+ const base={taskId,studentId,section:"Grade 12 ICT",score:15,maxScore:40,published:false};
+ f.map.set(path,{...base,maxScore:30});
+ await assert.rejects(f.service(f.request("legacy_github_inspect",{legacyEvidenceId})),error=>error.code==="failed-precondition");
+ f.map.set(path,{...base,score:" "});
+ await assert.rejects(f.service(f.request("legacy_github_inspect",{legacyEvidenceId})),error=>error.code==="permission-denied");
+ f.map.set(path,{...base,schoolId:"other"});
+ await assert.rejects(f.service(f.request("legacy_github_inspect",{legacyEvidenceId})),error=>error.code==="permission-denied");
+ assert.equal(f.writes.length,0);
 });
