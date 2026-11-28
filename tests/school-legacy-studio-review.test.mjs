@@ -329,3 +329,18 @@ test("historical Studio published corrections retain the original grade, frozen 
  await assert.rejects(service({ctx,input:{...correction,expectedGradeRevision:2,criteria:[{awardedPoints:null,pendingPoints:0},{awardedPoints:0,pendingPoints:0}]}}),error=>error.code==="invalid-argument");
  assert.equal(writes.length,count);
 });
+
+test("individual Studio draft save checks the grade revision and exact submitted snapshot",async()=>{
+ const {service,map,writes}=dbHarness();
+ const base={...input("legacy_review_save_draft").input,legacySubmissionId:submittedId,
+  criteria:[{awardedPoints:18,pendingPoints:0},{awardedPoints:19,pendingPoints:0}],
+  feedback:"Checked the exact frozen submitted source.",expectedGradeRevision:0,
+  expectedSubmissionVersion:1,expectedSnapshotHash:data().hash};
+ await service({ctx,input:base});
+ const count=writes.length;
+ await assert.rejects(service({ctx,input:base}),error=>error.code==="failed-precondition");
+ await assert.rejects(service({ctx,input:{...base,expectedGradeRevision:1,expectedSnapshotHash:"stale"}}),error=>error.code==="failed-precondition");
+ assert.equal(writes.length,count);assert.equal(map.get("student_grades/"+submittedId).score,37);
+ await service({ctx,input:{...base,expectedGradeRevision:1}});
+ assert.equal(map.get("student_grades/"+submittedId).gradeVersion,2);
+});
