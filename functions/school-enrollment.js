@@ -494,6 +494,14 @@ function createSchoolEnrollmentService({db}){
         canApply:blockers.length===0};
     }
 
+    if(input.action==="registrar_overview"){
+      const applications=db.collection(root+"enrollment_applications").where("schoolId","==",ctx.schoolId);
+      const requests=db.collection(root+"student_document_requests").where("schoolId","==",ctx.schoolId);
+      const count=async (query,status)=>Number((await query.where("status","==",status).count().get()).data().count)||0;
+      const groups=[["applications",applications,["submitted","needs_information","accepted"]],["documents",requests,["requested","in_review","ready"]]];
+      const results=await Promise.all(groups.map(async ([key,query,states])=>[key,Object.fromEntries(await Promise.all(states.map(async state=>[state,await count(query,state)])))]));
+      return {asOf:Date.now(),...Object.fromEntries(results)};
+    }
     if(input.action==="registrar_summary"){
       const yearId=checkId(input.yearId,"Academic year"),termId=input.termId?checkId(input.termId,"Academic period"):null;
       const year=await db.doc(root+"academic_years/"+yearId).get();
@@ -665,7 +673,10 @@ function createSchoolEnrollmentService({db}){
 
     if(input.action==="list_applications"){
       const cursor=input.cursor?checkId(input.cursor,"Application cursor",128):null,pageSize=80;
+      const filter=String(input.status||"all");
+      if(!["all","pending","submitted","needs_information","accepted","enrolled","rejected","withdrawn"].includes(filter))deny("invalid-argument","Choose an application status.");
       let scan=db.collection(root+"enrollment_applications").orderBy(FieldPath.documentId()).limit(pageSize+1);
+      if(filter==="pending")scan=scan.where("status","in",["submitted","needs_information","accepted"]);else if(filter!=="all")scan=scan.where("status","==",filter);
       if(cursor)scan=scan.startAfter(cursor);
       const exactId=input.applicationId?checkId(input.applicationId,"Application ID",128):null;
       const [snap,clearanceDoc,...templateDocs]=await Promise.all([exactId?db.doc(root+"enrollment_applications/"+exactId).get():scan.get(),clearanceRef.get(),...ADMISSION_TYPES.map(type=>templateRef(type).get())]);
@@ -905,6 +916,12 @@ function createSchoolEnrollmentService({db}){
     }
 
     if(input.action==="list_registrations"){
+      if(input.registrationId){
+        const registrationId=checkId(input.registrationId,"Registration ID",128),personId=checkId(input.personId,"Person ID",128);
+        const doc=await db.doc(root+"student_registrations/"+registrationId).get();
+        if(!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().personId!==personId)deny("not-found","The linked registration was not found in this school.");
+        return {items:registrationRows([doc]),nextCursor:null};
+      }
       const pageSize=80,cursor=input.cursor?checkId(input.cursor,"Registration cursor",128):null;
       let query=db.collection(root+"student_registrations").orderBy(FieldPath.documentId()).limit(pageSize+1);
       if(cursor)query=query.startAfter(cursor);
