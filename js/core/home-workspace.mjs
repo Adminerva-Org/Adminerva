@@ -15,13 +15,20 @@ function mount(){
   if(cards.length){
     controls=document.createElement("section");controls.className="av-home-controls";controls.setAttribute("aria-label","Find a workspace tool");
     controls.innerHTML='<label for="home-tool-search">Filter your learning tools</label><input id="home-tool-search" type="search" placeholder="Search projects, assignments, practice…" autocomplete="off"><p class="av-home-search-status" role="status" aria-live="polite">Search your learning workspace cards or use Ctrl + K to jump to any linked tool.</p>';
-    hero?.after(controls);
+    const destinationGrid=main.querySelector(".avx-world-destination-grid");
+    if(destinationGrid){
+      controls.classList.add("avx-world-search");
+      destinationGrid.before(controls);
+      controls.querySelector("label").textContent="Find a learning tool";
+      controls.querySelector("input").placeholder="Search tools";
+      controls.querySelector("[role=status]").textContent="";
+    }else hero?.after(controls);
     const search=controls.querySelector("input"),status=controls.querySelector("[role=status]");
     search.addEventListener("input",()=>{
       const terms=search.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
       let shown=0;
       for(const card of cards){const matches=terms.every(term=>card.textContent.toLowerCase().includes(term));card.style.display=matches?"":"none";if(matches&&!card.hidden&&!card.classList.contains("hidden"))shown++;}
-      status.textContent=terms.length?shown+" matching tools. Clear search to see all tools.":"Search your learning workspace cards or use Ctrl + K to jump to any linked tool.";
+      status.textContent=terms.length?shown+" matching tools. Clear search to see all tools.":destinationGrid?"":"Search your learning workspace cards or use Ctrl + K to jump to any linked tool.";
     });
   }
   let candidate;try{candidate=sessionStorage.getItem("Adminerva_last_workspace_"+user.uid);}catch{}
@@ -56,7 +63,9 @@ function mount(){
       title.textContent="Continue: "+name;
       detail.textContent="Pick up where you left off in this browser tab.";detail.className="text-sm";text.append(title,detail);
       link.href=destination;link.className="av-primary-button";link.textContent="Resume →";resume.append(text,link);
-      if(controls)controls.before(resume);else hero?.after(resume);
+      const resumeSlot=main.querySelector('[data-student-home-slot="resume"]');
+      if(resumeSlot)resumeSlot.append(resume);
+      else if(controls&&!controls.classList.contains("avx-world-search"))controls.before(resume);else hero?.after(resume);
     }
   }
 }
