@@ -175,7 +175,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        checkpointSha:receipt.checkpointSha,revision:0,selected:[],verified:[],approved:false,
        hasSubmission:true,discoveryOnly:false,contributionScope:"",
        receipt,receiptDigest:hash(receipt.receiptId,receipt.studentId,receipt.section,
-         receipt.repository,receipt.checkpointSha,receipt.sourcePath,receipt.submittedAt)};
+         receipt.repository,receipt.checkpointSha,receipt.sourcePath,receipt.submittedAt,snapshot.data().submittedByUid)};
    }
    function newestReceipt(page,studentId){
      if(page.size>=1001)deny("resource-exhausted","Original receipt reconciliation requires pagination.");
@@ -347,6 +347,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        results.push(gradeRow);byStudent.set(grade.studentId,gradeRow);
      }
      const primaryIds=new Set(gradePage.docs.map(doc=>doc.data()).filter(row=>row.taskId===id).map(row=>row.studentId));
+     const modernIds=new Set(rows.map(row=>row.studentId));
      async function ensureRow(studentId,section){
        if(byStudent.has(studentId))return byStudent.get(studentId);
        const person=await db.doc("students/"+studentId).get();
@@ -371,7 +372,7 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
        if(!row.hasSubmission){
          row.receiptOnly=true;row.status="historical_checkpoint_receipt";
          const canonicalId=studentId+"_"+id;
-         if(!row.evidenceId&&!row.gradeException&&
+         if(!modernIds.has(studentId)&&!row.evidenceId&&!row.gradeException&&
             (list.length===1||list[0].submittedAt!==list[1].submittedAt)&&
             (!primaryIds.has(studentId)||(row.originalGradeId===canonicalId&&row.checkpointReceiptId===list[0].receiptId))){
            row.checkpointGradeable=true;row.evidenceId="receipt:"+list[0].receiptId;
