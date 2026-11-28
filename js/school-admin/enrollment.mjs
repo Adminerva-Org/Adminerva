@@ -23,8 +23,10 @@ let picker=null,catalog={years:[],programs:[],terms:[],sections:[],subjects:[],o
 const requestVersions={catalog:0,applications:0,registrations:0,legacy:0};
 let registrationCursor=null,registrationBusy=false,legacyCursor=null,legacyBusy=false,legacyScanned=false,legacyBlocked=0;
 let refreshVersion=0,progressionPreviewRun=0,historyRun=0,cohortRun=0;
-let activeEnrollmentView="registrations";
-const enrollmentViews={registrations:["en-registrations","en-legacy-reconciliation-card","en-admin-tools"],applications:["en-applications"],register:["en-register"],progression:["en-progression"],activation:["en-activation"],reports:["en-reports"]};
+let activeEnrollmentView="overview",overviewRun=0;
+let requestedRegistrationId=(()=>{try{const value=new URL(location.href).searchParams.get("registrationId")||"";return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)?value:"";}catch{return "";}})();
+let requestedTransfer=(()=>{try{return new URL(location.href).searchParams.get("intent")==="transfer_out";}catch{return false;}})();
+const enrollmentViews={overview:["en-overview"],registrations:["en-registrations","en-legacy-reconciliation-card","en-admin-tools"],applications:["en-applications"],register:["en-register"],progression:["en-progression"],activation:["en-activation"],reports:["en-reports"]};
 function showEnrollmentView(view){
   if(!Object.hasOwn(enrollmentViews,view))return;
   activeEnrollmentView=view;
@@ -32,9 +34,31 @@ function showEnrollmentView(view){
     get(id).hidden=key!==view||(id==="en-admin-tools"&&!picker?.scope.current?.roles.includes("school_admin"));
   }
   for(const control of document.querySelectorAll("[data-en-view]"))control.setAttribute("aria-pressed",String(control.dataset.enView===view));
+  if(view==="overview"&&picker?.scope.current&&!saving)void loadOverview();
 }
 for(const control of document.querySelectorAll("[data-en-view]"))control.addEventListener("click",()=>showEnrollmentView(control.dataset.enView));
 
+function clearOverview(){++overviewRun;get("en-overview-tasks").replaceChildren();get("en-overview-status").textContent="";get("en-overview-students").href="school-student-records.html";}
+async function loadOverview(){
+  if(saving||!picker?.scope.current)return;
+  const run=++overviewRun,schoolId=picker.scope.current.schoolId,host=get("en-overview-tasks");
+  host.replaceChildren();get("en-overview-status").textContent="Loading queues…";
+  get("en-overview-students").href="school-student-records.html?schoolId="+encodeURIComponent(schoolId);
+  try{
+    const data=await perform("registrar_overview");
+    if(run!==overviewRun||picker.scope.current?.schoolId!==schoolId)return;
+    for(const [group,state,label] of [["applications","submitted","Applications to review"],["applications","needs_information","Needs information"],["applications","accepted","Accepted · enrollment pending"],["documents","requested","New document requests"],["documents","in_review","Documents in review"],["documents","ready","Documents ready"]]){
+      const card=document.createElement("div");card.className="en-summary";const heading=document.createElement("strong"),count=document.createElement("p");heading.textContent=label;count.className="text-2xl font-extrabold";count.textContent=String(data[group][state]);card.append(heading,count);
+      const action=document.createElement(group==="documents"?"a":"button");action.className="en-btn secondary";action.textContent="Open queue";
+      if(group==="documents")action.href="school-student-records.html?schoolId="+encodeURIComponent(schoolId)+"&view=requests&status="+encodeURIComponent(state);
+      else{action.type="button";action.addEventListener("click",()=>{if(saving||!discardDraft())return;get("en-application-search").value="";get("en-application-status").value=state;selectedApplications.clear();showEnrollmentView("applications");void loadApplications().catch(error=>{status.textContent=error?.message||"Queue unavailable.";});});}
+      card.append(action);host.append(card);
+    }
+    get("en-overview-status").textContent="School-wide open queues · "+dateLabel(data.asOf);
+  }catch(error){if(run===overviewRun)get("en-overview-status").textContent=error?.message||"Overview unavailable.";}
+}
+get("en-overview-refresh").addEventListener("click",()=>void loadOverview());
+get("en-overview-new").addEventListener("click",()=>{if(!saving&&discardDraft())showEnrollmentView("register");});
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
 }
@@ -56,12 +80,12 @@ async function latest(source,action,details={}){
 function setSaving(value){
   saving=value;
   if(value){
-    ++refreshVersion;
+    ++refreshVersion;++overviewRun;
     for(const source of Object.keys(requestVersions))++requestVersions[source];
   }
   for(const control of form.elements)control.disabled=value;
   get("en-applicant-type").disabled=value||Boolean(loadedPerson);
-  for(const control of document.querySelectorAll("#en-application-list button, #en-application-list input, #en-registrations-more, #en-legacy-scan, #en-bulk-open, #en-bulk-clear, #en-bulk-form button, #en-bulk-form select, #en-applications-more, #en-correction-form button, #en-correction-form input, #en-correction-form select, #en-correction-form textarea, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-clearance-policy-open, #en-clearance-policy-form button, #en-clearance-policy-form input, #en-clearance-policy-form textarea, #en-clearance-form button, #en-clearance-form input, #en-clearance-form select, #en-clearance-form textarea, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
+  for(const control of document.querySelectorAll("#en-overview-refresh, #en-overview-new, #en-overview-tasks button, #en-application-list button, #en-application-list input, #en-registrations-more, #en-legacy-scan, #en-bulk-open, #en-bulk-clear, #en-bulk-form button, #en-bulk-form select, #en-applications-more, #en-correction-form button, #en-correction-form input, #en-correction-form select, #en-correction-form textarea, #en-documents-dialog button, #en-documents-form input, #en-documents-form select, #en-clearance-policy-open, #en-clearance-policy-form button, #en-clearance-policy-form input, #en-clearance-policy-form textarea, #en-clearance-form button, #en-clearance-form input, #en-clearance-form select, #en-clearance-form textarea, #en-template-open, #en-template-form button, #en-template-form select, #en-template-form textarea, #en-requirements-form button, #en-requirements-form input, #en-requirements-form select, #en-requirements-form textarea, #en-clear-application, #en-refresh, #en-refresh-applications, #en-registration-change-dialog button, #en-registration-change-form textarea, #en-registration-change-form select, #en-legacy-reconciliation-dialog button, #en-legacy-reconciliation-form textarea, #en-progression-dialog button, #en-progression-form textarea, #en-progression-form select, #en-cohort-form button, #en-cohort-form textarea, #en-cohort-form select"))
     control.disabled=value;
   updateCoursePreview();
   if(!value){
@@ -1487,7 +1511,8 @@ async function loadApplications({more=false,refreshItem=null}={}){
   if(more&&(!applicationCursor||applicationBusy||saving))return;
   const cursor=more?applicationCursor:null;applicationBusy=true;
   try{
-    const result=await latest("applications","list_applications",refreshItem?{applicationId:refreshItem}:cursor?{cursor}:{});
+    const filter=get("en-application-status").value||"pending";
+    const result=await latest("applications","list_applications",refreshItem?{applicationId:refreshItem}:{status:filter,...(cursor?{cursor}:{})});
     if(!result)return;
     const rows=new Map((more||refreshItem?applications:[]).map(item=>[item.applicationId,item]));
     for(const item of result.items||[])rows.set(item.applicationId,item);
@@ -1497,7 +1522,7 @@ async function loadApplications({more=false,refreshItem=null}={}){
 }
 get("en-applications-more").addEventListener("click",()=>void loadApplications({more:true}).catch(error=>{status.textContent=error?.message||"More applications could not be loaded.";}));
 get("en-application-search").addEventListener("input",renderApplications);
-get("en-application-status").addEventListener("change",renderApplications);
+get("en-application-status").addEventListener("change",()=>{selectedApplications.clear();applications=[];applicationCursor=null;renderApplications();void loadApplications().catch(error=>{status.textContent=error?.message||"Queue unavailable.";});});
 async function refreshAll(){
   const version=++refreshVersion;
   status.textContent="Loading enrollment configuration…";
@@ -1511,7 +1536,10 @@ async function refreshAll(){
     if(requestedSchoolId&&requestedSchoolId!==picker.scope.current.schoolId){
       status.textContent="The linked student belongs to a different school. Select the intended school.";return;
     }
-    await loadStudentCandidate(personId);
+    if(requestedRegistrationId){
+      const registrationId=requestedRegistrationId,transfer=requestedTransfer;requestedRegistrationId="";requestedTransfer=false;
+      try{const result=await perform("list_registrations",{personId,registrationId});if(version!==refreshVersion)return;const item=result.items?.[0];if(!item)throw new Error("Registration not found.");registrations=[item,...registrations.filter(row=>row.registrationId!==item.registrationId)];get("en-registration-search").value=item.displayName;showEnrollmentView("registrations");renderRegistrations();if(transfer&&item.status==="active"){openRegistrationChange(item,"end");get("en-registration-change-form").elements.endReasonType.value="transfer_out";}else if(transfer)status.textContent="This registration is no longer active.";}catch(error){status.textContent=error?.message||"Linked registration unavailable.";}
+    }else await loadStudentCandidate(personId);
   }
 }
 let activation="";
@@ -1622,7 +1650,7 @@ picker=createTenantSchoolPicker({
     if(bulkReview)closeBulk();selectedApplications.clear();clearReport();get("en-report-year").replaceChildren();get("en-report-term").replaceChildren();
     if(get("en-template-dialog").open&&!confirm("Discard the open template editor?"))throw new Error("Finish the template edit before switching schools.");
     closeTemplateEditor();get("en-template-open").hidden=true;closeClearance();closeClearancePolicy();get("en-clearance-policy-open").hidden=true;
-    ++refreshVersion;requestedPersonId="";activeEnrollmentView="registrations";
+    ++refreshVersion;requestedPersonId="";requestedRegistrationId="";requestedTransfer=false;activeEnrollmentView="overview";clearOverview();
     for(const source of Object.keys(requestVersions))++requestVersions[source];
     loadedApplication=null;loadedPerson=null;registrationChange=null;progressionChange=null;cohortPreview=null;draftDirty=false;registrations=[];
     ++progressionPreviewRun;++historyRun;++cohortRun;
