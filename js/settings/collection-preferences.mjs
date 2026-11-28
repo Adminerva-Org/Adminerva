@@ -14,10 +14,10 @@ export function mountCollectionPreferences(root){
   const browserButton=root.querySelector("[data-browser-collection]"),researchButton=root.querySelector("[data-research-collection]"),researchRow=root.querySelector("[data-research-row]"),collectionStatus=root.querySelector("[data-collection-status]");
   let privacyState={browser:null,research:null},privacyTurn=0;
   function paintCollection(){
-    browserButton.textContent=privacyState.browser===null?"Unavailable":privacyState.browser?"Turn off":"Turn on";
+    browserButton.textContent=privacyState.browser===null?"Unavailable":privacyState.browser?"On · Turn off":"Off · Turn on";
     browserButton.disabled=privacyState.browser===null||!owner;
     researchRow.hidden=privacyState.research===null;
-    researchButton.textContent=privacyState.research?"Turn off":"Turn on";researchButton.disabled=privacyState.research===null||!owner;
+    researchButton.textContent=privacyState.research?"On · Turn off":"Off · Turn on";researchButton.disabled=privacyState.research===null||!owner;
   }
   async function loadCollection(version){
     const uid=owner,turn=++privacyTurn;privacyState={browser:null,research:null};paintCollection();collectionStatus.textContent=uid?"Checking collection settings…":"";
