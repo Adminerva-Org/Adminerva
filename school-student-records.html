@@ -84,7 +84,12 @@
         </div>
       </section>
 
-      <nav class="sr-file-tabs" aria-label="Student file sections"><button class="sr-btn secondary" type="button" data-sr-view="registrations" aria-pressed="true">Registration</button><button class="sr-btn secondary" type="button" data-sr-view="profile" aria-pressed="false">Profile</button><button class="sr-btn secondary" type="button" data-sr-view="releasedGrades" aria-pressed="false">Academics</button><button class="sr-btn secondary" type="button" data-sr-view="guardians" aria-pressed="false">Family</button><button class="sr-btn secondary" type="button" data-sr-view="documents" aria-pressed="false">Documents</button><button class="sr-btn secondary" type="button" data-sr-view="audit" aria-pressed="false">History</button></nav>
+      <nav class="sr-file-tabs" aria-label="Student file sections"><button class="sr-btn secondary" type="button" data-sr-view="readiness" aria-pressed="false">Record review</button><button class="sr-btn secondary" type="button" data-sr-view="registrations" aria-pressed="true">Registration</button><button class="sr-btn secondary" type="button" data-sr-view="profile" aria-pressed="false">Profile</button><button class="sr-btn secondary" type="button" data-sr-view="releasedGrades" aria-pressed="false">Academics</button><button class="sr-btn secondary" type="button" data-sr-view="guardians" aria-pressed="false">Family</button><button class="sr-btn secondary" type="button" data-sr-view="documents" aria-pressed="false">Documents</button><button class="sr-btn secondary" type="button" data-sr-view="audit" aria-pressed="false">History</button></nav>
+      <section class="sr-card" data-sr-panel="readiness" hidden>
+        <div class="flex flex-wrap justify-between gap-2"><h2 class="text-lg font-extrabold">Record review</h2><button id="sr-readiness-refresh" class="sr-btn secondary" type="button">Check records</button></div>
+        <p id="sr-readiness-status" class="sr-muted mt-2" role="status" aria-live="polite"></p><div id="sr-readiness-list" class="sr-list mt-3"></div>
+        <div class="flex flex-wrap gap-2 mt-3"><button id="sr-readiness-academic" type="button" class="sr-btn secondary">Check academic evidence</button></div>
+      </section>
       <section class="sr-card" data-sr-panel="profile" hidden>
         <div class="flex justify-between gap-2 items-start flex-wrap"><h2 class="text-lg font-extrabold">Student profile</h2><button id="sr-profile-refresh" class="sr-btn secondary" type="button">Refresh</button></div>
         <p id="sr-profile-status" class="sr-muted mt-2" role="status" aria-live="polite"></p>
@@ -255,7 +260,7 @@
   </dialog>
   <dialog id="sr-request-dialog" class="sr-dialog" aria-labelledby="sr-request-title">
     <form id="sr-request-form" class="sr-card">
-      <div class="flex justify-between items-start gap-3"><div><h2 id="sr-request-title" class="text-xl font-extrabold">New document request</h2><p class="sr-muted mt-1">Institutional certificates or external record requests.</p></div><button id="sr-request-close" type="button" class="sr-btn secondary">Close</button></div>
+      <div class="flex justify-between items-start gap-3"><div><h2 id="sr-request-title" class="text-xl font-extrabold">New document request</h2><p id="sr-request-placement" class="sr-muted" hidden></p><p class="sr-muted mt-1">Institutional certificates or external record requests.</p></div><button id="sr-request-close" type="button" class="sr-btn secondary">Close</button></div>
       <label class="block text-sm font-bold mt-4">Record / credential
         <select name="type" class="sr-input mt-1" required><option value="">Choose request type</option><option value="certificate_of_enrollment">Certificate of Enrollment</option><option value="report_card">Report Card</option><option value="transcript_of_records">Transcript of Records</option><option value="student_record_copy">Student Record Copy</option><option value="graduation_certificate">Certificate of Graduation</option><option value="transfer_certificate">Certificate of Transfer-out</option><option value="good_moral_certificate">Certificate of Good Moral Character</option><option value="other">Other school record</option></select>
       </label>
@@ -279,7 +284,7 @@
 <script src="js/core/adminerva-loader.js"></script>
 <script defer src="js/core/adminerva-nav.js"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
-<script type="module" src="js/school-admin/student-records.mjs?v=20261128-registrar12"></script>
+<script type="module" src="js/school-admin/student-records.mjs?v=20261128-registrar13"></script>
 <script type="module" src="js/school-admin/workflow-shell.mjs?v=20261121-student-records1"></script>
 </body>
 </html>
