@@ -1,3 +1,4 @@
+import {queueMatches,nextUngradedRow,gradeFormFingerprint} from "./services/review-queue.mjs?v=20261128-review-queue";
 import {observedAcademicCallable} from "../core/academic-callable-diagnostics.mjs?v=20261128-academic-trace";
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
@@ -80,7 +81,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   let queueRows=[],reviewRows=[],savedForm=null;
   const queueTools=document.getElementById("gbV4QueueTools"),queueSearch=document.getElementById("gbV4QueueSearch"),queueFilter=document.getElementById("gbV4QueueFilter"),queueCount=document.getElementById("gbV4QueueCount");
   function resetQueue(){queueRows=[];reviewRows=[];queueTools.hidden=true;queueSearch.value="";queueFilter.value="all";}
-  function filterQueue(){const query=queueSearch.value.trim().toLocaleLowerCase(),mode=queueFilter.value;let visible=0;reviewRows=[];for(const item of queueRows){const match=(!query||item.search.includes(query))&&(mode==="all"||mode===item.gradeStatus||(mode==="attention"&&item.attention));item.card.hidden=!match;item.card.classList.toggle("hidden",!match);if(match){visible++;if(item.reviewable)reviewRows.push(item.row);}}queueCount.textContent=visible+" / "+queueRows.length;refreshQueueNavigation();}
+  function filterQueue(){const query=queueSearch.value.trim().toLocaleLowerCase(),mode=queueFilter.value;let visible=0;reviewRows=[];for(const item of queueRows){const match=queueMatches(item,query,mode);item.card.hidden=!match;item.card.classList.toggle("hidden",!match);if(match){visible++;if(item.reviewable)reviewRows.push(item.row);}}queueCount.textContent=visible+" / "+queueRows.length;refreshQueueNavigation();}
   queueSearch.addEventListener("input",filterQueue);queueFilter.addEventListener("change",filterQueue);
   function clearTaskContext(){resetQueue();bulkEvaluator?.reset();currentTask=null;currentRow=null;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentConversation=null;currentClassRecordStatus=null;githubVerification=null;reviewNeedsRefresh=false;inbox.replaceChildren();renderClassRecordHandoff();if(bulkPublish){bulkPublish.dataset.ready="false";bulkPublish.disabled=true;bulkPublish.textContent="Publish all drafts (0)";}}
 
@@ -105,9 +106,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         offering:classId,assessment:currentTask.legacyAssessmentId,source:"legacy_historical"
       }).toString();
       link.textContent="Open historical Class Record";
-      copy.textContent="This original historical assessment retains its grades and submissions. "+
-        "The assigned teacher may link it to the official Class Record after confirming the "+
-        "academic period and School Admin-verified custody. Existing scores are not copied.";
+      copy.textContent="Historical assessment · verified Class Record link";
       return;
     }
     panel.hidden=false;
@@ -117,17 +116,16 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const state=currentClassRecordStatus?.status;
     if(state==="linked"){
       const column=currentClassRecordStatus.column;
-      copy.textContent=(column?.label||currentTask.title)+" is already linked"+
-        (column?.category?" under "+column.category:"")+". Published Gradebook results project into that Class Record column.";
+      copy.textContent=(column?.label||currentTask.title)+" · Linked"+(column?.category?" · "+column.category:"");
       link.textContent="Open linked Class Record";
     }else if(state==="archived"){
-      copy.textContent="This assessment has an archived Class Record column. Review the record before creating another grading column.";
+      copy.textContent="Archived Class Record column";
       link.textContent="Review Class Record";
     }else if(state==="unlinked"){
-      copy.textContent="This assessment is not yet part of the official Class Record. Add it once, choose its grading category, and published results will project automatically.";
+      copy.textContent="Not linked to Class Record";
       link.textContent="Add to Class Record";
     }else{
-      copy.textContent="Checking whether this assessment is linked to the official Class Record…";
+      copy.textContent=state==="unavailable"?"Class Record status unavailable":"Checking Class Record…";
       link.textContent="Open Class Record";
     }
   }
@@ -185,6 +183,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       busy||!loaded||dirty||published||reopened||currentGrade?.status!=="draft"||legacyScalar||historicalScalar||Number(currentGrade?.pending||0)>0;
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened||readThrough;
+    document.getElementById("gbV4RevisionPanel").hidden=published||readThrough;
     document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar||(historicalStudio&&currentGrade?.gradeSchema==="legacy_scalar_v1")||(readThrough&&!historicalGithub&&!historicalStudio)||!evidenceReady;
     const convert=document.getElementById("gbV4ConvertLegacy");
     convert.disabled=busy||!loaded||!legacyScalar||readThrough;
@@ -791,16 +790,17 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   gradeHistory.addEventListener("toggle",()=>{if(gradeHistory.open&&!historyLoaded)void loadGradeHistory();});
   historyRefresh.addEventListener("click",()=>void loadGradeHistory());
   dialog.addEventListener("close",resetGradeHistory);
-  function formFingerprint(){return JSON.stringify([...document.querySelectorAll("#gbV4Rubric input,#gbV4Rubric textarea,#gbV4Feedback")].map(el=>el.value));}
+  function formFingerprint(){return gradeFormFingerprint([...document.querySelectorAll("#gbV4Rubric input,#gbV4Rubric textarea,#gbV4Feedback")].map(el=>el.value));}
   function isGradeDirty(){return savedForm!==null&&savedForm!==formFingerprint();}
   function rememberForm(){savedForm=formFingerprint();}
   function mayLeave(){return !isGradeDirty()||confirm("Discard unsaved grade changes?");}
   function refreshQueueNavigation(){const index=reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid);document.getElementById("gbV4ReviewPosition").textContent=index>=0?(index+1)+" / "+reviewRows.length:"";document.getElementById("gbV4Previous").disabled=busy||index<=0;document.getElementById("gbV4Next").disabled=busy||index<0||index>=reviewRows.length-1;document.getElementById("gbV4NextUngraded").disabled=busy||!nextUngraded();}
-  function nextUngraded(){const i=reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid);return reviewRows.slice(i+1).find(row=>queueRows.find(item=>item.row.studentUid===row.studentUid)?.gradeStatus==="ungraded")||reviewRows.slice(0,Math.max(0,i)).find(row=>queueRows.find(item=>item.row.studentUid===row.studentUid)?.gradeStatus==="ungraded");}
+  function nextUngraded(){return nextUngradedRow(reviewRows,queueRows,currentRow?.studentUid);}
   async function moveReview(row){if(!row||busy||!mayLeave())return;await openReview(row,true);}
   document.getElementById("gbV4Previous").addEventListener("click",()=>void moveReview(reviewRows[reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid)-1]));
   document.getElementById("gbV4Next").addEventListener("click",()=>void moveReview(reviewRows[reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid)+1]));
   document.getElementById("gbV4NextUngraded").addEventListener("click",()=>void moveReview(nextUngraded()));
+  window.addEventListener("beforeunload",event=>{if(dialog.open&&isGradeDirty()){event.preventDefault();event.returnValue="";}});
   dialog.addEventListener("input",event=>{if(event.target.closest("#gbV4Rubric")||event.target.id==="gbV4Feedback")refreshReviewControls();});
   async function openReview(row,replace=false){
     if(busy||!currentTask||(dialog.open&&!replace))return;
