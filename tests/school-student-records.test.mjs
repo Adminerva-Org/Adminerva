@@ -215,3 +215,10 @@ test("record review detects duplicate identifiers and placements without treatin
   assert.match(service,/student_record_readiness/);assert.match(service,/requestedRegistrationId:registrationId/);
   assert.match(recordsUi,/Request transfer certificate/);
 });
+
+
+test("student file only shows exact canonical finite released grades, not missing values as zero",()=>{
+  assert.match(service,/doc.id===key\(doc.data\(\).offeringId,personId\)/);
+  assert.match(service,/typeof doc.data\(\).finalGrade==="number"&&Number.isFinite/);
+  assert.match(recordsHtml,/id="sr-request-status"/);
+});
