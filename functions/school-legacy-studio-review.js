@@ -72,8 +72,8 @@ function validateCriteria(entries,rubric){
     deny("invalid-argument","Every published rubric criterion needs a score.");
   let awarded=0,pending=0;
   const criteria=entries.map((entry,index)=>{
-    const maximum=Number(rubric[index].points),a=Number(entry?.awardedPoints),p=Number(entry?.pendingPoints);
-    if(!Number.isFinite(a)||!Number.isFinite(p)||a<0||p<0||
+    const maximum=Number(rubric[index].points),a=entry?.awardedPoints,p=entry?.pendingPoints;
+    if(!Number.isFinite(maximum)||maximum<=0||typeof a!=="number"||typeof p!=="number"||!Number.isFinite(a)||!Number.isFinite(p)||a<0||p<0||
        a+p>maximum||a>maximum)
       deny("invalid-argument","One criterion exceeds its published maximum.");
     const comment=String(entry?.comment||"").slice(0,1000);
