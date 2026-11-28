@@ -66,6 +66,11 @@ test("shared UI refresh regenerates from concurrent main rather than losing a re
     run(root,"clone",remote,worker);
     run(worker,"config","user.name","Fixture");run(worker,"config","user.email","fixture@example.test");
     writeFileSync(join(worker,"platform-logs.html"),'<script defer src="js/core/adminerva-nav.js?v=old"></script>');
+    // Match the tracked files staged by the real shared-shell workflow.
+    for(const file of ["js/core/adminerva-nav.js","js/core/adminerva-loader.js","js/help/page-help.mjs","js/help/activity-preferences.mjs","js/student/assessments.js","js/student/dashboard.js","js/student/school-student-settings.mjs","js/student/school-student-projects.mjs"]){
+      mkdirSync(join(worker,file.slice(0,file.lastIndexOf("/"))),{recursive:true});
+      writeFileSync(join(worker,file),"// fixture\n");
+    }
     run(worker,"add",".");run(worker,"commit","-m","initial");run(worker,"push","origin","main");
     run(root,"clone",remote,other);run(other,"config","user.name","Fixture");run(other,"config","user.email","fixture@example.test");
     mkdirSync(bin);
