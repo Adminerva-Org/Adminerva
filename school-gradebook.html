@@ -5,6 +5,18 @@
   <title>Assessment Review & Results · Adminerva</title><link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=e13378684a40"><link rel="stylesheet" href="css/teacher-ux.css?v=20261115-nav1">
+  <style>
+    #gbV4ReviewDialog{width:min(98vw,1500px);max-width:none;max-height:96dvh}
+    #gbV4ReviewBody{flex:1 1 auto;min-height:0;overflow-y:auto}
+    #gbV4ReviewDialog header{flex-wrap:wrap;flex-shrink:0;padding:.75rem;gap:.5rem}
+    #gbV4ReviewDialog header>div:first-child{min-width:0;overflow-wrap:anywhere;flex:1 1 160px}
+    #gbV4ReviewDialog button:disabled{opacity:.45;cursor:not-allowed}
+    #gbV4ReviewDialog textarea,#gbV4ReviewDialog input,#gbV4ReviewDialog select{max-width:100%;min-width:0}
+    #gbV4ReviewDialog [hidden],#gbV4QueueTools[hidden],#gbV4ClassRecordHandoff[hidden]{display:none!important}
+    #gbV4ReviewDialog footer{position:relative;z-index:1}
+    @media(min-width:1024px){#gbV4ReviewDialog>div{height:94dvh}#gbV4ReviewBody{overflow:hidden;grid-template-rows:minmax(0,1fr)}#gbV4EvidenceColumn,#gbV4GradeColumn{min-height:0;overflow:auto;overscroll-behavior:contain}}
+    @media(max-width:480px){#gbV4ReviewDialog footer>div{width:100%;justify-content:space-between;gap:.25rem}#gbV4ReviewDialog footer button{font-size:.75rem;padding:.6rem .55rem}#gbV4ReviewDialog header h2{font-size:1rem}}
+  </style>
 </head>
 <body id="pageBody" class="av-teacher-refresh hidden bg-slate-50 min-h-screen text-slate-900">
 <div id="adminerva-nav" data-module="assessment" data-page="assessment-review"></div>
@@ -169,7 +181,7 @@
               <button id="gbV4ExternalCopy" type="button" class="rounded-lg border border-sky-300 bg-white text-sky-900 font-bold px-3 py-2">Copy External AI package</button>
             </div>
             <div id="gbV4SystemReview" class="mt-3"></div>
-            <label class="block text-xs font-bold text-sky-950 mt-3">Paste external evaluator JSON
+            <label class="block text-xs font-bold text-sky-950 mt-3">Paste evaluator JSON
               <textarea id="gbV4ExternalResponse" rows="7" class="mt-1 w-full border border-sky-300 rounded-lg p-2.5 bg-white font-mono text-xs" placeholder='{"format":"adminerva-general-external-evaluation-response-v1",...}'></textarea>
             </label>
             <button id="gbV4ExternalApply" type="button" class="mt-3 rounded-lg bg-sky-800 text-white font-bold px-3 py-2">Import External AI review</button>
@@ -178,11 +190,11 @@
           </details>
           <section id="gbV4LegacyGradePanel" hidden class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
             <strong class="text-sm text-amber-950">Imported historical score</strong>
-            <p class="text-xs text-amber-900 mt-1">The legacy record preserved the final score and feedback but not a trustworthy criterion-by-criterion allocation. Enter the reviewed rubric breakdown above; reconstruction must keep the exact historical score and maximum.</p>
+            <p class="text-xs text-amber-900 mt-1">Reconstruct the rubric without changing the original total.</p>
             <label class="block text-sm font-bold text-amber-950 mt-3">Reconstruction reason
               <textarea id="gbV4LegacyReason" rows="2" minlength="12" maxlength="2000" class="mt-1 w-full border border-amber-300 rounded-lg p-2.5 bg-white"></textarea>
             </label>
-            <button id="gbV4ConvertLegacy" type="button" class="mt-3 rounded-lg border border-amber-500 bg-amber-100 text-amber-950 font-bold px-4 py-2.5">Reconstruct historical rubric breakdown</button>
+            <button id="gbV4ConvertLegacy" type="button" class="mt-3 rounded-lg border border-amber-500 bg-amber-100 text-amber-950 font-bold px-4 py-2.5">Reconstruct rubric</button>
           </section>
           <details id="gbV4CorrectionPanel" class="hidden mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
             <summary class="font-bold text-rose-900 cursor-pointer">Correct a published grade</summary>
