@@ -164,6 +164,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   function refreshReviewControls(){
     const published=currentGrade?.status==="published";
     const dirty=isGradeDirty();
+    document.getElementById("gbV4DirtyIndicator").hidden=!dirty;
+    document.getElementById("gbV4ReloadReview").disabled=busy||!currentRow;
+    for(const field of document.querySelectorAll("#gbV4Rubric input,#gbV4Rubric textarea,#gbV4Feedback"))field.disabled=busy||!currentSnapshot||reviewNeedsRefresh;
     const reopened=currentRow?.status==="reopened";
     const loaded=Boolean(currentTask&&currentRow&&currentSnapshot&&!reviewNeedsRefresh);
     const evidenceReady=currentTask?.submissionSource!=="github"||
@@ -800,6 +803,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   document.getElementById("gbV4Previous").addEventListener("click",()=>void moveReview(reviewRows[reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid)-1]));
   document.getElementById("gbV4Next").addEventListener("click",()=>void moveReview(reviewRows[reviewRows.findIndex(row=>row.studentUid===currentRow?.studentUid)+1]));
   document.getElementById("gbV4NextUngraded").addEventListener("click",()=>void moveReview(nextUngraded()));
+  document.getElementById("gbV4ReloadReview").addEventListener("click",()=>void moveReview(currentRow));
   window.addEventListener("beforeunload",event=>{if(dialog.open&&isGradeDirty()){event.preventDefault();event.returnValue="";}});
   dialog.addEventListener("input",event=>{if(event.target.closest("#gbV4Rubric")||event.target.id==="gbV4Feedback")refreshReviewControls();});
   async function openReview(row,replace=false){
@@ -820,6 +824,18 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4Code").textContent="Loading…";
     document.getElementById("gbV4File").replaceChildren();
     document.getElementById("gbV4Rubric").replaceChildren();
+    document.getElementById("gbV4Feedback").value="";
+    document.getElementById("gbV4ScoreSummary").textContent="";
+    document.getElementById("gbV4GithubCommits").replaceChildren();
+    document.getElementById("gbV4GithubMeta").textContent="Loading…";
+    document.getElementById("gbV4GithubRepoLink").removeAttribute("href");
+    document.getElementById("gbV4GithubVerifyStatus").textContent="";
+    document.getElementById("gbV4GeneralBody").textContent="Loading…";
+    document.getElementById("gbV4GeneralNote").textContent="";
+    document.getElementById("gbV4GeneralLink").removeAttribute("href");
+    document.getElementById("gbV4GeneralMeta").textContent="";
+    document.getElementById("gbV4Artifacts").textContent="";
+    document.getElementById("gbV4PersonalizedTask").classList.add("hidden");
     document.getElementById("gbV4CorrectionReason").value="";
     document.getElementById("gbV4LegacyReason").value="";
     document.getElementById("gbV4ExternalResponse").value="";
@@ -1182,6 +1198,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         });
       document.getElementById("gbV4ReviewStatus").textContent="Published "+result.awarded+" / "+result.total+" to the student.";
       currentGrade={...(currentGrade||{}),status:"published",revision:result.revision??currentGrade?.revision};
+      rememberForm();
       currentRow={...currentRow,status:"reviewed"};
       if(!currentTask.legacyCompatibility)
         currentSnapshot={...(currentSnapshot||{}),status:"reviewed"};
