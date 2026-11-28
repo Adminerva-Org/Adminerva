@@ -164,11 +164,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const evidenceReady=currentTask?.submissionSource!=="github"||
       (["submitted","approved","reviewed"].includes(currentSnapshot?.status)&&
         currentSnapshot?.hasSubmission!==false&&
-        (currentSnapshot?.selectedCommitShas?.length||0)>0);
+        ((currentSnapshot?.selectedCommitShas?.length||0)>0||currentSnapshot?.checkpointOnly===true));
     const readThrough=Boolean(currentTask?.legacyCompatibility);
     const historicalGithub=readThrough&&currentTask?.submissionSource==="github";
     const historicalScalar=historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1";
     const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1"&&!readThrough;
+    for(const id of ["gbV4SystemCheck","gbV4ExternalCopy","gbV4ExternalApply"])
+      document.getElementById(id).disabled=busy||!loaded||currentSnapshot?.checkpointOnly===true||currentTask?.historicalRubricMode==="scalar_manual";
     document.getElementById("gbV4SaveDraft").disabled=
       busy||!loaded||!evidenceReady||published||reopened||legacyScalar;
     document.getElementById("gbV4Publish").disabled=
@@ -337,7 +339,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const published=[...gradeMap.values()].filter(item=>item.status==="published").length;
       const draftRows=[...gradeMap.values()].filter(item=>item.status==="draft");
       const drafts=draftRows.length;
-      const publishableDrafts=draftRows.filter(item=>typeof item.awarded==="number"&&Number.isFinite(item.awarded)&&item.awarded>=0&&Number(item.pending||0)===0).length;
+      const individualCheckpointIds=new Set(rows.filter(row=>row.receiptOnly).map(row=>row.studentUid));
+      const publishableDrafts=draftRows.filter(item=>!individualCheckpointIds.has(item.studentUid)&&typeof item.awarded==="number"&&Number.isFinite(item.awarded)&&item.awarded>=0&&Number(item.pending||0)===0).length;
       const zeroDrafts=draftRows.filter(item=>Number(item.awarded)===0).length;
       if(bulkPublish){
         bulkPublish.dataset.ready=publishableDrafts?"true":"false";
@@ -441,14 +444,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           view==="results"?(grade?"Open result":"Grade response"):
             task.submissionSource==="github"?"Review submitted commits":"Review response");
         button.type="button";
-        if(row.gradeOnly||row.evidenceException||row.gradeException||row.receiptOnly||row.activityOnly){
+        if(row.checkpointGradeable)button.textContent="Review submitted checkpoint";
+        if(row.gradeOnly||row.evidenceException||row.gradeException||(row.receiptOnly&&!row.checkpointGradeable)||row.activityOnly){
           button.textContent=row.gradeException?"Reconcile original grade":row.activityOnly?"Activity score — read only":row.receiptOnly?"Checkpoint receipt — read only":row.evidenceException?"Evidence unavailable — read only":"Original score — read only";
           button.disabled=true;button.title="No matching frozen student submission. The saved original score is preserved but cannot be edited through evidence review.";
           button.classList.add("opacity-60","cursor-not-allowed");
         }
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
-        if(!row.gradeOnly&&!row.evidenceException&&!row.gradeException&&!row.receiptOnly&&!row.activityOnly&&pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
+        if(!row.gradeOnly&&!row.evidenceException&&!row.gradeException&&(!row.receiptOnly||row.checkpointGradeable)&&!row.activityOnly&&pendingStudentDeepLink&&row.studentUid===pendingStudentDeepLink)deepLinkRow=normalized;
         button.addEventListener("click",()=>void openReview(normalized));
         if(row.originalReceipts?.length){
           const receipts=make("details","mt-2 text-xs text-slate-700");
@@ -528,6 +532,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       " · "+(snapshot?.selectedCommitShas?.length||0)+" selected commit(s)";
     const link=document.getElementById("gbV4GithubRepoLink");
     link.href=snapshot?.repository?.url||("https://github.com/"+repo);
+    link.textContent=snapshot?.checkpointOnly?"Open submitted checkpoint ↗":"Open repository ↗";
+    if(snapshot?.checkpointOnly){
+      link.href=snapshot.repository.url+"/tree/"+snapshot.checkpointSha+(snapshot.sourcePath?"/"+snapshot.sourcePath.split("/").map(encodeURIComponent).join("/"):"");
+      document.getElementById("gbV4GithubMeta").textContent=repo+" · original checkpoint "+snapshot.checkpointSha.slice(0,12)+(snapshot.sourcePath?" · "+snapshot.sourcePath:"");
+      if(commitDetails)commitDetails.hidden=true;
+      document.getElementById("gbV4GithubVerify").hidden=true;
+    }else if(commitDetails)commitDetails.hidden=false;
     for(const sha of snapshot?.selectedCommitShas||[]){
       const commit=commitMap?.get(sha)||null;
       const row=make("div","rounded-lg border border-slate-200 bg-white p-3");
@@ -655,6 +666,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     updateScore();
   }
   async function evaluationSnapshotForCurrent(){
+    if(currentSnapshot?.checkpointOnly)throw Error("Review the submitted checkpoint and grade manually. No individual commit selection was recorded.");
     if(currentTask?.historicalRubricMode==="scalar_manual")throw Error("Original rubric unavailable. Grade this historical response manually.");
     if(currentTask?.submissionSource!=="github"){
       if(currentTask?.submissionSource==="studio"&&currentTask?.personalizedTask?.enabled===true&&
@@ -827,11 +839,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           const approved=currentSnapshot?.status==="approved";
 
           document.getElementById("gbV4GithubVerifyStatus").textContent=
-            currentSnapshot.hasSubmission===false?
+            currentSnapshot.checkpointOnly?"Review the original submitted checkpoint manually. No individual commit list was recorded.":currentSnapshot.hasSubmission===false?
               "Teacher-discovered checkpoint only: no student-submitted commits, so no new grade can be created.":
               "Student-submitted commits are gradeable without additional contribution approval. Adminerva checks the frozen checkpoint and code changes during evaluation.";
           document.getElementById("gbV4LegacyGithubAttribution").textContent=
-            (currentSnapshot.selectedCommitShas||[]).length+" selected commit(s) · "+
+            currentSnapshot.checkpointOnly?"Original student-submitted checkpoint · individual authorship not established.":(currentSnapshot.selectedCommitShas||[]).length+" selected commit(s) · "+
             (currentSnapshot.verifiedContributionCommits?.length?
               currentSnapshot.verifiedContributionCommits.length+
               " previously teacher-annotated contribution(s) preserved as a narrower evidence scope. ":"")+
@@ -865,6 +877,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           "No student-submitted GitHub commits are available. Historical teacher discovery does not count as student submission.":
         historicalGithub&&currentGrade?.gradeSchema==="legacy_scalar_v1"?
           "This unpublished historical draft has no trustworthy rubric allocation. Enter a new reviewed criterion breakdown and save a revision of the original grade; no score changes are applied until you save.":
+        currentSnapshot.checkpointOnly?"Inspect the original submitted source and grade manually. Publish this result individually.":
         currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
@@ -928,7 +941,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   })());
 
   document.getElementById("gbV4ExternalApply").addEventListener("click",()=>{
-    if(currentTask?.historicalRubricMode==="scalar_manual"){document.getElementById("gbV4ExternalStatus").textContent="Original rubric unavailable. Enter the total manually.";return;}
+    if(currentSnapshot?.checkpointOnly||currentTask?.historicalRubricMode==="scalar_manual"){document.getElementById("gbV4ExternalStatus").textContent="Original rubric unavailable. Enter the total manually.";return;}
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
     try{
@@ -1006,6 +1019,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           legacyEvidenceId:currentRow.recordId,
           expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
           expectedCheckpointSha:currentSnapshot.checkpointSha,
+          ...(currentSnapshot.checkpointOnly?{expectedReceiptDigest:currentSnapshot.receiptDigest}:{}),
           expectedGradeRevision:currentGrade?.revision||0,
           criteria,
           feedback:document.getElementById("gbV4Feedback").value.trim(),
@@ -1063,6 +1077,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
             legacyEvidenceId:currentRow.recordId,
             expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
             expectedCheckpointSha:currentSnapshot.checkpointSha,
+          ...(currentSnapshot.checkpointOnly?{expectedReceiptDigest:currentSnapshot.receiptDigest}:{}),
             expectedGradeRevision:currentGrade?.revision
           }:{
             legacySubmissionId:currentRow.recordId,
@@ -1150,7 +1165,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const result=historical?await scoped(migrationApi,"legacy_github_correct_published",{
         ...historicalIds,expectedGradeRevision:currentGrade.revision,
         expectedEvidenceRevision:Number(currentSnapshot.evidenceRevision||0),
-        expectedCheckpointSha:currentSnapshot.checkpointSha,criteria,feedback
+        expectedCheckpointSha:currentSnapshot.checkpointSha,
+          ...(currentSnapshot.checkpointOnly?{expectedReceiptDigest:currentSnapshot.receiptDigest}:{}),criteria,feedback
       }):await scoped(gradeApi,"correct_published",{
         taskId:currentTask.taskId,studentUid:currentRow.studentUid,
         expectedRevision:currentGrade.revision,criteria,feedback,reason
