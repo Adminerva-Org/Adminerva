@@ -19,7 +19,8 @@ if(home&&nav){
       <article class="av-pulse-metric"><span></span><strong>—</strong><p></p><div class="av-pulse-track" hidden><span></span></div></article>
       <article class="av-pulse-metric"><span></span><strong>—</strong><p></p></article>
     </div><p class="av-pulse-status" role="status" aria-live="polite">Checking your account…</p>`;
-  hero?.after(summary);
+  const progressSlot=home.querySelector('[data-student-home-slot="progress"]');
+  if(progressSlot)progressSlot.append(summary);else hero?.after(summary);
   const metrics=[...summary.querySelectorAll('.av-pulse-metric')];
   const head=summary.querySelector('.av-pulse-head');
   const update=(index,label,value,description)=>{
