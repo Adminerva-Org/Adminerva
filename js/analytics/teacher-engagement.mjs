@@ -29,7 +29,7 @@ export async function selectedTeacherSections() {
     return assigned;
   }
 }
-async function renderEngagement() {
+export async function renderEngagement() {
   stopView();
   const current = ++epoch, email = selector.value;
   const body = document.getElementById("engagement-rows"), status = document.getElementById("engagement-status");
@@ -56,7 +56,6 @@ async function renderEngagement() {
   stopView = () => { unsubscribe(); end(); };
 }
 selector.addEventListener("change", () => { void renderEngagement(); document.dispatchEvent(new Event("analytics-teacher-change")); });
-document.getElementById("analytics-refresh")?.addEventListener("click",()=>{void renderEngagement();document.dispatchEvent(new Event("analytics-teacher-change"));});
 onAuthStateChanged(auth, async user => {
   stopView();
   epoch++; selector.replaceChildren(); document.getElementById("engagement-rows").replaceChildren();
