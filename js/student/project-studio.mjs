@@ -264,7 +264,7 @@ export function createProjectStudio({
     if(id&&activeProject?.id!==id)return;
     cloudStatus=message;
     const badge=el("activeProjectStorageBadge"),indicator=el("autoSaveIndicator");
-    if(badge){badge.textContent=message;badge.dataset.tone=tone;}
+    if(badge){badge.textContent=message;badge.title=message;badge.dataset.tone=tone;}
     if(indicator&&activeProject){indicator.textContent=message;indicator.title=message;
       indicator.classList.remove("opacity-0","text-rose-400","text-emerald-400","text-slate-400");
       indicator.classList.add(tone==="error"?"text-rose-400":tone==="success"?"text-emerald-400":"text-slate-400");}
@@ -1637,7 +1637,7 @@ export function createProjectStudio({
     clearTimeout(designTimer);designTimer=null;
     if(!activeProject||designPending!==activeProject.id)return;
     store(activeProject,true);designPending=null;
-    const status=el("designSaveStatus");if(status)status.textContent="Autosaved";
+    const status=el("designSaveStatus");if(status)status.textContent=unbackedProjectIds.has(activeProject.id)?"Cloud pending · keep tab open":"Saved on device";
   }
   function loadDesignEditor(){
     ++diagramEpoch;
@@ -1650,7 +1650,8 @@ export function createProjectStudio({
     if(!activeProject)return;
     const type=el("designTypeSelect").value||"useCase";
     activeProject.design={...(activeProject.design||{}),[type]:el("designEditor").value};
-    clearTimeout(designTimer);designTimer=null;store(activeProject,true);designPending=null;const status=el("designSaveStatus");if(status)status.textContent="Saved";
+    clearTimeout(designTimer);designTimer=null;store(activeProject,true);designPending=null;
+    const status=el("designSaveStatus");if(status)status.textContent=unbackedProjectIds.has(activeProject.id)?"Cloud pending · keep tab open":"Saved on device";
     void renderDesignPreview();renderEvidence();
   }
   async function renderDesignPreview(){
