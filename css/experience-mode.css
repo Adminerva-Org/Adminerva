@@ -471,3 +471,151 @@ html[data-adminerva-experience="quick"] .avx-canonical-home-hero .text-cyan-800{
   .avx-canonical-home-hero::before,
   .avx-guide-character,.avx-canonical-guide{transform:none!important;transition:none!important}
 }
+
+
+/* Learning World: the student destinations ARE the scene. Full mode only.
+   No extra routes, copied cards, hard-coded school metrics or absolute-positioned controls. */
+html[data-adminerva-experience="full"] main[data-home-experience="student"] .avx-learning-world{
+  display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);
+  gap:0;align-items:center;min-height:0!important;padding:0!important;
+  border-radius:1.35rem;background:#081d28!important;border:1px solid #284754;
+  box-shadow:0 18px 48px #102c3726!important;overflow:hidden!important;
+}
+html[data-adminerva-experience="full"] .avx-learning-world::before,
+html[data-adminerva-experience="full"] .avx-learning-world::after,
+html[data-adminerva-experience="full"] .avx-learning-world .av-motion-ambient{display:none!important}
+html[data-adminerva-experience="full"] .avx-learning-world>.av-experience-copy,
+html[data-adminerva-experience="full"] .avx-learning-world>.max-w-3xl{
+  grid-column:1;grid-row:1;padding:clamp(1.2rem,3.2vw,3rem);
+  max-width:none;min-width:0;z-index:2;
+}
+html[data-adminerva-experience="full"] .avx-learning-world h1{
+  font-size:clamp(2rem,4.1vw,4.25rem);line-height:1.04;letter-spacing:-.055em;
+  max-width:13ch;color:#f3f9f5;overflow-wrap:anywhere;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-experience-copy>p:not(.av-eyebrow){
+  font-size:clamp(.88rem,1.4vw,1.05rem);line-height:1.5;color:#c2d8d8;max-width:30ch;margin-top:.65rem;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-button-row{margin-top:1.25rem}
+html[data-adminerva-experience="full"] .avx-learning-world .av-button-row .av-secondary-link{display:none}
+/* The previous duplicate journey board is condensed to its unique Assignments route. */
+html[data-adminerva-experience="full"] .avx-learning-world>.av-experience-board{
+  grid-column:1;grid-row:2;align-self:start;margin:0 clamp(1.2rem,3.2vw,3rem) 1.25rem;
+  padding:0;background:none;border:0;box-shadow:none;backdrop-filter:none;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-experience-board-top,
+html[data-adminerva-experience="full"] .avx-learning-world .av-experience-board>a:not(:first-of-type),
+html[data-adminerva-experience="full"] .avx-learning-world .av-exp-sequence,
+html[data-adminerva-experience="full"] .avx-learning-world .av-exp-action small{display:none}
+html[data-adminerva-experience="full"] .avx-learning-world .av-experience-board>a:first-of-type{
+  background:none;border:0;border-radius:.25rem;padding:.5rem 0;max-width:16rem;
+  min-height:44px;color:#a5f2d9;
+}
+html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art{
+  position:relative;inset:auto;grid-column:2;grid-row:1 / span 2;align-self:stretch;
+  min-width:0;min-height:clamp(250px,33vw,420px);z-index:1;overflow:hidden;
+  background:#143746 url("../assets/immersive/world-arrival.webp") 58% center/cover no-repeat;
+}
+html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art::after{
+  content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(90deg,#081d28 0%,transparent 24%),linear-gradient(0deg,#081d28 0%,transparent 23%);
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-logo{
+  z-index:3;top:1rem;right:1rem;width:clamp(90px,11vw,155px);max-width:38%;
+  height:auto;opacity:1;transform:none;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-guide{
+  z-index:2;right:8%;bottom:0;width:clamp(100px,19vw,235px);max-height:76%;object-fit:contain;
+  transform:translate3d(calc(var(--avx-px,0)*5px),calc(var(--avx-py,0)*3px),0);opacity:1;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-art .avx-tool-motifs{display:none}
+/* A continuous boardwalk rather than another floating dashboard card grid. */
+html[data-adminerva-experience="full"] .avx-learning-world>.avx-world-destinations{
+  grid-column:1/-1;grid-row:3;position:relative;z-index:4;margin:0!important;
+  padding:1.25rem clamp(1rem,2.8vw,2.6rem) 1.5rem;min-width:0;
+  background:linear-gradient(180deg,#081d28,#102e35);
+  border-top:1px solid #41615d;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destinations>div:first-child{margin:0 0 .8rem}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destinations>div:first-child p{display:none}
+html[data-adminerva-experience="full"] .avx-learning-world #areasHeading{
+  font-size:1rem;font-weight:750;letter-spacing:.01em;color:#d3e9df;margin:0;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destination-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,130px),1fr));gap:0;
+  border:1px solid #44625f;border-radius:.8rem;overflow:visible;
+  background:linear-gradient(160deg,#173e43,#102a32);
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:not(.hidden):not([hidden]){
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;
+  min-width:0;min-height:112px;margin:0;padding:.8rem .85rem;
+  border:0;border-inline-end:1px solid #44625f;border-radius:0;box-shadow:none;
+  background:transparent;color:#ecf8f1;text-decoration:none;gap:.3rem;position:relative;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task[style*="display: none"],
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task.hidden,
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task[hidden]{display:none!important}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:hover,
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:focus-visible{
+  background:#28534f;transform:none!important;outline:2px solid #a5f2d9;outline-offset:-2px;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>span[aria-hidden="true"]{
+  font-size:0;display:block;width:48px;height:38px;margin:0;
+  background:var(--avx-landmark) center/contain no-repeat;
+}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="classroom"]{--avx-landmark:url("../assets/immersive/portal.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="studio"]{--avx-landmark:url("../assets/immersive/shards.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="practice"]{--avx-landmark:url("../assets/immersive/path-light.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="grades"]{--avx-landmark:url("../assets/immersive/beacons.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="projects"]{--avx-landmark:url("../assets/immersive/portal.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task h3{
+  color:#f2fbf6;font-size:.92rem;line-height:1.25;font-weight:800;overflow-wrap:anywhere;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>div{display:block}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>div>span{
+  display:inline-block;font-size:.6rem;line-height:1.15;margin-top:.2rem;white-space:normal;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>p{display:none}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>span:last-child{
+  color:#9de9d5;font-size:.72rem;line-height:1.25;margin:0;overflow-wrap:anywhere;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destinations.av-motion-reveal{
+  opacity:1!important;transform:none!important;animation:none!important;
+}
+@media(max-width:699px) and (orientation:portrait){
+  html[data-adminerva-experience="full"] main[data-home-experience="student"] .avx-learning-world{
+    grid-template-columns:minmax(0,1fr);
+  }
+  html[data-adminerva-experience="full"] .avx-learning-world>.av-experience-copy,
+  html[data-adminerva-experience="full"] .avx-learning-world>.max-w-3xl{grid-row:1;padding:1rem 1rem .5rem}
+  html[data-adminerva-experience="full"] .avx-learning-world>.av-experience-board{
+    grid-row:2;margin:0 1rem .5rem;
+  }
+  html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art{
+    grid-column:1;grid-row:3;min-height:0;height:clamp(120px,39vw,185px);
+    background-position:58% 55%;
+  }
+  html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art::after{
+    background:linear-gradient(180deg,#081d28,transparent 22%,transparent 75%,#081d28);
+  }
+  html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-logo{width:90px;top:.65rem;right:.7rem}
+  html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-guide{width:95px;max-height:92%;bottom:0}
+  html[data-adminerva-experience="full"] .avx-learning-world>.avx-world-destinations{grid-row:4;padding:.85rem}
+  html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destination-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:not(.hidden):not([hidden]){
+    padding:.65rem;min-height:96px;border-bottom:1px solid #44625f;
+  }
+}
+@media(max-height:620px) and (orientation:landscape) and (pointer:coarse){
+  html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art{min-height:200px}
+  html[data-adminerva-experience="full"] .avx-learning-world h1{font-size:2rem}
+  html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:not(.hidden):not([hidden]){min-height:92px}
+}
+html[data-adminerva-experience="quick"] .avx-learning-world>.avx-canonical-art{display:none!important}
+@media(prefers-reduced-motion:reduce){
+  html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-guide{transform:none!important}
+}
+html[data-motion="reduce"] .avx-learning-world .avx-canonical-guide,
+html[data-adminerva-reduce-motion="true"] .avx-learning-world .avx-canonical-guide{transform:none!important}
