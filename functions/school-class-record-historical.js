@@ -246,7 +246,7 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
       if(delegated&&!delegation.data().verifiedLegacyStudentIds.includes(studentId))return;
       const state=states.get(personId);
       if(!state)return;
-      if(data?.taskId!==column.taskId||data?.studentId!==studentId){
+      if(data?.taskId!==column.taskId||data?.studentId!==studentId||(data.schoolId&&data.schoolId!==schoolId)){
         state.status="invalid_grade";return;
       }
       let verifiedReceiptSection="";
@@ -307,9 +307,18 @@ async function historicalPublishedGrades({db,schoolId,offeringId,offering,column
         if(activities.size>=1001){
           for(const person of eligible.values())states.get(person).status="lookup_limit";
         }else{
+          const candidates=new Map();
           for(const doc of activities.docs){
-            const data=originalActivityGrade(doc,column.taskId),personId=data&&eligible.get(data.studentId);
-            if(personId)await assess(data,data.studentId,personId);
+            const raw=doc.data(),personId=raw&&eligible.get(raw.studentId);
+            if(!personId)continue;
+            const list=candidates.get(personId)||[];
+            list.push(doc);candidates.set(personId,list);
+          }
+          for(const [personId,list] of candidates){
+            if(list.length!==1){states.get(personId).status="ambiguous_grade";continue;}
+            const data=originalActivityGrade(list[0],column.taskId);
+            if(data)await assess(data,data.studentId,personId);
+            else states.get(personId).status="invalid_grade";
           }
         }
       }
