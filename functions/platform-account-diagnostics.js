@@ -237,7 +237,7 @@ function createPlatformAccountDiagnostics({db,FieldValue,Timestamp,now=Date.now}
     return db.runTransaction(async tx=>{
       const preference=await tx.get(account);
       const browserEnabled=preference.data()?.browserCollectionEnabled!==false;
-      if(source==="browser"&&!browserEnabled)deny("permission-denied","Detailed browser diagnostics are disabled in your privacy settings.");
+      if(source==="browser"&&!browserEnabled)return {recorded:false,disabled:true};
       // A stale browser may still send correlation hints with a necessary backend call.
       // Keep the operational outcome, but omit optional client correlation after opt-out.
       let storedEvent=event;
