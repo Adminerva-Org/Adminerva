@@ -255,6 +255,14 @@ function createSchoolLegacyStudioReview({db,parseLegacyRubric}){
           String(schoolCopy.data().checkingInstructions||"").slice(0,5000)
         ].filter(Boolean).join("\n\n").slice(0,8000)};
     }
+    if(input.action==="legacy_review_history"){
+      const raw=await inspectRaw(input.legacySubmissionId),grade=await gradeRef(raw.id).get();
+      if(grade.exists&&(grade.data().studentId!==raw.head.studentId||grade.data().taskId!==legacyAssessmentId))
+        deny("permission-denied","Grade history is outside the verified review context.");
+      return require("./school-grade-revision-history.js").readLegacyGradeHistory({
+        db,schoolId:ctx.schoolId,taskId:legacyAssessmentId,studentId:raw.head.studentId,gradeId:raw.id
+      });
+    }
     // All mutations stay in the original legacy grade and submission records.
     if(!["legacy_review_save_draft","legacy_review_publish","legacy_review_bulk_publish"].includes(input.action))
       deny("invalid-argument","Unknown historical Studio review operation.");
