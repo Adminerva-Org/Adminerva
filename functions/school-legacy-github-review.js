@@ -457,9 +457,8 @@ function createSchoolLegacyGithubReview({db,parseLegacyRubric,parseVerifiedLegac
    // The original student-selected SHA receipt is authoritative. A teacher's
    // forced discovery or optional checkpoint approval does not create a grade.
    if(!checkpointOnly)approvedEvidence(record.data,id,recordId,{requireSubmitted:true});
-   else if(input.expectedReceiptDigest!==meta.receiptDigest||input.onlyIfUngraded===true||input.expectedDraftRevision!==undefined||
-      ["internal_ai","external_ai"].includes(input.draftSource))
-     deny("failed-precondition","Checkpoint-only grading requires the current original receipt and manual evaluation.");
+   else if(input.expectedReceiptDigest!==meta.receiptDigest||input.onlyIfUngraded===true||input.expectedDraftRevision!==undefined)
+     deny("failed-precondition","Checkpoint grading requires the current original receipt and individual review.");
    const expectedRevision=Number(input.expectedEvidenceRevision);
    const expectedSha=String(input.expectedCheckpointSha||"").toLowerCase();
    const bulkSave=input.action==="legacy_github_save_draft"&&input.onlyIfUngraded===true;
