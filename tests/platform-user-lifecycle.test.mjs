@@ -135,13 +135,18 @@ test("prior consent import is previewed, attested, bounded and preserves saved p
   ["students/student_b",{email:"b@example.test",status:"active"}],
   ["activity_preferences/user_b",{ownerUid:"user_b",studentId:"student_b",enabled:false}],
   ["students/student_c",{email:"c@example.test",status:"active"}],
-  ["activity_preferences/user_c",{ownerUid:"user_c",studentId:"student_c",enabled:true}]
+  ["activity_preferences/user_c",{ownerUid:"user_c",studentId:"student_c",enabled:true}],
+  ["platform_account_diagnostics/user_b",{browserCollectionEnabled:false}],
+  ["platform_account_diagnostics/user_c",{browserCollectionEnabled:true}],
+  ["platform_test_accounts/user_a",{kind:"student",status:"active"}],
+  ["platform_test_accounts/user_b",{kind:"student",status:"active",researchOptOut:true}]
  ]);
  let audit=0;
  const snapshot=path=>({id:path.split("/").at(-1),exists:docs.has(path),data:()=>docs.get(path)});
  const ref=path=>({path,get:async()=>snapshot(path)});
  const db={doc:ref,collection:path=>({
   doc:()=>ref(path+"/audit_"+(++audit)),
+  add:async value=>{docs.set(path+"/audit_"+(++audit),value);},
   where:(key,op,value)=>({limit:()=>({get:async()=>({docs:[...docs.keys()].filter(p=>p.startsWith(path+"/")&&docs.get(p)?.[key]===value).map(snapshot)})})})
  }),runTransaction:async callback=>callback({get:async r=>snapshot(r.path),create:(r,value)=>{assert.equal(docs.has(r.path),false);docs.set(r.path,value);}})};
  const auth={getUser:async uid=>({uid,email:uid.slice(-1)+"@example.test",emailVerified:uid!=="user_d",disabled:false})};
@@ -149,6 +154,11 @@ test("prior consent import is previewed, attested, bounded and preserves saved p
  const preview=await run("preview_activity_consent");
  assert.deepEqual(preview.rows.map(x=>x.status),["eligible","existing_choice_preserved","already_enabled","account_ineligible","no_active_legacy_student"]);
  assert.equal(docs.has("activity_preferences/user_a"),false);
+ assert.equal(preview.rows[0].browserPreference,"default_on");assert.equal(preview.rows[0].researchPreference,"on_if_school_eligible");
+ assert.equal(preview.rows[1].browserPreference,"off");assert.equal(preview.rows[1].researchPreference,"off");
+ assert.equal(preview.rows[2].browserPreference,"on");assert.equal(preview.rows[2].researchPreference,"not_designated");
+ assert.equal(preview.rows[3].browserPreference,undefined);
+ assert.equal([...docs.values()].filter(v=>v.action==="existing_student_collection_preferences_previewed").length,1);
  await assert.rejects(run("initialize_activity_consent"),/Confirm previously obtained consent/);
  await assert.rejects(run("initialize_activity_consent",{consentConfirmed:true},{uid:"teacher",platformAdmin:false}),/System Administrator/);
  const result=await run("initialize_activity_consent",{consentConfirmed:true});
@@ -160,7 +170,9 @@ test("prior consent import is previewed, attested, bounded and preserves saved p
  assert.equal((await run("initialize_activity_consent",{consentConfirmed:true})).rows[0].status,"existing_choice_preserved");
  assert.equal(docs.get("activity_preferences/user_a").enabled,false);
  docs.set("platform_schools/mcs-manila",{compatibilityMode:"v4_only"});
- assert.equal((await run("preview_activity_consent",{uids:["user_a"]})).rows[0].status,"v4_only_legacy_unavailable");
+ const v4=(await run("preview_activity_consent",{uids:["user_a"]})).rows[0];
+ assert.equal(v4.status,"v4_only_legacy_unavailable");assert.equal(v4.browserPreference,"default_on");
+ assert.equal(docs.get("platform_account_diagnostics/user_b").browserCollectionEnabled,false);
  assert.match(page,/id="pu-consent-preview"/);
  assert.match(page,/id="pu-consent-confirm"/);
  assert.match(client,/consentConfirmed:true/);
