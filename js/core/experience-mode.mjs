@@ -100,11 +100,55 @@ if(publicLike){
       const origin=document.createComment('canonical student tool location');
       destinations.before(origin);
       hero.classList.add('avx-learning-world');
+      // Visual feedback follows the actual link, never a second navigation step.
+      const preview=el('div','avx-world-preview');
+      const landmark=el('i','avx-world-preview-landmark');
+      const caption=el('div','avx-world-preview-caption');
+      const title=el('strong');
+      const detail=el('span');
+      caption.append(title,detail);preview.append(landmark,caption);art.append(preview);
+      let active=null;
+      const isAvailable=anchor=>anchor?.isConnected&&anchor.getClientRects().length>0&&
+        !anchor.closest('[hidden],.hidden,[aria-hidden="true"]');
+      const clearPreview=()=>{
+        active=null;
+        delete hero.dataset.worldFocus;
+        title.textContent='';detail.textContent='';
+      };
+      const showPreview=anchor=>{
+        if(document.documentElement.dataset.adminervaExperience!=='full'||!isAvailable(anchor))return;
+        active=anchor;
+        hero.dataset.worldFocus=anchor.dataset.worldDestination;
+        title.textContent=anchor.querySelector('h3')?.textContent||'';
+        detail.textContent=anchor.querySelector('p')?.textContent||'';
+      };
+      const destinationFor=target=>target?.closest?.('a[data-world-destination]');
+      destinations.addEventListener('pointerover',event=>{
+        if(event.pointerType!=='touch')showPreview(destinationFor(event.target));
+      });
+      destinations.addEventListener('pointerout',event=>{
+        const next=destinationFor(event.relatedTarget);
+        if(next===active)return;
+        const focused=destinationFor(document.activeElement);
+        if(focused&&isAvailable(focused))showPreview(focused);else clearPreview();
+      });
+      destinations.addEventListener('focusin',event=>{
+        const anchor=destinationFor(event.target);
+        if(anchor)showPreview(anchor);else clearPreview();
+      });
+      destinations.addEventListener('focusout',event=>{
+        if(!destinationFor(event.relatedTarget))clearPreview();
+      });
+      destinations.addEventListener('input',clearPreview);
+      new MutationObserver(()=>{
+        if(active&&!isAvailable(active))clearPreview();
+      }).observe(destinations,{subtree:true,attributes:true,attributeFilter:['class','hidden','style','aria-hidden']});
       // Keep the existing anchors, visibility flags, search listeners and DOM identity.
       // Full moves the real tools into the scene; Quick restores their original location.
       const sync=()=>{
         const full=document.documentElement.dataset.adminervaExperience==='full';
         hero.classList.toggle('avx-canonical-home-hero',full);
+        clearPreview();
         if(full && destinations.parentElement!==hero)hero.append(destinations);
         if(!full && destinations.parentElement===hero)origin.after(destinations);
       };
