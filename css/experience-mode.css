@@ -471,3 +471,194 @@ html[data-adminerva-experience="quick"] .avx-canonical-home-hero .text-cyan-800{
   .avx-canonical-home-hero::before,
   .avx-guide-character,.avx-canonical-guide{transform:none!important;transition:none!important}
 }
+
+
+/* Student Learning World — one illustrated environment and a traversable trail.
+   The original role-gated anchors remain direct links. Full Mode is visual only. */
+html[data-adminerva-experience="full"] main[data-home-experience="student"] .avx-learning-world{
+  --world-ink:#f5fcf7;--world-muted:#b7d7d3;--world-accent:#a5f2d9;
+  --world-art:url("../assets/immersive/world-arrival.webp");
+  display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);
+  gap:0;align-items:stretch;min-height:0!important;padding:0!important;
+  border-radius:1.35rem;background:#081d28!important;border:1px solid #284754;
+  box-shadow:0 18px 48px #102c3726!important;overflow:hidden!important;
+}
+html[data-adminerva-experience="full"] .avx-learning-world::before,
+html[data-adminerva-experience="full"] .avx-learning-world::after,
+html[data-adminerva-experience="full"] .avx-learning-world .av-motion-ambient{display:none!important}
+html[data-adminerva-experience="full"] .avx-learning-world>.av-experience-copy,
+html[data-adminerva-experience="full"] .avx-learning-world>.max-w-3xl{
+  grid-column:1;grid-row:1;align-self:center;padding:clamp(1.1rem,3.2vw,3rem);
+  max-width:none;min-width:0;z-index:2;
+}
+html[data-adminerva-experience="full"] .avx-learning-world h1{
+  font-size:clamp(2rem,4.1vw,4.25rem);line-height:1.04;letter-spacing:-.055em;
+  max-width:13ch;color:var(--world-ink);overflow-wrap:anywhere;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-experience-copy>p:not(.av-eyebrow){
+  font-size:clamp(.88rem,1.4vw,1.05rem);line-height:1.5;color:var(--world-muted);max-width:30ch;margin-top:.65rem;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-button-row{display:none}
+html[data-adminerva-experience="full"] .avx-learning-world .av-experience-launch{
+  max-width:100%;min-height:44px;white-space:normal;flex-wrap:wrap;
+}
+html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art{
+  position:relative;inset:auto;grid-column:2;grid-row:1;align-self:stretch;
+  min-width:0;min-height:clamp(230px,29vw,365px);z-index:1;overflow:hidden;
+  background:#143746 var(--world-art) 58% center/cover no-repeat;
+}
+html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art::before{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background:url("../assets/immersive/world-journey.webp") 65% center/cover no-repeat;
+  opacity:0;transition:opacity .35s ease;
+}
+html[data-adminerva-experience="full"] .avx-learning-world:is([data-world-focus="studio"],[data-world-focus="practice"],[data-world-focus="projects"])>.avx-canonical-art::before{opacity:.94}
+html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art::after{
+  content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(90deg,#081d28 0%,transparent 27%),linear-gradient(0deg,#081d28 0%,transparent 28%);
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-logo{
+  z-index:3;top:1rem;right:1rem;width:clamp(90px,11vw,155px);max-width:38%;
+  height:auto;opacity:1;transform:none;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-guide{
+  z-index:2;right:8%;bottom:0;width:clamp(100px,19vw,235px);max-height:76%;object-fit:contain;
+  transform:translate3d(calc(var(--avx-px,0)*5px),calc(var(--avx-py,0)*3px),0);opacity:1;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-art .avx-tool-motifs{display:none}
+.avx-world-preview{display:none}
+html[data-adminerva-experience="full"] .avx-learning-world[data-world-focus] .avx-world-preview{
+  display:grid;grid-template-columns:clamp(44px,6vw,90px) minmax(0,1fr);gap:.65rem;align-items:center;
+  position:absolute;z-index:4;inset:auto 39% 9% 5%;min-width:0;padding:.8rem .85rem;
+  background:#071c27eb;border-inline-start:2px solid var(--world-accent);
+  border-radius:.45rem;box-shadow:0 8px 26px #06131e6b;
+}
+.avx-world-preview-landmark{display:block;width:100%;aspect-ratio:1;background:var(--world-active-landmark) center/contain no-repeat}
+.avx-world-preview-caption{display:grid;gap:.3rem;min-width:0}
+.avx-world-preview-caption strong{color:#f5fcf7;font-size:clamp(.82rem,1.4vw,1.05rem);line-height:1.25;overflow-wrap:anywhere}
+.avx-world-preview-caption span{color:#b7d7d3;font-size:.74rem;line-height:1.4;overflow-wrap:anywhere}
+html[data-adminerva-experience="full"] .avx-learning-world[data-world-focus="classroom"]{--world-active-landmark:url("../assets/immersive/portal.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world[data-world-focus="assignments"]{--world-active-landmark:url("../assets/immersive/beacons.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world[data-world-focus="studio"]{--world-active-landmark:url("../assets/immersive/shards.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world[data-world-focus="practice"]{--world-active-landmark:url("../assets/immersive/path-light.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world[data-world-focus="grades"]{--world-active-landmark:url("../assets/immersive/beacons.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world[data-world-focus="projects"]{--world-active-landmark:url("../assets/immersive/portal.svg")}
+/* The trail shares the scenery, rather than putting opaque dashboard cards on top. */
+html[data-adminerva-experience="full"] .avx-learning-world>.avx-world-destinations{
+  grid-column:1/-1;grid-row:2;position:relative;z-index:4;margin:0!important;
+  padding:1rem clamp(.85rem,2.8vw,2.6rem) 1.3rem;min-width:0;
+  background:linear-gradient(180deg,#081d28 0%,#081d28d9 32%,#081d28f5 100%),
+    url("../assets/immersive/world-journey.webp") center 72%/cover no-repeat;
+  border-top:1px solid #41615d;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destinations>div:first-child{margin:0 0 .55rem}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destinations>div:first-child p{display:none}
+html[data-adminerva-experience="full"] .avx-learning-world #areasHeading{
+  font-size:.95rem;font-weight:750;letter-spacing:.015em;color:var(--world-muted);margin:0;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destination-grid{
+  display:grid;position:relative;isolation:isolate;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,118px),1fr));gap:.2rem;
+  border:0;overflow:visible;background:transparent;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destination-grid::before{
+  content:"";position:absolute;inset:0 0 auto;height:100px;z-index:-1;pointer-events:none;
+  background:url("../assets/immersive/path-light.svg") center/100% 100% no-repeat;opacity:.46;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:not(.hidden):not([hidden]){
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;
+  min-width:0;min-height:144px;margin:0;padding:.4rem .3rem .65rem;
+  border:0;border-bottom:2px solid #46716b;border-radius:.35rem;box-shadow:none;
+  background:transparent;color:var(--world-ink);text-decoration:none;gap:.35rem;position:relative;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task[style*="display: none"],
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task.hidden,
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task[hidden]{display:none!important}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:hover,
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:focus-visible{
+  background:#143b3ce6;border-bottom-color:var(--world-accent);transform:none!important;
+  outline:2px solid var(--world-accent);outline-offset:-2px;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>span[aria-hidden="true"]{
+  font-size:0;display:block;width:min(100%,108px);height:74px;margin:0;flex:none;
+  background:var(--avx-landmark) center/contain no-repeat;
+  filter:drop-shadow(0 5px 8px #05212f);transition:transform .18s ease,filter .18s ease;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:is(:hover,:focus-visible)>span[aria-hidden="true"]{
+  transform:translateY(-3px);filter:drop-shadow(0 6px 10px #6edbca66);
+}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="classroom"]{--avx-landmark:url("../assets/immersive/portal.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="assignments"]{--avx-landmark:url("../assets/immersive/beacons.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="studio"]{--avx-landmark:url("../assets/immersive/shards.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="practice"]{--avx-landmark:url("../assets/immersive/path-light.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="grades"]{--avx-landmark:url("../assets/immersive/beacons.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world [data-world-destination="projects"]{--avx-landmark:url("../assets/immersive/portal.svg")}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task h3{
+  color:var(--world-ink);font-size:.95rem;line-height:1.2;font-weight:800;overflow-wrap:anywhere;margin:0;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>div{display:block}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>div>span{
+  display:inline-block;font-size:.6rem;line-height:1.15;margin-top:.2rem;white-space:normal;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>p{display:none}
+html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>span:last-child{
+  color:var(--world-accent);font-size:.72rem;line-height:1.25;margin:0;overflow-wrap:anywhere;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destinations.av-motion-reveal{
+  opacity:1!important;transform:none!important;animation:none!important;
+}
+/* Compact two-column header at 320px; actual links never overlap artwork. */
+@media(max-width:699px) and (orientation:portrait){
+  html[data-adminerva-experience="full"] main[data-home-experience="student"] .avx-learning-world{
+    grid-template-columns:minmax(0,1.13fr) minmax(0,.87fr);
+  }
+  html[data-adminerva-experience="full"] .avx-learning-world>.av-experience-copy,
+  html[data-adminerva-experience="full"] .avx-learning-world>.max-w-3xl{padding:.9rem .35rem .9rem .85rem}
+  html[data-adminerva-experience="full"] .avx-learning-world h1{font-size:clamp(1.5rem,6.6vw,2rem);line-height:1.07}
+  html[data-adminerva-experience="full"] .avx-learning-world .av-eyebrow{font-size:.62rem;overflow-wrap:anywhere}
+  html[data-adminerva-experience="full"] .avx-learning-world .av-experience-copy>p:not(.av-eyebrow){font-size:.77rem;line-height:1.35}
+  html[data-adminerva-experience="full"] .avx-learning-world .av-experience-launch{font-size:.7rem;margin-top:.55rem;padding:.45rem .55rem}
+  html[data-adminerva-experience="full"] .avx-learning-world .av-experience-launch kbd{display:none}
+  html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art{
+    min-height:132px;background-position:66% 55%;
+  }
+  html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-logo{width:78px;max-width:70%;top:.65rem;right:.5rem}
+  html[data-adminerva-experience="full"] .avx-learning-world .avx-canonical-guide{width:96px;max-width:86%;max-height:66%;bottom:0;right:3%}
+  html[data-adminerva-experience="full"] .avx-learning-world[data-world-focus] .avx-world-preview{display:none}
+  html[data-adminerva-experience="full"] .avx-learning-world>.avx-world-destinations{padding:.7rem .7rem .9rem}
+  html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destination-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.3rem .6rem}
+  html[data-adminerva-experience="full"] .avx-learning-world .avx-world-destination-grid::before{display:none}
+  html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:not(.hidden):not([hidden]){
+    padding:.3rem .25rem .5rem;min-height:92px;gap:.2rem;
+  }
+  html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>span[aria-hidden="true"]{width:64px;height:46px}
+  html[data-adminerva-experience="full"] .avx-learning-world .av-home-task h3{font-size:.85rem}
+}
+@media(max-height:620px) and (orientation:landscape) and (pointer:coarse){
+  html[data-adminerva-experience="full"] .avx-learning-world>.avx-canonical-art{min-height:165px}
+  html[data-adminerva-experience="full"] .avx-learning-world h1{font-size:1.9rem}
+  html[data-adminerva-experience="full"] .avx-learning-world .av-home-task:not(.hidden):not([hidden]){min-height:108px}
+  html[data-adminerva-experience="full"] .avx-learning-world .av-home-task>span[aria-hidden="true"]{height:52px}
+  html[data-adminerva-experience="full"] .avx-learning-world[data-world-focus] .avx-world-preview{display:none}
+}
+html[data-adminerva-experience="quick"] .avx-learning-world>.avx-canonical-art{display:none!important}
+@media(prefers-reduced-motion:reduce){
+  .avx-learning-world .avx-canonical-guide,.avx-learning-world .av-home-task>span[aria-hidden="true"]{transform:none!important}
+  .avx-learning-world>.avx-canonical-art::before{transition:none!important}
+}
+html[data-motion="reduce"] .avx-learning-world *,
+html[data-adminerva-reduce-motion="true"] .avx-learning-world *{transition:none!important;animation:none!important}
+html[data-motion="reduce"] .avx-learning-world .avx-canonical-guide,
+html[data-adminerva-reduce-motion="true"] .avx-learning-world .avx-canonical-guide{transform:none!important}
+[data-student-home-slot]{display:contents}
+/* Search remains next to the actual destinations in both modes. */
+.avx-world-destinations .avx-world-search{margin:0 0 .6rem;padding:0;border:0;background:transparent}
+.avx-world-destinations .avx-world-search label{font-size:.8rem}
+.avx-world-destinations .avx-world-search input{margin:.2rem 0;padding:.5rem;min-height:44px}
+.avx-world-destinations .avx-world-search [role=status]:empty{display:none}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-search label{color:#d3e9df}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-search input{
+  width:min(100%,22rem);border:1px solid #567571;background:#102b34;color:#f3f9f5;border-radius:.55rem;
+}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-search input::placeholder{color:#a9c3c2}
+html[data-adminerva-experience="full"] .avx-learning-world .avx-world-search [role=status]{color:#b6d3cf}

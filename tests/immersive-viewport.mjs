@@ -9,7 +9,11 @@ import {chromium} from 'playwright';
 const root=resolve('.');
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.woff2':'font/woff2'};
 const roles=new Set(['student','teacher','admin','platform']);
-const fixture=role=>`<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/css/adminerva-ui.css"><link rel="stylesheet" href="/css/experience-mode.css"></head><body><main data-home-experience="${role}" style="max-width:1100px;margin:auto;padding:1rem"><header class="av-home-hero"><p>Canonical ${role} home</p><h1>One home. One navigation.</h1><p>Operational work starts on this page.</p></header><section id="real-dashboard"><h2>Operational dashboard fixture</h2><p>This is visible without crossing a second homepage.</p></section></main><script type="module" src="/js/core/experience-mode.mjs"></script></body></html>`;
+const studentSource=await readFile(resolve(root,'student-home.html'),'utf8');
+const studentHero=studentSource.match(/<section aria-labelledby="welcomeTitle"[\s\S]*?<\/section>/)?.[0];
+const studentTools=studentSource.match(/<section[^>]*class="[^"]*avx-world-destinations[^"]*"[^>]*>[\s\S]*?<\/section>/)?.[0];
+assert.ok(studentHero&&studentTools,'Student Home fixture must use real hero and tool markup');
+const fixture=role=>`<!doctype html><html lang="en"><head><base href="/"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/css/adminerva-ui.css"><link rel="stylesheet" href="/css/home-experience.css"><link rel="stylesheet" href="/css/home-motion.css"><link rel="stylesheet" href="/css/experience-mode.css"><style>.hidden,[hidden]{display:none!important}</style></head><body><main data-home-experience="${role}" class="${role==='student'?'av-home av-home-motion':''}" style="max-width:1100px;margin:auto;padding:1rem">${role==='student'?studentHero+'<section id="real-dashboard"><h2>Operational dashboard fixture</h2></section>'+studentTools:'<header class="av-home-hero"><p>Canonical '+role+' home</p><h1>One home. One navigation.</h1><p>Operational work starts on this page.</p></header><section id="real-dashboard"><h2>Operational dashboard fixture</h2><p>This is visible without crossing a second homepage.</p></section>'}</main>${role==='student'?'<script type="module" src="/js/core/home-experience.mjs"></script>':''}<script type="module" src="/js/core/experience-mode.mjs"></script></body></html>`;
 const server=createServer(async(req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://127.0.0.1').pathname);
   if(pathname.startsWith('/__role/')){
@@ -108,6 +112,44 @@ try{
       assert.equal(await page.locator('.avx-role-runway').count(),0,'separate signed-in runway must not return');
       assert.equal(await page.locator('.avx-dashboard-entry').count(),0,'dashboard continuation gate must not return');
       assert.equal(await page.locator('#real-dashboard').isVisible(),true,'operational dashboard must already be on the canonical Home');
+      if(role==='student'){
+        const tools=page.locator('.avx-world-destinations');
+        const destinations=tools.locator('[data-world-destination]');
+        assert.equal(await destinations.count(),6);
+        assert.equal(await tools.evaluate(n=>n.parentElement.classList.contains('avx-learning-world')),true);
+        assert.equal(await destinations.filter({hasText:'My Grades'}).isVisible(),false,'restricted grades must remain hidden');
+        const world=page.locator('.avx-learning-world');
+        const studio=tools.locator('[data-world-destination="studio"]');
+        const classroom=tools.locator('[data-world-destination="classroom"]');
+        const grades=tools.locator('[data-world-destination="grades"]');
+        await studio.focus();
+        assert.equal(await world.getAttribute('data-world-focus'),'studio');
+        assert.equal(await page.locator('.avx-world-preview-caption strong').textContent(),'Adminerva Studio');
+        await studio.evaluate(n=>{n.style.display='none';});
+        await page.waitForFunction(()=>!document.querySelector('.avx-learning-world').hasAttribute('data-world-focus'));
+        await studio.evaluate(n=>{n.style.display='';});
+        await classroom.focus();
+        assert.equal(await world.getAttribute('data-world-focus'),'classroom');
+        assert.equal(await grades.isVisible(),false);
+        await page.locator('.avx-experience-launch').focus();
+        assert.equal(await world.getAttribute('data-world-focus'),null);
+        const original=await destinations.evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href')));
+        await tools.evaluate(n=>{n.dataset.qaIdentity='original';});
+        if(['desktop-wide','tablet-landscape','mobile-320'].includes(viewport.name)){
+          await page.locator('.avx-learning-world').screenshot({path:`/tmp/adminerva-student-world-${viewport.name}.png`,animations:'disabled'});
+        }
+        await page.locator('.avx-view-trigger').click();
+        await page.getByRole('button',{name:'Quick Mode'}).click();
+        assert.equal(await tools.evaluate(n=>n.parentElement.tagName),'MAIN');
+        assert.equal(await tools.getAttribute('data-qa-identity'),'original');
+        assert.equal(await world.getAttribute('data-world-focus'),null);
+        assert.equal(await destinations.filter({hasText:'My Grades'}).isVisible(),false);
+        assert.deepEqual(await destinations.evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href'))),original);
+        await page.locator('.avx-view-trigger').click();
+        await page.getByRole('button',{name:'Full Experience'}).click();
+        assert.equal(await tools.evaluate(n=>n.parentElement.classList.contains('avx-learning-world')),true);
+        assert.equal(await tools.getAttribute('data-qa-identity'),'original');
+      }
       await page.close();
     }
     await context.close();
