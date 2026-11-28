@@ -75,7 +75,8 @@ test("activity privacy is integrated into personal settings instead of adding a 
   const prefs=read("js/settings/account-preferences.mjs");
   const activity=read("js/help/activity-preferences.mjs");
   assert.match(prefs,/data-activity-preferences/);
-  assert.match(prefs,/Privacy & local data/);
+  assert.match(prefs,/Data collection & privacy/);
+  assert.match(prefs,/mountCollectionPreferences/);
   assert.match(activity,/!document\.querySelector\("\[data-account-preferences\]"\)/);
   assert.match(activity,/event\.target\.closest\?\.\("\[data-activity-preferences\]"\)/);
   assert.match(activity,/school-student-/);

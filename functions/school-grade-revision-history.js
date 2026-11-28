@@ -53,4 +53,15 @@ async function readLegacyGradeHistory({db,schoolId,taskId,studentId,gradeId}){
  if(page.size>=201)return {entries:[],limitReached:true};
  return {entries:legacyRevisionRows(page.docs,{schoolId,taskId,studentId,gradeId}),limitReached:false};
 }
-module.exports={readLegacyGradeHistory,legacyRevisionRows,nativeRevisionRows};
+function activityRevisionRows(docs,{schoolId,taskId,studentId,gradeId}){
+ const matches=value=>value&&value.taskId===taskId&&value.studentId===studentId&&(!value.schoolId||value.schoolId===schoolId);
+ return docs.flatMap(doc=>{
+   const row=doc.data();
+   if(!row||!matches(row.after)||(row.schoolId&&row.schoolId!==schoolId)||
+      (row.gradeId&&row.gradeId!==gradeId)||(row.taskId&&row.taskId!==taskId)||(row.studentId&&row.studentId!==studentId))return [];
+   return [{id:doc.id,source:"historical",action:"activity_revision",at:timestamp(row.createdAt),
+     actorUid:text(row.actorUid,128),note:"",before:matches(row.before)?scoreState(row.before):null,
+     after:scoreState(row.after),evidenceVersion:null,checkpointReceiptId:""}];
+ }).sort((a,b)=>(b.after.revision??0)-(a.after.revision??0)||(b.at??0)-(a.at??0));
+}
+module.exports={readLegacyGradeHistory,legacyRevisionRows,nativeRevisionRows,activityRevisionRows};

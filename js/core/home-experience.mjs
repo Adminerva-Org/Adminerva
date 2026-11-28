@@ -77,7 +77,8 @@ if (home) {
         link.append(sequence, action, arrow);
         board.append(link);
       });
-      hero.append(board);
+      // The redesigned student Home uses its real destination links instead of a second journey board.
+      if(role!=='student'||!home.querySelector('.avx-world-destinations'))hero.append(board);
     }
   }
 

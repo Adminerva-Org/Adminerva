@@ -5,6 +5,7 @@ import {
   enableDevicePush,disableDevicePush,syncDevicePush,sendTestPush
 } from "../core/push-notifications.mjs?v=1.4.0";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
+import {mountCollectionPreferences} from "./collection-preferences.mjs?v=20261128-privacy-1";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 
 const root=document.querySelector("[data-account-preferences]");
@@ -70,14 +71,15 @@ if(root){
       </section>
 
       <section class="av-settings-card">
-        <h3>Privacy & local data</h3>
+        <h3>Data collection & privacy</h3>
         <div class="space-y-3 mt-3">
+          <div data-collection-preferences></div>
           <label class="av-settings-preference-row">
-            <span><strong>Anonymous product-usage analytics</strong><small>Excludes names, emails, student IDs, repository URLs, commit SHAs, grades, feedback and URL query parameters. Advertising signals are disabled.</small></span>
+            <span><strong>Optional Google usage analytics (this browser)</strong><small>Excludes names, emails, student IDs, repository URLs, commit SHAs, grades, feedback and URL query parameters. Advertising signals are disabled.</small></span>
             <input type="checkbox" data-usage-analytics>
           </label>
           <div class="av-settings-preference-row">
-            <span><strong>Activity sharing & diagnostics</strong><small>Optional activity sharing is off by default and never affects grades.</small></span>
+            <span><strong>Activity sharing & diagnostics</strong><small>Optional activity sharing and report attachments are separate from System Logs and never affect grades.</small></span>
             <button type="button" data-activity-preferences class="av-secondary-button">Manage</button>
           </div>
         </div>
@@ -94,6 +96,7 @@ if(root){
         <button type="submit" class="av-primary-button">Save preferences</button>
       </div>
     </form>`;
+  mountCollectionPreferences(root.querySelector("[data-collection-preferences]"));
   let settingsRole={role:staff?"staff":"student",canTeach:false};
   function supportedChoices(){
     if(!staff)return [["assessment","Assignments"],["submission","Submission updates"],["grade","Published grades"],["issue","Reports & replies"],["release","Website updates"]];

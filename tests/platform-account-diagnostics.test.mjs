@@ -290,3 +290,22 @@ test("academic callable adapter preserves payload and response, never passes pri
    assert.equal(await call(input),response);assert.equal(calls.at(-1),input);
  }finally{if(original===undefined)delete globalThis.AdminervaDiagnostic;else globalThis.AdminervaDiagnostic=original;}
 });
+
+test("browser collection defaults on but account opt-out blocks new browser events and preserves necessary backend outcomes",async()=>{
+ const db=fakeDb(),collector=service(db),api=collector.service,ref="platform_account_diagnostics/"+USER;
+ assert.deepEqual(await api(request(USER,{action:"privacy_status"})),{browserEnabled:true});
+ assert.equal(await api(request(USER,{action:"record",event:event()})).then(r=>r.recorded),true);
+ const previous=db.values.get(ref);
+ assert.deepEqual(await api(request(USER,{action:"set_browser_collection",enabled:false})),{browserEnabled:false});
+ assert.equal(db.values.get(ref).lastAction,previous.lastAction);
+ assert.deepEqual(await api(request(USER,{action:"record",event:event({eventId:"cccccccc-cccc-4ccc-8ccc-cccccccccccc"})})),{recorded:false,disabled:true});
+ assert.equal(db.values.has(ref+"/entries/cccccccc-cccc-4ccc-8ccc-cccccccccccc"),false);
+ await collector.recordServerProcess(request(USER,{action:"sync",_diagnostic:{sessionId:SESSION,operationId:EVENT}}),{service:"schoolStudioProjects",startedAt:T});
+ const row=[...db.values.values()].find(x=>x.action==="api_succeeded");
+ assert.ok(row);assert.equal(row.operationId,undefined);assert.equal(db.values.get(ref).browserCollectionEnabled,false);
+ assert.deepEqual(await api(request(ADMIN,{action:"privacy_status"})),{browserEnabled:true});
+ await assert.rejects(api(request(ADMIN,{action:"set_browser_collection",enabled:true,targetUid:USER})),/own browser diagnostics/);
+ await assert.rejects(api({data:{action:"privacy_status"}}),/verified account/);
+ assert.equal((await api(request(USER,{action:"privacy_status"}))).browserEnabled,false);
+ assert.deepEqual(await api(request(USER,{action:"set_browser_collection",enabled:true})),{browserEnabled:true});
+});

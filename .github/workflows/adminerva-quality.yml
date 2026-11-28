@@ -46,6 +46,7 @@ jobs:
           node --test tests/school-legacy-studio-review.test.mjs
           node --test tests/school-legacy-github-review.test.mjs
           node --check js/repo-review/v4-gradebook.mjs
+          node --test tests/v4-review-queue-ux.test.mjs
           node --check functions/school-legacy-github-review.js
           node --test tests/v4-bulk-evaluation.test.mjs
           node --test tests/v4-bulk-link-review.test.mjs
