@@ -1,5 +1,5 @@
 import {loadPublishedGrades} from "./published-grades.mjs?v=1.3.0";
-import {ensureStudentAccessProjection} from "./student-access.mjs?v=7fe6ab08fd82";
+import {ensureStudentAccessProjection} from "./student-access.mjs?v=7e6424dd8dde";
 /** Legacy teacher analytics import compatibility entry. */
 import { app, db, auth } from "../core/firebase-core.js?v=1.3.0";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
