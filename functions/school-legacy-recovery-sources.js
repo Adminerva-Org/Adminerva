@@ -28,6 +28,8 @@ function originalActivityGrade(doc,assessmentId){
  const row=doc?.data?.();
  if(!safeId(row?.studentId)||row.taskId!==assessmentId||
     row.score==null||row.score===""||row.maxScore==null||row.maxScore==="")return null;
+ const numeric=value=>typeof value==="number"||typeof value==="string"&&value.trim()!=="";
+ if(!numeric(row.score)||!numeric(row.maxScore)||!numeric(row.pending??0))return null;
  const score=Number(row.score),maximum=Number(row.maxScore),pending=Number(row.pending??0);
  if(!Number.isFinite(score)||!Number.isFinite(maximum)||maximum<=0||score<0||score>maximum||
     !Number.isFinite(pending)||pending<0||score+pending>maximum)return null;
